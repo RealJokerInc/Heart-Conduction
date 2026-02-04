@@ -514,7 +514,7 @@ def find_contours_numpy(mask):
                 start_dir = i
                 break
 
-        contour.append([x, y])  # Store as [x, y]
+        contour.append([int(x), int(y)])  # Store as [x, y], convert to Python int
         prev_dir = start_dir
 
         # Trace the contour
@@ -541,7 +541,7 @@ def find_contours_numpy(mask):
                         if (ny, nx) != start:
                             current = (ny, nx)
                             remaining.discard(current)
-                            contour.append([nx, ny])
+                            contour.append([int(nx), int(ny)])  # Convert to Python int
                             prev_dir = dir_idx
                             found = True
                             break
@@ -640,5 +640,7 @@ def api_reset():
 
 
 if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
     print("Starting Builder UI at http://localhost:5001")
     app.run(debug=True, port=5001, host='0.0.0.0')
