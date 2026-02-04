@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page page-upload">
+    <div class="upload-content">
+        <a href="/" class="back-link">← Back</a>
+
+        <h2>Upload Image</h2>
+        <p class="subtitle">Drop your tissue design image below</p>
+
+        <div class="dropzone" id="dropzone">
+            <div class="dropzone-content">
+                <div class="dropzone-icon">📁</div>
+                <p>Drop image here</p>
+                <p class="dropzone-hint">or click to browse</p>
+                <p class="dropzone-formats">.png .jpg .svg</p>
+            </div>
+            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.svg" hidden>
+        </div>
+
+        <div class="upload-status" id="upload-status"></div>
+
+        <button class="btn btn-primary btn-large" id="continue-btn" disabled>
+            Continue →
+        </button>
+    </div>
+</div>
+
+<script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const continueBtn = document.getElementById('continue-btn');
+    const statusEl = document.getElementById('upload-status');
+
+    let uploadedFile = null;
+
+    // Click to browse
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    // Drag events
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
+        }
+    });
+
+    function handleFile(file) {
+        const validTypes = ['image/png', 'image/jpeg', 'image/svg+xml'];
+        const ext = file.name.toLowerCase().split('.').pop();
+
+        if (!validTypes.includes(file.type) && !['png', 'jpg', 'jpeg', 'svg'].includes(ext)) {
+            statusEl.textContent = 'Invalid file type. Use PNG, JPG, or SVG.';
+            statusEl.className = 'upload-status error';
+            return;
+        }
+
+        // Upload file
+        const formData = new FormData();
+        formData.append('file', file);
+
+        statusEl.textContent = 'Uploading...';
+        statusEl.className = 'upload-status';
+
+        fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                uploadedFile = file;
+                statusEl.textContent = `✓ ${file.name}`;
+                statusEl.className = 'upload-status success';
+                continueBtn.disabled = false;
+                dropzone.classList.add('uploaded');
+            } else {
+                statusEl.textContent = data.error || 'Upload failed';
+                statusEl.className = 'upload-status error';
+            }
+        })
+        .catch(err => {
+            statusEl.textContent = 'Upload failed: ' + err.message;
+            statusEl.className = 'upload-status error';
+        });
+    }
+
+    // Continue button
+    continueBtn.addEventListener('click', () => {
+        if (uploadedFile) {
+            window.location.href = '/loading';
+        }
+    });
+</script>
+{% endblock %}
