@@ -2,19 +2,28 @@
 
 {% block content %}
 <div class="page page-start">
-    <div class="start-content">
+    <div class="start-content fade-in">
+        <div class="start-logo">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 35s-13.5-8.5-13.5-18.5C6.5 10.5 10 7 14 7c2.5 0 4.5 1 6 2.5C21.5 8 23.5 7 26 7c4 0 7.5 3.5 7.5 9.5C33.5 26.5 20 35 20 35z" fill="#8b5cf6" fill-opacity="0.15" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M10 19h5l2.5-5 4 10 2.5-5H30" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+
         <h1 class="title">Builder</h1>
         <p class="subtitle">Cardiac Tissue Mesh Builder</p>
 
-        <p class="description">
-            Transform your tissue designs into simulation-ready meshes.
-            Load an image, configure tissue properties, and export
-            for use with the cardiac simulation engine.
-        </p>
+        <div class="description-card">
+            <p class="description">
+                Transform your tissue designs into simulation-ready meshes.
+                Load an image, configure tissue properties, and export
+                for use with the cardiac simulation engine.
+            </p>
+        </div>
 
-        <a href="/upload" class="btn btn-primary btn-large">Start</a>
+        <a href="/upload" class="btn btn-primary btn-large">Get Started &rarr;</a>
 
-        <p class="version">v0.1.0 · For engine_V5.4</p>
+        <p class="version"><span class="version-badge">v0.1.0 &middot; For engine_V5.4</span></p>
     </div>
 </div>
 {% endblock %}

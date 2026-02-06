@@ -2,27 +2,41 @@
 
 {% block content %}
 <div class="page page-upload">
-    <div class="upload-content">
-        <a href="/" class="back-link">← Back</a>
+    <div class="upload-card">
+        <div class="upload-content fade-in">
+            <a href="/" class="back-link">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Back
+            </a>
 
-        <h2>Upload Image</h2>
-        <p class="subtitle">Drop your tissue design image below</p>
+            <h2>Upload Image</h2>
+            <p class="subtitle">Drop your tissue design image below</p>
 
-        <div class="dropzone" id="dropzone">
-            <div class="dropzone-content">
-                <div class="dropzone-icon">📁</div>
-                <p>Drop image here</p>
-                <p class="dropzone-hint">or click to browse</p>
-                <p class="dropzone-formats">.png .jpg .svg</p>
+            <div class="dropzone" id="dropzone">
+                <div class="dropzone-content">
+                    <div class="dropzone-icon">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 32L24 24L32 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M24 24V42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M40.78 35.37A8 8 0 0038 20H35.28A12.8 12.8 0 1010 28.3" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M16 32L24 24L32 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p>Drop image here</p>
+                    <p class="dropzone-hint">or click to browse</p>
+                    <p class="dropzone-formats">.png .jpg .svg</p>
+                </div>
+                <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.svg" hidden>
             </div>
-            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.svg" hidden>
+
+            <div class="upload-status" id="upload-status"></div>
+
+            <button class="btn btn-primary btn-large btn-block" id="continue-btn" disabled>
+                Continue &rarr;
+            </button>
         </div>
-
-        <div class="upload-status" id="upload-status"></div>
-
-        <button class="btn btn-primary btn-large" id="continue-btn" disabled>
-            Continue →
-        </button>
     </div>
 </div>
 

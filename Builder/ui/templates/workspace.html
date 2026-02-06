@@ -4,20 +4,23 @@
 <div class="page page-workspace">
     <!-- Header -->
     <header class="workspace-header">
-        <h1>Builder</h1>
+        <div class="header-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            <h1>Builder</h1>
+        </div>
         <div class="header-actions">
-            <button class="btn" id="export-btn">Export</button>
-            <button class="btn btn-secondary" id="reset-btn">Reset</button>
+            <button class="btn" id="export-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
+            <button class="btn btn-secondary" id="reset-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> Reset</button>
         </div>
     </header>
 
     <!-- Main content -->
-    <div class="workspace-content">
+    <div class="workspace-content fade-in">
         <!-- Left panel: Groups -->
         <aside class="panel panel-left" id="groups-panel">
             <div class="panel-header">
-                <h3>Tissue Groups</h3>
-                <button class="btn-panel-toggle" id="panel-toggle" title="Collapse panel">◀</button>
+                <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Tissue Groups</h3>
+                <button class="btn-panel-toggle" id="panel-toggle" title="Collapse panel">&#9664;</button>
             </div>
             <div class="groups-list" id="groups-list">
                 <!-- Groups will be inserted here -->
@@ -25,7 +28,9 @@
 
             <div class="panel-divider"></div>
 
-            <h3>Tissue Dimensions</h3>
+            <div class="section-header">
+                <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg> Tissue Dimensions</h3>
+            </div>
             <div class="dimensions-form">
                 <div class="dimension-row">
                     <label>Width</label>
@@ -53,17 +58,37 @@
 
         <!-- Right panel: Image -->
         <main class="panel panel-right">
-            <div class="dimensions-display" id="dimensions-display">
-                <span><span class="label">W:</span> <span class="value" id="dim-width">1.0 cm</span></span>
-                <span><span class="label">H:</span> <span class="value" id="dim-height">1.0 cm</span></span>
-                <span><span class="label">dx:</span> <span class="value" id="dim-dx">0.01 cm</span></span>
-                <span><span class="label">Cells:</span> <span class="value" id="dim-grid">1000 × 1000</span></span>
+            <div class="dimensions-display-wrapper">
+                <div class="dimensions-display" id="dimensions-display">
+                    <span><span class="label">W:</span> <span class="value" id="dim-width">1.0 cm</span></span>
+                    <span class="dim-separator">&middot;</span>
+                    <span><span class="label">H:</span> <span class="value" id="dim-height">1.0 cm</span></span>
+                    <span class="dim-separator">&middot;</span>
+                    <span><span class="label">dx:</span> <span class="value" id="dim-dx">0.01 cm</span></span>
+                    <span class="dim-separator">&middot;</span>
+                    <span><span class="label">Cells:</span> <span class="value" id="dim-grid">1000 &times; 1000</span></span>
+                </div>
             </div>
             <div class="image-container" id="image-container">
                 <img id="preview-image" src="/api/image" alt="Tissue image">
                 <canvas id="boundary-canvas"></canvas>
             </div>
         </main>
+    </div>
+
+    <!-- Reset confirmation modal -->
+    <div class="modal-overlay" id="reset-modal" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <h3 class="modal-title">Reset workspace?</h3>
+            <p class="modal-text">This will clear all tissue configurations and return to the upload page.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="reset-cancel">Cancel</button>
+                <button class="btn btn-danger" id="reset-confirm">Reset</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -84,7 +109,7 @@
     panelToggle.addEventListener('click', () => {
         isPanelCollapsed = !isPanelCollapsed;
         groupsPanel.classList.toggle('collapsed', isPanelCollapsed);
-        panelToggle.textContent = isPanelCollapsed ? '▶' : '◀';
+        panelToggle.textContent = isPanelCollapsed ? '\u25B6' : '\u25C0';
         panelToggle.title = isPanelCollapsed ? 'Expand panel' : 'Collapse panel';
 
         // Reset highlight when collapsing panel
@@ -99,7 +124,7 @@
         if (isPanelCollapsed) {
             isPanelCollapsed = false;
             groupsPanel.classList.remove('collapsed');
-            panelToggle.textContent = '◀';
+            panelToggle.textContent = '\u25C0';
             panelToggle.title = 'Collapse panel';
         }
     }
@@ -157,7 +182,7 @@
         document.getElementById('dim-width').textContent = dims.width.toFixed(2) + ' cm';
         document.getElementById('dim-height').textContent = dims.height.toFixed(2) + ' cm';
         document.getElementById('dim-dx').textContent = dims.dx.toFixed(4) + ' cm';
-        document.getElementById('dim-grid').textContent = `${cellsX} × ${cellsY}`;
+        document.getElementById('dim-grid').textContent = `${cellsX} \u00D7 ${cellsY}`;
 
         // Update left panel inputs
         document.getElementById('input-width').value = dims.width;
@@ -190,7 +215,7 @@
             <div class="group-header">
                 <div class="${swatchClass}" style="${swatchStyle}"></div>
                 <span class="group-label">${group.label}</span>
-                ${group.configured ? '<span class="group-status">✓</span>' : ''}
+                ${group.configured ? '<span class="group-status">\u2713</span>' : ''}
             </div>
             <div class="group-dropdown" style="display: none;">
                 <div class="dropdown-buttons">
@@ -465,12 +490,26 @@
         }
     }
 
-    // Reset
-    resetBtn.addEventListener('click', async () => {
-        if (confirm('Reset and start over?')) {
-            await fetch('/api/reset', { method: 'POST' });
-            window.location.href = '/upload';
-        }
+    // Reset modal
+    const resetModal = document.getElementById('reset-modal');
+    const resetCancel = document.getElementById('reset-cancel');
+    const resetConfirm = document.getElementById('reset-confirm');
+
+    resetBtn.addEventListener('click', () => {
+        resetModal.style.display = 'flex';
+    });
+
+    resetCancel.addEventListener('click', () => {
+        resetModal.style.display = 'none';
+    });
+
+    resetModal.addEventListener('click', (e) => {
+        if (e.target === resetModal) resetModal.style.display = 'none';
+    });
+
+    resetConfirm.addEventListener('click', async () => {
+        await fetch('/api/reset', { method: 'POST' });
+        window.location.href = '/upload';
     });
 
     // Export
@@ -502,7 +541,7 @@
         document.getElementById('dim-width').textContent = width.toFixed(2) + ' cm';
         document.getElementById('dim-height').textContent = height.toFixed(2) + ' cm';
         document.getElementById('dim-dx').textContent = dx.toFixed(4) + ' cm';
-        document.getElementById('dim-grid').textContent = `${cellsX} × ${cellsY}`;
+        document.getElementById('dim-grid').textContent = `${cellsX} \u00D7 ${cellsY}`;
 
         // Save to server
         saveDimensions(width, height, dx);

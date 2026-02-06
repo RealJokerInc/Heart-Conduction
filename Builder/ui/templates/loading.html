@@ -2,33 +2,54 @@
 
 {% block content %}
 <div class="page page-loading">
-    <div class="loading-content">
-        <h2>Processing</h2>
+    <div class="loading-card">
+        <div class="loading-content fade-in">
+            <h2>Processing</h2>
 
-        <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-        </div>
-
-        <p class="loading-status" id="loading-status">Initializing...</p>
-
-        <div class="loading-stages" id="loading-stages">
-            <div class="stage" data-stage="1">
-                <span class="stage-icon">○</span>
-                <span class="stage-text">Loading image</span>
+            <div class="progress-bar progress-glow">
+                <div class="progress-fill" id="progress-fill"></div>
             </div>
-            <div class="stage" data-stage="2">
-                <span class="stage-icon">○</span>
-                <span class="stage-text">Detecting colors</span>
-            </div>
-            <div class="stage" data-stage="3">
-                <span class="stage-icon">○</span>
-                <span class="stage-text">Preparing workspace</span>
-            </div>
-        </div>
 
-        <div class="loading-error" id="loading-error" style="display: none;">
-            <p id="error-message"></p>
-            <a href="/upload" class="btn">← Back to Upload</a>
+            <p class="loading-status" id="loading-status">Initializing...</p>
+
+            <div class="loading-stages" id="loading-stages">
+                <div class="stage" data-stage="1">
+                    <span class="stage-icon">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </span>
+                    <span class="stage-text">Loading image</span>
+                </div>
+                <div class="stage-connector"></div>
+                <div class="stage" data-stage="2">
+                    <span class="stage-icon">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </span>
+                    <span class="stage-text">Detecting colors</span>
+                </div>
+                <div class="stage-connector"></div>
+                <div class="stage" data-stage="3">
+                    <span class="stage-icon">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </span>
+                    <span class="stage-text">Preparing workspace</span>
+                </div>
+            </div>
+
+            <div class="loading-error" id="loading-error" style="display: none;">
+                <p id="error-message"></p>
+                <a href="/upload" class="btn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Back to Upload
+                </a>
+            </div>
         </div>
     </div>
 </div>
