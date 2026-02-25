@@ -1,0 +1,77 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 22,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "cuda",
+            "displayName": "CUDA Build",
+            "description": "Base config to build with CUDA",
+            "binaryDir": "${sourceDir}/build",
+            "installDir": "${sourceDir}/install",
+            "generator": "Unix Makefiles",
+            "cacheVariables": {
+                "RESOLVE_USE_CUDA": "ON",
+		        "CMAKE_CUDA_ARCHITECTURES": "60"
+            }
+        },
+        {
+            "name": "rocm",
+            "displayName": "ROCM  build",
+            "description": "Base config to build with ROCM",
+            "binaryDir": "${sourceDir}/build",
+            "installDir": "${sourceDir}/install",
+            "generator": "Unix Makefiles",
+            "cacheVariables": {
+                "RESOLVE_USE_HIP": "ON"
+            }
+        },
+        {
+            "name": "cpu",
+            "displayName": "CPU only build",
+            "description": "Base config to build without GPUs",
+            "binaryDir": "${sourceDir}/build",
+            "installDir": "${sourceDir}/install",
+            "generator": "Unix Makefiles"
+        },
+	{
+            "name": "deception",
+            "inherits": "cuda",
+            "displayName": "Deception Build",
+            "description": "Custom changes specific for Deception",
+            "cacheVariables": {
+                "CMAKE_CUDA_ARCHITECTURES": "60;70;75;80"
+            }
+        },
+        {
+            "name": "incline",
+            "inherits": "rocm",
+            "displayName": "Incline Build with rocm",
+            "description": "Custom changes specific for Incline",
+            "cacheVariables": {
+                "CMAKE_HIP_ARCHITECTURES" : "gfx908",
+                "CMAKE_BUILD_TYPE" : "Debug"
+            },
+            "environment": {
+                "CC" : "clang",
+                "CXX" : "clang++",
+                "FC" : "gfortran"
+            }
+        },
+        {
+            "name": "frontier",
+	        "inherits": "rocm",
+            "displayName": "Frontier Build",
+            "description": "Custom changes specific for Frontier",
+	        "cacheVariables": {
+                "CMAKE_HIP_ARCHITECTURES": "gfx90a",
+                "CMAKE_BUILD_TYPE": "Debug",
+	        "CMAKE_C_COMPILER": "/opt/rocm-6.3.1/llvm/bin/clang",
+                "CMAKE_CXX_COMPILER": "/opt/rocm-6.3.1/llvm/bin/clang++"
+	        }  
+	}
+    ]
+}

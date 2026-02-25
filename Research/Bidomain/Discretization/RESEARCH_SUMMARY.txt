@@ -1,0 +1,345 @@
+================================================================================
+CARDIAC BIDOMAIN DISCRETIZATION METHODS - COMPREHENSIVE RESEARCH COMPILATION
+================================================================================
+
+DELIVERABLE: Complete Research Document for Engine V5.4 Extension
+Location: /sessions/gifted-quirky-edison/mnt/Heart Conduction/Research/Bidomain/Discretization/
+
+================================================================================
+DOCUMENT CONTENTS
+================================================================================
+
+PRIMARY FILE: BIDOMAIN_DISCRETIZATION.md (45 KB, 1230 lines)
+
+1. INTRODUCTION (Motivation & Scope)
+   - Why bidomain is needed (unequal anisotropy ratios)
+   - Physiological values: σ_iL/σ_iT ≈ 10:1, σ_eL/σ_eT ≈ 2.5:1
+   - Applications: defibrillation, ECG, extracellular stimulation
+   - Computational context: V5.4 monodomain extension
+
+2. MATHEMATICAL FOUNDATION (2.1-1.5)
+   - Strong form bidomain equations (parabolic + elliptic + ODE)
+   - Alternative 2-potential formulation
+   - Monodomain reduction condition (equal anisotropy ratio)
+   - Conductivity tensors (orthotropic representation)
+   - Boundary conditions (insulated, bath-coupled, Robin)
+
+3. FEM DISCRETIZATION (2.1-2.7)
+   - Weak form derivation (variational formulation)
+   - Finite element spaces (P1 linear, P2 quadratic)
+   - Mass matrix assembly (element & global)
+   - Stiffness matrices (K_i intracellular, K_e elliptic)
+   - Block system structure (2×2 form)
+   - RHS vector assembly (reaction, stimulus)
+   - Extension from monodomain V5.4
+   - Numerical examples (1D, 2D)
+
+4. FDM DISCRETIZATION (3.1-3.6)
+   - Structured grid setup (requirements)
+   - Laplacian with anisotropic conductivity
+   - 7-point stencil (diagonal D)
+   - 9-point & 27-point stencils (full tensor)
+   - Bidomain discretization structure
+   - Boundary condition implementation
+   - Advantages & limitations
+   - Implementation for V5.4
+
+5. FVM DISCRETIZATION (4.1-4.8)
+   - Cell-centered formulation
+   - Control volume discretization
+   - Harmonic mean for conductivities
+   - Discrete system assembly
+   - Conservation properties
+   - Anisotropic conductivity handling
+   - Block system structure
+   - Advantages & limitations
+
+6. SEMI-DISCRETE SYSTEM STRUCTURE (5.1-5.5)
+   - ODE system after spatial discretization
+   - DOF comparison (monodomain vs. bidomain vs. bidomain+bath)
+   - Block matrix form (explicit 2×2)
+   - Algebraic elimination (Schur complement)
+   - Coupling structure
+   - Eigenvalue analysis
+
+7. PRACTICAL IMPLEMENTATION CONSIDERATIONS (6.1-6.7)
+   - Time integration schemes:
+     * Fully implicit (backward Euler)
+     * Semi-implicit (IMEX)
+     * Operator splitting (Godunov, Strang)
+     * CFL conditions & adaptive stepping
+   - Linear solvers:
+     * Direct (LU factorization)
+     * Iterative (CG, BiCGSTAB)
+     * Preconditioners (AMG, ILU, block)
+   - Memory requirements analysis
+   - Computational cost analysis (2-4× vs. monodomain)
+   - When to use bidomain vs. monodomain
+   - Mesh requirements (25-200 μm resolution)
+   - Validation and convergence testing
+
+8. REFERENCES (28 peer-reviewed sources)
+   - Foundational works (Sundnes 2006, Colli Franzone 2014, Plank 2021)
+   - Recent methods (2020-2025)
+   - Mathematical analysis
+   - FEM/FDM/FVM implementations
+   - Solvers & preconditioners
+   - Conductivity & anisotropy
+   - Computational efficiency
+
+9. APPENDIX: Implementation Checklist
+   - Phase 1: Data structure extension
+   - Phase 2: FEM assembly (highest priority)
+   - Phase 3: FDM assembly
+   - Phase 4: FVM assembly
+   - Phase 5: Solver integration
+   - Phase 6: Time integration
+   - Phase 7: Validation
+
+================================================================================
+SUPPORTING MATERIALS
+================================================================================
+
+README.md (5.9 KB)
+- Overview of document contents
+- Research methodology & sources
+- Key findings summary
+- Implementation recommendations
+- Usage notes
+
+================================================================================
+KEY RESEARCH FINDINGS
+================================================================================
+
+MATHEMATICAL FORM:
+  Parabolic: χ·Cm·∂Vm/∂t = -χ·Iion + ∇·(Di·∇Vm) + ∇·(Di·∇φe) + Istim_i
+  Elliptic:  0 = ∇·((Di+De)·∇φe) + ∇·(Di·∇Vm) + Istim_e
+  Coupling: Vm = φi - φe (transmembrane voltage)
+
+CONDUCTIVITY VALUES (Physiological):
+  Intracellular:  σ_L ≈ 0.3-0.5 S/cm, σ_T ≈ 0.03-0.05 S/cm (ratio 10:1)
+  Extracellular:  σ_L ≈ 0.3-0.6 S/cm, σ_T ≈ 0.15-0.3 S/cm (ratio 2.5:1)
+
+MONODOMAIN REDUCTION:
+  Valid when: σe = λσi (scalar multiple)
+  Breaks down: Unequal anisotropy, extracellular stimulation, defibrillation
+  Error when invalid: ~2% conduction velocity, 1-2 ms activation time
+
+DISCRETIZATION METHODS:
+  FEM: O(h²) accuracy, handles complex geometry, higher memory
+  FDM: O(h²) accuracy, structured grids only, simple assembly
+  FVM: O(h) accuracy, conservation guaranteed, good anisotropy handling
+
+COMPUTATIONAL IMPACT:
+  Memory: 4× monodomain (200-400 MB for realistic ventricle)
+  Cost/step: 2-4× monodomain
+  Solver: AMG preconditioner essential (5-10× speedup)
+
+MESH REQUIREMENTS:
+  Minimum: 100 μm (standard cardiac resolution)
+  Optimal: 50-100 μm (clinical+ accuracy)
+  Research: 25-50 μm (detailed cellular effects)
+
+LINEAR SYSTEM SIZE:
+  N = number of tissue nodes
+  Bidomain DOF = 2N (V_m + φ_e per node)
+  With bath: DOF = 2N + N_bath
+  Typical: N ≈ 50,000 → 100,000-300,000 DOF
+
+================================================================================
+IMPLEMENTATION PHASES (RECOMMENDED)
+================================================================================
+
+PHASE 1 (PRIORITY): FEM DISCRETIZATION
+  - Double DOF structure
+  - Block matrix assembly (2×2)
+  - Mass matrix (unchanged from monodomain)
+  - Dual stiffness matrices (K_i, K_e)
+  - Reuse existing FEM assembly framework
+
+PHASE 2: TIME INTEGRATION & SOLVERS
+  - Semi-implicit time stepping
+  - AMG preconditioner integration
+  - DAE system handling (singular mass matrix)
+  - Operator splitting (optional, for efficiency)
+
+PHASE 3 (OPTIONAL): FDM DISCRETIZATION
+  - Structured grid support
+  - 7/27-point stencils
+  - Lower memory for regular geometries
+
+PHASE 4 (OPTIONAL): FVM DISCRETIZATION
+  - Conservation-focused applications
+  - Unstructured mesh support
+  - Ischemia/damage modeling
+
+================================================================================
+VALIDATION BENCHMARKS
+================================================================================
+
+1. Grid Convergence Study
+   - Compare solutions on h, h/2, h/4 meshes
+   - Verify O(h²) FEM convergence
+   - Verify O(h) FVM convergence
+
+2. 1D Cable Equation
+   - Analytical solution available
+   - Test FEM/FDM/FVM assembly
+   - Verify stimulus response
+
+3. 2D Slab with Bath
+   - Compare with published solutions
+   - Test bath-coupling boundary conditions
+   - Verify extracellular field representation
+
+4. 3D Ventricle
+   - ECG waveform output
+   - Activation sequence
+   - Defibrillation response
+
+================================================================================
+REFERENCES INCLUDED
+================================================================================
+
+FOUNDATIONAL (3):
+  - Sundnes et al. 2006 (Springer monograph)
+  - Colli Franzone et al. 2014 (Springer monograph)
+  - Plank et al. 2021 (openCARP simulation environment)
+
+RECENT METHODS (5):
+  - Novel bidomain partitioned strategies (arXiv 2025)
+  - Bidomain solvers (PMC 2007)
+  - AMG preconditioner (PMC 2018)
+
+MATHEMATICAL ANALYSIS (2):
+  - Existence & uniqueness (Bourgault et al. 2007)
+  - Cell-based derivation (2021)
+
+FEM IMPLEMENTATIONS (2):
+  - Fully implicit methods (2012)
+  - Macro elements (2012)
+
+FVM IMPLEMENTATIONS (2):
+  - Discontinuous activation (2005)
+  - Isotropic conductivities (2010)
+
+MONODOMAIN VS. BIDOMAIN (3):
+  - Comparison studies
+  - Pseudobidomain approaches
+  - Augmented monodomain
+
+BOUNDARY CONDITIONS (3):
+  - Smoothed boundary models (2024)
+  - Bath-loading effects
+  - Optimal control
+
+TIME INTEGRATION (3):
+  - Semi-implicit schemes
+  - Stable integration
+  - High-order splitting
+
+ADDITIONAL (4):
+  - Conductivity tensors & anisotropy
+  - Computational efficiency
+  - Mesh requirements
+  - Bath coupling
+
+================================================================================
+QUICK REFERENCE: EQUATIONS
+================================================================================
+
+PARABOLIC (TIME-DEPENDENT):
+  χ·Cm·∂Vm/∂t = -χ·Iion(Vm,w) + ∇·(Di·∇Vm) + ∇·(Di·∇φe) + Istim_i
+
+ELLIPTIC (INSTANTANEOUS):
+  0 = ∇·((Di+De)·∇φe) + ∇·(Di·∇Vm) + Istim_e
+
+GATING DYNAMICS:
+  dw/dt = h(Vm, w)
+
+WEAK FORM (PARABOLIC):
+  ∫χ·Cm·∂Vm/∂t·v dx + ∫∇Vm·(Di∇v) dx + ∫∇φe·(Di∇v) dx
+    = -∫χ·Iion·v dx + ∫Istim_i·v dx
+
+WEAK FORM (ELLIPTIC):
+  ∫∇φe·((Di+De)∇q) dx = -∫∇Vm·(Di∇q) dx - ∫Istim_e·q dx
+
+FEM ASSEMBLY (STIFFNESS):
+  K_i_ij = ∫∇φi·(Di∇φj) dx
+  K_e_ij = ∫∇φi·((Di+De)∇φj) dx
+
+BLOCK SYSTEM:
+  [M  0] [Vm·]   [Ki  Ki] [Vm]   [Fv]
+  [0  0] [φe·] + [Ki  Ke] [φe] = [Fφ]
+
+TIME DISCRETIZATION (SEMI-IMPLICIT):
+  (M/Δt + Ki + Ki) Vm^(n+1) = (M/Δt)Vm^n + Ki·φe^n + Fv^n
+
+================================================================================
+FILE LOCATION
+================================================================================
+
+Full path: /sessions/gifted-quirky-edison/mnt/Heart Conduction/Research/Bidomain/Discretization/
+
+Files:
+  1. BIDOMAIN_DISCRETIZATION.md (45 KB) - Main technical document
+  2. README.md (5.9 KB) - Overview & navigation
+  3. RESEARCH_SUMMARY.txt (this file) - Quick reference
+
+================================================================================
+USAGE RECOMMENDATIONS
+================================================================================
+
+FOR DEVELOPERS:
+  1. Start with BIDOMAIN_DISCRETIZATION.md Introduction & Mathematical Foundation
+  2. Review target discretization method (FEM/FDM/FVM section)
+  3. Check Practical Implementation Considerations for solver choices
+  4. Use Implementation Checklist in Appendix
+  5. Cross-reference with cited literature (URLs provided)
+
+FOR RESEARCHERS:
+  1. Review Mathematical Foundation for complete problem formulation
+  2. Study Semi-Discrete System Structure for algorithm design
+  3. Consult References for cited results & recent advances
+  4. Use Validation section for benchmarking
+
+FOR PLANNING:
+  1. Review Computational Analysis (section 6.3-6.5)
+  2. Check Memory Requirements for target hardware
+  3. Assess implementation effort via Appendix checklist
+  4. Reference time estimates: 2-4× monodomain cost per timestep
+
+================================================================================
+DOCUMENT STATISTICS
+================================================================================
+
+Total Lines: 1,230
+Total Words: ~12,000
+Equations: ~80 (LaTeX format)
+Figures/Tables: 8
+Code Pseudocode: 5 algorithms
+References: 28 (with full URLs)
+Coverage: Mathematical foundation + 3 methods + implementation + validation
+
+================================================================================
+RESEARCH COMPLETION STATUS
+================================================================================
+
+Document: COMPLETE
+  ✓ Mathematical formulation (strong & weak forms)
+  ✓ Three discretization methods (FEM, FDM, FVM)
+  ✓ Assembly procedures with examples
+  ✓ Time integration strategies
+  ✓ Linear solver configuration
+  ✓ Memory & computational analysis
+  ✓ Boundary condition handling
+  ✓ Monodomain vs. bidomain comparison
+  ✓ Implementation checklist
+  ✓ Comprehensive references (2006-2025)
+  ✓ Validation procedures
+
+Ready for: Implementation, review, publication
+
+================================================================================
+END OF SUMMARY
+================================================================================

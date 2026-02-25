@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "master"
+  pull_request:
+    branches:
+      - "**"
+  schedule:
+
+    - cron: "0 7 * * 1"
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.cfg.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          - { os: ubuntu-latest, python-version: '3.12', extra: 'cpu' }
+          - { os: ubuntu-latest, python-version: '3.12', extra: 'cu124' }
+          - { os: ubuntu-latest, python-version: '3.12', extra: 'cu126' }
+          - { os: ubuntu-latest, python-version: '3.12', extra: 'cu128' }
+          - { os: ubuntu-latest, python-version: '3.12', extra: 'cu130' }
+          - { os: macos-latest, python-version: '3.12', extra: 'cpu' }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies with ${{ matrix.cfg.extra }} extra
+        shell: bash -el {0}
+        run: |
+          uv sync --extra ${{ matrix.cfg.extra }}
+
+      - name: Run unit tests
+        shell: bash -el {0}
+        run: |
+          uv run --extra ${{ matrix.cfg.extra }} pytest tests
+
+      - name: Run integration tests
+        shell: bash -el {0}
+        run: |
+          source .venv/bin/activate
+          if [[ "${{ matrix.cfg.extra }}" == "cpu" ]]; then
+            lettuce --no-cuda convergence --use-no-cuda_native
+            lettuce --no-cuda benchmark --use-no-cuda_native
+          else
+            lettuce --no-cuda convergence --use-no-cuda_native
+            lettuce --no-cuda benchmark --use-no-cuda_native
+          fi

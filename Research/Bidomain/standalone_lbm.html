@@ -1,0 +1,2828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardiac Computational Modeling — A Visual Textbook</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$']],
+    displayMath: [['$$', '$$']],
+    tags: 'ams'
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="node_modules/mathjax/es5/tex-svg.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Source+Code+Pro:wght@400;500&display=swap');
+
+  :root {
+    --text: #1a1a2e;
+    --bg: #ffffff;
+    --accent: #16213e;
+    --accent2: #0f3460;
+    --highlight: #e94560;
+    --light-bg: #f4f6fb;
+    --border: #d0d5e0;
+    --caption: #5a6175;
+    --success: #2d6a4f;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  @page {
+    size: A4;
+    margin: 2.2cm 2cm 2.5cm 2cm;
+    /* page numbers handled by Playwright footer */
+  }
+
+  body {
+    font-family: 'EB Garamond', 'Georgia', serif;
+    font-size: 12.5pt;
+    line-height: 1.65;
+    color: var(--text);
+    background: var(--bg);
+    max-width: 52em;
+    margin: 0 auto;
+    padding: 2em 2.5em;
+  }
+
+  /* ─── Title Page ─── */
+  .title-page {
+    text-align: center;
+    padding: 6em 0 4em;
+    page-break-after: always;
+  }
+  .title-page h1 {
+    font-size: 2.6em;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.2em;
+    line-height: 1.2;
+  }
+  .title-page .subtitle {
+    font-size: 1.35em;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--caption);
+    margin-bottom: 2em;
+  }
+  .title-page .rule {
+    width: 8em;
+    height: 2px;
+    background: var(--highlight);
+    margin: 1.5em auto;
+  }
+  .title-page .meta {
+    font-size: 1em;
+    color: var(--caption);
+    line-height: 1.8;
+  }
+
+  /* ─── Table of Contents ─── */
+  .toc {
+    page-break-after: always;
+    padding: 2em 0;
+  }
+  .toc h2 {
+    font-size: 1.6em;
+    color: var(--accent);
+    border-bottom: 2px solid var(--highlight);
+    padding-bottom: 0.3em;
+    margin-bottom: 1em;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc-counter;
+    padding-left: 0;
+  }
+  .toc > ol > li {
+    counter-increment: toc-counter;
+    margin-bottom: 0.6em;
+    font-size: 1.05em;
+  }
+  .toc > ol > li::before {
+    content: counter(toc-counter) ".";
+    font-weight: 600;
+    color: var(--accent2);
+    margin-right: 0.5em;
+  }
+  .toc ol ol {
+    padding-left: 2em;
+    margin-top: 0.3em;
+    list-style: none;
+    counter-reset: sub-toc;
+  }
+  .toc ol ol li {
+    counter-increment: sub-toc;
+    font-size: 0.95em;
+    color: var(--caption);
+    margin-bottom: 0.25em;
+  }
+  .toc ol ol li::before {
+    content: counter(toc-counter) "." counter(sub-toc);
+    margin-right: 0.5em;
+    color: var(--accent2);
+  }
+
+  /* ─── Chapters & Sections ─── */
+  .chapter {
+    page-break-before: always;
+    padding-top: 1em;
+  }
+  .chapter-number {
+    font-size: 0.95em;
+    font-weight: 600;
+    color: var(--highlight);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.2em;
+  }
+  h2.chapter-title {
+    font-size: 2em;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.5em;
+    line-height: 1.25;
+  }
+  .chapter-intro {
+    font-size: 1.05em;
+    font-style: italic;
+    color: var(--caption);
+    border-left: 3px solid var(--highlight);
+    padding: 0.5em 1em;
+    margin-bottom: 1.5em;
+    background: var(--light-bg);
+  }
+  h3 {
+    font-size: 1.35em;
+    font-weight: 600;
+    color: var(--accent2);
+    margin: 1.5em 0 0.5em;
+  }
+  h4 {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 1.2em 0 0.4em;
+  }
+
+  p { margin-bottom: 0.8em; text-align: justify; hyphens: auto; }
+
+  /* ─── Equations ─── */
+  .equation-block {
+    margin: 1.2em 0;
+    padding: 0.8em 1em;
+    background: var(--light-bg);
+    border-left: 3px solid var(--accent2);
+    border-radius: 0 4px 4px 0;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  /* Prevent MathJax SVG overflow in PDF */
+  mjx-container[jax="SVG"] {
+    max-width: 100% !important;
+  }
+  mjx-container[jax="SVG"][display="true"] {
+    overflow-x: auto;
+    max-width: 100% !important;
+  }
+  .equation-label {
+    float: right;
+    font-size: 0.9em;
+    color: var(--caption);
+    font-style: italic;
+  }
+
+  /* ─── Insight Boxes ─── */
+  .insight {
+    margin: 1.3em 0;
+    padding: 1em 1.2em;
+    border-radius: 6px;
+    font-size: 0.97em;
+  }
+  .insight-intuition {
+    background: #eef7ee;
+    border: 1px solid #b7ddb7;
+  }
+  .insight-intuition::before {
+    content: "🌿 Intuition";
+    display: block;
+    font-weight: 700;
+    color: var(--success);
+    margin-bottom: 0.4em;
+    font-size: 0.95em;
+  }
+  .insight-warning {
+    background: #fff8e6;
+    border: 1px solid #f0d060;
+  }
+  .insight-warning::before {
+    content: "⚠ Key Insight";
+    display: block;
+    font-weight: 700;
+    color: #8a6d00;
+    margin-bottom: 0.4em;
+    font-size: 0.95em;
+  }
+  .insight-math {
+    background: #eef0f8;
+    border: 1px solid #b0b8d4;
+  }
+  .insight-math::before {
+    content: "📐 Mathematical Note";
+    display: block;
+    font-weight: 700;
+    color: var(--accent2);
+    margin-bottom: 0.4em;
+    font-size: 0.95em;
+  }
+  .insight-engine {
+    background: #f0eef8;
+    border: 1px solid #bbb4d6;
+  }
+  .insight-engine::before {
+    content: "⚙ Engine V5.4 Connection";
+    display: block;
+    font-weight: 700;
+    color: #4a3d7a;
+    margin-bottom: 0.4em;
+    font-size: 0.95em;
+  }
+
+  /* ─── Tables ─── */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 0.93em;
+  }
+  th {
+    background: var(--accent);
+    color: white;
+    padding: 0.5em 0.8em;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 0.45em 0.8em;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:nth-child(even) { background: var(--light-bg); }
+
+  /* ─── Figures / Diagrams ─── */
+  .figure {
+    margin: 1.5em 0;
+    text-align: center;
+  }
+  .figure svg {
+    max-width: 100%;
+  }
+  .figure-caption {
+    font-size: 0.9em;
+    font-style: italic;
+    color: var(--caption);
+    margin-top: 0.5em;
+  }
+  .figure-label {
+    font-weight: 600;
+    color: var(--accent2);
+  }
+
+  /* ─── Code blocks ─── */
+  pre {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.85em;
+    background: #f8f9fc;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.8em 1em;
+    overflow-x: auto;
+    margin: 0.8em 0;
+    line-height: 1.5;
+  }
+  code {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.9em;
+    background: #eef0f5;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* ─── Block matrix display ─── */
+  .block-matrix {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 1.2em 0;
+    font-size: 1.05em;
+  }
+
+  /* ─── Misc ─── */
+  .separator {
+    width: 4em;
+    height: 2px;
+    background: var(--highlight);
+    margin: 2em auto;
+  }
+  .footnote {
+    font-size: 0.85em;
+    color: var(--caption);
+    border-top: 1px solid var(--border);
+    padding-top: 0.5em;
+    margin-top: 2em;
+  }
+  ul, ol { margin: 0.5em 0 0.8em 1.5em; }
+  li { margin-bottom: 0.3em; }
+
+  /* ─── Part Dividers ─── */
+  .part-page {
+    page-break-before: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    text-align: center;
+  }
+  .part-number {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--highlight);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.5em;
+  }
+  .part-title {
+    font-size: 2.2em;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.3em;
+    line-height: 1.25;
+  }
+  .part-subtitle {
+    font-size: 1.15em;
+    font-style: italic;
+    color: var(--caption);
+    max-width: 32em;
+    line-height: 1.5;
+  }
+
+  /* ─── Appendix-specific: 3b1b visual style ─── */
+  .insight-think {
+    background: #e8f4f8;
+    border: 1px solid #7ec8d8;
+  }
+  .insight-think::before {
+    content: "💭 Think About It";
+    display: block;
+    font-weight: 700;
+    color: #1a6b7a;
+    margin-bottom: 0.4em;
+    font-size: 0.95em;
+  }
+  .pde-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.8em;
+    margin: 1.3em 0;
+  }
+  .pde-card {
+    padding: 0.9em;
+    border-radius: 6px;
+    font-size: 0.92em;
+  }
+  .pde-card h4 {
+    margin: 0 0 0.3em;
+    font-size: 1.05em;
+  }
+  .pde-card p { margin-bottom: 0.4em; text-align: left; }
+  .pde-card-parabolic { background: #fff3e0; border: 1.5px solid #e8a735; }
+  .pde-card-parabolic h4 { color: #b36b00; }
+  .pde-card-elliptic { background: #e8f5e9; border: 1.5px solid #66bb6a; }
+  .pde-card-elliptic h4 { color: #2e7d32; }
+  .pde-card-hyperbolic { background: #e3f2fd; border: 1.5px solid #42a5f5; }
+  .pde-card-hyperbolic h4 { color: #1565c0; }
+
+  @media print {
+    body { padding: 0; font-size: 11pt; }
+    .chapter { page-break-before: always; }
+    .no-break { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TITLE PAGE                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="title-page">
+  <h1>Lattice-Boltzmann Methods<br>for Cardiac Simulation</h1>
+  <div class="subtitle">Part IV of Cardiac Computational Modeling</div>
+  <div class="rule"></div>
+  <div class="meta">
+    From the Heat Equation to Monodomain and Bidomain Models<br>
+    <em>A Feynman-Style Introduction</em>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TABLE OF CONTENTS                                                -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h2>Contents</h2>
+
+  <ol start="17">
+    <li>Why LBM? — Discovering a New Paradigm Through the Heat Equation
+      <ol>
+        <li>The Heat Equation Revisited: A Hidden Redistribution</li>
+        <li>From Weighted Averages to Distribution Functions</li>
+        <li>The Direction Matrix: Lattice Geometry</li>
+        <li>Collision: The Art of Local Relaxation</li>
+        <li>Averaging and Flux Conservation</li>
+        <li>The Eigen-Angle Matrix: Anisotropic Diffusion</li>
+        <li>The Transformation Matrix M: From Distributions to Moments</li>
+        <li>The Chapman–Enskog Bridge: From Lattice to PDE</li>
+        <li>Boundary Conditions: Bounce-Back</li>
+        <li>From Heat Equation to Cardiac Diffusion</li>
+      </ol>
+    </li>
+    <li>Lattice-Boltzmann Methods for Monodomain
+      <ol>
+        <li>From PDEs to Particle Distributions</li>
+        <li>The D2Q5 and D3Q7 Lattices</li>
+        <li>BGK Collision and Streaming</li>
+        <li>MRT Collision: Anisotropic Diffusion</li>
+        <li>Bounce-Back Boundary Conditions</li>
+        <li>The Complete LBM-EP Timestep</li>
+        <li>LBM vs. Classical Methods</li>
+        <li>GPU Acceleration</li>
+      </ol>
+    </li>
+    <li>Lattice-Boltzmann Methods for Bidomain
+      <ol>
+        <li>The Bidomain Challenge: One Parabolic + One Elliptic</li>
+        <li>Strategy 1: Pseudo-Time Relaxation</li>
+        <li>Strategy 2: Hybrid LBM–Classical Solver</li>
+        <li>The Dual-Lattice Architecture</li>
+        <li>Performance and Implementation Outlook</li>
+      </ol>
+    </li>
+  </ol>
+
+  <p style="margin-top:1em;font-weight:600;color:var(--accent2);font-size:1.05em;">Appendix</p>
+  <ol style="list-style:none;padding-left:0;">
+    <li style="font-size:1.05em;margin-bottom:0.6em;"><span style="font-weight:600;color:var(--accent2);margin-right:0.5em;">A.</span> A Visual Guide to Differential Equations</li>
+  </ol>
+</div>
+
+<!-- ██████████████████████████████████████████████████████████████████ -->
+<!--                    PART IV — LATTICE-BOLTZMANN METHODS            -->
+<!-- ██████████████████████████████████████████████████████████████████ -->
+<div class="part-page">
+  <div class="part-number">Part IV</div>
+  <div class="part-title">Lattice-Boltzmann Methods</div>
+  <div class="part-subtitle">
+    A radically different paradigm for solving diffusion equations — no matrices, no linear solves,
+    just fictitious particles streaming and colliding on a lattice. From the heat equation to
+    cardiac monodomain and bidomain, LBM trades algebraic machinery for embarrassingly parallel
+    data movement.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 17 — THE LATTICE-BOLTZMANN METHOD                       -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="chapter">
+
+<div class="chapter-number">Chapter 17</div>
+<h2 class="chapter-title">The Lattice-Boltzmann Method: From Kinetic Theory to Computation</h2>
+
+<div class="chapter-intro">
+In Chapters 13–16, we discretized partial differential equations. We started with physics at the macroscopic scale — fluid flow, heat diffusion, electrical signal propagation — and asked: how do we approximate the derivatives on a computer? Those methods (FDM, FEM, FVM) work brilliantly and are the industrial standard. But there is another path, one that begins not with a PDE, but with something more fundamental: the motion of individual particles, governed by kinetic theory.
+
+This chapter introduces the Lattice-Boltzmann Method (LBM). Unlike classical discretizations that approximate a PDE, LBM simulates a discrete analogue of the Boltzmann equation — a statement about how particles move and collide. The miracle is that when you correctly simulate the microscopic collisions, the macroscopic behavior (flow, diffusion, electrical conduction) emerges automatically. For cardiac problems, especially when spatial resolution is tight or parallelization is critical, LBM offers a compelling alternative to classical methods.
+
+We will build this from first principles: the Boltzmann equation, its simplification to the BGK collision operator, the discretization of velocity space onto a lattice, and the final algorithm. By chapter's end, you will understand not just what LBM computes, but why the method works — and how to tune it for cardiac electrophysiology.
+</div>
+
+<h3>17.1 &ensp; The Thermodynamic Foundation: Phase Space and the Equilibrium State</h3>
+
+<div class="insight insight-intuition">
+<strong>Core Insight:</strong> Every numerical method we have studied so far &mdash; FDM, FEM, FVM &mdash; starts from a macroscopic PDE and discretizes it. LBM takes a radically different route. It starts from a much deeper level: the statistical mechanics of particles. If you correctly model how particles distribute themselves in velocity space and how that distribution evolves, the macroscopic behavior &mdash; diffusion, fluid flow, heat conduction &mdash; emerges automatically. To understand LBM, we must first understand the space it lives in and the equilibrium it relaxes toward.
+</div>
+
+<h4>Position Space: What You Already Know</h4>
+
+In every method we have encountered so far, the unknown is a scalar field: $V(\mathbf{x}, t)$ for voltage, $T(\mathbf{x}, t)$ for temperature, $\phi(\mathbf{x}, t)$ for a generic concentration. At each point $\mathbf{x}$ in the domain, we store <strong>one number</strong> &mdash; the local value of the field. This is position space: a map from location to field value.
+
+Position space is intuitive. You can picture a heat map of the heart where each pixel has a color representing voltage. FDM puts a number on each grid point. FEM interpolates between nodes. FVM averages over cells. In all cases, the fundamental object is simple: one value per spatial location.
+
+But this simplicity comes at a cost. The macroscopic PDE &mdash; the diffusion equation, the monodomain equation &mdash; is a coarse-grained description. It tells you how the <em>average</em> behavior evolves, but it has already thrown away information about what individual particles are doing. To build LBM, we need to recover some of that microscopic information. That means working in a richer space.
+
+<h4>Velocity Space: What Are the Particles Doing?</h4>
+
+Imagine standing at a single point in cardiac tissue and watching every ion that passes through. Some ions are moving fast to the right. Some are drifting slowly upward. Some are nearly stationary, vibrating in place. If you could catalog every ion and record its velocity, you would not get a single number &mdash; you would get a <strong>distribution</strong>.
+
+This distribution is the velocity-space view at a single point. It answers the question: "Of all the particles at position $\mathbf{x}$, how many have velocity $\mathbf{c}$?" In a hot gas, the distribution is wide &mdash; particles are moving at all speeds in all directions. In a cold gas, the distribution is narrow &mdash; most particles are clustered near zero velocity. In a gas with bulk flow, the distribution is shifted &mdash; its peak is no longer at zero but at the flow velocity $\mathbf{u}$.
+
+The crucial point: <strong>at every single location in physical space, there is an entire distribution of velocities.</strong> Not one velocity, not an average velocity &mdash; a full spread. The shape of this spread encodes the thermodynamic state at that point: temperature (width of the spread), bulk flow (shift of the peak), pressure (area under the curve).
+
+<h4>Phase Space: Position and Velocity Together</h4>
+
+<strong>Phase space</strong> is the combined space where you track both where a particle is AND how fast it is going. In two spatial dimensions, a particle's full state is four numbers: $(x, y, c_x, c_y)$ &mdash; two for position, two for velocity. In three dimensions, it is six numbers: $(x, y, z, c_x, c_y, c_z)$.
+
+The <strong>distribution function</strong> $f(\mathbf{x}, \mathbf{c}, t)$ lives in this combined space. It is a function of position, velocity, and time simultaneously. Its value tells you: at position $\mathbf{x}$, at time $t$, the density of particles with velocity $\mathbf{c}$.
+
+<div class="equation-block"><span class="equation-label">(17.1)</span>$$f : (\mathbf{x}, \mathbf{c}, t) \;\longrightarrow\; \text{particle density at } (\mathbf{x}, \mathbf{c}) \text{ at time } t$$</div>
+
+This is the fundamental object of kinetic theory. Compare it to the macroscopic field:
+
+<table style="width:75%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;"></th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Macroscopic (FDM/FEM)</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Kinetic (LBM)</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;"><strong>Unknown</strong></td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\phi(\mathbf{x}, t)$ &mdash; one number per point</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$f(\mathbf{x}, \mathbf{c}, t)$ &mdash; a distribution per point</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;"><strong>Lives in</strong></td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Position space ($D$ dimensions)</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Phase space ($2D$ dimensions)</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;"><strong>Information</strong></td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Average field value</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Full velocity distribution</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;"><strong>Storage per node</strong></td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1 value</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$Q$ values (one per velocity direction)</td>
+</tr>
+</table>
+
+The extra information in the velocity distribution is not wasted. It is exactly what allows LBM to avoid assembling and solving matrix systems &mdash; the transport physics is encoded in the distribution itself, and the collision-streaming algorithm updates it locally.
+
+<h4>The Equilibrium State: Where Does the Distribution Settle?</h4>
+
+Here is the central question of this section &mdash; and arguably the most important idea in all of LBM:
+
+<strong>When a system of particles reaches thermal equilibrium, what shape does the velocity distribution take?</strong>
+
+The answer has been known since the 19th century, and it is one of the great results of statistical mechanics. James Clerk Maxwell and Ludwig Boltzmann proved that the equilibrium velocity distribution of a gas is a <strong>Gaussian</strong> (a bell curve) in velocity space:
+
+<div class="equation-block"><span class="equation-label">(17.2)</span>$$f^{\text{eq}}(\mathbf{c}) = \frac{\rho}{(2\pi c_s^2)^{D/2}} \exp\!\left(-\frac{|\mathbf{c} - \mathbf{u}|^2}{2c_s^2}\right)$$</div>
+
+This is the <strong>Maxwell-Boltzmann distribution</strong>. Every symbol has a physical meaning:
+
+<ul>
+<li>$\rho$ &mdash; the total density of particles at this location. This is the macroscopic quantity we are ultimately tracking (voltage, temperature, concentration).</li>
+<li>$\mathbf{u}$ &mdash; the bulk (average) velocity of the particles. For diffusion problems, $\mathbf{u} = \mathbf{0}$ &mdash; there is no net flow, and the bell curve is centered at the origin.</li>
+<li>$c_s$ &mdash; a parameter that controls the <strong>width</strong> of the bell curve. Physically, it is related to temperature: a higher $c_s$ means a wider spread (hotter gas, faster particles on average). In LBM, $c_s$ will become the <strong>lattice speed of sound</strong>, connecting the microscopic model to macroscopic transport properties.</li>
+<li>$D$ &mdash; the spatial dimension (2 for 2D, 3 for 3D). The normalization $(2\pi c_s^2)^{D/2}$ ensures the total probability integrates to $\rho$.</li>
+</ul>
+
+<h4>What the Gaussian Tells Us: Three Physical Claims</h4>
+
+The Maxwell-Boltzmann distribution (17.2) is not just a formula &mdash; it makes three specific physical claims about what equilibrium looks like. Each claim corresponds to a different "order" of the distribution, and each will turn out to be critically important when we build the lattice method.
+
+<div style="margin-left:1.5em;">
+
+<h4 style="margin-top:1.2em;">Zeroth Order &mdash; Conservation</h4>
+
+Integrate the distribution over all velocities:
+
+<div class="equation-block"><span class="equation-label">(17.3)</span>$$\int f^{\text{eq}}(\mathbf{c}) \, d\mathbf{c} = \rho$$</div>
+
+The total amount of "stuff" is $\rho$. This is conservation of mass (or charge, or energy, depending on what $\rho$ represents). The equilibrium does not create or destroy anything &mdash; it only redistributes velocities. No matter how the particles rearrange their speeds and directions, the total count stays the same.
+
+<h4 style="margin-top:1.2em;">First Order &mdash; Symmetry of Flux</h4>
+
+Compute the average velocity by weighting with $\mathbf{c}$:
+
+<div class="equation-block"><span class="equation-label">(17.4)</span>$$\int \mathbf{c} \, f^{\text{eq}}(\mathbf{c}) \, d\mathbf{c} = \rho \, \mathbf{u}$$</div>
+
+For a gas at rest ($\mathbf{u} = \mathbf{0}$), the mean velocity is zero. The bell curve is symmetric &mdash; as many particles move left as right, up as down. There is no net flux. For diffusion problems in cardiac EP, this is exactly the equilibrium condition: at rest, the distribution is centered and symmetric.
+
+<h4 style="margin-top:1.2em;">Second Order &mdash; Isotropic Variance</h4>
+
+Compute the velocity covariance (the "spread" of the bell curve):
+
+<div class="equation-block"><span class="equation-label">(17.5)</span>$$\int (c_\alpha - u_\alpha)(c_\beta - u_\beta) \, f^{\text{eq}}(\mathbf{c}) \, d\mathbf{c} = \rho \, c_s^2 \, \delta_{\alpha\beta}$$</div>
+
+The variance is <strong>isotropic</strong> &mdash; the bell curve has the same width in every direction. The $\delta_{\alpha\beta}$ (Kronecker delta: 1 if $\alpha = \beta$, 0 otherwise) means there is no preferred axis. The parameter $c_s^2$ is the variance of the Gaussian, and it is the same along $x$, $y$, and $z$.
+
+This isotropy is a physical claim: at thermodynamic equilibrium, no direction is special. The random thermal motion of particles is equally vigorous in all directions. This will later impose constraints on the lattice weights and will be the reason why the <strong>standard LBM lattice produces isotropic diffusion by default</strong>.
+
+</div>
+
+<div class="insight insight-intuition">
+<strong>Three orders, three physics:</strong> The Gaussian equilibrium encodes conservation (zeroth order), zero net flux (first order), and isotropic variance (second order). These are not abstract mathematical properties &mdash; they are the defining characteristics of thermodynamic equilibrium. Every lattice-Boltzmann scheme must respect all three, because they are the physical laws that the scheme must recover at the macroscopic level. In Section 17.4, we will see that these three conditions are exactly the constraints that determine the lattice weights $w_i$ and velocities $\mathbf{c}_i$.
+</div>
+
+<h4>Two Cases: Rest and Flow</h4>
+
+The Maxwell-Boltzmann distribution (17.2) handles two physically distinct situations:
+
+<strong>Case 1: System at rest ($\mathbf{u} = \mathbf{0}$).</strong> The bell curve is centered at the origin of velocity space. No bulk motion &mdash; particles jiggle randomly in all directions with equal probability. This is the relevant case for <strong>diffusion</strong>: cardiac tissue conducts electrical signals by ion diffusion, not bulk fluid flow. The equilibrium distribution simplifies to:
+
+<div class="equation-block"><span class="equation-label">(17.6)</span>$$f^{\text{eq}}(\mathbf{c}) = \frac{\rho}{(2\pi c_s^2)^{D/2}} \exp\!\left(-\frac{|\mathbf{c}|^2}{2c_s^2}\right)$$</div>
+
+a symmetric Gaussian centered at the origin. This is the equilibrium that our cardiac LBM will use.
+
+<strong>Case 2: System with bulk flow ($\mathbf{u} \neq \mathbf{0}$).</strong> The bell curve is shifted &mdash; its peak is at $\mathbf{u}$ instead of at the origin. More particles are moving in the flow direction than against it. This is the relevant case for <strong>fluid dynamics</strong> (Navier-Stokes). The distribution is still a Gaussian, but the center has moved. The shift breaks the first-order symmetry: $\int \mathbf{c} \, f^{\text{eq}} \, d\mathbf{c} = \rho\mathbf{u} \neq \mathbf{0}$.
+
+<div class="insight insight-math">
+<strong>Why $c_s$ is the bridge between micro and macro:</strong> The parameter $c_s$ plays a dual role. In the continuous Maxwell-Boltzmann distribution, it is the <strong>thermal velocity</strong> &mdash; the standard deviation of the velocity Gaussian, set by the temperature of the gas ($c_s^2 = k_B T / m$). When we discretize onto a lattice, $c_s$ becomes the <strong>lattice speed of sound</strong> ($c_s^2 = c^2/3$ where $c = \Delta x / \Delta t$). This is not a coincidence: the Chapman-Enskog analysis (Section 17.2) shows that the lattice speed of sound must equal the Gaussian's variance parameter for the discrete scheme to recover the correct macroscopic transport equations. The connection $c_s^2 = c^2/3$ is a fixed consequence of the lattice geometry and the quadrature exactness conditions (Section 17.4).
+</div>
+
+<h4>Why the Equilibrium Is the Heart of LBM</h4>
+
+In FDM, FEM, and FVM, the physics enters through the PDE &mdash; you discretize the diffusion equation or the monodomain equation directly. In LBM, <strong>the physics enters through the equilibrium distribution</strong>. The entire method can be summarized in one sentence:
+
+<em>Relax the velocity distribution toward the Maxwell-Boltzmann equilibrium, and the correct macroscopic PDE emerges automatically.</em>
+
+This is why we have spent this section building the equilibrium from physical principles rather than just writing down a formula. The Gaussian is not an arbitrary choice &mdash; it is the unique distribution that satisfies the constraints of thermodynamic equilibrium (maximum entropy subject to conservation of mass, momentum, and energy). Every property of LBM &mdash; the lattice weights, the velocity sets, the collision operator, the transport coefficients &mdash; traces back to this Gaussian.
+
+In the sections that follow, we will:
+<ul>
+<li><strong>Section 17.2:</strong> Write down the equation that governs how $f$ evolves toward this equilibrium (the Boltzmann equation), and simplify it for practical computation (the BGK collision operator).</li>
+<li><strong>Section 17.3:</strong> Discretize velocity space onto a lattice, turning the continuous $f(\mathbf{x}, \mathbf{c}, t)$ into a finite set of distributions $f_i(\mathbf{x}, t)$, and write the lattice-Boltzmann equation.</li>
+<li><strong>Section 17.4:</strong> Return to the Gaussian equilibrium and ask: what constraints do equations (17.3)&ndash;(17.5) impose on the discrete lattice? This will determine the weights $w_i$, velocity vectors $\mathbf{c}_i$, and the discrete equilibrium $f_i^{\text{eq}}$.</li>
+<li><strong>Section 17.5:</strong> Introduce moment space &mdash; a representation that reveals which physical laws the collision operator is actually enforcing, and how to control them independently.</li>
+</ul>
+
+<h3>17.2 &ensp; The Boltzmann Equation and Kinetic Theory</h3>
+
+<h4>The Boltzmann Equation: Fundamental Form</h4>
+
+The Boltzmann equation describes how the distribution function $f(\mathbf{x}, \mathbf{c}, t)$ &mdash; introduced in Section 17.1 &mdash; evolves in time. In the <strong>Eulerian frame</strong> (you stand at a fixed point in phase space and watch the distribution change around you), it reads:
+
+<div class="equation-block"><span class="equation-label">(17.7)</span>$$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f + \mathbf{F} \cdot \nabla_{\mathbf{c}} f = \Omega(f)$$</div>
+
+Let us parse each term on the left-hand side:
+
+<ul>
+<li>$\frac{\partial f}{\partial t}$: How the distribution changes in time at a fixed point in phase space.</li>
+<li>$\mathbf{c} \cdot \nabla f$: Particles streaming through physical space at velocity $\mathbf{c}$. This is advection: a particle at $\mathbf{x}$ with velocity $\mathbf{c}$ will be at $\mathbf{x} + \mathbf{c}\Delta t$ after time $\Delta t$.</li>
+<li>$\mathbf{F} \cdot \nabla_{\mathbf{c}} f$: External forces accelerating particles, changing their velocities. The $\nabla_{\mathbf{c}}$ means the derivative is in <em>velocity</em> space, not physical space. This term accounts for gravity, electric fields, or any body force that shifts the velocity distribution.</li>
+</ul>
+
+The first two terms together form the <strong>material (total) derivative</strong> familiar from fluid mechanics &mdash; the rate of change following a particle that streams at velocity $\mathbf{c}$. The third term is separate: it represents forces that <em>change</em> the particle's velocity, pushing it through velocity space. If we define the streaming derivative as
+
+<div class="equation-block">$$\frac{Df}{Dt} \;\equiv\; \frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f$$</div>
+
+then equation (17.7) can be written compactly as
+
+<div class="equation-block"><span class="equation-label">(17.7a)</span>$$\frac{Df}{Dt} + \mathbf{F} \cdot \nabla_{\mathbf{c}} f = \Omega(f)$$</div>
+
+This <strong>Lagrangian perspective</strong> is often more intuitive: ride along with a particle that streams at constant velocity $\mathbf{c}$. From its frame, the distribution $f$ changes for only two reasons &mdash; external forces push particles to different velocities, and collisions reshuffle the velocity population. If there were no forces and no collisions, $f$ would be carried unchanged along the streaming trajectory, like a ball on a frictionless surface.
+
+For LBM applications (diffusion, monodomain), we will drop the external force term entirely (no body forces accelerate particles through velocity space). This makes the Eulerian form (17.7) the natural starting point for deriving the lattice-Boltzmann equation.
+
+<strong>The right-hand side is the collision operator:</strong>
+
+The symbol $\Omega(f)$ represents collisions. When particles collide, their velocities change. The full collision integral is:
+
+<div class="equation-block"><span class="equation-label">(17.8)</span>$$\Omega(f) = \int \int (f'f'_1 - f f_1) \, g \, B(g, \theta) \, d\Omega \, d\mathbf{c}_1$$</div>
+
+The notation is intimidating. Here is what it means:
+<ul>
+<li>$f$ and $f_1$: the distribution functions of two particles BEFORE collision.</li>
+<li>$f'$ and $f'_1$: the distributions of those same two particles AFTER collision.</li>
+<li>$g = |\mathbf{c} - \mathbf{c}_1|$: the relative speed of the two particles.</li>
+<li>$B(g, \theta)$: the scattering cross-section, which depends on the relative velocity and scattering angle $\theta$.</li>
+<li>$d\Omega$: integration over all possible scattering angles.</li>
+<li>$d\mathbf{c}_1$: integration over all velocities of the second particle.</li>
+</ul>
+
+The expression $(f'f'_1 - ff_1)$ is a balance: the gain term $f'f'_1$ counts particles scattered INTO the state $(\mathbf{x}, \mathbf{c})$ by collisions, while the loss term $ff_1$ counts particles scattered OUT.
+
+<h4>The BGK Simplification</h4>
+
+The collision integral (17.8) is a 5-dimensional integral &mdash; computationally intractable. For a coarse 3D grid with $100^3$ points and even a modest $10^3$ velocities per point, evaluating it requires $\sim 10^{15}$ operations per timestep. For most of the 20th century, the Boltzmann equation remained a theoretical tool, not a practical one.
+
+The breakthrough came from Bhatnagar, Gross, and Krook in 1954. They asked: <strong>Can we replace the complex collision integral with something simple that still produces the correct macroscopic physics?</strong>
+
+Their answer was to replace the collision integral with a single relaxation toward the equilibrium distribution we met in Section 17.1:
+
+<div class="equation-block"><span class="equation-label">(17.11)</span>$$\Omega(f) \approx -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
+
+where $\tau$ is a single relaxation time and $f^{\text{eq}}$ is the Maxwell-Boltzmann equilibrium (equation 17.2). The idea is elegantly simple: the actual distribution $f$ is nudged toward its local equilibrium at a rate determined by $\tau$. No detailed calculation of scattering angles or cross-sections is needed.
+
+This is the <strong>BGK approximation</strong>. Notice the direct connection to Section 17.1: the $f^{\text{eq}}$ that appears here is exactly the Gaussian equilibrium (17.2) &mdash; the bell curve in velocity space that encodes conservation, zero flux, and isotropic variance. The BGK operator says: whatever the current distribution looks like, push it toward that Gaussian. The three physical claims we established in Section 17.1 &mdash; equations (17.3), (17.4), and (17.5) &mdash; are the properties that $f^{\text{eq}}$ carries into the collision step.
+
+Substituting (17.11) into (17.7), we get the <strong>BGK Boltzmann equation</strong>:
+
+<div class="equation-block"><span class="equation-label">(17.12)</span>$$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
+
+where we have dropped the external force term $\mathbf{F} \cdot \nabla_{\mathbf{c}} f$ (in LBM for diffusion, there are no external forces accelerating particles through velocity space).
+
+<h4>Why BGK Works: Chapman-Enskog Analysis</h4>
+
+Why should such a drastic simplification &mdash; replacing a 5-dimensional integral with a simple relaxation &mdash; give the right macroscopic physics? The answer comes from <strong>Chapman-Enskog analysis</strong>, one of the deepest results in statistical mechanics.
+
+The idea: assume the distribution function is close to equilibrium, with small corrections:
+
+$$f = f^{\text{eq}} + \epsilon f^{(1)} + \epsilon^2 f^{(2)} + \cdots$$
+
+where $\epsilon$ is a small parameter measuring how far the system is from equilibrium (technically, the Knudsen number $\text{Kn} = \lambda / L$, the ratio of mean free path to system size). Then expand the Boltzmann equation order by order. What emerges at each order is a specific piece of the macroscopic equations:
+
+<strong>Zeroth order</strong> ($\epsilon^0$): the distribution equals the equilibrium $f = f^{\text{eq}}$. Taking the zeroth and first moments of $f^{\text{eq}}$ (exactly the integrals from equations 17.3 and 17.4) gives the <strong>conservation laws</strong>:
+
+$$\frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{u}) = 0 \qquad \text{(mass conservation)}$$
+
+These are the Euler equations &mdash; ideal fluid dynamics with no dissipation.
+
+<strong>First order</strong> ($\epsilon^1$): the correction $f^{(1)}$ introduces gradients of velocity and temperature. Taking moments of $f^{(1)}$ produces the <strong>dissipative terms</strong> &mdash; this is where viscosity and diffusivity enter:
+
+<div class="equation-block"><span class="equation-label">(17.9)</span>$$\rho \frac{D\mathbf{u}}{Dt} = -\nabla p + \underbrace{\eta \nabla^2 \mathbf{u}}_{\text{viscous stress}} + \mathbf{f}$$</div>
+
+for fluid flow (Navier-Stokes), and
+
+<div class="equation-block"><span class="equation-label">(17.10)</span>$$\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T = \underbrace{D \nabla^2 T}_{\text{diffusion}}$$</div>
+
+for heat or mass diffusion. The underbraced terms are the ones that the first-order correction adds &mdash; they are absent in the Euler (zeroth-order) equations. The transport coefficients (viscosity $\eta$, diffusivity $D$) are determined by the relaxation time $\tau$. Large $\tau$ (slow relaxation toward equilibrium) gives high viscosity or diffusivity; small $\tau$ gives low viscosity or diffusivity. The relationship is precise and will be derived explicitly in Section 17.4 as the $\tau$-$D$ relationship.
+
+<div class="insight insight-intuition">
+<strong>The key insight:</strong> The macroscopic PDEs we have been solving throughout this textbook &mdash; the diffusion equation, the monodomain equation, even Navier-Stokes &mdash; are not fundamental. They are <strong>emergent</strong>. They arise as the zeroth- and first-order limits of the Boltzmann equation in the collision-dominated regime. The zeroth-order (equilibrium) contribution gives conservation laws. The first-order (near-equilibrium) correction gives the dissipative transport terms. The equilibrium $f^{\text{eq}}$ carries the conservation physics (17.3)&ndash;(17.5); the relaxation rate $1/\tau$ sets the transport coefficients. Together, they recover the full macroscopic PDE.
+</div>
+
+<div class="insight insight-math">
+<strong>Why Chapman-Enskog Works:</strong> The expansion assumes the distribution is locally near equilibrium, with small non-hydrodynamic corrections. The collision operator acts to restore equilibrium. By expanding around this equilibrium and using the fact that the collision operator has specific zero eigenvalues (corresponding to conserved quantities like mass and momentum), one can systematically extract the macroscopic equations order by order in the Knudsen number.
+</div>
+
+<h3>17.3 &ensp; The Lattice-Boltzmann Equation: Single Relaxation Time (SRT/BGK)</h3>
+
+<div style="margin:1em 1.5em; padding:0.8em 1.2em; background:#f8f8f8; border-left:3px solid #0072B2;">
+<strong>The Core Strategy of LBM</strong>
+<ol>
+<li><strong>Start from the kinetic level:</strong> the Boltzmann equation governs how $f(\mathbf{x}, \mathbf{c}, t)$ evolves in phase space (Section 17.2).</li>
+<li><strong>Simplify the collision:</strong> replace the intractable collision integral with BGK relaxation toward $f^{\text{eq}}$ &mdash; the Maxwell-Boltzmann Gaussian from Section 17.1 (Section 17.2).</li>
+<li><strong>Discretize velocity space:</strong> replace the continuous $\mathbf{c}$ with a small finite set of lattice velocities $\mathbf{c}_i$ and write the discrete update rule (this section).</li>
+<li><strong>Derive the lattice from the Gaussian:</strong> the weights $w_i$, velocity sets $\mathbf{c}_i$, and discrete equilibrium $f_i^{\text{eq}}$ all follow from quadrature on the Maxwell-Boltzmann distribution (Section 17.4).</li>
+<li><strong>Trust Chapman-Enskog:</strong> this analysis guarantees that the simplified, discretized scheme recovers the correct macroscopic PDE in the hydrodynamic limit.</li>
+</ol>
+The equilibrium $f^{\text{eq}}$ is the thread that connects everything: it defines the target of relaxation (BGK), it carries the conservation laws (Section 17.1), and it determines which macroscopic equation the scheme recovers (Chapman-Enskog).
+</div>
+
+<h4>From Continuous to Discrete: Three Deliberate Choices</h4>
+
+In Section 17.2 we arrived at the BGK Boltzmann equation (17.12):
+
+$$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f - f^{\text{eq}})$$
+
+This is still a continuous equation &mdash; $f$ lives on a continuous position space, a continuous velocity space, and continuous time. To turn it into something a computer can execute, we make three deliberate discretization choices:
+
+<strong>1. Discretize velocity space.</strong> Replace the continuous velocity $\mathbf{c}$ with a small finite set of lattice velocities $\{\mathbf{c}_0, \mathbf{c}_1, \ldots, \mathbf{c}_{Q-1}\}$. The continuous distribution $f(\mathbf{x}, \mathbf{c}, t)$ becomes a finite collection of distributions $f_i(\mathbf{x}, t)$, one for each lattice direction $i$. This is the step where velocity space &mdash; the infinite-dimensional space from Section 17.1 &mdash; collapses to a handful of directions. The choice of which velocities to keep (and the associated weights) is governed by the Gaussian quadrature constraints we will derive in Section 17.4.
+
+<strong>2. Discretize time.</strong> Replace $\partial f / \partial t$ with a finite difference over a timestep $\Delta t$. This turns the differential equation into an update rule.
+
+<strong>3. Lock the grid to the velocities.</strong> Choose the spatial grid spacing $\Delta x$ and timestep $\Delta t$ so that each lattice velocity $\mathbf{c}_i$ moves a particle from one grid node to an adjacent grid node in exactly one timestep: $\mathbf{c}_i \Delta t = \mathbf{c}_i \Delta x / |\mathbf{c}_i|$. This eliminates interpolation entirely &mdash; streaming is exact.
+
+Notice one term that is conspicuously absent: the external force $\mathbf{F} \cdot \nabla_{\mathbf{c}} f$ from equation (17.7). Recall that this term describes forces that accelerate particles through velocity space &mdash; gravity pulling molecules downward, electric fields pushing ions. For diffusion and the monodomain equation, there are no such body forces: particles stream freely and collide, but nothing pushes them to change velocity mid-flight. We therefore drop it. (For applications that do require forcing &mdash; buoyancy-driven flows, electrokinetics &mdash; the force re-enters as a source term added to the right-hand side, but that is beyond our scope.)
+
+With these three choices, the material derivative $Df/Dt$ becomes a simple finite difference along the lattice direction $i$, and the BGK equation becomes:
+
+<h4>The Discrete Lattice-Boltzmann Equation</h4>
+
+<div class="equation-block"><span class="equation-label">(17.13)</span>$$f_i(\mathbf{x}, \, t + \Delta t) - f_i(\mathbf{x}, t) = -\frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
+
+The left-hand side is the change in the distribution $f_i$ at node $\mathbf{x}$ over one timestep. The right-hand side is the collision: a relaxation nudge toward the local equilibrium $f_i^{\text{eq}}$, scaled by $\Delta t / \tau$. This is the entire algorithm at a single node before streaming.
+
+After computing the post-collision state, we stream: each $f_i$ is moved to the neighboring node in the direction $\mathbf{c}_i$. The combined collision-then-stream update gives the full lattice-Boltzmann equation in its standard form:
+
+$$f_i(\mathbf{x} + \mathbf{c}_i \Delta t, \, t + \Delta t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$
+
+This single line says: compute the collision at $\mathbf{x}$, then place the result at the downstream neighbor $\mathbf{x} + \mathbf{c}_i \Delta t$. The equation is fully explicit &mdash; no matrix inversions, no implicit coupling between nodes, no iterative solves. You compute it one node at a time, and the entire simulation marches forward.
+
+In practice, we split this into two conceptual steps, which we now describe.
+
+<h4>Step 1: Collision (Local, Pure Relaxation)</h4>
+
+At each node, we compute:
+
+<div class="equation-block"><span class="equation-label">(17.14)</span>$$f_i^*(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
+
+This is the collision step. The superscript $*$ on $f_i^*$ denotes the <strong>post-collision</strong> distribution — the state of the distribution function AFTER the collision relaxation has been applied but BEFORE streaming moves data to neighbors. You can read $f_i^*$ as "f-i-star" or "f-i post-collision." It is an intermediate quantity: $f_i$ is the pre-collision state, $f_i^*$ is the post-collision state, and after streaming, $f_i^*$ becomes the new $f_i$ at the destination node.
+
+The collision step happens at a single node, purely local. The distributions $f_i$ at node $\mathbf{x}$ are nudged toward their equilibrium values $f_i^{\text{eq}}$. The speed of this nudge is controlled by $\Delta t / \tau$:
+<ul>
+<li>If $\tau$ is large, the nudge is small — the distribution relaxes slowly.</li>
+<li>If $\tau$ is small (but must remain $> \Delta t/2$ for stability), the nudge is large — the distribution relaxes quickly.</li>
+</ul>
+
+The parameter $\tau$ directly controls the transport properties (diffusivity, viscosity). This is the heart of the method: all the physics (how fast heat diffuses, how viscous the fluid is) is encoded in $\tau$.
+
+<h4>Step 2: Streaming (Pure Data Movement)</h4>
+
+After collision, we shift the post-collision distributions to their neighboring nodes:
+
+<div class="equation-block"><span class="equation-label">(17.15)</span>$$f_i(\mathbf{x} + \mathbf{c}_i \Delta t, \, t + \Delta t) = f_i^*(\mathbf{x}, t)$$</div>
+
+This is the streaming step. Each distribution $f_i^*$ at node $\mathbf{x}$ slides to the neighboring node in direction $i$. The destination is $\mathbf{x} + \mathbf{c}_i \Delta t$. If the lattice is designed so that $\mathbf{c}_i \Delta t = \Delta x$ (one lattice spacing), then streaming is a simple data copy — a value at the center moves to a neighbor.
+
+Critically, streaming is not a collision. There is no physics in streaming — it is pure kinematics. A particle moving with velocity $\mathbf{c}_i$ will naturally travel a distance $\mathbf{c}_i \Delta t$ in time $\Delta t$. Streaming enforces this.
+
+<h4>The Combined Form</h4>
+
+Substituting the collision step (17.14) into the streaming step (17.15) &mdash; replacing $f_i^*$ with its definition &mdash; gives the single combined equation:
+
+<div class="equation-block"><span class="equation-label">(17.16)</span>$$f_i(\mathbf{x} + \mathbf{c}_i \Delta t, \, t + \Delta t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
+
+This is the <strong>lattice-Boltzmann equation in streaming form</strong>. It is the same physics as equation (17.13), but written from the destination's perspective: the value arriving at node $\mathbf{x} + \mathbf{c}_i \Delta t$ at the next timestep equals the current value at node $\mathbf{x}$, corrected by the collision. You will encounter this form throughout the LBM literature &mdash; it is the most compact way to write the full collide-and-stream update.
+
+<div class="insight insight-intuition">
+<strong>Locality and Parallelization:</strong> Both collision and streaming are local operations. Collision affects only one node at a time. Streaming is a data copy — the value $f_i^*(\mathbf{x}, t)$ moves to a neighbor, but it does not interact with neighbors' data. After collision, all the $f_i$ at all nodes are independent. Streaming then redistributes them. This extreme locality means LBM is trivially parallelizable: each node (or even each lattice direction at each node) can be processed on a separate processor with zero communication overhead during the step. Only a halo exchange is needed between processors after streaming. This is one reason LBM is popular on GPUs.
+</div>
+
+<h4>Variable Definitions and Component Form</h4>
+
+To implement LBM, you must understand every variable. Here is a complete reference:
+
+<table style="width:90%; border-collapse:collapse; margin:1em auto; font-size:0.95em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.7em; text-align:left;">Symbol</th>
+<th style="border:1px solid #333; padding:0.7em; text-align:left;">Meaning</th>
+<th style="border:1px solid #333; padding:0.7em; text-align:left;">Units / Constraints</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$f_i(\mathbf{x}, t)$</td>
+<td style="border:1px solid #333; padding:0.7em;">Distribution function for direction $i$ at node $\mathbf{x}$, time $t$</td>
+<td style="border:1px solid #333; padding:0.7em;">Density (or concentration if diffusion)</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$f_i^*(\mathbf{x}, t)$</td>
+<td style="border:1px solid #333; padding:0.7em;">Post-collision distribution for direction $i$ (after relaxation, before streaming)</td>
+<td style="border:1px solid #333; padding:0.7em;">Same units as $f_i$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$f_i^{\text{eq}}(\mathbf{x}, t)$</td>
+<td style="border:1px solid #333; padding:0.7em;">Equilibrium distribution for direction $i$</td>
+<td style="border:1px solid #333; padding:0.7em;">Density (or concentration)</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$\tau$</td>
+<td style="border:1px solid #333; padding:0.7em;">Relaxation time</td>
+<td style="border:1px solid #333; padding:0.7em;">Must satisfy $\tau > \Delta t / 2$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$\Delta t$</td>
+<td style="border:1px solid #333; padding:0.7em;">Timestep</td>
+<td style="border:1px solid #333; padding:0.7em;">In lattice units, $\Delta t = 1$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$\mathbf{c}_i$</td>
+<td style="border:1px solid #333; padding:0.7em;">Discrete velocity vector for direction $i$</td>
+<td style="border:1px solid #333; padding:0.7em;">$\mathbf{c}_0 = \mathbf{0}$ (rest); $|\mathbf{c}_i| = c = \Delta x / \Delta t$ (moving)</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$w_i$</td>
+<td style="border:1px solid #333; padding:0.7em;">Weight for direction $i$</td>
+<td style="border:1px solid #333; padding:0.7em;">$\sum_i w_i = 1$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$\phi(\mathbf{x}, t) = \sum_i f_i$</td>
+<td style="border:1px solid #333; padding:0.7em;">Macroscopic variable (temperature, voltage, density)</td>
+<td style="border:1px solid #333; padding:0.7em;">Physical units (K, mV, kg/m³)</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.7em;">$Q$</td>
+<td style="border:1px solid #333; padding:0.7em;">Number of lattice directions (velocities)</td>
+<td style="border:1px solid #333; padding:0.7em;">$i$ ranges from $0$ to $Q-1$</td>
+</tr>
+</table>
+
+<strong>In detail:</strong>
+
+$f_i(\mathbf{x}, t)$ is the distribution function for direction $i$. Think of it as "the portion of the macroscopic quantity assigned to direction $i$ at this node at this time." There are $Q$ values of $f_i$ stored at each node &mdash; one per lattice direction. The sum $\sum_i f_i = \phi$ recovers the total macroscopic quantity.
+
+$f_i^{\text{eq}}(\mathbf{x}, t)$ is the equilibrium distribution for direction $i$ &mdash; the target that the collision step relaxes toward. Its exact form depends on the weights $w_i$ and the macroscopic field, and will be derived in Section 17.4 from the Gaussian equilibrium we built in Section 17.1.
+
+$\tau$ is the relaxation time. It controls how quickly the distribution approaches equilibrium. The relationship between $\tau$ and the physical diffusivity $D$ comes from Chapman-Enskog analysis and will be derived in Section 17.4.
+
+$\Delta t$ is the timestep. In lattice units, we often set $\Delta t = 1$, but it is useful to keep $\Delta t$ explicit when connecting lattice variables to physical ones.
+
+$\mathbf{c}_i$ is the discrete velocity vector for direction $i$. Each $\mathbf{c}_i$ points from a node to a neighbor (or stays put if $i=0$). The specific velocity sets and their associated weights are derived in Section 17.4 from the Gaussian quadrature framework.
+
+$w_i$ is the weight for direction $i$. Like $\mathbf{c}_i$, the weights are uniquely determined by the quadrature exactness conditions and will be derived in Section 17.4.
+
+$\phi(\mathbf{x}, t) = \sum_i f_i(\mathbf{x}, t)$ is the recovered macroscopic quantity. For diffusion of temperature, $\phi$ is temperature. For cardiac electrophysiology, $\phi$ is the voltage. The sum over all lattice directions gives the total.
+
+<h3>17.4 &ensp; From the Gaussian to the Lattice: Discretizing $f^{\text{eq}}$, $w_i$, and $\mathbf{c}_i$</h3>
+
+<h4>Returning to the Gaussian</h4>
+
+In Section 17.1 we established the Maxwell-Boltzmann equilibrium (equation 17.2) and its three physical claims: conservation of mass (17.3), zero net flux at rest (17.4), and isotropic variance (17.5). In Section 17.2, this equilibrium became the target of BGK relaxation &mdash; the distribution $f$ is nudged toward $f^{\text{eq}}$ at every collision. In Section 17.3, we wrote the discrete lattice-Boltzmann equation and used $f_i^{\text{eq}}$, $w_i$, and $\mathbf{c}_i$ as if they were known quantities &mdash; but we never said where they come from.
+
+Now we open that box. Everything in this section &mdash; the discrete velocities, the weights, and the discrete equilibrium &mdash; is derived from a single source: the continuous Gaussian from Section 17.1. The question is: <strong>how do you discretize a bell curve in velocity space so that the discrete version preserves the same physical claims?</strong>
+
+<h4>The Three Claims Become Three Constraints on the Lattice</h4>
+
+Recall the three physical claims of the Gaussian equilibrium from Section 17.1. Each was stated as a continuous integral over velocity space. When we discretize velocity space onto a finite set of $Q$ directions $\{\mathbf{c}_i\}$ with weights $\{w_i\}$, each integral becomes a finite sum &mdash; and each physical claim becomes an algebraic constraint that the lattice must satisfy.
+
+<strong>Zeroth order &mdash; conservation of mass</strong> (discrete form of equation 17.3):
+
+<div class="equation-block"><span class="equation-label">(17.18)</span>$$\sum_i w_i = 1 \qquad \text{(normalization: the total probability is 1)}$$</div>
+
+The continuous claim $\int f^{\text{eq}} d\mathbf{c} = \rho$ says the total density is conserved. In discrete form, this requires the weights to sum to one &mdash; the discrete bell curve must have the same total area as the continuous one.
+
+<strong>First order &mdash; zero net flux at rest</strong> (discrete form of equation 17.4):
+
+<div class="equation-block"><span class="equation-label">(17.19)</span>$$\sum_i w_i \, c_{i\alpha} = 0 \qquad \text{or equivalently:} \qquad \sum_i w_i \, \mathbf{c}_i = \mathbf{0}$$</div>
+
+The continuous claim $\int \mathbf{c} \, f^{\text{eq}} d\mathbf{c} = \rho\mathbf{u} = \mathbf{0}$ (at rest) says there is no net momentum. In discrete form, the weighted average of the velocity vectors must vanish &mdash; the lattice must be symmetric so that no direction is preferred.
+
+<strong>Second order &mdash; isotropic variance</strong> (discrete form of equation 17.5):
+
+<div class="equation-block"><span class="equation-label">(17.20)</span>$$\sum_i w_i \, c_{i\alpha} \, c_{i\beta} = c_s^2 \, \delta_{\alpha\beta} \qquad \text{or equivalently:} \qquad \sum_i w_i \, \mathbf{c}_i \otimes \mathbf{c}_i = c_s^2 \, \mathbf{I}$$</div>
+
+The continuous claim $\int c_\alpha c_\beta f^{\text{eq}} d\mathbf{c} = \rho c_s^2 \delta_{\alpha\beta}$ says the velocity fluctuations are isotropic. In discrete form, the weighted outer product of velocities must reproduce the variance of the Gaussian times the identity matrix. When $\alpha = \beta$ (e.g., $\alpha = \beta = x$), this says $\sum_i w_i c_{ix}^2 = c_s^2$ &mdash; the quadrature reproduces the Gaussian's variance along each axis. When $\alpha \neq \beta$ (e.g., $\alpha = x$, $\beta = y$), this says $\sum_i w_i c_{ix} c_{iy} = 0$ &mdash; the $x$ and $y$ components are uncorrelated, as required for an isotropic bell curve.
+
+These three constraints &mdash; (17.18), (17.19), and (17.20) &mdash; are the bridge between the continuous physics of Section 17.1 and the discrete lattice. Any valid lattice (D2Q5, D2Q9, D3Q7) must satisfy all three. The constraints determine the weights $w_i$ once the velocity set $\mathbf{c}_i$ is chosen.
+
+<h4>Gauss-Hermite Quadrature: Why These Specific Nodes and Weights</h4>
+
+The three constraints above are not arbitrary &mdash; they are the <strong>exactness conditions of Gauss-Hermite quadrature</strong>. This is a classical result in numerical analysis: given a function that looks like a polynomial multiplied by a Gaussian, how do you approximate the integral using a finite sum?
+
+The idea is beautifully geometric. The Gaussian bell curve is a hill in velocity space, and we want to compute integrals under it. Gauss-Hermite quadrature tells us exactly where to place sample points (the <strong>nodes</strong> $\mathbf{c}_i$) and how much weight to give each one (the <strong>weights</strong> $w_i$), so that the finite sum is exact for all polynomials up to a certain degree:
+
+<div class="equation-block"><span class="equation-label">(17.21)</span>$$\int p(\mathbf{c}) \; \underbrace{\frac{1}{(2\pi c_s^2)^{D/2}} e^{-|\mathbf{c}|^2 / 2c_s^2}}_{\text{Gaussian kernel}} \; d\mathbf{c} \;\approx\; \sum_{i=0}^{Q-1} w_i \; p(\mathbf{c}_i)$$</div>
+
+The quadrature nodes become our discrete velocities. The quadrature weights become our lattice weights. The constraints (17.18)&ndash;(17.20) are what you get when you require this sum to be exact for $p = 1$ (zeroth order), $p = c_\alpha$ (first order), and $p = c_\alpha c_\beta$ (second order) &mdash; precisely the three physical claims from Section 17.1.
+
+<div class="insight insight-intuition">
+<strong>Nodes and Weights Are a Married Pair:</strong> In Gauss-Hermite quadrature, you do not get to choose the nodes and the weights independently. Once you pick a set of sample points on the bell curve, the weights are uniquely determined (and vice versa). This is why every lattice specification &mdash; D2Q5, D2Q9, D3Q7 &mdash; always lists both $\mathbf{c}_i$ AND $w_i$ together. They are a package deal, born from the same Gaussian.
+</div>
+
+For <strong>diffusion</strong> (no bulk flow), the equilibrium is the Gaussian centered at zero. The macroscopic equations involve integrals of polynomials up to second degree in $\mathbf{c}$, so exactness through second order &mdash; constraints (17.18)&ndash;(17.20) &mdash; is sufficient. D2Q5 and D3Q7 satisfy these.
+
+For <strong>fluid flow</strong> (Navier-Stokes), the equilibrium is a shifted Gaussian, and higher-order polynomial terms appear. The quadrature must also be exact for fourth-degree polynomials, which requires additional exactness conditions and more lattice directions (D2Q9 instead of D2Q5).
+
+<h4>Discrete vs. Continuous: Lattice Naming Convention</h4>
+
+Lattices are named using the notation $\text{D}_d \text{Q}_q$, where:
+<ul>
+<li><strong>D</strong> = spatial dimension (1, 2, or 3)</li>
+<li><strong>Q</strong> = number of lattice directions (discrete velocities)</li>
+</ul>
+
+Common examples:
+<ul>
+<li><strong>D1Q3</strong>: 1D, 3 velocities (left, right, rest)</li>
+<li><strong>D2Q5</strong>: 2D, 5 velocities (rest + 4 cardinal neighbors)</li>
+<li><strong>D2Q9</strong>: 2D, 9 velocities (rest + 4 cardinal + 4 diagonal)</li>
+<li><strong>D3Q7</strong>: 3D, 7 velocities (rest + 6 face-centered neighbors)</li>
+<li><strong>D3Q19</strong>: 3D, 19 velocities (face-centered + edge-adjacent)</li>
+<li><strong>D3Q27</strong>: 3D, 27 velocities (complete cubic stencil)</li>
+</ul>
+
+The choice of lattice is determined by the physics:
+<ul>
+<li><strong>For diffusion</strong> (no bulk flow), D2Q5 or D3Q7 suffice. These have only cardinal directions.</li>
+<li><strong>For fluid flow</strong> (Navier-Stokes), diagonal directions are needed to represent the full stress tensor. D2Q9 or D3Q19 are required.</li>
+</ul>
+
+Since cardiac electrophysiology primarily solves diffusion problems (the monodomain and bidomain equations), <strong>D2Q5 and D3Q7 are the natural choices</strong>.
+
+<div class="insight insight-warning">
+<strong>Memory vs. Physics:</strong> The number of distributions stored per node equals $Q$. A D2Q9 lattice requires storing 9 values per node; a D2Q5 requires only 5. For a 500×500×500 3D mesh, a D2Q5 saves a factor of $(7 \text{ directions}) / (27 \text{ directions}) \approx 4\times$ memory compared to D3Q27, even though physically, D3Q7 produces the same diffusion results. This is one reason LBM for cardiac problems uses minimal lattices.
+</div>
+
+
+<h4>The Discrete Velocity Set</h4>
+
+With the quadrature framework in mind, here are the standard lattices. Each is a specific Gauss-Hermite quadrature rule on a regular grid — the nodes are placed at grid points so that streaming is a simple data shift.
+
+<strong>D1Q3 (One-Dimensional):</strong>
+
+<div class="equation-block"><span class="equation-label">(17.17)</span>$$\mathbf{c}_0 = 0, \quad \mathbf{c}_1 = c, \quad \mathbf{c}_2 = -c$$</div>
+
+where $c = \Delta x / \Delta t$ is the lattice speed. Three quadrature nodes: one at the center of the bell curve (rest), one to the right, one to the left.
+
+<strong>D2Q5 (Two-Dimensional, Cardinal Directions):</strong>
+
+<table style="width:60%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Rest</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">East</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">West</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(-1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">North</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">South</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, -1)$</td>
+</tr>
+</table>
+
+Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one lattice spacing along each cardinal direction. These five sample points are sufficient to exactly integrate second-degree polynomials against the 2D Gaussian.
+
+<div class="figure">
+<svg viewBox="0 0 920 320" style="max-width:850px; display:block; margin:1.5em auto;" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+  </style>
+  <defs>
+    <marker id="arr-d" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
+    </marker>
+    <marker id="arr-diag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#D55E00"/>
+    </marker>
+  </defs>
+
+  <!-- ═══ PANEL (a): D2Q5 ═══ -->
+  <!-- Background grid -->
+  <g stroke="#E0E0E0" stroke-width="0.75" stroke-dasharray="4,4">
+    <line x1="50" y1="40" x2="250" y2="40"/>
+    <line x1="50" y1="140" x2="250" y2="140"/>
+    <line x1="50" y1="240" x2="250" y2="240"/>
+    <line x1="50" y1="40" x2="50" y2="240"/>
+    <line x1="150" y1="40" x2="150" y2="240"/>
+    <line x1="250" y1="40" x2="250" y2="240"/>
+  </g>
+
+  <!-- Background nodes (open circles) -->
+  <g fill="white" stroke="#999" stroke-width="1">
+    <circle cx="50" cy="40" r="4"/>  <circle cx="150" cy="40" r="4"/>  <circle cx="250" cy="40" r="4"/>
+    <circle cx="50" cy="140" r="4"/> <circle cx="250" cy="140" r="4"/>
+    <circle cx="50" cy="240" r="4"/> <circle cx="150" cy="240" r="4"/> <circle cx="250" cy="240" r="4"/>
+  </g>
+
+  <!-- Arrows from center to cardinal neighbors -->
+  <g stroke="#333" stroke-width="2" marker-end="url(#arr-d)">
+    <line x1="158" y1="140" x2="238" y2="140"/>
+    <line x1="142" y1="140" x2="62"  y2="140"/>
+    <line x1="150" y1="132" x2="150" y2="52"/>
+    <line x1="150" y1="148" x2="150" y2="228"/>
+  </g>
+
+  <!-- Cardinal neighbor nodes (filled) -->
+  <g fill="#E69F00">
+    <circle cx="250" cy="140" r="7"/>
+    <circle cx="50"  cy="140" r="7"/>
+    <circle cx="150" cy="40"  r="7"/>
+    <circle cx="150" cy="240" r="7"/>
+  </g>
+
+  <!-- Center node (largest, distinct color) -->
+  <circle cx="150" cy="140" r="9" fill="#0072B2"/>
+
+  <!-- Weight labels next to nodes -->
+  <g font-size="13" fill="#333" text-anchor="middle">
+    <text x="150" y="125" font-weight="600" fill="#0072B2">w₀=1/3</text>
+    <text x="250" y="125">w=1/6</text>
+    <text x="50"  y="125">w=1/6</text>
+    <text x="183" y="38">w=1/6</text>
+    <text x="183" y="255">w=1/6</text>
+  </g>
+
+  <!-- Direction indices -->
+  <g font-size="14" fill="#333" font-weight="600">
+    <text x="150" y="160" text-anchor="middle">i=0</text>
+    <text x="270" y="145" text-anchor="start">i=1</text>
+    <text x="18"  y="145" text-anchor="start">i=2</text>
+    <text x="130" y="30"  text-anchor="end">i=3</text>
+    <text x="130" y="256" text-anchor="end">i=4</text>
+  </g>
+
+  <!-- Panel label -->
+  <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(a) D2Q5</text>
+
+
+  <!-- ═══ PANEL (b): D2Q9 ═══ -->
+  <g transform="translate(320,0)">
+    <!-- Background grid -->
+    <g stroke="#E0E0E0" stroke-width="0.75" stroke-dasharray="4,4">
+      <line x1="50" y1="40" x2="250" y2="40"/>
+      <line x1="50" y1="140" x2="250" y2="140"/>
+      <line x1="50" y1="240" x2="250" y2="240"/>
+      <line x1="50" y1="40" x2="50" y2="240"/>
+      <line x1="150" y1="40" x2="150" y2="240"/>
+      <line x1="250" y1="40" x2="250" y2="240"/>
+    </g>
+
+    <!-- Cardinal arrows -->
+    <g stroke="#333" stroke-width="2" marker-end="url(#arr-d)">
+      <line x1="158" y1="140" x2="238" y2="140"/>
+      <line x1="142" y1="140" x2="62"  y2="140"/>
+      <line x1="150" y1="132" x2="150" y2="52"/>
+      <line x1="150" y1="148" x2="150" y2="228"/>
+    </g>
+
+    <!-- Diagonal arrows (different color for distinction) -->
+    <g stroke="#D55E00" stroke-width="1.5" marker-end="url(#arr-diag)" stroke-dasharray="none">
+      <line x1="157" y1="133" x2="240" y2="50"/>
+      <line x1="143" y1="133" x2="60"  y2="50"/>
+      <line x1="157" y1="147" x2="240" y2="230"/>
+      <line x1="143" y1="147" x2="60"  y2="230"/>
+    </g>
+
+    <!-- Cardinal neighbor nodes -->
+    <g fill="#E69F00">
+      <circle cx="250" cy="140" r="7"/>
+      <circle cx="50"  cy="140" r="7"/>
+      <circle cx="150" cy="40"  r="7"/>
+      <circle cx="150" cy="240" r="7"/>
+    </g>
+
+    <!-- Diagonal neighbor nodes -->
+    <g fill="#D55E00">
+      <circle cx="250" cy="40"  r="6"/>
+      <circle cx="50"  cy="40"  r="6"/>
+      <circle cx="250" cy="240" r="6"/>
+      <circle cx="50"  cy="240" r="6"/>
+    </g>
+
+    <!-- Center node -->
+    <circle cx="150" cy="140" r="9" fill="#0072B2"/>
+
+    <!-- Weight labels -->
+    <g font-size="12" fill="#333" text-anchor="middle">
+      <text x="150" y="125" font-weight="600" fill="#0072B2" font-size="13">w₀=4/9</text>
+      <text x="250" y="125" fill="#E69F00">1/9</text>
+      <text x="50"  y="125" fill="#E69F00">1/9</text>
+      <text x="177" y="38"  fill="#E69F00">1/9</text>
+      <text x="177" y="255" fill="#E69F00">1/9</text>
+      <text x="270" y="30"  fill="#D55E00">1/36</text>
+      <text x="25"  y="30"  fill="#D55E00">1/36</text>
+      <text x="270" y="255" fill="#D55E00">1/36</text>
+      <text x="25"  y="255" fill="#D55E00">1/36</text>
+    </g>
+
+    <!-- Panel label -->
+    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(b) D2Q9</text>
+  </g>
+
+
+  <!-- ═══ PANEL (c): D3Q7 (isometric) ═══ -->
+  <g transform="translate(640,0)">
+    <!-- Isometric cube: center at (150, 150) -->
+    <!-- Isometric unit vectors (scaled 80px):
+         +x → (69, 40), -x → (-69, -40)
+         +y → (-69, 40), -y → (69, -40)
+         +z → (0, -80), -z → (0, 80) -->
+
+    <!-- Cube wireframe (back edges dashed) -->
+    <g stroke="#E0E0E0" stroke-width="0.75">
+      <!-- Back edges (dashed) -->
+      <line x1="150" y1="150" x2="81" y2="110" stroke-dasharray="4,4"/>
+      <line x1="81" y1="110" x2="12" y2="150" stroke-dasharray="4,4"/>
+      <line x1="81" y1="110" x2="81" y2="30" stroke-dasharray="4,4"/>
+
+      <!-- Front edges (solid) -->
+      <line x1="150" y1="150" x2="219" y2="110"/>
+      <line x1="150" y1="150" x2="81"  y2="190"/>
+      <line x1="150" y1="150" x2="150" y2="230"/>
+      <line x1="150" y1="150" x2="150" y2="70"/>
+      <line x1="219" y1="110" x2="150" y2="70"/>
+      <line x1="81"  y1="190" x2="150" y2="230"/>
+      <line x1="219" y1="110" x2="219" y2="190"/>
+      <line x1="81"  y1="190" x2="12"  y2="150"/>
+      <line x1="219" y1="190" x2="150" y2="230"/>
+      <line x1="150" y1="70"  x2="81"  y2="30"/>
+      <line x1="150" y1="70"  x2="219" y2="30"/>
+      <line x1="12"  y1="150" x2="12"  y2="70"/>
+      <line x1="12"  y1="70"  x2="81"  y2="30"/>
+      <line x1="219" y1="30"  x2="150" y2="70"/>
+    </g>
+
+    <!-- Arrows from center to 6 face-centered neighbors -->
+    <!-- +x: (150,150) → (219,110) -->
+    <line x1="155" y1="147" x2="210" y2="114" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <!-- -x: (150,150) → (81,190) -->
+    <line x1="145" y1="153" x2="90"  y2="186" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <!-- +y: (150,150) → (81,110) -->
+    <line x1="145" y1="147" x2="90"  y2="114" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <!-- -y: (150,150) → (219,190) -->
+    <line x1="155" y1="153" x2="210" y2="186" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <!-- +z: (150,150) → (150,70) -->
+    <line x1="150" y1="142" x2="150" y2="80"  stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <!-- -z: (150,150) → (150,230) -->
+    <line x1="150" y1="158" x2="150" y2="220" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+
+    <!-- Face-centered neighbor nodes -->
+    <g fill="#E69F00">
+      <circle cx="219" cy="110" r="7"/>
+      <circle cx="81"  cy="190" r="7"/>
+      <circle cx="81"  cy="110" r="7" opacity="0.7"/>
+      <circle cx="219" cy="190" r="7"/>
+      <circle cx="150" cy="70"  r="7"/>
+      <circle cx="150" cy="230" r="7"/>
+    </g>
+
+    <!-- Center node -->
+    <circle cx="150" cy="150" r="9" fill="#0072B2"/>
+
+    <!-- Axis labels -->
+    <g font-size="14" fill="#333" font-weight="600">
+      <text x="228" y="105" text-anchor="start">+x</text>
+      <text x="68"  y="205" text-anchor="end">−x</text>
+      <text x="68"  y="105" text-anchor="end">+y</text>
+      <text x="228" y="205" text-anchor="start">−y</text>
+      <text x="162" y="68"  text-anchor="start">+z</text>
+      <text x="162" y="245" text-anchor="start">−z</text>
+    </g>
+
+    <!-- Weight label at center -->
+    <text x="150" y="170" text-anchor="middle" font-size="13" fill="#0072B2" font-weight="600">w₀=1/4</text>
+    <text x="238" y="138" text-anchor="start" font-size="12" fill="#333">w=1/8</text>
+
+    <!-- Panel label -->
+    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(c) D3Q7</text>
+  </g>
+</svg>
+<div class="figure-caption"><strong>Figure 17.1:</strong> Common lattice stencils for LBM. <strong>(a)</strong> D2Q5: five velocities (rest + four cardinal) — sufficient for isotropic diffusion. <strong>(b)</strong> D2Q9: nine velocities (rest + cardinal + diagonal) — required for fluid flow to capture cross-velocity terms. <strong>(c)</strong> D3Q7: seven velocities in 3D (rest + six face-centered) — the minimal 3D stencil for diffusion. Blue center node = rest velocity (peak of the Gaussian); orange = cardinal neighbors; vermillion = diagonal neighbors. Arrows indicate streaming directions; weights $w_i$ annotated at each node.</div>
+</div>
+
+<strong>D2Q9 (Two-Dimensional, Cardinal + Diagonal):</strong>
+
+For fluid flow, the polynomial expansion of the shifted Gaussian contains terms like $c_{ix} c_{iy}$ (cross-products of velocity components). To integrate these exactly, we need diagonal quadrature nodes. D2Q9 adds four diagonal directions to D2Q5:
+
+<table style="width:60%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Rest</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">East</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">West</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(-1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">North</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">South</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, -1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">5</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">NE</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(1, 1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">6</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">NW</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(-1, 1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">7</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">SE</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(1, -1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">8</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">SW</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(-1, -1)$</td>
+</tr>
+</table>
+
+Directions 1–4 are the same cardinal nodes as D2Q5. Directions 5–8 are diagonal nodes at distance $\sqrt{2}\,c$ from the center. These sit further out on the bell curve than the cardinal nodes, sampling the Gaussian's tails in diagonal directions.
+
+<strong>D3Q7 (Three-Dimensional, Face-Centered):</strong>
+
+The 3D analogue of D2Q5. One quadrature node at the peak, six at one lattice spacing along each coordinate axis:
+
+<table style="width:60%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Rest</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 0, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$+x$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(1, 0, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$-x$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(-1, 0, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$+y$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$-y$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, -1, 0)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">5</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$+z$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 0, 1)$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">6</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$-z$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$(0, 0, -1)$</td>
+</tr>
+</table>
+
+All six moving nodes sit at the same distance $c$ from the center — they sample the Gaussian at the same height on the bell curve, which is why they all receive the same weight.
+
+<h4>The Weight Lattice</h4>
+
+The weights paired with each velocity set are determined by the quadrature exactness conditions (17.18)–(17.20). Each weight $w_i$ represents how much of the Gaussian bell curve the quadrature node $\mathbf{c}_i$ is responsible for. Nodes near the peak of the Gaussian (where the bell curve is tallest) represent more of the total area and receive larger weights. Nodes further out (where the bell curve has decayed) represent less area and receive smaller weights.
+
+<strong>D1Q3 weights:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.22)</span>$$w_0 = \frac{2}{3}, \quad w_1 = w_2 = \frac{1}{6}$$</div>
+
+The rest node sits at the peak of the 1D bell curve — it captures two-thirds of the total area. The two moving nodes, one lattice spacing away from the peak, each capture one-sixth. Most of the Gaussian's area is concentrated near the center, which is why the rest weight dominates.
+
+<strong>D2Q5 weights:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.23)</span>$$w_0 = \frac{1}{3}, \quad w_1 = w_2 = w_3 = w_4 = \frac{1}{6}$$</div>
+
+The rest node captures one-third of the 2D bell curve. Each cardinal node captures one-sixth. The total is $1/3 + 4 \times 1/6 = 1$. All four cardinal nodes are at the same distance from the peak, so they receive the same weight — the bell curve is symmetric.
+
+<strong>D2Q9 weights:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.24)</span>$$w_0 = \frac{4}{9}, \quad w_{1,2,3,4} = \frac{1}{9} \quad (\text{cardinal}), \quad w_{5,6,7,8} = \frac{1}{36} \quad (\text{diagonal})$$</div>
+
+Three distinct weight classes, directly reflecting the Gaussian's shape. The rest node at the peak captures $4/9$ of the area — nearly half. The cardinal nodes at distance $c$ each capture $1/9$. The diagonal nodes at distance $\sqrt{2}\,c$ each capture only $1/36$ — four times less than a cardinal node. This factor of four is the Gaussian at work: moving from distance $c$ to $\sqrt{2}\,c$ from the peak, the bell curve has decayed, so those nodes represent less area. Check: $4/9 + 4 \times 1/9 + 4 \times 1/36 = 4/9 + 4/9 + 1/9 = 1$ ✓.
+
+<div class="insight insight-intuition">
+<strong>Why Diagonal Weights Are Smaller:</strong> Picture a 2D bell curve — a smooth hill centered at the origin. The cardinal quadrature nodes sit at distance $c$ from the peak (along the axes). The diagonal nodes sit at distance $\sqrt{2}\,c$ (along the diagonals). Because the Gaussian decays exponentially with distance from the center, the bell curve is lower at the diagonal nodes than at the cardinal nodes. Lower height means less area to represent, which means a smaller quadrature weight. This is not a choice — it is a consequence of the Gaussian's shape. The ratio $w_{\text{diagonal}} / w_{\text{cardinal}} = (1/36)/(1/9) = 1/4$ is determined by the exactness conditions, but the physical reason is the Gaussian decay.
+</div>
+
+<strong>D3Q7 weights:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.25)</span>$$w_0 = \frac{1}{4}, \quad w_1 = \cdots = w_6 = \frac{1}{8}$$</div>
+
+The rest node captures one-quarter of the 3D bell curve. Each of the six face-centered nodes captures one-eighth. All moving nodes are at the same distance $c$ from the peak (same height on the bell curve), so they receive equal weight. Check: $1/4 + 6 \times 1/8 = 1/4 + 3/4 = 1$ ✓.
+
+<div class="insight insight-math">
+<strong>Deriving D2Q5 Weights from Exactness:</strong> For D2Q5, we have two unknowns: the rest weight $w_0$ and the cardinal weight $w_c$ (shared by directions 1–4 by symmetry). Two conditions pin them down. First, normalization (17.18): $w_0 + 4w_c = 1$. Second, the variance condition (17.20) applied to the $x$-direction: $\sum_i w_i c_{ix}^2 = c_s^2$. The rest particle contributes zero. Directions 1 and 2 each contribute $w_c \cdot c^2$. Directions 3 and 4 have $c_{ix} = 0$, so they contribute nothing. This gives $2w_c c^2 = c_s^2 = c^2/3$, yielding $w_c = 1/6$. Substituting back: $w_0 = 1 - 4(1/6) = 1/3$. The weights are not chosen — they are uniquely determined by the quadrature exactness conditions on this lattice geometry.
+</div>
+
+<h4>The Discrete Equilibrium $f_i^{\text{eq}}$: Closing the Loop</h4>
+
+We can now close the loop that has been open since Section 17.1. There, we wrote the continuous equilibrium &mdash; the Maxwell-Boltzmann Gaussian (equation 17.2). In Section 17.3, we used $f_i^{\text{eq}}$ as a black box in the collision step (equation 17.14). Here is what that black box actually contains.
+
+For <strong>pure diffusion</strong> ($\mathbf{u} = 0$), the Gaussian is centered at the origin. When you evaluate it at the quadrature nodes and fold in the weights, all the velocity-dependent structure vanishes. The discrete equilibrium collapses to:
+
+<div class="equation-block"><span class="equation-label">(17.30)</span>$$f_i^{\text{eq}} = w_i \, \phi$$</div>
+
+where $\phi = \sum_j f_j$ is the local macroscopic quantity (temperature, voltage, concentration). Each direction carries a fraction $w_i$ of the total field — exactly the quadrature weight. The rest direction carries the most (it sits at the peak of the bell curve), and the moving directions carry the remainder, split according to how much of the Gaussian each node represents. There is no preferred direction — the equilibrium is symmetric, just as the centered Gaussian is symmetric.
+
+This is the equilibrium we use for cardiac electrophysiology, since the monodomain and bidomain equations are diffusion equations with no bulk flow.
+
+For <strong>fluid flow</strong> (Navier-Stokes), the Gaussian is centered at the bulk velocity $\mathbf{u}$. Expanding the exponential in (17.2) as a Taylor series in $\mathbf{u}/c_s$ (valid when the flow speed is much smaller than the speed of sound — the low Mach number regime), the discrete equilibrium becomes:
+
+<div class="equation-block"><span class="equation-label">(17.31)</span>$$f_i^{\text{eq}} = w_i \rho \left(1 + \frac{\mathbf{u} \cdot \mathbf{c}_i}{c_s^2} + \frac{(\mathbf{u} \cdot \mathbf{c}_i)^2}{2c_s^4} - \frac{u^2}{2c_s^2}\right)$$</div>
+
+The terms beyond $w_i \rho$ are the polynomial corrections that arise from shifting the bell curve's center from zero to $\mathbf{u}$. These terms break the directional symmetry — they bias the distribution toward the direction of flow. Because these corrections involve products like $c_{ix} c_{iy}$, the quadrature must exactly integrate fourth-degree polynomials, which is why fluid flow requires more quadrature nodes (D2Q9 instead of D2Q5).
+
+<h4>Lattice Requirements for Different Physics</h4>
+
+The choice of lattice is determined by how many terms in the polynomial expansion of the Gaussian need to be captured exactly. For diffusion with the isotropic equilibrium (17.30), only terms up to second degree matter — the exactness conditions (17.18)–(17.20) suffice. D2Q5 (and D3Q7 in 3D) satisfy these, making them the most efficient choices for cardiac problems.
+
+For fluid flow with the velocity-dependent equilibrium (17.31), terms up to fourth degree appear. The quadrature must satisfy additional exactness conditions involving the fourth-order product $\sum_i w_i c_{i\alpha} c_{i\beta} c_{i\gamma} c_{i\delta}$. D2Q5 does not have enough nodes to satisfy these, but D2Q9 does.
+
+In cardiac electrophysiology, we solve diffusion (not Navier-Stokes), so D2Q5 and D3Q7 are sufficient. Using a minimal lattice saves both memory ($Q$ distributions per node) and computation (fewer collision and streaming operations per timestep).
+
+<h4>Lattice Speed of Sound and the $\tau$-$D$ Relationship</h4>
+
+For each lattice, there is a characteristic speed $c_s$ called the <strong>lattice speed of sound</strong>. From the isotropy condition (17.20) and the lattice geometry, we have:
+
+<div class="equation-block"><span class="equation-label">(17.26)</span>$$c_s^2 = \frac{c^2}{3}$$</div>
+
+
+The parameter $c_s$ plays a dual role. In the continuous Gaussian of Section 17.1, $c_s^2$ is the <strong>variance</strong> &mdash; it controls the width of the bell curve. On the lattice, this same $c_s$ becomes the <strong>lattice speed of sound</strong>, with the specific value $c_s^2 = c^2/3$ where $c = \Delta x / \Delta t$ is the lattice speed. This is not a coincidence: the lattice speed of sound is inherited directly from the variance of the Maxwellian that the lattice discretizes. Every time you see $c_s^2$ in an LBM formula &mdash; in the weights, in the equilibrium, in the $\tau$-$D$ relationship &mdash; it traces back to this Gaussian width.
+
+The speed of sound $c_s$ is just a lattice constant — it emerges from the geometry and isotropy conditions. However, it plays a crucial role in relating the relaxation time $\tau$ to the physical diffusivity $D$.
+
+Through Chapman-Enskog analysis, one can show that for the BGK collision operator applied to a diffusion problem, the relationship is:
+
+<div class="equation-block"><span class="equation-label">(17.27)</span>$$D = c_s^2 \left(\tau - \frac{\Delta t}{2}\right)$$</div>
+
+or, rearranging:
+
+<div class="equation-block"><span class="equation-label">(17.28)</span>$$\tau = \frac{\Delta t}{2} + \frac{D}{c_s^2}$$</div>
+
+Substituting $c_s^2 = c^2/3 = \Delta x^2 / (3 \Delta t^2)$:
+
+<div class="equation-block"><span class="equation-label">(17.29)</span>$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2}$$</div>
+
+This is the fundamental bridge between the discrete lattice parameter $\tau$ and the physical diffusivity $D$.
+
+<strong>Practical meaning:</strong> To solve a problem with a given physical diffusivity $D$, you:
+<ol>
+<li>Choose your spatial and temporal resolution: $\Delta x$ and $\Delta t$.</li>
+<li>Compute $\tau$ from equation (17.29).</li>
+<li>Use that $\tau$ in the collision step (equation 17.14).</li>
+</ol>
+
+Note the stability constraint: $\tau > \Delta t/2$ is required for stability. This places an upper bound on $D$ for a given $\Delta x$ and $\Delta t$. If you need very high diffusivity, you must either reduce $\Delta x$ or accept a smaller $\Delta t$, which increases the total number of timesteps.
+
+<div class="insight insight-warning">
+<strong>Stability Constraint:</strong> The requirement $\tau > \Delta t/2$ comes from the local truncation error analysis of the BGK collision operator. If $\tau \leq \Delta t/2$, the relaxation becomes too aggressive and unphysical oscillations grow. This is similar to the CFL condition in hyperbolic PDEs — it is a fundamental constraint on the simulation. For a fixed spatial grid, high diffusivity requires a small $\Delta t$, which can make the simulation expensive.
+</div>
+
+<h3>17.5 &ensp; Moment Space: The Physical Decomposition of the Collision Operator</h3>
+
+<h4>The Problem: What Does the Collision Operator Actually Conserve?</h4>
+
+Look again at the BGK collision equation we derived in Section 17.3:
+
+<div class="equation-block"><span class="equation-label">(17.32)</span>$$f_i^*(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
+
+This equation relaxes each distribution $f_i$ toward its equilibrium value $f_i^{\text{eq}}$, all at the same rate $1/\tau$. It works &mdash; we showed in Section 17.4 that the equilibrium was carefully designed to encode the right physics. But ask yourself: what <em>guarantees</em> that this relaxation conserves mass? What guarantees it produces the correct diffusion coefficient? What guarantees the stress tensor has the right symmetry?
+
+The answers are hiding inside $f^{\text{eq}}$, but equation (17.32) doesn't show them. Each $f_i$ is a single number that mixes together information about density, flux, stress, and energy &mdash; all tangled up. When BGK relaxes $f_1$ toward $f_1^{\text{eq}}$, it is simultaneously relaxing <em>every</em> physical quantity that $f_1$ carries, at the same rate. You can't see which conservation laws are being enforced, and you have no way to control them independently.
+
+Is there a way to <strong>see</strong> what physical laws the collision operator is actually enforcing &mdash; and to <strong>verify</strong> them directly?
+
+<h4>The Macroscopic PDE Dictates Which Moments Matter</h4>
+
+The answer starts not with the lattice, but with the PDE you are trying to solve. Consider the diffusion equation:
+
+<div class="equation-block"><span class="equation-label">(17.33)</span>$$\frac{\partial \phi}{\partial t} = \nabla \cdot (D \nabla \phi)$$</div>
+
+This PDE makes three specific physical demands, and each one maps to a weighted sum of the distributions:
+
+<strong>Demand 1 &mdash; Conservation of mass (or charge, or heat):</strong> The total amount of $\phi$ at a node does not change during collision. Only streaming moves $\phi$ between nodes. This means:
+
+<div class="equation-block"><span class="equation-label">(17.34)</span>$$\sum_{i=0}^{Q-1} f_i^* = \sum_{i=0}^{Q-1} f_i$$</div>
+
+The sum $\sum_i f_i$ is a weighted sum of the distributions with weight 1 for every direction. This is the <strong>zeroth moment</strong> &mdash; the simplest possible summary of the distributions. You take it because <em>mass conservation demands it</em>.
+
+<strong>Demand 2 &mdash; Fick's law (diffusive flux):</strong> The macroscopic flux must satisfy $\mathbf{J} = -D\nabla\phi$. In the lattice-Boltzmann framework, the flux emerges from:
+
+<div class="equation-block"><span class="equation-label">(17.35)</span>$$J_\alpha = \sum_{i=0}^{Q-1} c_{i\alpha} \, f_i$$</div>
+
+These sums weight each distribution by its velocity component $c_{i\alpha}$. They are the <strong>first moments</strong>. You take them because <em>Fick's law demands them</em> &mdash; the diffusion coefficient is encoded in how fast these flux quantities relax toward equilibrium.
+
+<strong>Demand 3 &mdash; Correct tensor structure:</strong> For the diffusion to be isotropic (or anisotropic in exactly the right way), the stress-like quantity:
+
+<div class="equation-block"><span class="equation-label">(17.36)</span>$$\Pi_{\alpha\beta} = \sum_{i=0}^{Q-1} c_{i\alpha} \, c_{i\beta} \, f_i$$</div>
+
+must have the correct symmetry. These are the <strong>second moments</strong>. You take them because <em>the diffusion tensor structure demands them</em>. For isotropic diffusion, $\Pi_{\alpha\beta}$ must be proportional to $\delta_{\alpha\beta}$ at equilibrium. For anisotropic diffusion, its structure must match the physical diffusion tensor.
+
+<div class="insight insight-intuition">
+<strong>The Rule:</strong> Each conservation law or transport property in your target PDE maps to a specific weighted sum of the $f_i$. These weighted sums <em>are</em> the moments. You don't choose them for mathematical convenience &mdash; the physics tells you which ones matter. If you are solving a diffusion equation, you need the zeroth moment (conservation), the first moments (flux), and the second moments (tensor structure). If you were solving Navier-Stokes, the same zeroth and first moments would enforce mass and momentum conservation, but the second moments would need to capture the viscous stress tensor, and you might need third- and fourth-order moments for the energy equation.
+</div>
+
+<h4>What Are Moments?</h4>
+
+The pattern is now clear. A <strong>moment</strong> is a weighted sum of the distribution functions, where the weights are chosen to extract a specific macroscopic quantity. In the most general form:
+
+<div class="equation-block"><span class="equation-label">(17.37)</span>$$m_k = \sum_{i=0}^{Q-1} M_{ki} \, f_i$$</div>
+
+where $M_{ki}$ is the weight that the $k$-th moment assigns to the $i$-th distribution. This is not unique to LBM &mdash; it is the same concept that appears across all of engineering:
+
+<ul>
+<li><strong>Zeroth moment</strong> ($M_{0i} = 1$ for all $i$): total density, total charge, total energy. The conserved quantity in any transport equation.</li>
+<li><strong>First moments</strong> ($M_{ki} = c_{i\alpha}$): momentum flux in fluids, diffusive flux in electrophysiology, heat flux in conduction. The direction and rate at which "stuff" moves.</li>
+<li><strong>Second moments</strong> ($M_{ki} = c_{i\alpha} c_{i\beta}$): the viscous stress tensor in fluid mechanics, the diffusion tensor in EP, the energy density in heat transfer. These control how transport varies with direction.</li>
+<li><strong>Higher moments</strong> ($M_{ki}$ involves cubic or higher products of $c_{i\alpha}$): in most diffusion and low-Mach flow problems, no conservation law requires them. They exist because the lattice has $Q$ degrees of freedom but only a few physical constraints. These are the <strong>ghost moments</strong> &mdash; mathematically necessary to fill out the $Q$-dimensional space, but carrying no macroscopic physical content.</li>
+</ul>
+
+<h4>Building M: Each Row Is a Conservation Law</h4>
+
+We can collect all the moment definitions into a single matrix equation:
+
+<div class="equation-block"><span class="equation-label">(17.38)</span>$$\mathbf{m} = \mathbf{M} \, \mathbf{f}$$</div>
+
+where $\mathbf{m} = (m_0, m_1, \ldots, m_{Q-1})^T$ is the vector of moments and $\mathbf{f} = (f_0, f_1, \ldots, f_{Q-1})^T$ is the vector of distributions. The matrix $\mathbf{M}$ is the <strong>transformation matrix</strong> &mdash; each row is the recipe for extracting one physical quantity from the distributions.
+
+For <strong>D2Q5</strong>, we have $Q = 5$ distributions and therefore need a $5 \times 5$ matrix. The rows are constructed directly from the physics:
+
+<table style="width:80%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Row</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Moment</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Physical meaning</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Why we need it</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\sum_i f_i$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Density (conserved scalar $\phi$)</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Mass/charge conservation</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\sum_i c_{ix} f_i$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$x$-flux</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Fick's law in $x$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\sum_i c_{iy} f_i$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$y$-flux</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Fick's law in $y$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\sum_i |\mathbf{c}_i|^2 f_i$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Energy</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Ghost &mdash; no PDE requires it</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\sum_i (c_{ix}^2 - c_{iy}^2) f_i$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Energy difference (stress trace)</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Ghost &mdash; no PDE requires it</td>
+</tr>
+</table>
+
+The explicit $5 \times 5$ matrix, using the D2Q5 velocity vectors $(c_{ix}, c_{iy})$ = $(0,0)$, $(1,0)$, $(-1,0)$, $(0,1)$, $(0,-1)$:
+
+<div class="equation-block"><span class="equation-label">(17.39)</span>$$\mathbf{M}_{\text{D2Q5}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 \\ 0 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 \end{pmatrix}$$</div>
+
+Read it row by row. Row 0: every entry is 1, so this row sums all $f_i$ &mdash; that's the density. Row 1: the entries are the $x$-components of the velocity vectors, so this row computes the $x$-flux. Row 2: the $y$-components &mdash; the $y$-flux. Rows 3 and 4: combinations of $c_{ix}^2$ and $c_{iy}^2$ that complete the basis. The first three rows are <em>demanded by the physics</em>. The last two rows are chosen to make $\mathbf{M}$ invertible (so we can transform back), but any linearly independent choice would work.
+
+For <strong>D3Q7</strong>, the $7 \times 7$ transformation matrix from the Rapaka et al. LBM-EP paper follows the same logic. With velocity ordering $(0,0,0)$, $(1,0,0)$, $(-1,0,0)$, $(0,1,0)$, $(0,-1,0)$, $(0,0,1)$, $(0,0,-1)$:
+
+<div class="equation-block"><span class="equation-label">(17.40)</span>$$\mathbf{M}_{\text{D3Q7}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 & 1 & -1 \\ -6 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 & 0 & 0 \\ 0 & 1 & 1 & 1 & 1 & -2 & -2 \end{pmatrix}$$</div>
+
+Rows 0&ndash;3: density and the three flux components ($x$, $y$, $z$) &mdash; required by mass conservation and Fick's law in 3D. Rows 4&ndash;6: ghost moments with no macroscopic counterpart, chosen to complete the $7 \times 7$ basis.
+
+<div class="insight insight-math">
+<strong>Why the ghost rows look arbitrary:</strong> The first rows of $\mathbf{M}$ are dictated by physics &mdash; row 0 must be all ones (density), rows 1&ndash;$D$ must use the velocity components (flux). The remaining $Q - 1 - D$ rows just need to be linearly independent from the physical rows. Different textbooks choose different ghost rows, and <em>all valid choices produce the same physical solution</em>. The ghost rows affect only numerical stability, not the macroscopic PDE that the scheme recovers.
+</div>
+
+<h4>The Round Trip: Rewriting the Collision Operator in Moment Space</h4>
+
+Now we have the tool to see inside the collision operator. The key idea is simple: instead of relaxing the $f_i$ directly (where every physical quantity is tangled together), we <strong>decode</strong> the distributions into moments, <strong>relax</strong> each moment separately, then <strong>re-encode</strong> back to distributions for streaming.
+
+<strong>Step 1 &mdash; Decode:</strong> Transform the distributions into moments:
+
+<div class="equation-block"><span class="equation-label">(17.41)</span>$$\mathbf{m} = \mathbf{M}\,\mathbf{f}$$</div>
+
+Now $m_0$ is the density, $m_1$ is the $x$-flux, $m_2$ is the $y$-flux, and so on. Each component has exactly one physical meaning.
+
+<strong>Step 2 &mdash; Decode the equilibrium too:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.42)</span>$$\mathbf{m}^{\text{eq}} = \mathbf{M}\,\mathbf{f}^{\text{eq}}$$</div>
+
+The equilibrium moments tell you the target state for each physical quantity. For the diffusion equilibrium $f_i^{\text{eq}} = w_i \phi$, the equilibrium density is $m_0^{\text{eq}} = \phi$ (all the field), the equilibrium fluxes are $m_1^{\text{eq}} = m_2^{\text{eq}} = 0$ (no net flow at equilibrium), and the ghost moments take whatever values $w_i$ and the lattice geometry dictate.
+
+<strong>Step 3 &mdash; Relax in moment space:</strong>
+
+<div class="equation-block"><span class="equation-label">(17.43)</span>$$\mathbf{m}^* = \mathbf{m} - \mathbf{S}\left(\mathbf{m} - \mathbf{m}^{\text{eq}}\right)$$</div>
+
+where $\mathbf{S} = \text{diag}(s_0, s_1, \ldots, s_{Q-1})$ is the <strong>relaxation matrix</strong>. Each diagonal entry $s_k$ controls how fast moment $k$ relaxes toward its equilibrium value. This is the step where the physics is enforced:
+
+<ul>
+<li>For the conserved moment (density): $s_0 = 0$. The density is never changed by collision &mdash; it is a conserved quantity. Setting $s_0 = 0$ means $m_0^* = m_0$ exactly, regardless of what happens to the other moments.</li>
+<li>For the flux moments: $s_1$ and $s_2$ control how fast the flux relaxes, which determines the diffusion coefficient. In the simplest case (isotropic BGK), $s_1 = s_2 = \Delta t / \tau$.</li>
+<li>For the ghost moments: $s_3, s_4, \ldots$ can be chosen freely &mdash; they do not affect the macroscopic PDE, only the numerical behavior of the scheme.</li>
+</ul>
+
+<strong>Step 4 &mdash; Re-encode:</strong> Transform back to distribution space:
+
+<div class="equation-block"><span class="equation-label">(17.44)</span>$$\mathbf{f}^* = \mathbf{M}^{-1}\,\mathbf{m}^*$$</div>
+
+Now $\mathbf{f}^*$ is ready for streaming. The distributions have been updated in a way that <em>explicitly</em> conserves density, <em>explicitly</em> relaxes flux at a controlled rate, and handles the ghost moments separately.
+
+<div class="insight insight-intuition">
+<strong>The destination vs. the journey:</strong> It is worth pausing to see how $f^{\text{eq}}$ and moment space play complementary roles. The equilibrium $f_i^{\text{eq}}$ defines the <strong>destination</strong> &mdash; the state the distributions are relaxing toward. It encodes <em>what</em> the physics looks like at equilibrium (isotropic for diffusion, velocity-biased for fluid flow). Moment space governs the <strong>journey</strong> &mdash; <em>how</em> the distributions get to that destination and <em>what is preserved along the way</em>. By decomposing the non-equilibrium deviation $\mathbf{f} - \mathbf{f}^{\text{eq}}$ into physically meaningful components, you can verify that conservation laws are respected, that transport coefficients are correct, and that numerical artifacts are controlled.
+</div>
+
+<h4>BGK Is a Special Case: All Dials Locked Together</h4>
+
+Here is the crucial connection. Set $\mathbf{S} = \frac{\Delta t}{\tau} \mathbf{I}$ (the identity matrix times a single rate). Then the moment-space collision (17.43) becomes:
+
+$$\mathbf{m}^* = \mathbf{m} - \frac{\Delta t}{\tau}\left(\mathbf{m} - \mathbf{m}^{\text{eq}}\right)$$
+
+and the full round trip is:
+
+$$\mathbf{f}^* = \mathbf{M}^{-1}\left[\mathbf{M}\mathbf{f} - \frac{\Delta t}{\tau}\mathbf{M}\left(\mathbf{f} - \mathbf{f}^{\text{eq}}\right)\right] = \mathbf{f} - \frac{\Delta t}{\tau}\left(\mathbf{f} - \mathbf{f}^{\text{eq}}\right)$$
+
+The $\mathbf{M}^{-1}$ and $\mathbf{M}$ cancel. We recover exactly the BGK equation (17.32). <strong>BGK was always operating in moment space</strong> &mdash; it just didn't need to make the round trip explicit because every moment was being relaxed at the same rate. The single $\tau$ locks all the dials together: conservation, transport, and ghost moments all receive the same treatment.
+
+This is why BGK works for isotropic diffusion: when $s_1 = s_2$, the $x$- and $y$-flux moments relax at the same rate, producing equal diffusion in all directions. And this is why BGK <em>cannot</em> produce anisotropic diffusion: there is no way to set $s_1 \neq s_2$ when $\mathbf{S}$ is constrained to be a scalar multiple of the identity.
+
+<div class="insight insight-warning">
+<strong>Conservation in BGK &mdash; a hidden accident:</strong> In BGK, the conserved moment (density) formally receives the same relaxation rate $s_0 = \Delta t / \tau$ as every other moment. But conservation is not violated &mdash; because $f^{\text{eq}}$ is designed so that $m_0^{\text{eq}} = m_0$ (the equilibrium density equals the actual density), the relaxation step computes $m_0^* = m_0 - \frac{\Delta t}{\tau}(m_0 - m_0) = m_0$. Conservation holds, but only because the equilibrium was carefully constructed to make it so. In the moment-space view, you enforce conservation <em>explicitly</em> by setting $s_0 = 0$ rather than relying on this cancellation.
+</div>
+
+<h4>What Each Moment Sees During Collision</h4>
+
+To make this concrete, consider a D2Q5 node mid-simulation. The distributions $f_i$ are some non-equilibrium state (a diffusion front is passing through). When we decode:
+
+<ul>
+<li>$m_0 = \sum_i f_i = \phi$ &mdash; the local voltage. After collision with $s_0 = 0$: $m_0^* = \phi$. Unchanged. Mass conservation enforced.</li>
+<li>$m_1 = \sum_i c_{ix} f_i = J_x$ &mdash; the $x$-flux. Non-zero because a diffusion front creates a gradient. After collision: $m_1^* = J_x - s_1 (J_x - 0) = (1 - s_1) J_x$. The flux decays toward zero (equilibrium has no net flux). The rate $s_1$ determines how fast &mdash; which sets the diffusion coefficient $D$.</li>
+<li>$m_2 = \sum_i c_{iy} f_i = J_y$ &mdash; same story for $y$.</li>
+<li>$m_3, m_4$ &mdash; the ghost moments. They relax too, but toward values dictated by the lattice weights, not by any conservation law. Their rates $s_3, s_4$ are free parameters.</li>
+</ul>
+
+This decomposition reveals the internal structure that equation (17.32) hides. You can now <strong>verify</strong> conservation (is $m_0$ really unchanged?), <strong>measure</strong> the flux relaxation rate (does it match your desired $D$?), and <strong>tune</strong> the ghost moments independently of the physics.
+
+<h4>Worked Example: One D2Q5 Collision in Both Spaces</h4>
+
+Let us make the round trip concrete with numbers. Consider a D2Q5 node with $\phi = 1.0$, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms, and isotropic diffusivity $D = 0.001$ cm$^2$/ms. From equation (17.29):
+
+$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2} = 0.005 + \frac{3(0.001)(0.01)}{0.000625} = 0.005 + 0.048 = 0.053 \text{ ms}$$
+
+so $\omega = \Delta t / \tau = 0.01 / 0.053 \approx 0.189$.
+
+Suppose the current distributions are (a diffusion front has created a slight asymmetry):
+
+$$\mathbf{f} = (0.340, \; 0.175, \; 0.155, \; 0.168, \; 0.162)^T$$
+
+Check: $\sum f_i = 1.000 = \phi$. Good. The equilibrium is $f_i^{\text{eq}} = w_i \phi = (1/3, \; 1/6, \; 1/6, \; 1/6, \; 1/6) \approx (0.333, \; 0.167, \; 0.167, \; 0.167, \; 0.167)$.
+
+<strong>BGK (distribution space):</strong>
+$$f_i^* = f_i - 0.189(f_i - f_i^{\text{eq}})$$
+
+Computing each component:
+
+<table style="width:80%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$f_i$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$f_i^{\text{eq}}$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$f_i - f_i^{\text{eq}}$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$f_i^*$</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.340</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.333</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.007</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.3387</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.175</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.167</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.008</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.1735</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.155</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.167</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">&minus;0.012</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.1573</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.168</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.167</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.001</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.1678</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.162</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.167</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">&minus;0.005</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.1629</td>
+</tr>
+</table>
+
+Check: $\sum f_i^* = 1.0002 \approx 1.000$. Conservation holds (the small deviation is rounding).
+
+<strong>Moment space (same collision, decoded):</strong>
+
+Apply $\mathbf{m} = \mathbf{M}\mathbf{f}$:
+
+<table style="width:80%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
+<tr style="background-color:#f0f0f0;">
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$k$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Moment</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$m_k$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$m_k^{\text{eq}}$</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$m_k^*$ ($s_k = \omega$)</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">Physical role</th>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\rho$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1.000</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1.000</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">1.000</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Conserved &mdash; unchanged</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">1</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$J_x$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.020</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.0162</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Flux decays &rarr; sets $D_x$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">2</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$J_y$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.006</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">+0.0049</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Flux decays &rarr; sets $D_y$</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">3</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$e$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.660</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.667</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0.6613</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Ghost &mdash; no PDE role</td>
+</tr>
+<tr>
+<td style="border:1px solid #333; padding:0.3em 0.5em; text-align:center;">4</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">$\epsilon$</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">&minus;0.000</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">&minus;0.000</td>
+<td style="border:1px solid #333; padding:0.3em 0.5em;">Ghost &mdash; no PDE role</td>
+</tr>
+</table>
+
+Now you can <em>see</em> the physics. The density ($m_0 = 1.000$) is untouched &mdash; conservation is enforced. The $x$-flux ($m_1 = 0.020$) relaxes toward zero at rate $\omega$ &mdash; this sets the diffusion coefficient. The ghost moments relax too, but they don't affect the macroscopic solution. In BGK, all moments happen to use the same $\omega$. In the moment-space view, you can verify each constraint independently.
+
+Applying $\mathbf{f}^* = \mathbf{M}^{-1}\mathbf{m}^*$ gives back the same $\mathbf{f}^*$ as the BGK calculation above &mdash; the round trip is exact.
+
+<div class="insight insight-intuition">
+<strong>What we have gained:</strong> The moment-space formulation does not change the physics &mdash; for BGK with a single $\tau$, the result is identical. What it changes is <strong>visibility</strong>. You can now see which quantity is conserved, which quantities control transport, and which quantities are free parameters with no physical role. This visibility is the foundation for everything that follows: anisotropic diffusion (relaxing $x$- and $y$-flux at different rates), stability tuning (adjusting ghost-moment rates without affecting the solution), and the full MRT collision operator.
+</div>
+
+<h4>What Comes Next</h4>
+
+We now have the complete theoretical framework for the lattice-Boltzmann method: the thermodynamic foundation (Section 17.1), the Boltzmann equation and BGK simplification (Section 17.2), the discrete lattice-Boltzmann equation (Section 17.3), the equilibrium distribution and its constraints on weights and velocities (Section 17.4), and the moment-space decomposition that reveals the physical content of the collision operator (Section 17.5). In the next chapter, we will put this machinery to work — the $f_i$ are our fundamental variables, and the BGK collision operator relaxes all of them at the same rate $1/\tau$. But there is a more revealing way to look at the same information. In Section 17.5 above, we transformed the distributions into <strong>moment space</strong>, — first by unlocking the moment-space relaxation rates to achieve anisotropic diffusion (Multiple Relaxation Time), then by applying LBM to the cardiac monodomain and bidomain equations.
+
+<div class="insight insight-intuition">
+<strong>Complete Reference Tables:</strong> Appendix A collects the velocity vectors $\mathbf{c}_i$ and weights $w_i$ for all standard lattices (D1Q3, D2Q5, D2Q9, D3Q7, D3Q19, D3Q27) in a single reference table. These are derived from the exactness conditions (17.18)&ndash;(17.20) and the lattice geometries described in this chapter.
+</div>
+
+
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 18 — LATTICE-BOLTZMANN METHODS FOR MONODOMAIN           -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="chapter">
+  <div class="chapter-number">Chapter 18</div>
+  <h2 class="chapter-title">Lattice-Boltzmann Methods for Monodomain</h2>
+  <div class="chapter-intro">
+    Chapter 17 built the LBM machinery from first principles: distribution functions, lattice geometry,
+    collision and streaming as fundamental operations, and the τ-D relationship that translates physical
+    diffusion coefficients into lattice parameters. Now we apply that machinery to the cardiac monodomain
+    equation. The key addition is surprisingly simple: an ionic source term that injects stimulus current
+    and ionic feedback into the particle system. This chapter focuses exclusively on this cardiac-specific
+    coupling, the five-stage timestep algorithm, performance trade-offs, and GPU implementation.
+  </div>
+
+  <h3>18.1 &ensp; From LBM Theory to Cardiac Practice</h3>
+
+  <p>
+    Chapter 17 showed that the distribution functions $f_i$ in LBM solve the diffusion equation through
+    collision (local relaxation) and streaming (nearest-neighbor shifts). For the cardiac monodomain equation
+    (equation 7.1), the only new ingredient is the <em>ionic source term</em> — the right-hand side of the
+    PDE that couples reaction (ionic model) to diffusion (LBM). This source is simply added to each collision
+    step, distributed among the distributions weighted by $w_i$.
+  </p>
+
+  <p>
+    The core advantage of LBM for cardiac tissue is that it requires no global linear solve. The diffusion
+    substep consists entirely of local operations (collision at each node) and nearest-neighbor shifts
+    (streaming). This is fundamentally different from FEM or implicit RK methods, which assemble and invert
+    large matrices. For GPU computation, where global communication is expensive and fine-grained data locality
+    is prized, this locality is transformative.
+  </p>
+
+  <h3>18.2 &ensp; The Ionic Source Term</h3>
+
+  <p>
+    The monodomain PDE (equation 7.1) couples diffusion and reaction:
+  </p>
+
+  <p style="text-align:center;">
+    $$\chi C_m \frac{\partial V_m}{\partial t} = \nabla \cdot (D \, \nabla V_m) - (I_{\text{ion}} + I_{\text{stim}})$$
+  </p>
+
+  <p>
+    In the operator-splitting framework (Chapter 8), the diffusion and reaction steps are solved separately.
+    For LBM, the diffusion step is handled by the collision and streaming of distributions. The reaction
+    step computes the ionic current $I_{\text{ion}}$ from the current voltage and gating variables, and
+    applies the stimulus $I_{\text{stim}}$. The coupling between them occurs through a source term in the
+    collision operator:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.1)</span>
+    $$S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m}$$
+  </div>
+
+  <p>
+    This source has units of voltage per unit time (mV/ms). It is injected into the collision step as
+    $\Delta t \, w_i \, S$ distributed to each direction $i$. This ensures:
+    <br/>
+    (1) The source is spread equally (by weight) across all distributions (isotropy).
+    <br/>
+    (2) The total injected voltage $\sum_i (\Delta t \, w_i \, S) = \Delta t \, S$ is conserved.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Physical interpretation.</strong> The source $S$ is like a faucet (or drain) at each node,
+      adding (or removing) voltage at a prescribed rate. In reality, this comes from ionic currents flowing
+      across the cell membrane. The LBM distributes this source equally among all particle directions, so
+      the injected voltage contributes equally to diffusion in all cardinal directions. This is correct for
+      isotropic diffusion; anisotropic tissue (fibers) is handled by MRT (Section 18.4).
+    </p>
+  </div>
+
+  <h3>18.3 &ensp; BGK Collision with Ionic Coupling</h3>
+
+  <p>
+    Recall from Chapter 17 (Section 17.3) that the BGK collision operator nudges each distribution toward
+    equilibrium at rate $\omega = 1/\tau$. For cardiac LBM, we simply add the ionic source term:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.2)</span>
+    $$f_i^* = f_i - \omega\,(f_i - w_i\,V) + \Delta t\,w_i\,S$$
+  </div>
+
+  <p>
+    The first two terms are pure diffusion (the standard BGK relaxation from Chapter 17). The third term
+    injects the ionic source. After collision, streaming (equation 17.15 in Chapter 17) shifts each
+    distribution $f_i^*$ one lattice spacing in direction $\mathbf{e}_i$. No new mathematical machinery is
+    required — it is a straightforward addition of a source term to the relaxation equation.
+  </p>
+
+  <p>
+    The τ-D relationship (equation 17.29 in Chapter 17) remains unchanged:
+    $\tau = 0.5 + 3D\Delta t/\Delta x^2$, which governs $\omega = 1/\tau$. Stability is guaranteed
+    for any $\tau > 0.5$, which holds for any positive $D$.
+  </p>
+
+  <h3>18.4 &ensp; MRT for Anisotropic Tissue</h3>
+
+  <p>
+    Cardiac tissue conducts faster along fibers than across them (1:3–1:4 anisotropy ratio). BGK, which uses
+    a single relaxation rate $\omega$ for all directions, produces only isotropic diffusion. To capture
+    anisotropy, we use MRT (Multiple Relaxation Time), introduced in Chapter 17 (Section 17.5).
+  </p>
+
+  <p>
+    MRT transforms the distributions into moment space using a matrix $\mathbf{M}$, applies directional
+    relaxation rates $\tau_x$ and $\tau_y$ (one per axis), then transforms back. For an arbitrary fiber angle
+    $\theta$, the diffusion tensor is rotated:
+  </p>
+
+  <p style="text-align:center;">
+    $D_{xx} = D_f \cos^2\theta + D_c \sin^2\theta$, &ensp;
+    $D_{yy} = D_f \sin^2\theta + D_c \cos^2\theta$
+  </p>
+
+  <p>
+    where $D_f$ and $D_c$ are along-fiber and cross-fiber coefficients. Then $\tau_x$ and $\tau_y$ are
+    computed from the τ-D relationship (equation 17.29) using $D_{xx}$ and $D_{yy}$ respectively. The full
+    boxed collision equation (with source term) is:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.3)</span>
+    $$\boxed{\mathbf{f}^* = \mathbf{f} - \mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr) + \Delta t\,\mathbf{w}\,S}$$
+  </div>
+
+  <p>
+    where $\mathbf{S} = \text{diag}(0, 1/\tau_x, 1/\tau_y, 1.0, 1.0)$ for D2Q5, with higher moments set to 1.0
+    for stability. This is a straightforward extension of the BGK source term — the source vector $\Delta t\,\mathbf{w}\,S$
+    is appended to the moment-space relaxation, exactly as in BGK. See Chapter 17 (Section 17.5) for the full
+    derivation of the M matrix and moment-space transformation.
+  </p>
+
+  <h3>18.5 &ensp; The Complete LBM-EP Timestep</h3>
+
+  <p>
+    One full timestep of a cardiac LBM simulation integrates both the ionic model (reaction) and the diffusion.
+    Using Godunov splitting (Chapter 8), the ionic step runs first, then diffusion. The five-stage algorithm
+    is the exact sequence the code executes:
+  </p>
+
+  <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
+    <span class="equation-label">(18.4)</span>
+    <p style="margin:0 0 10px 0; font-weight:bold;">Complete LBM-EP step (BGK or MRT):</p>
+    $$\begin{aligned}
+      &\textbf{1. Ionic:} &&I_{\text{ion}} = \text{IonicModel.compute\_Iion}(V, \mathbf{s}); \quad \text{update } \mathbf{s} \\[4pt]
+      &\textbf{2. Source:} &&S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m} \\[4pt]
+      &\textbf{3. Collide:} &&f_i^* = f_i - \omega\,(f_i - w_i\,V) + \Delta t\,w_i\,S \quad \text{(or MRT eq. 18.3)} \\[4pt]
+      &\textbf{4. Stream:} &&f_i(\mathbf{x} + \mathbf{e}_i) \leftarrow f_i^*(\mathbf{x}) \quad \forall\, i \\[4pt]
+      &\textbf{5. Recover:} &&V^{n+1} = \textstyle\sum_i f_i \quad \text{(apply bounce-back on boundaries)}
+    \end{aligned}$$
+  </div>
+
+  <p>
+    Steps 3–5 constitute the diffusion solver. Note the absence of matrix assembly, matrix-vector products,
+    or iterative convergence checks. This is why LBM achieves its speed advantage on GPUs.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example.</strong> For cardiac tissue with $D = 0.001$ cm$^2$/ms, $\Delta x = 0.025$ cm,
+      $\Delta t = 0.01$ ms: $\tau = 0.5 + 3 \times 0.001 \times 0.01 / 0.025^2 = 0.548$, so $\omega = 1/0.548 = 1.825$.
+      Consider a node with $V = -85$ mV, all distributions at equilibrium, and a stimulus $I_{\text{stim}} = -52\;\mu$A/$\mu$F
+      (with $I_{\text{ion}} = 0$, $\chi = 1400$ cm$^{-1}$, $C_m = 1\;\mu$F/cm$^2$).
+      <br/>
+      Then $S = 52 / 1400 = 0.0371$ mV/ms.
+      <br/>
+      After collision: $f_0^* = f_0 + 0.01 \times \frac{1}{3} \times 0.0371 \approx f_0 + 1.24 \times 10^{-4}$.
+      <br/>
+      After streaming and recovery: $V^{n+1} = \sum f_i \approx -85 + 0.01 \times 0.0371 = -84.9996$ mV.
+      The stimulus produces a tiny depolarization in one 0.01 ms step, as expected.
+    </p>
+  </div>
+
+  <h3>18.6 &ensp; LBM vs. Classical Methods: When to Choose What</h3>
+
+  <p>
+    LBM, explicit methods (Chapter 9), and implicit methods (Chapter 10) each have distinct trade-offs:
+  </p>
+
+  <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
+    <thead>
+      <tr style="background:#f0f0f0;">
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Aspect</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Explicit (Ch 9)</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Implicit (Ch 10)</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">LBM-BGK</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">Linear solve?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (PCG/FFT)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd;">CFL-limited?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes ($\Delta t \leq h^2/2d$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No ($\tau > 0.5$ always)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">Anisotropy?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via matrix</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via matrix</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">BGK = isotropic; MRT = anisotropic</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd;">Unstructured mesh?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (FEM)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (FEM)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No (Cartesian only)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">GPU suitability</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Good (matvec)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Fair (global reductions)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Excellent (zero sync)</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd;">Memory per node</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float ($V$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float + sparse $\mathbf{A}$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">5–7 floats ($f_i$)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">Typical use</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Coarse mesh, small $\Delta t$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Fine mesh, larger $\Delta t$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">GPU throughput, parameter sweeps</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    <strong>When to use LBM:</strong> GPU hardware, Cartesian grids, anisotropic tissue (with MRT), and when
+    throughput (simulations per unit time) matters more than memory. The Rapaka et al. (2012) paper on
+    LBM-EP achieved 8.75× speedup on synthetic slabs and 45× on patient-specific geometries, all on a single
+    CPU core. On modern GPUs without any optimization, the advantage is even larger because LBM eliminates the
+    global synchronization points that slow down PCG solvers.
+  </p>
+
+  <h3>18.7 &ensp; GPU Acceleration and the Engine V5.4 Implementation</h3>
+
+  <p>
+    LBM is a textbook example of SIMD parallelism: every node performs the same collision and streaming
+    operations in lockstep. There are no global data dependencies, no reduce operations, no convergence
+    criteria — each GPU thread is completely independent. On modern GPUs, this translates to near-peak
+    memory bandwidth utilization and minimal synchronization overhead.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the LBM monodomain solver is in the <code>cardiac_sim.simulation.lbm</code> package.
+      The lattice definitions (<code>D2Q5</code>, <code>D3Q7</code>) are frozen dataclasses holding weights,
+      velocity vectors, and the τ-D conversion formula. Collision operators (<code>BGKCollision</code>,
+      <code>MRTCollision</code>) inherit from <code>CollisionOperator(ABC)</code> and implement the update step
+      (equation 18.2 or 18.3). The <code>LBMState</code> container holds the distribution tensor
+      $\mathbf{f}$ (shape $Q \times N_x \times N_y$ for 2D), voltage $V$, ionic states $\mathbf{s}$, and
+      the domain mask. The <code>LBMSimulation</code> class orchestrates the five-step loop: call
+      <code>collision.collide(f, V, source, dt)</code>, apply <code>state.stream()</code> (one
+      <code>torch.roll</code> per direction), <code>state.apply_bounce_back()</code>, and finally
+      <code>state.recover_voltage()</code> to compute $V = \sum f_i$. The ionic substep is identical
+      to the classical path — only the diffusion step changes. Factory functions
+      <code>create_isotropic_bgk(D, dx, dt)</code> and
+      <code>create_anisotropic_mrt(D_fiber, D_cross, fiber_angle, dx, dt)</code> handle initialization.
+    </p>
+  </div>
+
+  <p>
+    With the monodomain LBM now complete, we turn to its greatest challenge: the bidomain system. The
+    parabolic intracellular equation can be solved by LBM, but the elliptic extracellular equation has no time
+    dependence — it is a constraint that must be satisfied at every instant. Chapter 19 develops three strategies
+    to overcome this fundamental obstacle: pseudo-time relaxation, hybrid LBM–classical solvers, and the
+    dual-lattice architecture.
+  </p>
+</div>
+
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 19 — LATTICE-BOLTZMANN FOR BIDOMAIN                     -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="chapter">
+  <div class="chapter-number">Chapter 19</div>
+  <h2 class="chapter-title">Lattice-Boltzmann Methods for Bidomain</h2>
+  <div class="chapter-intro">
+    Engine V5.4's LBM solver achieves 10–45× speedups over FEM for the monodomain equation. Can this advantage be preserved for bidomain? Yes — but the elliptic equation requires creative treatment. This chapter develops the core strategies: pseudo-time relaxation, hybrid LBM–classical solvers, and the dual-lattice architecture that couples two independent distribution systems. We show how to extend the computational fiction of particle distributions to solve problems with fundamentally different mathematical structure.
+  </div>
+
+  <h3>19.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Imagine two fish tanks connected by pipes: an intracellular tank (inside the cells) and an extracellular tank (outside the cells). Water flows from one tank to the other through countless tiny pipes — the ion channels. The voltage across the cell membrane is the water-level difference. Now here is the key: the intracellular voltage evolves over time (it changes as currents flow), so it satisfies a time-dependent equation. But the extracellular voltage is constrained to always satisfy a balance — at every instant, whatever current flows out of the intracellular space must flow through the external medium. This constraint is instantaneous, with no time dependence. One tank's level evolves; the other's is a slave variable determined by the constraint.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The bidomain equations (from Chapter 12) are:
+  </p>
+
+  <div class="equation-block">
+    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} + I_{\text{ion}} = \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla\phi_e)$$
+  </div>
+
+  <div class="equation-block">
+    $$0 = \nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
+  </div>
+
+  <p>
+    The first equation is <em>parabolic</em> — it has a time derivative, so it describes an evolution. The second is <em>elliptic</em> — no time derivative at all. It is a constraint that must be satisfied at every instant. LBM, by its nature, is a time-marching method: it evolves distributions forward in time. This is perfect for the parabolic equation but fundamentally at odds with the elliptic constraint.
+  </p>
+
+  <p>
+    The core mismatch is this: LBM asks "How do the distributions evolve?" But the elliptic equation says "The distributions must be such that this constraint is satisfied right now." These are two different questions. Resolving the tension between them — evolution versus constraint — is the central challenge of bidomain LBM.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of the monodomain equation (Chapter 18) as a single fish tank with a changing water level. LBM marches the level forward in time with each step. The bidomain is two tanks. The intracellular tank (Vm) still evolves. But the extracellular tank (φe) is not free to evolve — its level is pinned down by the requirement that water conservation is always satisfied. This is why φe is an elliptic equation: it is an instantaneous constraint, not a time-evolution equation.
+    </p>
+  </div>
+
+  <h3>19.2 &ensp; Strategy 1: Pseudo-Time Relaxation</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    If you heat a cold metal plate in a furnace with a fixed pattern of heat sources, the temperature rises over time. Eventually it reaches a steady state where the heat input exactly balances the heat loss through the edges. The temperature at that steady state is determined by the heat sources alone — it is independent of the initial condition or the "time" you waited. In mathematics, finding this steady state is the same as solving the elliptic equation that governs heat diffusion in equilibrium.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    Pseudo-time relaxation exploits this observation. We cannot use LBM directly on an elliptic equation because there is no time-derivative to march. But we can invent a fictitious time — call it $\tau$ (not to be confused with the relaxation time parameter) — and add an artificial time derivative to the elliptic equation:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.1)</span>
+    $$\frac{\partial\phi_e}{\partial\tau} = \nabla\!\cdot\!\bigl[(\mathbf{D}_i\!+\!\mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
+  </div>
+
+  <p>
+    This is now a parabolic equation in the pseudo-time $\tau$. We march it with LBM in pseudo-time for many sub-iterations until the solution settles to a steady state, meaning $\partial\phi_e/\partial\tau$ becomes negligibly small. At that point, the solution is the same as what the elliptic equation demands — the constraint is satisfied.
+  </p>
+
+  <p>
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.29):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.2)</span>
+    $$\tau_e = \frac{1}{2} + \frac{3\,(\mathbf{D}_i + \mathbf{D}_e)\,\Delta\tau}{\Delta x^2}$$
+  </div>
+
+  <p>
+    where $\Delta\tau$ is the pseudo-time step size and the conductivity is $\mathbf{D}_i + \mathbf{D}_e$ (the sum of intracellular and extracellular tensors, as required by the elliptic equation).
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      The convergence speed depends on $\tau_e$ (which determines the collision rate) and on the geometry of the domain. A larger $\tau_e$ means gentler relaxation and slower convergence. Typical practice is to use a moderately large $\tau_e$ (around 0.8–1.5) to balance stability with speed. The number of pseudo-time sub-iterations per physical time step is usually 10–100, depending on the desired residual reduction. With multigrid acceleration (not detailed here), this can be reduced to 5–10 iterations.
+    </p>
+  </div>
+
+  <h3>19.3 &ensp; Strategy 2: Hybrid LBM–Classical Solver</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    You would not use a hammer to write on paper — you use a pen. And you would not use a pen to drive nails — you use a hammer. The principle is simple: use the right tool for the job. LBM is superb at time-marching parabolic equations on Cartesian grids with GPUs. Classical solvers (conjugate gradient with multigrid preconditioning) are superb at solving elliptic systems exactly (or nearly exactly) without iteration over a fictitious time.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The hybrid approach splits the labor:
+  </p>
+
+  <ul>
+    <li><strong>$V_m$ equation (parabolic)</strong>: Use LBM with MRT collision (as in monodomain). Advance it by one physical time step.</li>
+    <li><strong>$\phi_e$ equation (elliptic)</strong>: Use a classical solver — Conjugate Gradient (CG) preconditioned by Algebraic Multigrid (AMG). Solve it directly to a tight tolerance.</li>
+  </ul>
+
+  <p>
+    At each physical time step:
+  </p>
+
+  <ol>
+    <li>Compute ionic currents and update gates (Rush–Larsen).</li>
+    <li>March $V_m$ forward one LBM step using the $V_m$ distribution lattice.</li>
+    <li>Assemble the right-hand side for the elliptic $\phi_e$ equation, which includes the $V_m$ gradient (now known from step 2) and the stimulus term.</li>
+    <li>Solve the elliptic system $\nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] = \cdots$ using CG+AMG, yielding $\phi_e$.</li>
+    <li>Feed $\phi_e$ back as a source term for the next step's $V_m$ equation.</li>
+  </ol>
+
+  <p>
+    The key advantage: avoiding the pseudo-time convergence loop. The classical solver reaches machine precision in 10–30 iterations (typically much faster than 100 pseudo-time iterations). The tradeoff: data must be transferred between the LBM lattice (which lives on a Cartesian GPU grid) and the classical solver's matrix assembly (which may involve FEM or FDM operators).
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      The hybrid approach requires careful bookkeeping of the gradient $\nabla V_m$ on the LBM lattice and its transfer to the classical solver. One way to do this: compute $\nabla V_m$ on the Cartesian grid using finite differences (natural in LBM since we have nearest-neighbor data), then pass this to the classical solver's RHS assembly. The solver can run on the same grid (FDM) or on a finer/coarser grid (via interpolation operators) to trade memory for accuracy.
+    </p>
+  </div>
+
+  <h3>19.4 &ensp; The Dual-Lattice Architecture</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Instead of mixing tools, use two of the same tool — but in different modes. Imagine having two bookkeepers, each tracking inventory for different tanks. Tank 1's bookkeeper (Lattice 1) evolves the intracellular voltage. Tank 2's bookkeeper (Lattice 2) repeatedly adjusts the extracellular potential until the water-balance constraint is met. They hand notes to each other at the end of each physical time step, telling each other what changed.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The dual-lattice architecture maintains two independent LBM lattices, each solving its own equation:
+  </p>
+
+  <ul>
+    <li><strong>Lattice 1</strong>: Distribution functions $f_i^{(m)}(\mathbf{x}, t)$ solving the parabolic $V_m$ equation.
+    Relaxation time $\tau_m$ encodes the intracellular diffusivity $\mathbf{D}_i$.</li>
+    <li><strong>Lattice 2</strong>: Distribution functions $f_i^{(e)}(\mathbf{x}, t)$ solving the pseudo-time-augmented $\phi_e$ equation.
+    Relaxation time $\tau_e$ encodes the sum $\mathbf{D}_i + \mathbf{D}_e$.</li>
+  </ul>
+
+  <p>
+    The two lattices are coupled through source terms. The source for Lattice 1 includes the gradient of $\phi_e$ (the extracellular potential) plus the ionic current. The source for Lattice 2 includes the gradient of $V_m$ plus the stimulus:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.3)</span>
+    $$f_i^{(m)*} = f_i^{(m)} - \omega_m\,(f_i^{(m)} - f_i^{(m)\text{eq}}) + \Delta t\,w_i\,\bigl[\text{ionic term} + \text{coupling to } \phi_e\bigr]$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.4)</span>
+    $$f_i^{(e)*} = f_i^{(e)} - \omega_e\,(f_i^{(e)} - f_i^{(e)\text{eq}}) + \Delta\tau\,w_i\,\bigl[\text{coupling to } V_m + \text{stimulus}\bigr]$$
+  </div>
+
+  <p>
+    The algorithm at each physical time step is:
+  </p>
+
+  <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
+    <p style="margin:0 0 10px 0; font-weight:bold;">Dual-Lattice Bidomain LBM Timestep:</p>
+    $$\begin{aligned}
+      &\textbf{1. Reaction:} &&\text{Ionic currents and state updates (Rush–Larsen)} \\[4pt]
+      &\textbf{2. Vm update:} &&\text{One LBM step on Lattice 1 (physical time step } \Delta t\text{)} \\[4pt]
+      &\textbf{3. φ}_e\textbf{ convergence:} &&\text{Iterate Lattice 2 until } \frac{\partial\phi_e}{\partial\tau} \text{ is negligible} \\[4pt]
+      &\textbf{4. Source exchange:} &&\text{Compute coupling terms for the next physical step}
+    \end{aligned}$$
+  </div>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example outline.</strong> Suppose at the start of a timestep: $V_m$ is known (say, $-85$ mV at most nodes), and $\phi_e$ is at its previous steady state. We compute ionic currents (depends on $V_m$ and gates). Lattice 1 takes one LBM step, advancing $V_m$ to $-84$ mV (approximately). Now $V_m$ has changed, so the constraint for $\phi_e$ has changed (because the RHS includes $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$). Lattice 2 then iterates in pseudo-time, re-adjusting $\phi_e$ at every node until the new steady state is reached. This typically takes 10–50 pseudo-time iterations. Once converged, Lattice 1 knows the new $\phi_e$ value for the next physical step's source term.
+    </p>
+  </div>
+
+  <!-- Layer 3: Architecture comparison -->
+  <p>
+    How do the three strategies compare?
+  </p>
+
+  <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
+    <thead>
+      <tr style="background:#f0f0f0;">
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Architecture</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$V_m$ Solver</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\phi_e$ Solver</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Pros</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Cons</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>A: Dual-Lattice</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM (pseudo-time)</td>
+        <td style="padding:6px; border:1px solid #ddd;">Pure LBM; maximal GPU parallelism; unified code path</td>
+        <td style="padding:6px; border:1px solid #ddd;">Pseudo-time convergence overhead (typically 20–100 sub-iterations)</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>B: Hybrid</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">CG+AMG</td>
+        <td style="padding:6px; border:1px solid #ddd;">Optimal solver for each PDE type; fewer iterations for $\phi_e$</td>
+        <td style="padding:6px; border:1px solid #ddd;">Data transfer overhead between LBM and classical grids</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>C: Full Classical</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
+        <td style="padding:6px; border:1px solid #ddd;">Mature solver ecosystem; handles unstructured meshes</td>
+        <td style="padding:6px; border:1px solid #ddd;">Slower than LBM for parabolic; matrix assembly overhead</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Architecture A (dual-lattice) is the most elegant and maximizes GPU utilization. It is the natural choice for research and exploration. Architecture B (hybrid) trades elegance for robustness: it leverages decades of optimization in multigrid solvers and avoids the pseudo-time convergence cost. In practice, Architecture A is recommended as the starting point for Engine V5.4, with Architecture B as a fallback.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      Engine V5.4 already has the infrastructure for Lattice 1: the D3Q7 lattice definitions, the MRT collision operator, and the torch-based streaming and recovery. For Lattice 2, you need: (1) a second set of distribution arrays $f_i^{(e)}$, (2) a pseudo-time loop that iterates until convergence (checking $\|\partial\phi_e/\partial\tau\|$ after each step), (3) source term construction that couples $V_m$ gradients from Lattice 1 into Lattice 2's collision. The factory functions can be extended: <code>create_dual_lattice_bidomain(D_i, D_e, dx, dt)</code> would initialize both lattices and return a <code>DualLatticeBidomainSolver</code> object with methods <code>step_reaction()</code>, <code>step_vm()</code>, <code>converge_phi_e(residual_tol)</code>.
+    </p>
+  </div>
+
+  <h3>19.5 &ensp; Performance and Implementation Outlook</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    How much faster is bidomain LBM than classical bidomain solvers? That depends on how much time the classical solver spends on the elliptic solve. If the elliptic solve is fast (because the domain is simple or multigrid works well), then the speedup is modest. If the elliptic solve dominates, then LBM's advantage is large.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    Based on the literature for monodomain LBM (which achieves 10–45× speedup over FEM) and accounting for the added cost of the elliptic $\phi_e$ equation, estimated performance ranges for bidomain LBM are:
+  </p>
+
+  <ul>
+    <li><strong>Dual-Lattice (Architecture A)</strong>: 5–20× speedup over classical FEM bidomain, depending on the pseudo-time convergence rate and domain geometry. The lower end occurs when pseudo-time takes many iterations; the upper end occurs on simple geometries or with multigrid acceleration of the pseudo-time loop.</li>
+    <li><strong>Hybrid (Architecture B)</strong>: 3–10× speedup. The elliptic solve using AMG is already near-optimal, so gains come mainly from the LBM parabolic solve and from avoiding the global reductions (inner products) required by iterative classical solvers.</li>
+  </ul>
+
+  <p>
+    Memory overhead: Each architecture stores two voltage fields ($V_m$ and $\phi_e$) plus either one or two lattices. The dual-lattice uses $2Q$ floats per node (two sets of $Q$ distributions); the hybrid uses $Q$ floats plus the classical solver's matrix storage. For a 3D grid with D3Q7 ($Q=7$), the dual-lattice costs 14 floats per node — manageable on modern GPUs with 24–80 GB.
+  </p>
+
+  <!-- Layer 3: Implementation path -->
+  <p>
+    The recommended implementation path for Engine V5.4:
+  </p>
+
+  <ol>
+    <li><strong>Phase 1:</strong> Extend the existing LBM infrastructure to support dual lattices. Test on a simple 2D domain with uniform conductivity.</li>
+    <li><strong>Phase 2:</strong> Implement pseudo-time convergence checks and convergence acceleration (e.g., line-by-line SOR, incomplete factorization).</li>
+    <li><strong>Phase 3:</strong> Add the hybrid solver as an alternative path: call external AMG libraries (AMGX on GPU, Hypre on CPU).</li>
+    <li><strong>Phase 4:</strong> Benchmark against classical FEM bidomain solvers on realistic geometries and compare accuracy and wall-clock time.</li>
+    <li><strong>Phase 5:</strong> Extend to anisotropic conductivity (different $D_f$ and $D_c$ for intracellular and extracellular spaces) using MRT on both lattices.</li>
+  </ol>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Recommended starting point for Engine V5.4:</strong> Implement Architecture A (dual-lattice) first. The pseudocode:
+    </p>
+    <pre style="background:#f5f5f5; padding:10px; border-radius:4px; overflow-x:auto;"><code>
+class DualLatticeBidomainLBMSolver(ABC):
+    def __init__(self, D_i, D_e, dx, dt, ionic_model):
+        self.lattice_vm = LBMLattice(D_i, dx, dt)
+        self.lattice_phi_e = LBMLattice(D_i + D_e, dx, dt_pseudo)
+        self.ionic = ionic_model
+
+    def step(self, V_m, phi_e, I_stim, residual_tol=1e-6):
+        # Step 1: Ionic
+        I_ion, gates = self.ionic.step(V_m)
+
+        # Step 2: V_m LBM
+        source_vm = -(I_ion + I_stim) / (chi * Cm)
+        source_vm += gradient_phi_e  # coupling term
+        V_m = self.lattice_vm.step(source_vm)
+
+        # Step 3: phi_e convergence (pseudo-time loop)
+        source_phi_e = -gradient(D_i @ gradient(V_m)) + I_stim_e
+        phi_e = self.lattice_phi_e.converge(source_phi_e, tol=residual_tol)
+
+        return V_m, phi_e, gates
+    </code></pre>
+    <p>
+      Extend <code>LBMLattice</code> (already in the codebase for monodomain) to support pseudo-time iteration with convergence checks. Reuse the collision operator; only the time step size and convergence criterion change.
+    </p>
+  </div>
+
+  <p>
+    With the completion of Part IV (Chapters 17–19), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
+  </p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="chapter">
+  <div class="chapter-number">Appendix A</div>
+  <h2 class="chapter-title">A Visual Guide to Differential Equations</h2>
+  <div class="chapter-intro">
+    This appendix steps back from the bidomain model to build a deep, visual intuition for the three fundamental types of partial differential equations: parabolic, elliptic, and hyperbolic. We begin with the heat equation — the simplest and most intuitive PDE — and use it as a lens to understand all three families. The style here follows the philosophy of 3Blue1Brown: start with a concrete picture, build understanding layer by layer, and let the math emerge naturally from the intuition.
+  </div>
+
+  <h3>A.1 &ensp; The Heat Equation: Where It All Begins</h3>
+
+  <p>
+    Imagine you have a thin metal rod. You heat one spot in the middle with a blowtorch, creating a sharp temperature peak, and then you turn off the blowtorch. What happens?
+  </p>
+
+  <p>
+    You already know the answer intuitively: the hot spot cools down, and the warmth spreads outward into the cooler parts of the rod. Over time, the temperature profile gets smoother and flatter, until eventually the whole rod reaches a uniform temperature. This simple physical process — heat spreading from hot regions to cold regions — is described by one of the most important equations in all of mathematics:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.1)</span>
+    $$\frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}$$
+  </div>
+
+  <p>
+    This is the <strong>heat equation</strong> in one dimension. Here $u(x,t)$ is the temperature at position $x$ and time $t$, and $\alpha > 0$ is the <em>thermal diffusivity</em> — a material property that tells you how quickly heat spreads (copper has high $\alpha$; wood has low $\alpha$).
+  </p>
+
+  <p>
+    But what does this equation actually <em>say</em>? Let us read it like a sentence.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Reading the heat equation as English:</strong> "The rate at which the temperature changes at a point ($\partial u/\partial t$) is proportional to how much that point's temperature differs from the average of its neighbors ($\partial^2 u/\partial x^2$)." If a point is hotter than its surroundings, it cools down. If it is cooler, it warms up. The equation says nothing more — and nothing less — than this.
+    </p>
+  </div>
+
+  <p>
+    This is the fundamental insight, and it is worth dwelling on. The second derivative $\partial^2 u/\partial x^2$ is not just a mathematical abstraction — it measures <em>concavity</em>. At a temperature peak (concave down), the second derivative is negative, so $\partial u/\partial t < 0$: the temperature decreases. At a temperature valley (concave up), the second derivative is positive, so $\partial u/\partial t > 0$: the temperature increases. The heat equation is a machine that relentlessly destroys peaks and fills valleys.
+  </p>
+
+  <!-- SVG: Heat diffusion evolution -->
+  <div class="figure">
+    <svg viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
+      <!-- Axes -->
+      <line x1="50" y1="210" x2="490" y2="210" stroke="#5a6175" stroke-width="1.2"/>
+      <line x1="50" y1="210" x2="50" y2="20" stroke="#5a6175" stroke-width="1.2"/>
+      <text x="270" y="235" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">position $x$</text>
+      <text x="30" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175" transform="rotate(-90,30,115)">temperature $u$</text>
+      <!-- t=0: sharp peak -->
+      <path d="M 60,200 Q 150,200 200,195 Q 230,185 250,80 Q 260,35 270,80 Q 290,185 320,195 Q 370,200 480,200" fill="none" stroke="#e94560" stroke-width="2.5"/>
+      <text x="285" y="48" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">t = 0</text>
+      <!-- t=1: spreading -->
+      <path d="M 60,198 Q 140,196 190,185 Q 225,165 250,115 Q 265,85 270,115 Q 295,165 330,185 Q 380,196 480,198" fill="none" stroke="#d35400" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="340" y="170" font-family="EB Garamond,serif" font-size="11" fill="#d35400" font-weight="600">t = 1</text>
+      <!-- t=3: broad and flat -->
+      <path d="M 60,194 Q 130,190 180,180 Q 220,168 250,152 Q 265,145 270,152 Q 300,168 340,180 Q 390,190 480,194" fill="none" stroke="#e67e22" stroke-width="1.8" stroke-dasharray="3,3"/>
+      <text x="385" y="175" font-family="EB Garamond,serif" font-size="11" fill="#e67e22" font-weight="600">t = 3</text>
+      <!-- t=10: nearly flat -->
+      <path d="M 60,192 Q 150,190 220,187 Q 255,185 270,184 Q 285,185 330,187 Q 400,190 480,192" fill="none" stroke="#f39c12" stroke-width="1.5" stroke-dasharray="2,4"/>
+      <text x="420" y="182" font-family="EB Garamond,serif" font-size="11" fill="#f39c12" font-weight="600">t = 10</text>
+      <!-- Annotation arrow -->
+      <path d="M 270,60 L 270,100" fill="none" stroke="#888" stroke-width="0.8" marker-end="url(#arr)"/>
+      <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker></defs>
+      <text x="270" y="106" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#888">peak decays</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.1.</span> A sharp temperature peak (red) diffuses over time, becoming broader and flatter. The heat equation smooths all discontinuities — information about the initial sharp shape is irreversibly lost.</div>
+  </div>
+
+  <p>
+    Notice three properties that are visible even from the picture:
+  </p>
+
+  <ol>
+    <li><strong>Smoothing.</strong> The solution gets smoother over time. A sharp corner at $t=0$ becomes an infinitely smooth curve at any $t>0$. The heat equation is a "smoothing machine."</li>
+    <li><strong>Irreversibility.</strong> You cannot run time backwards and recover the sharp peak from the flat profile. Information is destroyed. (Mathematically: the backwards heat equation is ill-posed.)</li>
+    <li><strong>Maximum principle.</strong> The hottest point at any later time is never hotter than the hottest point at $t=0$. Diffusion can only reduce extremes, never amplify them.</li>
+  </ol>
+
+  <p>
+    These three properties — smoothing, irreversibility, and a maximum principle — are the <em>defining fingerprint</em> of <strong>parabolic</strong> equations. Every parabolic PDE shares them.
+  </p>
+
+  <h3>A.2 &ensp; What the Laplacian Really Means</h3>
+
+  <p>
+    Before we classify PDEs, we need to build intuition for the single most important differential operator in physics: the <strong>Laplacian</strong> $\nabla^2 u$ (also written $\Delta u$).
+  </p>
+
+  <p>
+    In one dimension, $\nabla^2 u = \partial^2 u/\partial x^2$ — just the second derivative. In two or three dimensions:
+  </p>
+
+  <div class="equation-block">
+    $$\nabla^2 u = \frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial y^2} + \frac{\partial^2 u}{\partial z^2}$$
+  </div>
+
+  <p>
+    But what does it <em>mean</em>? Here is the deepest and most useful interpretation:
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The Laplacian measures the difference between a point's value and the average of its neighbors.</strong> Specifically, for a function $u$ that is smooth enough:
+    </p>
+    <p>
+      $$\nabla^2 u(\mathbf{x}) = \lim_{r\to 0}\; \frac{2d}{r^2}\Bigl[\overline{u}_r(\mathbf{x}) - u(\mathbf{x})\Bigr]$$
+    </p>
+    <p>
+      where $\overline{u}_r(\mathbf{x})$ is the average of $u$ on a sphere of radius $r$ centered at $\mathbf{x}$, and $d$ is the spatial dimension. If $u(\mathbf{x})$ is <em>less</em> than its neighborhood average, then $\nabla^2 u > 0$. If <em>more</em>, then $\nabla^2 u < 0$.
+    </p>
+  </div>
+
+  <!-- SVG: Laplacian as neighbor averaging -->
+  <div class="figure">
+    <svg viewBox="0 0 520 180" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <!-- Left panel: point above average -->
+      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Peak: $u > $ neighbors</text>
+      <!-- Circle of neighbors -->
+      <circle cx="130" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
+      <!-- Neighbor dots -->
+      <circle cx="80" cy="100" r="5" fill="#42a5f5"/>
+      <circle cx="130" cy="50" r="5" fill="#42a5f5"/>
+      <circle cx="180" cy="100" r="5" fill="#42a5f5"/>
+      <circle cx="130" cy="150" r="5" fill="#42a5f5"/>
+      <!-- Center: hot -->
+      <circle cx="130" cy="100" r="7" fill="#e94560" stroke="#c0392b" stroke-width="1.5"/>
+      <!-- Arrows inward -->
+      <text x="130" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">H</text>
+      <text x="80" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="180" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#c0392b">$\nabla^2 u < 0$ → cools down</text>
+
+      <!-- Right panel: point below average -->
+      <text x="390" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Valley: $u < $ neighbors</text>
+      <circle cx="390" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
+      <circle cx="340" cy="100" r="5" fill="#e94560"/>
+      <circle cx="390" cy="50" r="5" fill="#e94560"/>
+      <circle cx="440" cy="100" r="5" fill="#e94560"/>
+      <circle cx="390" cy="150" r="5" fill="#e94560"/>
+      <circle cx="390" cy="100" r="7" fill="#42a5f5" stroke="#1565c0" stroke-width="1.5"/>
+      <text x="390" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">C</text>
+      <text x="340" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="440" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#1565c0">$\nabla^2 u > 0$ → warms up</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.2.</span> The Laplacian as a "disagreement detector." Left: a hot point (H) surrounded by cool neighbors (C) has $\nabla^2 u < 0$. Right: a cool point surrounded by hot neighbors has $\nabla^2 u > 0$. The heat equation says: resolve the disagreement.</div>
+  </div>
+
+  <p>
+    This is why the Laplacian appears in so many equations across physics. Any time nature wants to smooth out differences — heat, chemical concentration, electrical potential — the Laplacian is doing the work. The heat equation $\partial u/\partial t = \alpha\,\nabla^2 u$ simply says: <em>evolve toward the local average</em>.
+  </p>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>A discrete analogy.</strong> On a grid, approximate $\nabla^2 u$ at node $i$ as $\nabla^2 u_i \approx \frac{1}{h^2}(\bar{u}_{\text{neighbors}} - u_i)$ where $\bar{u}_{\text{neighbors}}$ is the average of the neighboring values. The heat equation on a grid becomes: each node moves a small fraction toward the average of its neighbors at each time step. This is literally a smoothing filter — the same operation used in image processing.
+    </p>
+  </div>
+
+  <h3>A.3 &ensp; The Three Families of PDEs</h3>
+
+  <p>
+    Now we are ready for the big classification. Consider the most general second-order linear PDE in two variables:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.2)</span>
+    $$A\,\frac{\partial^2 u}{\partial x^2} + 2B\,\frac{\partial^2 u}{\partial x\,\partial y} + C\,\frac{\partial^2 u}{\partial y^2} + \text{(lower-order terms)} = 0$$
+  </div>
+
+  <p>
+    The character of this equation — its fundamental behavior, the types of solutions it admits, the numerical methods that work — is determined by a single number: the <strong>discriminant</strong>
+  </p>
+
+  <div class="equation-block">
+    $$\Delta = B^2 - AC$$
+  </div>
+
+  <p>
+    This is exactly the same discriminant from the quadratic formula, and the analogy to conic sections is deep. Just as $B^2 - 4AC$ classifies conics into ellipses, parabolas, and hyperbolas, this discriminant classifies PDEs into three families:
+  </p>
+
+  <div class="pde-grid">
+    <div class="pde-card pde-card-parabolic">
+      <h4>Parabolic ($\Delta = 0$)</h4>
+      <p><strong>Prototype:</strong> Heat equation</p>
+      <p>$\dfrac{\partial u}{\partial t} = \alpha\,\nabla^2 u$</p>
+      <p><em>Diffusion, smoothing, irreversible</em></p>
+    </div>
+    <div class="pde-card pde-card-elliptic">
+      <h4>Elliptic ($\Delta < 0$)</h4>
+      <p><strong>Prototype:</strong> Laplace equation</p>
+      <p>$\nabla^2 u = 0$</p>
+      <p><em>Equilibrium, steady-state, no time</em></p>
+    </div>
+    <div class="pde-card pde-card-hyperbolic">
+      <h4>Hyperbolic ($\Delta > 0$)</h4>
+      <p><strong>Prototype:</strong> Wave equation</p>
+      <p>$\dfrac{\partial^2 u}{\partial t^2} = c^2\,\nabla^2 u$</p>
+      <p><em>Propagation, waves, reversible</em></p>
+    </div>
+  </div>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>Why does the name "parabolic" come from the degenerate case $\Delta=0$?</strong> Think of the conic $Ax^2 + 2Bxy + Cy^2 = 1$. When $\Delta = 0$, this degenerates from a closed curve (ellipse) to an open, unbounded shape (parabola). Similarly, the PDE loses one "degree of freedom" — information propagates in one direction only (forward in time), just as a parabola is open in one direction.
+    </p>
+  </div>
+
+  <p>
+    Let us now build deep intuition for each family.
+  </p>
+
+  <h3>A.4 &ensp; Parabolic Equations: Diffusion and Smoothing</h3>
+
+  <p>
+    The heat equation is the prototype, but parabolic equations describe far more than heat. Any process where "stuff" spreads out from high-concentration regions to low-concentration regions is parabolic: chemical diffusion (Fick's law), financial option pricing (Black–Scholes), probability spreading (Fokker–Planck), and — most relevant to us — the evolution of the transmembrane potential $V_m$ in the monodomain equation.
+  </p>
+
+  <p>
+    The unifying feature is the structure: <strong>one time derivative balanced against two spatial derivatives</strong>. This mismatch ($\partial_t$ vs. $\partial_{xx}$) dictates everything:
+  </p>
+
+  <div class="equation-block">
+    $$\underbrace{\frac{\partial u}{\partial t}}_{\text{1st order in }t} = \alpha \underbrace{\frac{\partial^2 u}{\partial x^2}}_{\text{2nd order in }x}$$
+  </div>
+
+  <p>
+    Because there is only a <em>first</em> derivative in time, you need only <em>one</em> initial condition: $u(x,0) = u_0(x)$. Time marches in one direction only. There is no "bouncing back." This is why parabolic equations model irreversible processes.
+  </p>
+
+  <p>
+    <strong>The smoothing property, precisely stated.</strong> If you start with any initial condition — even one with sharp corners or discontinuities — the solution $u(x,t)$ is infinitely smooth for all $t > 0$. This is remarkable. A square-wave initial condition instantly (at any positive time, no matter how small) becomes a $C^\infty$ function. Intuitively: diffusion smears out all sharp features immediately.
+  </p>
+
+  <p>
+    <strong>Infinite propagation speed.</strong> Here is a subtle and often confusing point. Heat propagates at <em>infinite speed</em> in the mathematical heat equation — if you heat one end of an infinitely long rod, the other end feels it instantly (though the effect is exponentially small). This is physically unrealistic but mathematically convenient. The parabolic monodomain equation inherits this property: a stimulus at one point technically affects the entire domain immediately, though the practical effect dies off exponentially fast.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The parabolic CFL condition.</strong> When you discretize a parabolic equation with an explicit time stepper (like forward Euler), stability demands $\Delta t \leq C\,\Delta x^2$. The <em>quadratic</em> dependence on $\Delta x$ is severe: halving the mesh spacing requires quartering the time step. This is why implicit methods (Crank–Nicolson, BDF, SDIRK) are essential for parabolic problems — they are unconditionally stable, allowing $\Delta t$ dictated by accuracy rather than stability.
+    </p>
+  </div>
+
+  <h3>A.5 &ensp; Elliptic Equations: Equilibrium and Constraints</h3>
+
+  <p>
+    Now remove time from the picture entirely. Ask: <em>what does the temperature look like after the system has fully equilibrated?</em> At equilibrium, $\partial u/\partial t = 0$, and the heat equation becomes:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.3)</span>
+    $$\nabla^2 u = 0 \qquad \text{(Laplace's equation)}$$
+  </div>
+
+  <p>
+    This is the prototypical <strong>elliptic</strong> equation. It says: at every point, the value of $u$ equals the average of its neighbors. There is no time. There is no evolution. It is a pure <em>constraint</em>.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The rubber sheet analogy.</strong> Imagine a flat rubber membrane stretched over a wire frame. The frame is bent into some shape (the boundary condition). Where does the membrane settle? At every interior point, the height of the membrane equals the average height of the surrounding points — because the elastic forces balance in all directions. The equilibrium shape satisfies Laplace's equation.
+    </p>
+  </div>
+
+  <!-- SVG: Rubber sheet equilibrium -->
+  <div class="figure">
+    <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <!-- Wire frame (boundary) -->
+      <path d="M 60,160 Q 130,40 200,80 Q 270,120 340,50 Q 410,20 480,130" fill="none" stroke="#16213e" stroke-width="2.5"/>
+      <!-- Membrane surface (smooth interpolation) -->
+      <path d="M 60,160 Q 100,100 140,100 Q 180,100 220,95 Q 260,90 300,75 Q 340,60 380,55 Q 420,60 480,130" fill="none" stroke="#42a5f5" stroke-width="2" stroke-dasharray="6,3"/>
+      <!-- Fixed boundary markers -->
+      <circle cx="60" cy="160" r="5" fill="#e94560"/>
+      <circle cx="480" cy="130" r="5" fill="#e94560"/>
+      <!-- Labels -->
+      <text x="55" y="178" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
+      <text x="470" y="148" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
+      <text x="270" y="55" font-family="EB Garamond,serif" font-size="12" fill="#42a5f5" font-weight="600">equilibrium surface</text>
+      <text x="350" y="38" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">boundary shape</text>
+      <!-- Interior point annotation -->
+      <circle cx="270" cy="85" r="3" fill="#42a5f5"/>
+      <text x="270" y="110" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$u =$ average of neighbors</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.3.</span> The rubber sheet analogy for Laplace's equation. The boundary conditions (wire frame) determine the shape; the interior settles into an equilibrium where each point's value equals the average of its neighbors.</div>
+  </div>
+
+  <p>
+    The key properties of elliptic equations mirror the equilibrium intuition:
+  </p>
+
+  <ol>
+    <li><strong>Mean value property.</strong> The value at any interior point equals the average over any surrounding sphere. This is the deepest characterization of harmonic functions (solutions to $\nabla^2 u = 0$).</li>
+    <li><strong>Maximum principle.</strong> The maximum and minimum of $u$ occur on the <em>boundary</em>, never in the interior. The rubber sheet cannot bulge above or below the wire frame.</li>
+    <li><strong>Global coupling.</strong> Changing the boundary condition at one point affects the solution <em>everywhere</em> in the interior. Information propagates in all directions simultaneously. There is no concept of "marching" from one end to the other.</li>
+    <li><strong>No time, no initial conditions.</strong> You need only boundary conditions. The equation determines the interior values uniquely from the boundary.</li>
+  </ol>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>Why you cannot "march" an elliptic equation.</strong> In a parabolic equation, you know $u$ at $t=0$ and march forward to $t = \Delta t$, then to $t = 2\Delta t$, and so on. In an elliptic equation, there is no "forward." Changing one boundary value ripples through the <em>entire</em> domain simultaneously. This is why elliptic equations always require solving a <strong>global linear system</strong> — you must find all unknowns at once.
+    </p>
+  </div>
+
+  <p>
+    If there is a source term, Laplace's equation becomes <strong>Poisson's equation</strong>: $\nabla^2 u = f$. This is still elliptic. It says: the difference between a point's value and its neighborhood average is proportional to the local source strength $f$. This is exactly the form of the bidomain elliptic constraint.
+  </p>
+
+  <h3>A.6 &ensp; Hyperbolic Equations: Waves and Propagation</h3>
+
+  <p>
+    The third family is fundamentally different from the first two. Consider the <strong>wave equation</strong>:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.4)</span>
+    $$\frac{\partial^2 u}{\partial t^2} = c^2 \frac{\partial^2 u}{\partial x^2}$$
+  </div>
+
+  <p>
+    Notice the crucial structural difference: the <em>second</em> derivative in time. Where the heat equation had $\partial_t$ (first order), the wave equation has $\partial_{tt}$ (second order). This single change transforms the physics completely.
+  </p>
+
+  <p>
+    With a first-order time derivative, you need one initial condition ($u$ at $t=0$). With a second-order time derivative, you need <em>two</em>: the initial shape $u(x,0)$ and the initial velocity $\partial u/\partial t\big|_{t=0}$. This is like specifying both the position and velocity of a particle — and it means the equation is <em>reversible</em>. You can run time forward or backward and get valid solutions.
+  </p>
+
+  <!-- SVG: Wave propagation -->
+  <div class="figure">
+    <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
+      <!-- Axis -->
+      <line x1="40" y1="100" x2="500" y2="100" stroke="#d0d5e0" stroke-width="0.8"/>
+      <!-- t=0: initial pulse -->
+      <path d="M 50,100 Q 200,100 230,100 Q 245,95 255,55 Q 260,40 265,55 Q 275,95 290,100 Q 320,100 490,100" fill="none" stroke="#16213e" stroke-width="2.5"/>
+      <text x="260" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="600">t = 0</text>
+      <!-- t=2: two pulses moving apart -->
+      <path d="M 50,100 Q 100,100 130,100 Q 145,96 155,75 Q 160,65 165,75 Q 175,96 190,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
+      <path d="M 330,100 Q 355,96 365,75 Q 370,65 375,75 Q 385,96 400,100 Q 450,100 490,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="160" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
+      <text x="370" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
+      <!-- Arrows showing propagation -->
+      <path d="M 230,120 L 180,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
+      <text x="195" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed $c$</text>
+      <path d="M 290,120 L 340,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
+      <text x="325" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed $c$</text>
+      <!-- Key difference label -->
+      <text x="260" y="188" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">Pulse splits and travels at finite speed — shape preserved</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.4.</span> The wave equation splits an initial pulse into two copies traveling in opposite directions at speed $c$. Unlike diffusion, the pulse shape is preserved — no smoothing occurs.</div>
+  </div>
+
+  <p>
+    The contrast with the heat equation could not be sharper:
+  </p>
+
+  <table>
+    <tr><th>Property</th><th>Parabolic (heat)</th><th>Hyperbolic (wave)</th></tr>
+    <tr><td>Time derivative order</td><td>1st ($\partial_t$)</td><td>2nd ($\partial_{tt}$)</td></tr>
+    <tr><td>Initial conditions needed</td><td>1 (value)</td><td>2 (value + velocity)</td></tr>
+    <tr><td>Reversible?</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Propagation speed</td><td>Infinite (exponential decay)</td><td>Finite ($c$)</td></tr>
+    <tr><td>Smoothing?</td><td>Yes — destroys sharp features</td><td>No — preserves sharp features</td></tr>
+    <tr><td>Energy</td><td>Dissipated over time</td><td>Conserved</td></tr>
+  </table>
+
+  <p>
+    The finite propagation speed is the hallmark of hyperbolic equations. A disturbance at point $x_0$ at time $t_0$ can only be felt at point $x$ after time $(x - x_0)/c$. This region of influence is called the <strong>light cone</strong> (even for non-relativistic waves), and the boundary of this cone consists of <strong>characteristics</strong> — curves in space-time along which information travels.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Why cardiac EP is NOT hyperbolic.</strong> At first glance, the action potential "wavefront" sweeping through the heart looks like a traveling wave — so you might expect a wave equation. But it is not a wave in the hyperbolic sense. The action potential front is driven by <em>diffusion</em> (current spreading from depolarized cells to resting cells) plus a <em>nonlinear reaction</em> (ion channels opening in a cascade). There is no second time derivative. There is no energy conservation. And the wavefront <em>does</em> smooth out over time. The monodomain and bidomain equations are parabolic, not hyperbolic — the traveling wavefront emerges from the interplay of diffusion and reaction, not from wave mechanics.
+    </p>
+  </div>
+
+  <h3>A.7 &ensp; Why the Bidomain Model Has Two Types</h3>
+
+  <p>
+    We can now understand the bidomain model's structure at a much deeper level. The bidomain system is not a single PDE — it is a <em>coupled pair</em>, and each equation belongs to a different family:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.5)</span>
+    $$\underbrace{\chi C_m \frac{\partial V_m}{\partial t} = -\chi\,I_{\text{ion}} + \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)}_{\text{Parabolic: has }\partial V_m/\partial t}$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.6)</span>
+    $$\underbrace{0 = \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr]}_{\text{Elliptic: no time derivative at all}}$$
+  </div>
+
+  <p>
+    This mixed parabolic–elliptic structure is the source of both the model's physical richness and its computational difficulty:
+  </p>
+
+  <ol>
+    <li><strong>The parabolic equation</strong> governs the evolution of the transmembrane potential $V_m$. It is a diffusion equation — with all the properties we discussed: smoothing, irreversibility, CFL restrictions for explicit methods. The "stuff" being diffused is electrical charge, and the diffusion coefficient is determined by the intracellular conductivity tensor $\mathbf{D}_i$. It can in principle be marched forward in time.</li>
+    <li><strong>The elliptic equation</strong> constrains the extracellular potential $\phi_e$. It has no time derivative — it is an <em>equilibrium condition</em> that must hold at every instant, like the rubber sheet analogy. At every moment, the extracellular potential adjusts <em>instantly</em> so that the total current in and out of every point balances. It cannot be marched — it must be solved as a global linear system.</li>
+  </ol>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The fundamental computational consequence.</strong> The parabolic equation can (in theory) be treated explicitly. The elliptic equation <em>cannot</em> — ever. This is why every bidomain solver requires at least one implicit linear solve per time step: the elliptic constraint demands it. This is not a choice of method; it is a consequence of the equation's type. No clever algorithm can avoid it, because the elliptic equation couples all spatial points simultaneously.
+    </p>
+  </div>
+
+  <p>
+    The monodomain equation, by contrast, is purely parabolic — a single equation with a single time derivative. This is why it is so much cheaper: you never need to solve an elliptic constraint. The LBM methods in Chapter 17 exploit this: a lattice-Boltzmann scheme can handle a parabolic PDE naturally (the collision-streaming cycle is essentially an explicit time stepper), but it has no mechanism for enforcing a global elliptic constraint.
+  </p>
+
+  <p>
+    Understanding the type of each equation also tells you <em>which numerical methods to reach for</em>:
+  </p>
+
+  <table>
+    <tr><th>Equation type</th><th>Natural solvers</th><th>Avoid</th></tr>
+    <tr><td>Parabolic ($V_m$)</td><td>Implicit time steppers (CN, BDF, SDIRK), operator splitting, IMEX, LBM</td><td>Fully explicit on fine meshes (CFL: $\Delta t \propto \Delta x^2$)</td></tr>
+    <tr><td>Elliptic ($\phi_e$)</td><td>Direct solvers, CG/MINRES with AMG preconditioner, multigrid</td><td>Explicit time stepping (impossible — no time derivative)</td></tr>
+  </table>
+
+  <p>
+    The classification of PDEs into parabolic, elliptic, and hyperbolic is not merely academic taxonomy. It determines which initial/boundary conditions are needed, which numerical methods will work, what stability restrictions apply, and whether information flows forward only or in all directions simultaneously. For the bidomain model, this classification is the key to understanding why the computational challenge is fundamentally harder than monodomain — and why the solver strategies of Chapter 15 are not optional refinements but structural necessities.
+  </p>
+
+  <div class="footnote" style="margin-top:3em;">
+    <p>The treatment in this appendix follows the pedagogical philosophy of Grant Sanderson's <em>3Blue1Brown</em> series on differential equations. For animated visualizations of these concepts, the reader is encouraged to watch the "Differential Equations" playlist on the 3Blue1Brown YouTube channel.</p>
+  </div>
+</div>
+
+
+
+</body>
+</html>

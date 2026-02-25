@@ -1,0 +1,235 @@
+================================================================================
+CARDIAC ELECTROPHYSIOLOGY MODEL: PHYSIOLOGICALLY REALISTIC PARAMETERS
+================================================================================
+
+Last updated: 2025-12-05
+
+================================================================================
+1. ACTION POTENTIAL, CONDUCTION VELOCITY, ANISOTROPY
+================================================================================
+
+VENTRICULAR MYOCARDIUM:
+----------------------------------------
+Longitudinal conduction velocity (v_L):
+  - Value: 500 mm/s
+
+Transverse conduction velocity (v_T):
+  - Value: 210 mm/s
+
+Anisotropy ratio (v_L / v_T):
+  - Value: 2:1
+
+ISCHEMIC/INFARCTED TISSUE:
+--------------------------
+After 3-5 minutes of global ischemia:
+  - Longitudinal: ~30 cm/s (300 mm/s) [40% reduction]
+  - Transverse: ~13 cm/s (130 mm/s) [38% reduction]
+
+
+================================================================================
+2. DIFFUSION COEFFICIENTS FOR MONODOMAIN MODEL
+================================================================================
+
+The diffusion coefficient relates to conduction velocity through the
+monodomain equation. Values reported in cardiac modeling literature:
+
+
+RECOMMENDED VALUES (2:1 anisotropy):
+------------------------------------
+D_parallel:  0.10 mm²/ms  (= 1.0 cm²/s)
+D_perp:      0.05 mm²/ms  (= 0.5 cm²/s)
+Ratio:       2:1
+
+IMPORTANT RELATIONSHIP:
+-----------------------
+Diffusion coefficient ratio = (Velocity anisotropy ratio)²
+D_ratio = 4:1
+
+
+================================================================================
+3. ACTION POTENTIAL DURATION (APD)
+================================================================================
+
+APD90 (time to 90% repolarization):
+------------------------------------
+Human ventricular myocytes:
+  - Normal range: 200-300 ms
+  - Endocardium: ~279 ms
+  - Midmyocardium: ~353 ms (longest)
+  - Epicardium: ~280 ms
+
+Species variation:
+  - Small animals (mice/rats): <100 ms
+  - Large animals/humans: 200-300 ms
+
+Pathological conditions:
+  - Long QT Syndrome (LQT1): 554 ms (vs 373 ms control)
+
+TOTAL DEPOLARIZATION TIME:
+--------------------------
+  -  ~220 ms
+
+
+
+================================================================================
+4. MYOCARDIAL INFARCT SIZE
+================================================================================
+
+  - 2-3 mm in 20×20 mm domain (~3-7% area)
+
+================================================================================
+5. INFARCT BORDER ZONE CHARACTERISTICS
+================================================================================
+
+BORDER ZONE THICKNESS:
+----------------------
+Mean lateral border zone width: 5 mm (does not vary between partial and
+  transmural infarcts)
+Range reported: 5-6 mm
+
+SPATIAL RESOLUTION:
+-------------------
+Clinical MRI voxel size: ~1.3 × 1.3 × 8.0 mm³ (>13 mm³)
+  - Each voxel can contain ~200,000 cells at infarct interface
+
+WALL THICKNESS MARKERS:
+-----------------------
+Non-viable myocardium: <5.5 mm end-diastolic wall thickness
+
+MODELING IMPLICATIONS:
+----------------------
+For sigmoid transition from healthy to infarcted tissue:
+  - Border zone width (delta): 0.5-1.0 mm (sharp transition)
+  - Border zone width (delta): 2.0-5.0 mm (realistic clinical transition)
+
+
+
+================================================================================
+6. ALIEV-PANFILOV MODEL PARAMETERS
+================================================================================
+
+
+PARAMETER SET 1 (Standard):
+---------------------------
+k        = 8.0     (cubic nonlinearity strength)
+a        = 0.15    (threshold parameter)
+epsilon0 = 0.002   (recovery time scale)
+mu1      = 0.2     (recovery modulation)
+mu2      = 0.3     (recovery modulation)
+
+PHYSICAL MEANING:
+-----------------
+- k: Controls the steepness of the excitation threshold
+- a: Determines the threshold for action potential initiation
+- epsilon0: Base recovery time scale (smaller = slower recovery)
+- mu1, mu2: Modulate recovery dynamics based on voltage and recovery state
+
+MODEL CHARACTERISTICS:
+----------------------
+- Two-variable model: V (voltage), w (recovery)
+- Modified FitzHugh-Nagumo model
+- Accurately reproduces canine myocardium pulse propagation
+- Simulates restitution properties with good precision
+
+
+================================================================================
+7. MEMBRANE AND CELLULAR PARAMETERS
+================================================================================
+
+MEMBRANE CAPACITANCE:
+---------------------
+C_m = 1.0 μF/cm² (standard value used in cardiac models)
+  - Unit area capacitance of cell membrane
+  - Relatively constant across cardiac cell types
+
+RESTING POTENTIAL:
+------------------
+V_rest = -85 to -90 mV (typical ventricular myocyte)
+  - Model often normalized to V_rest = 0 for computational convenience
+
+PEAK DEPOLARIZATION:
+--------------------
+V_peak = +20 to +40 mV (during action potential upstroke)
+
+TIME CONSTANTS (for relaxed monodomain model):
+-----------------------------------------------
+tau_v = 20 ms (relaxation time constant back to rest)
+tau_w = 80 ms (recovery variable time constant)
+
+These are phenomenological parameters for the simplified cable model used
+in version2.py and version3.py, not biophysical measurements.
+
+
+================================================================================
+8. SPATIAL DOMAIN AND MESH PARAMETERS
+================================================================================
+
+RECOMMENDED DOMAIN SIZE:
+------------------------
+For 2D sheet simulations:
+  - 20 × 20 mm (square domain)
+  - 20 × 15 mm (rectangular, for left-right propagation studies)
+
+MESH RESOLUTION:
+----------------
+Grid spacing:
+  - Coarse: dx = dy = 0.25 mm (80×80 grid for 20×20 mm)
+  - Standard: dx = dy = 0.125 mm (160×160 grid)
+  - Fine: dx = dy = 0.0625 mm (320×320 grid)
+
+TEMPORAL RESOLUTION:
+--------------------
+Time step:
+  - dt = 0.01-0.02 ms (typical for explicit Euler)
+  - Must satisfy CFL stability condition
+  - Substeps automatically calculated for stability
+
+Simulation duration:
+  - Single propagation: 40-60 ms
+  - Multiple beats: 80-200 ms
+  - Reentry/arrhythmia: 200-1000 ms
+
+
+================================================================================
+9. INFARCT CONDUCTIVITY PARAMETERS
+================================================================================
+
+EPSILON_TISSUE (Conduction scaling factor):
+--------------------------------------------
+Healthy tissue:    epsilon = 1.0 (100% conductivity)
+Border zone:       epsilon = 0.2-0.7 (reduced conductivity)
+Infarct core:      epsilon = 0.0-0.1 (0-10% conductivity)
+
+
+================================================================================
+10. VALIDATION TARGETS
+================================================================================
+
+Your model should reproduce these key behaviors:
+
+1. CONDUCTION VELOCITY:
+   - Longitudinal: 400-600 mm/s
+   - Transverse: 200-300 mm/s
+   - Anisotropy ratio: ~2:1
+
+2. ACTION POTENTIAL CHARACTERISTICS:
+   - Upstroke duration: <5 ms
+   - APD90: 200-300 ms (full Aliev-Panfilov model)
+   - Refractory period: prevent immediate re-excitation
+
+3. WAVE PROPAGATION:
+   - Smooth elliptical wavefronts (due to anisotropy)
+   - Major/minor axis ratio ≈ 2:1
+
+4. INFARCT INTERACTIONS:
+   - Wave blockage at infarct core
+   - Slowing and bending at border zones
+   - Potential for reentry around obstacles
+
+5. STABILITY:
+   - No spurious oscillations
+   - Smooth repolarization
+   - Consistent wavefront propagation
+   - NEW no ring artifacts
+
+

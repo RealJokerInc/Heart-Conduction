@@ -1,0 +1,150 @@
+stages:
+  - pre-build
+  - build
+
+.rules:
+  rules:
+      # --
+      # Rule to fall back on...
+    - &default
+      when: always
+      # -- 
+      # Only run when the commit **DOES NOT** contains "[ascent-rebuild]" 
+    - &rule_no_ascent_rebuild
+      if: '$CI_COMMIT_TITLE =~ /\[ascent-rebuild\]/'
+      when: never 
+    # Only run when the commit **DOES NOT** contains "[ascent-test]"
+    - &rule_no_ascent_test
+      if: '$CI_COMMIT_TITLE =~ /\[ascent-test\]/'
+      when: never
+     # Only run when the commit **DOES** contains "[ascent-test]"
+    - &rule_yes_ascent_test
+      if: '$CI_COMMIT_TITLE =~ /\[ascent-test\]/'
+      when: always
+    # -- 
+    # Only run when the commit **DOES NOT** contains "[deception-test]"
+    - &rule_no_deception_test
+      if: '$CI_COMMIT_TITLE =~ /\[deception-test\]/'
+      when: never    
+    # Only run when the commit **DOES NOT** contains "[deception-rebuild]"
+    - &rule_no_deception_rebuild
+      if: '$CI_COMMIT_TITLE =~ /\[deception-rebuild\]/'
+      when: never
+      # Only run when the commit **DOES NOT** contains "[incline-rebuild]"
+    - &rule_no_incline_rebuild
+      if: '$CI_COMMIT_TITLE =~ /\[incline-rebuild\]/'
+      when: never
+    # Only run when the commit **DOES NOT** contains "[incline-test]"
+    - &rule_no_incline_test
+      if: '$CI_COMMIT_TITLE =~ /\[incline-test\]/'
+      when: never
+
+# Ascent Variables
+.ornl_environment_template:
+  variables:
+    SCHEDULER_PARAMETERS: "-P CSC359 -nnodes 1 -W 120"
+    WORKDIR: /gpfs/wolf/proj-shared/csc359/ci/${CI_PIPELINE_ID}
+
+Ascent-Build-Test:
+  stage: build
+  rules:
+    - *rule_no_ascent_rebuild
+    - *rule_yes_ascent_test
+    - *rule_no_deception_rebuild
+    - *rule_no_deception_test
+    - *rule_no_incline_rebuild
+    - *rule_no_incline_test
+    - *default
+  tags:
+    - batch
+  extends: .ornl_environment_template
+  script:
+    - set -xv
+    - mkdir -p "$WORKDIR"
+    - cp -r . "$WORKDIR"
+    - cd "$WORKDIR"
+    - export srcdir=$WORKDIR builddir=$WORKDIR/build installdir=$WORKDIR/install
+    - MY_CLUSTER=ascent ./buildsystem/build.sh 
+    - res=$?
+    - exit $res
+  after_script:
+    - cd "$WORKDIR/.."
+    - rm -rf "$WORKDIR"
+
+Ascent-Module-Init:
+  extends: .ornl_environment_template
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: '$CI_COMMIT_TITLE =~ /\[ascent-rebuild\]/'
+      when: always
+  stage: pre-build
+  tags:
+    - nobatch
+  script:
+    - set -xv
+    - mkdir -p "$WORKDIR"
+    - cp -r . "$WORKDIR"
+    - cd "$WORKDIR"
+    - MY_CLUSTER=ascent ./buildsystem/init-mirror.sh
+    - res=$?
+    - exit $res
+
+Ascent-Module-Build:
+  needs: ["Ascent-Module-Init"]
+  rules:
+    - if: '$CI_COMMIT_TITLE =~ /\[ascent-rebuild\]/'
+      when: always
+  extends: .ornl_environment_template
+  stage: build
+  tags:
+    - batch
+  script:
+    - cd "$WORKDIR"
+    - git checkout -b ${CI_COMMIT_REF_NAME}
+    - ./buildsystem/spack/ascent/install.sh
+    - git add ./buildsystem/spack/ascent/modules/*
+    - git config user.name "spack-auto-module"
+    - git config user.email "spack.bot@no-reply.com"
+    - git commit -m "Update Ascent spack built tcl modules [ascent-test]"
+    - git remote set-url origin https://gitlab-ci-token:${SPACK_GIT_TOKEN}@github.com/ORNL/ReSolve.git
+    - git pull --rebase origin ${CI_COMMIT_REF_NAME}
+    - git push origin ${CI_COMMIT_REF_NAME}
+  after_script:
+    - cd "$WORKDIR/.."
+    - rm -rf "$WORKDIR"
+
+.report-status:
+  variables:
+    GIT_STRATEGY: none
+    STATUS_PROJECT: ORNL/ReSolve
+    MY_CLUSTER: Ascent
+  tags:
+    - nobatch
+  extends:
+    - .ornl_environment_template
+  script:
+    # For complete details on the GitLab API please see:
+    # https://docs.gitlab.com/ee/api/commits.html#post-the-build-status-to-a-commit
+    # Make sure to create the token with Developer level access and API scope
+    - |
+      curl -L -X POST -H @${GITHUB_CURL_HEADERS} https://api.github.com/repos/${STATUS_PROJECT}/statuses/${CI_COMMIT_SHA} -d "{\"state\":\"${CI_JOB_NAME}\",\"target_url\":\"${CI_PIPELINE_URL}\",\"context\":\"${MY_CLUSTER}\"}"
+  environment:
+    name: reporting-gitlab
+
+pending:
+  extends:
+    - .report-status
+  stage: .pre
+
+success:
+  stage: .post
+  extends:
+    - .report-status
+  
+failure:
+  stage: .post
+  extends:
+    - .report-status
+  rules:
+    - when: on_failure

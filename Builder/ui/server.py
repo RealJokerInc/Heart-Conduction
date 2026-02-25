@@ -472,6 +472,47 @@ def api_dimensions():
     return jsonify({'success': True})
 
 
+def _perp_distance(px, py, ax, ay, bx, by):
+    """Perpendicular distance from point P to line segment A-B."""
+    dx, dy = bx - ax, by - ay
+    length_sq = dx * dx + dy * dy
+    if length_sq == 0:
+        return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+    return abs(dx * (ay - py) - (ax - px) * dy) / (length_sq ** 0.5)
+
+
+def douglas_peucker(points, epsilon):
+    """Simplify a polyline using the Ramer-Douglas-Peucker algorithm.
+
+    Args:
+        points: list of [x, y] pairs
+        epsilon: maximum perpendicular distance tolerance (pixels)
+
+    Returns:
+        Simplified list of [x, y] pairs.
+    """
+    if len(points) <= 2:
+        return points
+
+    ax, ay = points[0]
+    bx, by = points[-1]
+
+    max_dist = 0.0
+    max_idx = 0
+    for i in range(1, len(points) - 1):
+        d = _perp_distance(points[i][0], points[i][1], ax, ay, bx, by)
+        if d > max_dist:
+            max_dist = d
+            max_idx = i
+
+    if max_dist > epsilon:
+        left = douglas_peucker(points[:max_idx + 1], epsilon)
+        right = douglas_peucker(points[max_idx:], epsilon)
+        return left[:-1] + right
+    else:
+        return [points[0], points[-1]]
+
+
 def find_contours_numpy(mask):
     """Find boundary contours using Moore neighborhood tracing (no cv2 required)."""
     h, w = mask.shape
@@ -561,7 +602,19 @@ def find_contours_numpy(mask):
         if len(contour) > 10:  # Skip tiny contours
             contours.append(contour)
 
-    return contours
+    # Simplify contours with Douglas-Peucker to remove zigzag artifacts
+    # and reduce point density for smoother marching ants animation
+    SIMPLIFY_EPSILON = 1.5  # pixels
+    simplified = []
+    for contour in contours:
+        if len(contour) > 20:
+            s = douglas_peucker(contour, SIMPLIFY_EPSILON)
+            if len(s) > 4:
+                simplified.append(s)
+        else:
+            simplified.append(contour)
+
+    return simplified
 
 
 @app.route('/api/boundary/<int:group_index>')

@@ -1,0 +1,58 @@
+name: "\U0001FAB2 Bug report"
+description: "Bug in Re::Solve code"
+title: "Bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Description how to reproduce the bug"
+      description: "Please provide launch command and the output when you encounter bug."
+      value: |
+        <!-- Include short error output as needed, see example below. -->        
+        ```
+        $ ./resolve_app
+        ( your output ...)
+        ```
+        <!-- If the error output is long, attach a file or include it in
+             a block that can be closed, see below. -->
+        <details>
+        
+        ```
+        $ ./resolve_app
+        ( your output ...)
+        ```
+
+        </details>
+    validations:
+      required: true
+
+  - type: input
+    id: resolve-version
+    attributes:
+      label: "Re::Solve version"
+      description: |
+        Please include the version of Re::Solve which demonstrates the problem.
+        If building from source on a non-tagged version, please include the commit hash.
+    validations:
+      required: true
+
+  - type: textarea
+    id: sys-info
+    attributes:
+      label: "System and environment details"
+      description: |
+        Please include details about your system, such as:
+        - Dependencies and their versions  
+        - Operating system  
+        - Compiler(s)  
+        - Hardware backends (CUDA, HIP)  
+    validations:
+      required: true
+
+
+  - type: textarea
+    id: additional_information
+    attributes:
+      label: "Additional information"
+      description: "Upload additional debugging information, such as backtrace."

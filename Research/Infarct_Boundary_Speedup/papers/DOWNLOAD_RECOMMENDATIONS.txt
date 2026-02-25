@@ -1,0 +1,352 @@
+CARDIAC INFARCT BOUNDARY CONDUCTION VELOCITY SPEEDUP - RESEARCH PAPERS
+=======================================================================
+COMPREHENSIVE DOWNLOAD AND ACCESS RECOMMENDATIONS
+Date: 2026-02-10
+
+EXECUTIVE SUMMARY
+=================
+
+Out of 12 key papers requested (plus 1 related paper):
+- 6 papers available through open-access PMC (NIH PubMed Central)
+- 6 papers require institutional or commercial access
+- 1 related paper (Cabo 1996) confirmed as open access at PMC
+
+The following PMC papers should be downloadable directly from NIH:
+- PMC2993197 - Ionic mechanisms of electrophysiological heterogeneity
+- PMC3075562 - Cardiac bidomain bath-loading effects
+- PMC6474757 - New insights on cardiac safety factor
+- PMC5874259 - Source-sink mismatch functional conduction block
+- PMC4067136 - Efficient simulation cardiac electrical propagation
+- PMC1225040 - Cabo et al (1996) Vortex shedding (related)
+
+DETAILED PAPER-BY-PAPER RECOMMENDATIONS
+=========================================
+
+TIER 1: OPEN ACCESS (Available for direct download)
+---------------------------------------------------
+
+1. "Ionic mechanisms of electrophysiological heterogeneity and conduction block in the infarct border zone"
+   PMCID: PMC2993197
+   DOI: [Not specified in search results]
+   Journal: Circulation Research (or Heart Rhythm)
+   Year: ~2010
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC2993197/
+   Status: AVAILABLE - No authentication needed
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC2993197_Ionic_mechanisms_heterogeneity_conduction_block.pdf"
+
+2. "Representing Cardiac Bidomain Bath-Loading Effects by an Augmented Monodomain Approach: Application to Complex Ventricular Models"
+   PMCID: PMC3075562
+   PMID: 21292591
+   Journal: IEEE Transactions on Biomedical Engineering
+   Year: 2011
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC3075562/
+   Status: AVAILABLE - No authentication needed
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC3075562_Bidomain_Bath_Loading_Augmented_Monodomain.pdf"
+
+3. "New Insights on the Cardiac Safety Factor: Unraveling the Relationship Between Conduction Velocity and Robustness of Propagation"
+   PMCID: PMC6474757
+   PMID: 30677394
+   Journal: Journal of Molecular and Cellular Cardiology
+   Year: 2019
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC6474757/
+   Status: AVAILABLE - No authentication needed
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC6474757_Cardiac_Safety_Factor_CV_Robustness.pdf"
+
+4. "Source-Sink Mismatch Causing Functional Conduction Block in Re-Entrant Ventricular Tachycardia"
+   PMCID: PMC5874259
+   PMID: 29600773
+   Journal: JACC: Clinical Electrophysiology
+   Volume: 4, Issue: 1, Pages: 1-16
+   Year: 2018
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC5874259/
+   Status: AVAILABLE - No authentication needed
+   Author: Ciaccio EJ, Coromilas A, Wit AL, Peters NS, Garan H
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC5874259_Source_Sink_Mismatch_VT.pdf"
+
+5. "Efficient simulation of cardiac electrical propagation using high order finite elements"
+   PMCID: PMC4067136
+   PMID: 24976644
+   Journal: Progress in Biophysics and Molecular Biology
+   Year: 2013
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC4067136/
+   Status: AVAILABLE - No authentication needed
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC4067136_Efficient_Simulation_High_Order_FE.pdf"
+
+6. "Vortex shedding as a precursor of turbulent electrical activity in cardiac muscle" (RELATED PAPER)
+   PMCID: PMC1225040
+   PMID: 8785270
+   Journal: Biophysical Journal
+   Volume: 70, Issue: 3, Pages: 1105-1111
+   Year: 1996
+   Authors: Cabo C, Pertsov AM, Davidenko JM, Baxter WT, Gray RA, Jalife J
+   RECOMMENDED ACCESS: Direct download from PMC
+   URL: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1225040/
+   Status: AVAILABLE - No authentication needed
+   Download Instructions:
+   - Visit the PMC URL above
+   - Look for "Download PDF" button
+   - Save as: "PMC1225040_Cabo_Vortex_Shedding_1996.pdf"
+
+TIER 2: POTENTIALLY ACCESSIBLE (May require institutional access or purchase)
+---------------------------------------------------------------------------
+
+1. "Role of wavefront curvature in propagation of cardiac impulse"
+   Authors: Fast VG, Kléber AG
+   Journal: Cardiovascular Research
+   Volume: 33, Issue: 2, Pages: 258-271
+   Year: 1997
+   DOI: 10.1016/S0008-6363(96)00216-7
+   PMID: 9074688
+   RECOMMENDED APPROACHES:
+   
+   a) POTENTIAL OPEN ACCESS LINK (requires verification):
+      - Try: https://core.ac.uk/download/pdf/85212645.pdf
+      - Fallback: https://academic.oup.com/cardiovascres/article-pdf/33/2/258/17875100/33-2-258.pdf
+      Status: Likely restricted
+   
+   b) INSTITUTIONAL ACCESS:
+      - Check if your institution has Oxford Academic subscription
+      - Log in through institutional proxy
+   
+   c) AUTHOR CONTACT:
+      - Affiliation: Max Planck Institute or University of Heidelberg (Kléber)
+      - Try contacting via ResearchGate: Fast VG or André G. Kléber
+   
+   d) PURCHASE:
+      - Oxford Academic - typically $40-45 for article access
+
+2. "Slow conduction in the infarcted human heart. 'Zigzag' course of activation"
+   Authors: de Bakker JM, van Capelle FJ, Janse MJ, et al.
+   Journal: Circulation
+   Volume: 88, Issue: 3, Pages: 915-926
+   Year: 1993
+   DOI: 10.1161/01.CIR.88.3.915
+   PMID: 8353918
+   RECOMMENDED APPROACHES:
+   
+   a) AUTHOR CONTACT:
+      - Lead author: J.M. de Bakker
+      - Affiliation: Academic Medical Center, Amsterdam
+      - Available via ResearchGate
+   
+   b) INSTITUTIONAL ACCESS:
+      - Check if your institution has AHA Journals (American Heart Association) subscription
+      - Access through: https://www.ahajournals.org/doi/10.1161/01.CIR.88.3.915
+   
+   c) CITATION/PURCHASE:
+      - Available through AHA Journals (typically $45-50)
+
+3. "Influences of anisotropic tissue structure on reentrant circuits in the epicardial border zone of subacute canine infarcts"
+   Authors: Dillon SM, Allessie MA, Ursell PC, Wit AL
+   Journal: Circulation Research
+   Volume: 63, Issue: 1, Pages: 182-206
+   Year: 1988
+   DOI: 10.1161/01.RES.63.1.182
+   PMID: 3383375
+   RECOMMENDED APPROACHES:
+   
+   a) AUTHOR CONTACT:
+      - Lead author: Stephen M. Dillon
+      - Affiliation: Columbia University, College of Physicians and Surgeons
+      - ResearchGate profile available
+   
+   b) INSTITUTIONAL ACCESS:
+      - Check subscription to Circulation Research (AHA Journals)
+      - Access through: https://www.ahajournals.org/doi/10.1161/01.RES.63.1.182
+   
+   c) PURCHASE:
+      - AHA Journals (typically $45-50)
+
+4. "Spiral Wave Attachment to Millimeter-Sized Obstacles"
+   Authors: Cabo C, Aguel F, Tung L, et al.
+   Journal: Circulation
+   Year: 2006
+   DOI: 10.1161/CIRCULATIONAHA.105.598631
+   PMID: 17088465
+   RECOMMENDED APPROACHES:
+   
+   a) INSTITUTIONAL ACCESS:
+      - Check subscription to AHA Journals (American Heart Association)
+      - Access through: https://www.ahajournals.org/doi/full/10.1161/CIRCULATIONAHA.105.598631
+   
+   b) RELATED OPEN ACCESS:
+      - Consider using Cabo et al 1996 paper (PMC1225040) on vortex shedding
+      - Covers related concepts with same lead author
+   
+   c) AUTHOR CONTACT:
+      - Lead author: Cabo C (Johns Hopkins University)
+      - ResearchGate profile may have paper
+   
+   d) PURCHASE:
+      - AHA Journals (typically $45-50)
+
+5. "A Geometrical Theory for Spiral Waves in Excitable Media"
+   Author: Keener JP
+   Journal: SIAM Journal on Applied Mathematics
+   Volume: 46, Pages: 1039-1056
+   Year: 1986 (note: listed as 1988 in your request, but published 1986)
+   DOI: 10.1137/0146062
+   RECOMMENDED APPROACHES:
+   
+   a) INSTITUTIONAL ACCESS:
+      - Check SIAM subscription through your institution
+      - SIAM ePubs: https://epubs.siam.org/doi/10.1137/0146062
+      - PDF link: https://epubs.siam.org/doi/pdf/10.1137/0146062
+   
+   b) AUTHOR CONTACT:
+      - James P. Keener, University of Utah
+      - ResearchGate profile available
+      - May have preprints available
+   
+   c) PREPRINT/ARCHIVE:
+      - Check University of Utah repository
+      - Search arXiv.org for similar works by Keener
+   
+   d) PURCHASE:
+      - SIAM (typically $40-45)
+
+6. "Wave Front–Obstacle Interactions in Cardiac Tissue: A Computational Study"
+   Authors: Azene EM, Trayanova NA, Warman EL
+   Journal: Annals of Biomedical Engineering
+   Volume: 29, Pages: 35-46
+   Year: 2001
+   DOI: 10.1114/1.1332083
+   PMID: 11219506
+   Publisher: Springer Nature
+   RECOMMENDED APPROACHES:
+   
+   a) INSTITUTIONAL ACCESS:
+      - Check subscription to Springer journals
+      - Access through: https://link.springer.com/article/10.1114/1.1332083
+   
+   b) AUTHOR CONTACT:
+      - Lead author: E.M. Azene or Natalia Trayanova
+      - Natalia Trayanova: Johns Hopkins University
+      - ResearchGate or institutional repository
+   
+   c) PURCHASE:
+      - Springer (typically $40-50)
+
+TIER 3: HISTORICAL/FOUNDATIONAL PAPERS (Limited digitization)
+--------------------------------------------------------------
+
+1. "Analytic evaluation of the relationship between the speed of a wave and curvature of its front"
+   Author: Zykov VS
+   Journal: Biophysics (English translation) / Biofizika (Russian)
+   Volume: 25, Pages: 949-954 / 888-892
+   Year: 1980
+   RECOMMENDED APPROACHES:
+   
+   a) INSTITUTIONAL ARCHIVE:
+      - Check if institution has microfilm or digital archives
+      - Contact library for historical journal access
+   
+   b) INTER-LIBRARY LOAN:
+      - Request through your institution's library system
+   
+   c) AUTHOR CONTACT:
+      - V.S. Zykov may be available through academia networks
+      - Request directly if possible
+   
+   d) ALTERNATIVE:
+      - Use highly-cited review papers that cite and summarize Zykov's work
+      - Later papers (Fast & Kléber 1997, Keener papers) detail Zykov's findings
+
+ALTERNATIVE SOURCES AND STRATEGIES
+===================================
+
+1. ResearchGate:
+   - Many authors maintain active ResearchGate profiles
+   - Can request papers directly from authors
+   - Highly responsive community, especially for academic work
+   - Profiles to check:
+     * Stephen M. Dillon (anisotropic tissue)
+     * J.M. de Bakker (slow conduction)
+     * C. Cabo (spiral waves)
+     * James P. Keener (geometrical theory)
+     * Vladimir G. Fast (wavefront curvature)
+
+2. Author Institutional Repositories:
+   - Johns Hopkins University (Trayanova, Cabo)
+   - Columbia University (Dillon, Wit)
+   - Academic Medical Center Amsterdam (de Bakker)
+   - University of Utah (Keener)
+   - Check institutional repositories for available preprints
+
+3. Google Scholar:
+   - Search for papers and sometimes find free PDF links
+   - Use "Cited by" to find related open-access work
+
+4. Citation Databases:
+   - Semantic Scholar (may provide free PDFs)
+   - SciHub (note: copyright considerations)
+   - CORE (core.ac.uk) - aggregates open access content
+
+5. Institutional Library Services:
+   - Many institutions offer document delivery
+   - Can request articles from paywall journals
+   - Often faster than author contact
+
+DOWNLOAD PRIORITY RECOMMENDATION
+=================================
+
+IMMEDIATE (Download first):
+1. All 6 PMC open access papers (direct download, no barriers)
+2. Cabo 1996 related paper (already identified as open access)
+
+HIGH PRIORITY (Should be achievable):
+1. Fast & Kléber 1997 - Try CORE link or institutional access
+2. de Bakker et al 1993 - Contact author or AHA subscription
+3. Dillon et al 1988 - Contact author (Stephen Dillon responsive on ResearchGate)
+
+MEDIUM PRIORITY (May require purchase or significant effort):
+1. Keener 1986 - Check SIAM subscription
+2. Cabo et al 2006 - Related to 1996 paper, may be lower priority
+3. Wave Front-Obstacle 2001 - Contact Trayanova (Johns Hopkins)
+
+LOWER PRIORITY (Historical/foundational, less critical):
+1. Zykov 1980 - Very old, findings incorporated into later papers
+   - Consider using as reference in Fast & Kléber paper instead
+
+ESTIMATED DOWNLOAD COMPLETION
+==============================
+
+Open Access Papers: 6 papers - IMMEDIATE AVAILABILITY
+Likely Accessible: 4-5 papers - With institutional access or author contact
+Difficult Access: 1-2 papers - May require purchase or strong effort
+
+Recommended timeline:
+- Day 1: Download all 6 PMC papers (20 minutes)
+- Days 2-3: Request from authors via ResearchGate (3-5 days response time typical)
+- Days 3-7: Check institutional subscriptions
+- Day 7-14: Consider purchase for most critical remaining papers
+
+NEXT STEPS
+==========
+
+1. Go to each PMC URL and download the 6 open-access papers
+2. Contact key authors (Dillon, de Bakker, Trayanova, Keener) via ResearchGate
+3. Check your institution's journal subscriptions
+4. Save all PDFs to: /sessions/beautiful-bold-darwin/mnt/Heart Conduction/Research/Infarct_Boundary_Speedup/papers/
+5. Maintain a log of sources and acquisition methods for reference tracking
+

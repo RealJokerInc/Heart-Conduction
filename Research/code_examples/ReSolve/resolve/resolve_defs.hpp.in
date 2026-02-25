@@ -1,0 +1,30 @@
+// #pragma once
+
+#ifndef __RESOLVE_DEFINITIONS_HPP__
+#define __RESOLVE_DEFINITIONS_HPP__
+
+#cmakedefine RESOLVE_USE_GPU
+#cmakedefine RESOLVE_USE_CUDA
+#cmakedefine RESOLVE_USE_HIP
+#cmakedefine RESOLVE_USE_MPI
+#cmakedefine RESOLVE_USE_RAJA
+#cmakedefine RESOLVE_USE_EIGEN
+#cmakedefine RESOLVE_USE_KLU
+#cmakedefine RESOLVE_USE_PROFILING
+#define RESOLVE_VERSION  "@PROJECT_VERSION@"
+
+#define RESOLVE_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@"
+#define RESOLVE_VERSION_MINOR "@PROJECT_VERSION_MINOR@"
+#define RESOLVE_VERSION_PATCH "@PROJECT_VERSION_PATCH@"
+
+// /// Date of build with the format "%Y-%m-%d"
+// #define RESOLVE_RELEASE_DATE "@RESOLVE_RELEASE_DATE@"
+
+#ifdef RESOLVE_USE_HIP
+#ifndef __HIP_PLATFORM_AMD__
+#define __HIP_PLATFORM_AMD__
+#endif
+#endif
+
+
+#endif // __RESOLVE_DEFINITIONS_HPP__

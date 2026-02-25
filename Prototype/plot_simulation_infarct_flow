@@ -1,0 +1,249 @@
+"""
+plot_simulation_infarct_flow.py
+
+Run and visualise a simulation on a mesh with a central circular infarct
+and fibers aligned to an incompressible flow wrapping around the infarct.
+"""
+
+from __future__ import annotations
+
+import argparse
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+from version3 import step_relaxed_monodomain, default_params
+from mesh_setup import TissueMesh, create_flow_around_infarct_mesh
+
+
+# ---------------------------------------------------------------------------
+# Core simulation driver
+# ---------------------------------------------------------------------------
+
+def run_simulation(
+    mesh: TissueMesh,
+    params: dict,
+    dt: float = 0.02,
+    t_stop: float = 60.0,
+    output_stride: int = 5,
+    stim_interval: float = 8.0,
+    stim_duration: float = 1.0,
+):
+    """
+    Simple time stepping loop using the relaxed monodomain stepper.
+    Returns a stack of voltage frames and their times.
+    """
+    # Periodic stimulus on the left edge
+    stim_fn = mesh.periodic_left_edge_stimulus(period_ms=stim_interval, pulse_ms=stim_duration)
+
+    V_rest = params.get("V_rest", 0.0)
+    V, w = mesh.empty_state(V_rest=V_rest, w_rest=V_rest)
+
+    frames = []
+    times = []
+
+    n_steps = int(t_stop / dt)
+
+    for step in range(n_steps + 1):
+        t = step * dt
+
+        # Record before updating (so t=0 is included)
+        if step % output_stride == 0:
+            frames.append(V.copy())
+            times.append(t)
+
+        I_stim = stim_fn(t)
+        V, w = step_relaxed_monodomain(V, w, mesh, params, I_stim, dt)
+
+    frames = np.stack(frames, axis=0)
+    times = np.asarray(times, dtype=float)
+    return frames, times
+
+
+# ---------------------------------------------------------------------------
+# Plotting helpers
+# ---------------------------------------------------------------------------
+
+def _color_limits(frames: np.ndarray, percentile_clip: float | None = 1.0):
+    arr = np.asarray(frames, dtype=float)
+    if percentile_clip is None:
+        return float(arr.min()), float(arr.max())
+    low = np.percentile(arr, percentile_clip)
+    high = np.percentile(arr, 100.0 - percentile_clip)
+    return float(low), float(high)
+
+
+def plot_geometry(mesh: TissueMesh, ax):
+    """Show epsilon_tissue and overlay fiber directions."""
+    extent = mesh.extent()
+
+    geom = ax.imshow(
+        mesh.epsilon_tissue,
+        origin="lower",
+        extent=extent,
+        cmap="gray",
+        vmin=0.0,
+        vmax=1.0,
+    )
+    ax.set_title("Geometry / fiber field")
+    ax.set_xlabel("x (mm)")
+    ax.set_ylabel("y (mm)")
+    ax.figure.colorbar(geom, ax=ax, label="epsilon_tissue")
+
+    # Quiver of fiber directions (downsampled)
+    skip_x = max(1, mesh.nx // 20)
+    skip_y = max(1, mesh.ny // 20)
+
+    x_coords = np.linspace(0.0, mesh.Lx, mesh.nx)[::skip_x]
+    y_coords = np.linspace(0.0, mesh.Ly, mesh.ny)[::skip_y]
+    X, Y = np.meshgrid(x_coords, y_coords)
+
+    theta_sample = mesh.theta[::skip_y, ::skip_x]
+    U = np.cos(theta_sample)
+    V = np.sin(theta_sample)
+
+    ax.quiver(X, Y, U, V, color="red", scale=20, width=0.003)
+
+
+def plot_snapshot(
+    frames: np.ndarray,
+    times: np.ndarray,
+    mesh: TissueMesh,
+    ax,
+    percentile_clip: float | None = 1.0,
+    interval_ms: float | None = None,
+    save_path: str | None = None,
+):
+    """Animate the voltage field using matplotlib's FuncAnimation."""
+    extent = mesh.extent()
+    vmin, vmax = _color_limits(frames, percentile_clip)
+
+    im = ax.imshow(
+        frames[0],
+        origin="lower",
+        extent=extent,
+        cmap="turbo",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    ax.set_xlabel("x (mm)")
+    ax.set_ylabel("y (mm)")
+    ax.set_title("Voltage field")
+    fig = ax.figure
+    fig.colorbar(im, ax=ax, label="Voltage (mV)")
+
+    time_text = ax.text(
+        0.02,
+        0.95,
+        f"t = {times[0]:.2f} ms",
+        transform=ax.transAxes,
+        color="white",
+        fontsize="medium",
+        bbox=dict(facecolor="black", alpha=0.3, boxstyle="round,pad=0.2"),
+    )
+
+    if interval_ms is None:
+        if len(times) > 1:
+            interval_ms = max(10.0, (times[1] - times[0]) * 5.0)
+        else:
+            interval_ms = 30.0
+
+    def _update(idx):
+        im.set_data(frames[idx])
+        time_text.set_text(f"t = {times[idx]:.2f} ms")
+        return im, time_text
+
+    anim = FuncAnimation(
+        fig,
+        _update,
+        frames=len(frames),
+        interval=interval_ms,
+        blit=True,
+        repeat=True,
+    )
+
+    if save_path:
+        anim.save(save_path)
+
+    return anim
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Simulation with flow-aligned fibers around a circular infarct."
+    )
+    parser.add_argument("--nx", type=int, default=160)
+    parser.add_argument("--ny", type=int, default=160)
+    parser.add_argument("--Lx", type=float, default=20.0)
+    parser.add_argument("--Ly", type=float, default=20.0)
+    parser.add_argument("--infarct-radius", type=float, default=3.0)
+    parser.add_argument("--D-parallel", type=float, default=1.0)
+    parser.add_argument("--D-perp", type=float, default=0.2)
+    parser.add_argument("--boundary-boost", type=float, default=3.0)
+    parser.add_argument("--boost-width", type=float, default=None)
+
+    parser.add_argument("--dt", type=float, default=0.02)
+    parser.add_argument("--t-stop", type=float, default=60.0)
+    parser.add_argument("--output-stride", type=int, default=5)
+    parser.add_argument("--percentile-clip", type=float, default=1.0)
+    parser.add_argument("--stim-interval", type=float, default=8.0)
+    parser.add_argument("--stim-duration", type=float, default=1.0)
+
+    parser.add_argument("--save-animation", type=str, default=None)
+    parser.add_argument("--no-show", action="store_true")
+
+    args = parser.parse_args()
+
+    mesh = create_flow_around_infarct_mesh(
+        nx=args.nx,
+        ny=args.ny,
+        Lx=args.Lx,
+        Ly=args.Ly,
+        infarct_radius=args.infarct_radius,
+        D_parallel=args.D_parallel,
+        D_perp=args.D_perp,
+        eps_healthy=1.0,
+        eps_infarct=0.0,
+        flow_strength=1.0,
+        boundary_boost=args.boundary_boost,
+        boost_width=args.boost_width,
+    )
+
+    params = default_params()
+
+    frames, times = run_simulation(
+        mesh,
+        params,
+        dt=args.dt,
+        t_stop=args.t_stop,
+        output_stride=args.output_stride,
+        stim_interval=args.stim_interval,
+        stim_duration=args.stim_duration,
+    )
+
+    fig, (ax_geom, ax_field) = plt.subplots(1, 2, figsize=(12, 5))
+    plot_geometry(mesh, ax_geom)
+    animate = plot_snapshot(
+        frames,
+        times,
+        mesh,
+        ax_field,
+        percentile_clip=args.percentile_clip,
+        save_path=args.save_animation,
+    )
+
+    fig.tight_layout()
+
+    if args.no_show:
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+if __name__ == "__main__":
+    main()

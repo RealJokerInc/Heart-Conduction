@@ -1,0 +1,187 @@
+BIDOMAIN SIMULATION - REFERENCE IMPLEMENTATIONS FOR ENGINE V5.4
+================================================================
+
+Directory: /sessions/gifted-quirky-edison/mnt/Heart Conduction/Research/Bidomain/Code_Examples/
+
+CONTENTS
+========
+
+1. bidomain_block_system.py (693 lines)
+   - 2×2 block linear system assembly
+   - Crank-Nicolson and BDF1 time stepping
+   - Null space pinning for φe uniqueness
+   - Block matrix-vector products
+   - 5-point FDM spatial discretization
+   - Demo with small test cases
+   
+   Key Classes:
+     BidomainBlockMatrix: Block matrix operations
+     BidomainBlockSystemAssembler: System assembly
+     SimpleFDMDiscretization: Spatial discretization
+
+2. bidomain_block_preconditioner.py (788 lines)
+   - Block diagonal preconditioner
+   - Block triangular (LDU) preconditioner
+   - Approximate Schur complement preconditioner
+   - MINRES solver for symmetric indefinite systems
+   - PCG solver for elliptic subproblems
+   - Convergence comparisons
+   
+   Key Classes:
+     BlockDiagonalPreconditioner
+     BlockTriangularPreconditioner
+     SchurComplementPreconditioner
+     MINRESSolver
+     PCGSolver
+
+3. bidomain_operator_splitting.py (788 lines)
+   - Godunov splitting (1st order)
+   - Strang splitting (2nd order)
+   - Semi-implicit splitting
+   - ReactionOperator with ionic current model
+   - DiffusionOperator with implicit coupling
+   - CoupledDiffusionEllipticSolver
+   - Simplified Luo-Rudy 1991 ionic model
+   
+   Key Classes:
+     SimplifiedLR91: Ionic current model
+     ReactionOperator
+     DiffusionOperator
+     GodunovSplitting
+     StrangSplitting
+     SemiImplicitSplitting
+     CoupledDiffusionEllipticSolver
+
+4. bidomain_lbm_dual_lattice.py (633 lines)
+   - D2Q5 lattice implementation
+   - Dual-lattice approach (one for Vm, one for φe)
+   - BGK collision operator
+   - Streaming operator with periodic BC
+   - Bounce-back boundary conditions
+   - Coupled source terms
+   - Simple 2D slab stimulation test
+   
+   Key Classes:
+     D2Q5Lattice
+     BGKCollision
+     StreamingOperator
+     BidomainLBMDualLattice
+
+5. bidomain_fdm_assembly.py (674 lines)
+   - 5-point and 9-point FDM stencils
+   - Anisotropic conductivity with fiber orientation
+   - Rotation matrices from Euler angles
+   - Per-node conductivity support
+   - Neumann and periodic boundary conditions
+   - Intracellular and extracellular assembly
+   
+   Key Classes:
+     ConductivityTensor: Anisotropic conductivity
+     FDM2DLaplacian: 2D Laplacian assembly
+     BidomainFDMAssembler: Convenient interface
+     GridParams: Grid configuration
+
+6. README.md (16 KB)
+   - Overview of bidomain equations
+   - Detailed description of each module
+   - Usage examples
+   - Integration notes with Engine V5.4
+   - Performance characteristics
+   - Physical parameter values
+   - References to literature
+
+QUICK START
+===========
+
+# Test syntax of all modules
+python -m py_compile bidomain_*.py
+
+# Run individual demonstrations
+python bidomain_block_system.py
+python bidomain_block_preconditioner.py
+python bidomain_operator_splitting.py
+python bidomain_lbm_dual_lattice.py
+python bidomain_fdm_assembly.py
+
+Each module contains a main() function that demonstrates:
+- System assembly
+- Matrix properties
+- Time integration
+- Performance benchmarks
+- Output statistics
+
+TOTAL CODE STATISTICS
+=====================
+
+Total Python lines: ~3,576
+Total documentation: 16 KB (README.md)
+All files: 7 (5 modules + README + INDEX)
+
+Module sizes:
+  - bidomain_block_system.py: 693 lines
+  - bidomain_block_preconditioner.py: 788 lines
+  - bidomain_operator_splitting.py: 788 lines
+  - bidomain_lbm_dual_lattice.py: 633 lines
+  - bidomain_fdm_assembly.py: 674 lines
+
+DEPENDENCIES
+=============
+
+Required:
+  - PyTorch >= 1.9
+  - NumPy >= 1.19
+
+Optional:
+  - CUDA for GPU acceleration
+  - CuPy for additional GPU operations (if using advanced features)
+
+INTEGRATION WITH ENGINE V5.4
+=============================
+
+These modules implement the following V5.4 interfaces:
+
+Abstract Base Classes:
+  - SpatialDiscretization
+  - BlockMatrix
+  - BlockPreconditioner
+  - IterativeSolver
+  - IonicCurrent
+  - Operator
+  - MatrixAssembler
+
+All modules use:
+  - PyTorch sparse tensors (torch.sparse)
+  - GPU acceleration via torch.device('cuda')
+  - Consistent matrix naming: Ki, Ke, M
+  - Standard parameter units (mS/cm, cm, ms)
+
+REFERENCES
+===========
+
+Sundnes et al. (2006) - Computing the Electrical Activity in the Heart
+Clayton & Panfilov (2008) - A guide to modelling cardiac electrical activity in 3D
+Sundnes et al. (2002) - Operator Splitting Methods for Systems of Convection-Diffusion-Reaction
+Pennacchio & Simoncini (2012) - Efficient Algebraic Solution of Bidomain
+Pathmanathan et al. (2012) - A Numerical Guide to the Solution of the Bidomain Equations
+LeVeque (2007) - Finite Difference Methods for Ordinary and Partial Differential Equations
+Succi (2001) - The Lattice Boltzmann Equation for Fluid Dynamics and Beyond
+
+See README.md for complete references.
+
+AUTHOR NOTES
+============
+
+These are reference implementations designed for:
+1. Educational understanding of bidomain numerical methods
+2. Integration into Engine V5.4 with minimal modifications
+3. Validation and testing
+4. Benchmarking different approaches
+
+For production use, consider:
+- Adaptive time stepping
+- Mesh refinement
+- Multigrid preconditioners
+- Specialized GPU kernels
+- Parallel MPI domain decomposition
+
+Last Updated: February 10, 2026

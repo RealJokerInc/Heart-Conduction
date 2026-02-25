@@ -1,0 +1,267 @@
+================================================================================
+CARDIAC INFARCT BOUNDARY CONDUCTION VELOCITY SPEEDUP - RESEARCH PAPER COLLECTION
+================================================================================
+
+COLLECTION LOCATION:
+/sessions/beautiful-bold-darwin/mnt/Heart Conduction/Research/Infarct_Boundary_Speedup/papers/
+
+DOCUMENTATION FILES IN THIS DIRECTORY:
+======================================
+
+1. INDEX.txt (this file)
+   - Overview of collection contents and access information
+
+2. README_ACCESS_SUMMARY.txt
+   - Summary table of all papers with access status
+   - Categorized by open access vs paywall
+
+3. DOWNLOAD_RECOMMENDATIONS.txt
+   - Detailed strategies for accessing each paper
+   - Tier-based recommendations (Immediate/High/Medium/Low Priority)
+   - Author contact information for ResearchGate requests
+   - Alternative sources and access strategies
+
+4. PAPERS_METADATA.csv
+   - Machine-readable metadata for all papers
+   - Includes: Authors, titles, journals, DOIs, PMID, PMCID, access status
+   - Can be imported into reference management software
+
+PAPERS IDENTIFIED AND THEIR STATUS
+===================================
+
+TIER 1 - OPEN ACCESS (Ready to download immediately)
+====================================================
+
+Paper 1: PMC2993197
+Title: "Ionic mechanisms of electrophysiological heterogeneity and conduction block in the infarct border zone"
+Access: OPEN - No authentication required
+URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC2993197/
+Journal: Circulation Research (~2010)
+Status: ✓ READY TO DOWNLOAD
+
+Paper 2: PMC3075562
+Title: "Representing Cardiac Bidomain Bath-Loading Effects by an Augmented Monodomain Approach: Application to Complex Ventricular Models"
+Access: OPEN - No authentication required
+URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC3075562/
+Journal: IEEE Transactions on Biomedical Engineering (2011)
+PMID: 21292591
+Status: ✓ READY TO DOWNLOAD
+
+Paper 3: PMC6474757
+Title: "New Insights on the Cardiac Safety Factor: Unraveling the Relationship Between Conduction Velocity and Robustness of Propagation"
+Access: OPEN - No authentication required
+URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC6474757/
+Journal: Journal of Molecular and Cellular Cardiology (2019)
+PMID: 30677394
+Status: ✓ READY TO DOWNLOAD
+
+Paper 4: PMC5874259
+Title: "Source-Sink Mismatch Causing Functional Conduction Block in Re-Entrant Ventricular Tachycardia"
+Access: OPEN - No authentication required
+URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC5874259/
+Journal: JACC: Clinical Electrophysiology (2018)
+Authors: Ciaccio EJ, Coromilas A, Wit AL, Peters NS, Garan H
+PMID: 29600773
+Status: ✓ READY TO DOWNLOAD
+
+Paper 5: PMC4067136
+Title: "Efficient simulation of cardiac electrical propagation using high order finite elements"
+Access: OPEN - No authentication required
+URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC4067136/
+Journal: Progress in Biophysics and Molecular Biology (2013)
+PMID: 24976644
+Status: ✓ READY TO DOWNLOAD
+
+Paper R1 (Related): PMC1225040
+Title: "Vortex shedding as a precursor of turbulent electrical activity in cardiac muscle"
+Access: OPEN - No authentication required
+URL: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1225040/
+Journal: Biophysical Journal (1996)
+Authors: Cabo C, Pertsov AM, Davidenko JM, Baxter WT, Gray RA, Jalife J
+PMID: 8785270
+Status: ✓ READY TO DOWNLOAD - HIGHLY RELEVANT
+
+TIER 2 - RESTRICTED ACCESS (Institutional/Author Contact Required)
+===================================================================
+
+Paper 2: Fast & Kléber (1997)
+Title: "Role of wavefront curvature in propagation of cardiac impulse"
+Journal: Cardiovascular Research
+Volume: 33, Issue: 2, Pages: 258-271
+DOI: 10.1016/S0008-6363(96)00216-7
+PMID: 9074688
+Access: Restricted (Oxford Academic)
+Recommendations: Try CORE link, institutional subscription, or author contact
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS OR PURCHASE
+
+Paper 3: de Bakker et al. (1993)
+Title: "Slow conduction in the infarcted human heart. 'Zigzag' course of activation"
+Journal: Circulation
+Volume: 88, Issue: 3, Pages: 915-926
+DOI: 10.1161/01.CIR.88.3.915
+PMID: 8353918
+Access: Restricted (AHA Journals)
+Recommendations: Author contact (J.M. de Bakker, Amsterdam), institutional subscription
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS OR AUTHOR REQUEST
+
+Paper 5: Dillon et al. (1988)
+Title: "Influences of anisotropic tissue structure on reentrant circuits in the epicardial border zone of subacute canine infarcts"
+Journal: Circulation Research
+Volume: 63, Issue: 1, Pages: 182-206
+DOI: 10.1161/01.RES.63.1.182
+PMID: 3383375
+Access: Restricted (AHA Journals)
+Recommendations: Author contact (Stephen Dillon, Columbia University), institutional subscription
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS OR AUTHOR REQUEST
+
+Paper 6: Keener (1986)
+Title: "A Geometrical Theory for Spiral Waves in Excitable Media"
+Journal: SIAM Journal on Applied Mathematics
+Volume: 46, Pages: 1039-1056
+DOI: 10.1137/0146062
+Access: Restricted (SIAM)
+Recommendations: SIAM subscription, author contact (University of Utah)
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS OR PURCHASE
+
+Paper 4: Cabo et al. (2006)
+Title: "Spiral Wave Attachment to Millimeter-Sized Obstacles"
+Journal: Circulation
+DOI: 10.1161/CIRCULATIONAHA.105.598631
+PMID: 17088465
+Access: Restricted (AHA Journals)
+Recommendations: Related open access paper (PMC1225040) by same lead author; institutional subscription; author contact
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS (Use related 1996 paper as alternative)
+
+Paper 9: Azene, Trayanova & Warman (2001)
+Title: "Wave Front–Obstacle Interactions in Cardiac Tissue: A Computational Study"
+Journal: Annals of Biomedical Engineering
+Volume: 29, Pages: 35-46
+DOI: 10.1114/1.1332083
+PMID: 11219506
+Access: Restricted (Springer Nature)
+Recommendations: Author contact (Natalia Trayanova, Johns Hopkins University), institutional subscription
+Status: ⊘ REQUIRES INSTITUTIONAL ACCESS OR AUTHOR REQUEST
+
+TIER 3 - HISTORICAL/FOUNDATIONAL (Limited Digitization)
+========================================================
+
+Paper 1: Zykov (1980)
+Title: "Analytic evaluation of the relationship between the speed of a wave and curvature of its front"
+Journal: Biophysics (English) / Biofizika (Russian)
+Volume: 25, Pages: 949-954 / 888-892
+PMID: 7417577
+Access: Restricted (Historical Publication)
+Recommendations: Inter-library loan, institutional archives, alternative: cite findings from Fast & Kléber (1997) or Keener papers
+Status: ⊘ LIMITED AVAILABILITY - Consider using secondary sources
+
+SUMMARY STATISTICS
+==================
+
+Total Papers Requested: 12
+Related Papers Identified: 1
+
+By Access Type:
+- Open Access (PMC): 5 papers + 1 related = 6 papers (50%)
+- Restricted Commercial: 6 papers (50%)
+
+By Status:
+- Immediately Available: 6 papers
+- Requires Effort: 6 papers
+
+By Topic Area:
+- Experimental/Clinical: 3 papers
+- Theoretical/Computational: 4 papers
+- Mixed Methods: 2 papers
+- Related Spiral Wave Dynamics: 1 paper
+
+By Publication Year:
+- 1980s-1990s: 4 papers (foundational)
+- 2000s-2010s: 7 papers (recent applications)
+- 2010s-2020s: 2 papers (newest insights)
+
+RECOMMENDED WORKFLOW
+====================
+
+PHASE 1 - IMMEDIATE (Day 1, ~30 minutes)
+Step 1: Download all 6 open-access PMC papers
+- Visit each PMC URL listed above
+- Click "Download PDF" button
+- Save to: /sessions/beautiful-bold-darwin/mnt/Heart Conduction/Research/Infarct_Boundary_Speedup/papers/
+
+PHASE 2 - SHORT TERM (Days 2-7)
+Step 2: Request restricted papers from authors
+- Create ResearchGate accounts for key authors (if you have an account)
+- Request papers from:
+  * Stephen M. Dillon (anisotropic tissue)
+  * J.M. de Bakker (slow conduction)
+  * Natalia Trayanova (obstacle interactions)
+  * James P. Keener (spiral waves)
+- Typical response time: 3-7 days
+
+Step 3: Check institutional subscriptions
+- Verify if your institution has access to:
+  * AHA Journals (American Heart Association) - covers 2 papers
+  * Oxford Academic - covers 1 paper
+  * SIAM ePubs - covers 1 paper
+  * Springer Nature - covers 1 paper
+
+PHASE 3 - EXTENDED (Days 7-30)
+Step 4: Consider purchasing remaining papers
+- If institutional access unavailable
+- Individual article purchase typically $40-50 per paper
+
+Step 5: Use related open-access papers
+- Cabo et al. (1996) PMC1225040 provides similar insights to 2006 paper
+- Findings from foundational papers often cited in accessible secondary sources
+
+KEY RESEARCH CONTACTS (for ResearchGate requests)
+==================================================
+
+Anisotropic Tissue & Reentrant Circuits:
+- Stephen M. Dillon, Columbia University
+  Papers: 1988 Circulation Research work on anisotropic reentry
+
+Slow Conduction in Infarcts:
+- J.M. de Bakker, Academic Medical Center Amsterdam
+  Papers: 1993 Circulation work on zigzag conduction
+
+Wavefront Curvature:
+- Vladimir G. Fast (likely at Max Planck Institute or University of Heidelberg)
+  Papers: 1997 Cardiovascular Research work
+
+Spiral Waves & Obstacles:
+- Carlos Cabo, Johns Hopkins University
+  Papers: 2006 Circulation work on spiral wave attachment
+
+Obstacle Interactions & Computational:
+- Natalia Trayanova, Johns Hopkins University
+  Papers: 2001 Annals of Biomedical Engineering work
+
+Geometrical Theory:
+- James P. Keener, University of Utah
+  Papers: 1986 SIAM Journal work on spiral waves
+
+TECHNICAL SPECIFICATIONS
+=========================
+
+Directory: /sessions/beautiful-bold-darwin/mnt/Heart Conduction/Research/Infarct_Boundary_Speedup/papers/
+Total PDFs (target): 12 papers
+Expected disk space: ~100-150 MB (typical for full-text PDFs)
+File naming convention: 
+- For open access: "PMCXXXXXX_Author_Year_Brief_Title.pdf"
+- For commercial: "FirstAuthor_Year_Journal_AbbreviationPage.pdf"
+
+NOTES FOR FUTURE REFERENCE
+===========================
+
+1. The Fast & Kléber (1997) paper is one of the most cited in this field and highly recommended as a first read
+2. The de Bakker (1993) paper provides key experimental evidence for zigzag conduction
+3. PMC papers 2993197, 3075562, 6474757, 5874259, and 4067136 cover computational and systems-level understanding
+4. Keener's 1986 paper (though restricted) is foundational for understanding spiral wave mathematics
+5. Zykov's 1980 work is cited extensively but the key findings are well-summarized in later papers
+6. The Cabo papers (1996 and 2006) provide important links between theory and spiral wave dynamics in cardiac tissue
+
+================================================================================
+Generated: 2026-02-10
+Next Update: After attempting downloads and author contacts
+================================================================================

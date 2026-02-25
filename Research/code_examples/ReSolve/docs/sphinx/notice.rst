@@ -1,0 +1,4 @@
+Notice
+*******
+
+.. include:: ../../NOTICE

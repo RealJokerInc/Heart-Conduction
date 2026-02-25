@@ -1,0 +1,6 @@
+parameter,measured,expected,status
+V_rest_mV,-87.80,-87 to -88,PASS
+V_peak_mV,48.97,+35 to +45,PASS
+APD90_ms,271.7,271±13,PASS
+ERP_ms,261,~APD90,PASS
+PRR_ms,-10.7,0-20,PASS

@@ -1,0 +1,17 @@
+.vscode/
+.DS_Store
+build/*
+_build
+install/*
+*~
+*.swp
+.ubuild.json
+*__pycache__*
+*nvblas.conf
+spack-env-*/
+spack-build-*
+spack_install.*
+spack-configure-*
+docs/dox.warnings
+docs/@dox_output_dir@axom.tag
+docs/html
