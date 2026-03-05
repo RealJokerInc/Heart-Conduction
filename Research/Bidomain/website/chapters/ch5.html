@@ -1,0 +1,629 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 5</div>
+  <h2 class="chapter-title">The ten Tusscher–Panfilov 2006 Model</h2>
+  <div class="chapter-intro">
+    TTP06 is the workhorse model for human ventricular electrophysiology. With 18 state variables —
+    12 gating variables and 6 ionic concentrations — it captures every phase of the action potential
+    we dissected in Chapter 3, plus the calcium cycling machinery that drives contraction.
+  </div>
+
+  <h3>5.1 &ensp; 18 State Variables: What and Why</h3>
+
+  <p>
+    A natural question when encountering TTP06 for the first time is: <em>why 18 variables?</em>
+    The answer lies in the variety of currents and intracellular processes that shape the cardiac AP.
+    Each current requires gates, and each ion species requires a concentration variable to track
+    changes over multiple beats.
+  </p>
+
+  <p>
+    The 18 states fall into two natural groups:
+  </p>
+
+  <p>
+    <strong>12 gating variables</strong> (each between 0 and 1, following Hodgkin–Huxley-style kinetics):
+  </p>
+
+  <table>
+    <tr><th>Gate</th><th>Current</th><th>Role</th><th>Speed</th></tr>
+    <tr><td>$m$</td><td>$I_{\text{Na}}$</td><td>Na$^+$ activation</td><td>$\lt 1$ ms</td></tr>
+    <tr><td>$h$, $j$</td><td>$I_{\text{Na}}$</td><td>Na$^+$ fast and slow inactivation</td><td>1–100 ms</td></tr>
+    <tr><td>$d$</td><td>$I_{\text{CaL}}$</td><td>Ca$^{2+}$ activation</td><td>1–5 ms</td></tr>
+    <tr><td>$f$, $f_2$</td><td>$I_{\text{CaL}}$</td><td>Ca$^{2+}$ voltage inactivation</td><td>20–300 ms</td></tr>
+    <tr><td>$f_{\text{Ca}}$</td><td>$I_{\text{CaL}}$</td><td>Ca$^{2+}$-dependent inactivation</td><td>2–50 ms</td></tr>
+    <tr><td>$r$</td><td>$I_{\text{to}}$</td><td>Transient outward activation</td><td>1–5 ms</td></tr>
+    <tr><td>$s$</td><td>$I_{\text{to}}$</td><td>Transient outward inactivation</td><td>5–50 ms</td></tr>
+    <tr><td>$x_{r1}$, $x_{r2}$</td><td>$I_{\text{Kr}}$</td><td>Rapid delayed rectifier</td><td>10–100 ms</td></tr>
+    <tr><td>$x_s$</td><td>$I_{\text{Ks}}$</td><td>Slow delayed rectifier</td><td>100–500 ms</td></tr>
+  </table>
+
+  <p>
+    <strong>6 concentration variables</strong> (dynamic, changing each beat):
+  </p>
+
+  <table>
+    <tr><th>Variable</th><th>Description</th><th>Typical Value</th></tr>
+    <tr><td>$[\text{Na}^+]_i$</td><td>Intracellular sodium</td><td>$\sim$10 mM</td></tr>
+    <tr><td>$[\text{K}^+]_i$</td><td>Intracellular potassium</td><td>$\sim$138 mM</td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_i$</td><td>Cytoplasmic calcium (free)</td><td>$\sim$0.0001 mM</td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_{\text{SR}}$</td><td>SR calcium store</td><td>$\sim$1–3 mM</td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_{\text{ss}}$</td><td>Subspace calcium (near L-type channels)</td><td>$\sim$0.0001 mM</td></tr>
+    <tr><td>$R'$</td><td>SR release recovery variable</td><td>$\sim$1</td></tr>
+  </table>
+
+  <p>
+    The distinction between $[\text{Ca}^{2+}]_i$, $[\text{Ca}^{2+}]_{\text{ss}}$, and
+    $[\text{Ca}^{2+}]_{\text{SR}}$ reflects the <em>compartmentalization</em> of calcium handling.
+    Calcium entering through L-type channels first reaches a tiny subspace near the SR release
+    channels, triggering CICR locally before diffusing into the bulk cytoplasm.
+  </p>
+
+  <h3>5.2 &ensp; The Complete Current Inventory</h3>
+
+  <p>
+    TTP06 models 12 distinct membrane currents plus 4 internal calcium fluxes. Every membrane current
+    contributes to the total ionic current:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.1)</span>
+    $$I_{\text{ion}} = \underbrace{I_{\text{Na}} + I_{\text{CaL}}}_{\text{depolarizing}} + \underbrace{I_{\text{to}} + I_{\text{Kr}} + I_{\text{Ks}} + I_{\text{K1}} + I_{\text{pK}}}_{\text{repolarizing}} + \underbrace{I_{\text{NaK}} + I_{\text{NaCa}} + I_{\text{pCa}}}_{\text{pumps/exchangers}} + \underbrace{I_{\text{bNa}} + I_{\text{bCa}}}_{\text{background}}$$
+  </div>
+
+  <p>
+    This equation is the heart of the model: at every timestep, the simulator evaluates all 12 terms,
+    sums them, and uses the total to update $V_m$. The sign convention follows physiology — positive
+    current is outward (repolarizing), negative current is inward (depolarizing). The table below
+    provides a complete reference, mapping each current to its AP phase, physiological role, and
+    clinical significance.
+  </p>
+
+  <!-- ─── Comprehensive current table ─── -->
+  <table>
+    <tr><th>Current</th><th>Type</th><th>Ion</th><th>AP Phase</th><th>Direction</th><th>Clinical Relevance</th></tr>
+    <tr><td>$I_{\text{Na}}$</td><td>Voltage-gated channel</td><td>Na$^+$</td><td>0 (upstroke)</td><td>Inward</td><td>Conduction velocity; Class I antiarrhythmics</td></tr>
+    <tr><td>$I_{\text{CaL}}$</td><td>Voltage-gated channel</td><td>Ca$^{2+}$</td><td>2 (plateau)</td><td>Inward</td><td>EC coupling trigger; Ca$^{2+}$ channel blockers (verapamil)</td></tr>
+    <tr><td>$I_{\text{to}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>1 (notch)</td><td>Outward</td><td>Transmural heterogeneity; Brugada syndrome</td></tr>
+    <tr><td>$I_{\text{Kr}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>3 (repolarization)</td><td>Outward</td><td>Primary drug target; Long QT syndrome (hERG block)</td></tr>
+    <tr><td>$I_{\text{Ks}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>3 (repolarization reserve)</td><td>Outward</td><td>Rate adaptation; LQT1; adrenergic modulation</td></tr>
+    <tr><td>$I_{\text{K1}}$</td><td>Inward rectifier</td><td>K$^+$</td><td>4 (rest) / 3 (late)</td><td>Outward</td><td>Resting potential; Andersen-Tawil syndrome (LQT7)</td></tr>
+    <tr><td>$I_{\text{pK}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>2 (plateau)</td><td>Outward</td><td>Small contribution to repolarization reserve</td></tr>
+    <tr><td>$I_{\text{NaK}}$</td><td>ATP-driven pump</td><td>Na$^+$/K$^+$</td><td>All</td><td>Net outward</td><td>Gradient maintenance; digitalis target</td></tr>
+    <tr><td>$I_{\text{NaCa}}$</td><td>Exchanger</td><td>Na$^+$/Ca$^{2+}$</td><td>2–3 / 4</td><td>Both$^*$</td><td>Calcium extrusion; DAD generation; heart failure</td></tr>
+    <tr><td>$I_{\text{pCa}}$</td><td>ATP-driven pump</td><td>Ca$^{2+}$</td><td>All</td><td>Outward</td><td>Fine calcium homeostasis</td></tr>
+    <tr><td>$I_{\text{bNa}}$</td><td>Background leak</td><td>Na$^+$</td><td>All</td><td>Inward</td><td>Resting Na$^+$ influx; balanced by $I_{\text{NaK}}$</td></tr>
+    <tr><td>$I_{\text{bCa}}$</td><td>Background leak</td><td>Ca$^{2+}$</td><td>All</td><td>Inward</td><td>Resting Ca$^{2+}$ influx; balanced by pumps</td></tr>
+  </table>
+
+  <p style="font-size:0.85em; color:#5a6175; margin-top:-0.5em;">
+    $^*$$I_{\text{NaCa}}$  operates in <em>forward mode</em> (inward, extruding Ca$^{2+}$) during late repolarization and diastole, and in <em>reverse mode</em> (outward, bringing Ca$^{2+}$ in) briefly during early depolarization.
+  </p>
+
+  <h3>5.3 &ensp; Voltage-Gated Depolarizing Currents</h3>
+
+  <h4>Fast Sodium Current ($I_{\text{Na}}$) — Phase 0</h4>
+
+  <p>
+    The fast sodium current is responsible for the action potential upstroke and determines conduction
+    velocity in tissue. It follows the classical HH formulation with three activation gates ($m$) and
+    two inactivation gates (fast $h$ and slow $j$):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.2)</span>
+    $$I_{\text{Na}} = \bar{g}_{\text{Na}}\,m^3\,h\,j\,(V_m - E_{\text{Na}})$$
+  </div>
+
+  <p>
+    The maximal conductance $\bar{g}_{\text{Na}} = 14.838$ nS/pF is one of the largest in the model.
+    The $m^3$ activation is ultrafast ($\tau_m \lt 1$ ms), providing the explosive upstroke. The dual
+    inactivation ($h$ fast, $j$ slow) ensures that sodium channels close within a few milliseconds and
+    remain closed throughout the plateau — creating the absolute refractory period. Physiologically,
+    $I_{\text{Na}}$ determines the maximum rate of rise $dV/dt_{\text{max}} \approx 250{-}350$ V/s, which
+    is a direct clinical measure of sodium channel availability. Class I antiarrhythmic drugs (lidocaine,
+    flecainide) work by reducing $\bar{g}_{\text{Na}}$, slowing conduction.
+  </p>
+
+  <h4>L-Type Calcium Current ($I_{\text{CaL}}$) — Phase 2</h4>
+
+  <p>
+    The L-type calcium current sustains the plateau and triggers excitation-contraction coupling. Unlike
+    $I_{\text{Na}}$, it uses the Goldman–Hodgkin–Katz (GHK) formulation rather than an Ohmic driving force,
+    because Ca$^{2+}$ has a very low intracellular concentration and a 2+ valence:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.3)</span>
+    $$I_{\text{CaL}} = P_{\text{CaL}}\,d\,f\,f_2\,f_{\text{Ca}}\cdot 4\,\frac{F^2}{RT}\,(V_m - 15)\,\frac{0.25\,[\text{Ca}^{2+}]_{\text{ss}}\,e^{2F(V_m-15)/RT} - [\text{Ca}^{2+}]_o}{e^{2F(V_m-15)/RT}-1}$$
+  </div>
+
+  <p>
+    Note three features that distinguish this from a simple Ohmic current. First, TTP06 uses a <em>permeability</em>
+    $P_{\text{CaL}} = 3.98 \times 10^{-5}$ cm/s rather than a conductance — the natural parameter for the GHK formulation.
+    Second, the voltage is shifted by $-15$ mV ($V_m - 15$), reflecting the experimental observation that the
+    current–voltage relationship of L-type channels peaks near $+15$ mV rather than $0$ mV. Third, the
+    intracellular calcium carries an activity coefficient of 0.25, while the extracellular side uses bare
+    $[\text{Ca}^{2+}]_o$ — this asymmetry accounts for the different ionic environments on each side.
+    The four gates represent distinct biophysical mechanisms: $d$ is voltage activation ($\tau_d \sim 1{-}5$ ms),
+    $f$ and $f_2$ are voltage-dependent inactivation (slow, $\tau \sim 20{-}300$ ms — this determines
+    how long the plateau lasts), and $f_{\text{Ca}}$ is <em>calcium-dependent inactivation</em> (CDI), which
+    responds to the local subspace calcium $[\text{Ca}^{2+}]_{\text{ss}}$. CDI is the primary negative
+    feedback mechanism that limits calcium entry: as CICR raises subspace calcium, $f_{\text{Ca}}$
+    inactivates the channel, shutting off the trigger.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      The GHK equation replaces the simple $(V_m - E_{\text{Ca}})$ driving force with a nonlinear function
+      of voltage and concentrations on both sides. Why? For ions with large concentration gradients
+      ($[\text{Ca}^{2+}]_o / [\text{Ca}^{2+}]_i \approx 20{,}000$) and multivalent charge,
+      the Ohmic approximation badly overestimates current at large depolarizations. The GHK formula
+      — derived from the Nernst–Planck electrodiffusion equation — accounts for the exponential
+      concentration profile across the membrane and gives physically correct saturation behavior.
+    </p>
+  </div>
+
+  <h3>5.4 &ensp; Voltage-Gated Repolarizing Currents</h3>
+
+  <h4>Transient Outward Current ($I_{\text{to}}$) — Phase 1</h4>
+
+  <p>
+    The transient outward K$^+$ current creates the Phase 1 notch. It activates rapidly during
+    depolarization ($r$ gate, $\tau \sim 1{-}5$ ms) and inactivates within tens of milliseconds
+    ($s$ gate, $\tau \sim 5{-}50$ ms):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.4)</span>
+    $$I_{\text{to}} = \bar{g}_{\text{to}}\,r\,s\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    The maximal conductance $\bar{g}_{\text{to}}$ varies dramatically between cell types: 0.294 nS/pF
+    in epicardial cells (deep notch) vs. 0.073 nS/pF in endocardial cells (minimal notch). This transmural gradient
+    is the single largest source of AP shape variation across the ventricular wall and produces the
+    J-point deflection on the surface ECG. In Brugada syndrome, enhanced $I_{\text{to}}$ in right
+    ventricular epicardium creates an exaggerated notch that can trigger reentrant arrhythmias.
+  </p>
+
+  <h4>Rapid Delayed Rectifier ($I_{\text{Kr}}$) — Phase 3</h4>
+
+  <p>
+    $I_{\text{Kr}}$ is the primary repolarization current, carried by hERG (Kv11.1) channels. It
+    has unusual kinetics — fast inactivation at positive voltages, rapid recovery from inactivation
+    during repolarization — that produce a characteristic "resurgent" current during Phase 3:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.5)</span>
+    $$I_{\text{Kr}} = \bar{g}_{\text{Kr}}\,\sqrt{[\text{K}^+]_o / 5.4}\,x_{r1}\,x_{r2}\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    The $\sqrt{[\text{K}^+]_o / 5.4}$ factor captures the experimental observation that hERG
+    conductance scales with the square root of extracellular potassium. The two gating variables
+    $x_{r1}$ (activation, $\tau \sim 10{-}100$ ms) and $x_{r2}$ (inactivation, fast) together
+    create the voltage-dependent rectification that makes $I_{\text{Kr}}$ small during the plateau
+    but large during Phase 3. Clinically, $I_{\text{Kr}}$ is the most important current in cardiac
+    pharmacology: hERG block is the leading cause of drug-induced Long QT syndrome, and the CiPA
+    initiative focuses heavily on predicting hERG interactions <em>in silico</em>.
+  </p>
+
+  <h4>Slow Delayed Rectifier ($I_{\text{Ks}}$) — Repolarization Reserve</h4>
+
+  <p>
+    $I_{\text{Ks}}$ activates very slowly ($\tau_{x_s} \sim 100{-}500$ ms) and provides a "safety net"
+    when $I_{\text{Kr}}$ is compromised:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.6)</span>
+    $$I_{\text{Ks}} = \bar{g}_{\text{Ks}}\,x_s^2\,(V_m - E_{\text{Ks}})$$
+  </div>
+
+  <p>
+    Note that $I_{\text{Ks}}$ uses the potassium–sodium reversal potential $E_{\text{Ks}}$ (computed from
+    the Goldman equation for K$^+$ and Na$^+$ permeability) rather than the pure potassium reversal
+    $E_{\text{K}}$, because the KvLQT1/minK channel complex has slight Na$^+$ permeability. The
+    $x_s^2$ activation gives the current a sigmoid-like voltage dependence with a slower foot than
+    $I_{\text{Kr}}$. Under normal conditions, $I_{\text{Ks}}$ contributes modestly to repolarization.
+    Its importance emerges when $I_{\text{Kr}}$ is blocked — then $I_{\text{Ks}}$ becomes the backup
+    repolarization pathway. This is the concept of <em>repolarization reserve</em>: a healthy heart
+    can tolerate partial block of one K$^+$ channel because others compensate. Loss of repolarization
+    reserve (e.g., combined $I_{\text{Kr}}$ + $I_{\text{Ks}}$ reduction) dramatically increases
+    arrhythmia risk.
+  </p>
+
+  <h4>Inward Rectifier ($I_{\text{K1}}$) — Phase 4 and Late Phase 3</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.7)</span>
+    $$I_{\text{K1}} = \bar{g}_{\text{K1}}\,\sqrt{[\text{K}^+]_o / 5.4}\,x_{K1,\infty}(V_m)\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    $I_{\text{K1}}$ is unique among TTP06 currents: it has <em>no dynamic gating variable</em>. Its
+    rectification is instantaneous, captured entirely by the steady-state function $x_{K1,\infty}(V_m)$,
+    which transitions from $\sim$1 below $-80$ mV to $\sim$0 above $-40$ mV. Physiologically, this
+    reflects the block of Kir2.1 channels by intracellular Mg$^{2+}$ and polyamines at depolarized
+    voltages. The result is a current that behaves as a strong "anchor" at rest (holding $V_m$ near
+    $E_K \approx -88$ mV), vanishes during the plateau (allowing the ICaL/IKr balance to play out),
+    and then reactivates during Phase 3 to accelerate the final phase of repolarization.
+  </p>
+
+  <h4>Plateau Potassium Current ($I_{\text{pK}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.8)</span>
+    $$I_{\text{pK}} = \bar{g}_{\text{pK}}\,\frac{1}{1 + e^{(25 - V_m)/5.98}}\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    $I_{\text{pK}}$ is a small outward K$^+$ current active during the plateau. It has no dynamic
+    gates — the sigmoidal voltage dependence is instantaneous. Its contribution to total current is
+    minor ($\bar{g}_{\text{pK}} = 0.0146$ nS/pF), but it participates in the repolarization reserve
+    and affects APD at the margins.
+  </p>
+
+  <h3>5.5 &ensp; Pumps, Exchangers, and Background Currents</h3>
+
+  <p>
+    The six voltage-gated currents above shape the AP waveform on a beat-to-beat basis. But the cell
+    must also maintain its ionic gradients over thousands of beats. This is the job of the pumps,
+    exchangers, and background leak currents — a group that is often overlooked but is essential for
+    long-term stability.
+  </p>
+
+  <h4>Na$^+$/K$^+$ ATPase ($I_{\text{NaK}}$) — The Gradient Keeper</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.9)</span>
+    $$I_{\text{NaK}} = \frac{P_{\text{NaK}}\,[\text{K}^+]_o\,[\text{Na}^+]_i}{([\text{K}^+]_o + K_{mK})([\text{Na}^+]_i + K_{mNa})}\cdot\frac{1}{1 + 0.1245\,e^{-0.1FV_m/RT} + 0.0353\,e^{-FV_m/RT}}$$
+  </div>
+
+  <p>
+    The Na$^+$/K$^+$-ATPase pumps 3 Na$^+$ ions out and 2 K$^+$ ions in per ATP hydrolyzed, generating a
+    net outward current. This pump is what maintains the sodium and potassium gradients that all
+    voltage-gated currents depend on. Without it, gradients would run down within minutes and the
+    cell would depolarize. The current is voltage-dependent (less effective at positive voltages),
+    saturates with intracellular Na$^+$ ($K_{mNa} = 40$ mM) and extracellular K$^+$ ($K_{mK} = 1$ mM),
+    and is the target of cardiac glycosides (digoxin/digitalis): by blocking $I_{\text{NaK}}$,
+    intracellular Na$^+$ rises, which reduces the driving force for the Na$^+$/Ca$^{2+}$ exchanger,
+    indirectly increasing intracellular Ca$^{2+}$ and strengthening contraction (positive inotropy).
+  </p>
+
+  <h4>Na$^+$/Ca$^{2+}$ Exchanger ($I_{\text{NaCa}}$) — The Bidirectional Bridge</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.10)</span>
+    $$I_{\text{NaCa}} = \frac{k_{\text{NaCa}}\bigl([\text{Na}^+]_i^3\,[\text{Ca}^{2+}]_o\,e^{\gamma FV_m/RT} - \alpha\,[\text{Na}^+]_o^3\,[\text{Ca}^{2+}]_i\,e^{(\gamma-1)FV_m/RT}\bigr)}{(K_{m,\text{Na}}^3 + [\text{Na}^+]_o^3)(K_{m,\text{Ca}} + [\text{Ca}^{2+}]_o)(1 + k_{\text{sat}}\,e^{(\gamma-1)FV_m/RT})}$$
+  </div>
+
+  <p>
+    The NCX exchanges 3 Na$^+$ for 1 Ca$^{2+}$ and can operate in either direction depending on the
+    electrochemical gradients. The numerator contains two terms: the first (forward) drives Na$^+$ in
+    and Ca$^{2+}$ out; the second (reverse, scaled by $\alpha = 2.5$) drives Na$^+$ out and Ca$^{2+}$ in.
+    The factor $\alpha$ sets the relative strength of reverse-mode transport. The denominator has three
+    components: the $K_m$ saturation terms for Na$^+$ and Ca$^{2+}$, and a voltage-dependent saturation
+    factor $1 + k_{\text{sat}}\,e^{(\gamma-1)FV_m/RT}$ that prevents the exchanger from running at
+    unphysically high rates at extreme potentials. In <strong>forward mode</strong> (dominant during late
+    repolarization and diastole): Na$^+$ enters, Ca$^{2+}$ is extruded → net inward current. This is the
+    primary mechanism for removing calcium from the cytoplasm after each beat (contributing $\sim$28% of
+    calcium removal in human ventricular myocytes, with SERCA handling the remaining $\sim$70%). In
+    <strong>reverse mode</strong> (brief, during early depolarization): Na$^+$ exits, Ca$^{2+}$ enters →
+    net outward current. The voltage-dependent partition factor $\gamma \approx 0.35$ determines the relative
+    influence of voltage on the forward vs. reverse rates.
+  </p>
+
+  <p>
+    $I_{\text{NaCa}}$ is critically important in disease. In heart failure, elevated $[\text{Na}^+]_i$
+    reduces forward-mode NCX activity, impairing calcium removal and contributing to diastolic
+    dysfunction. In conditions of calcium overload, the inward current generated by forward-mode NCX
+    during diastole can trigger <em>delayed afterdepolarizations</em> (DADs) — a major arrhythmia
+    mechanism (Chapter 4, Section 4.5).
+  </p>
+
+  <h4>Sarcolemmal Ca$^{2+}$ Pump ($I_{\text{pCa}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.11)</span>
+    $$I_{\text{pCa}} = \frac{\bar{g}_{\text{pCa}}\,[\text{Ca}^{2+}]_i}{K_{\text{pCa}} + [\text{Ca}^{2+}]_i}$$
+  </div>
+
+  <p>
+    The plasma membrane Ca$^{2+}$-ATPase (PMCA) provides a secondary route for calcium extrusion —
+    slower than NCX but with higher affinity ($K_{\text{pCa}} = 0.0005$ mM). It contributes only
+    $\sim$1–2% of total calcium removal per beat but is important for fine-tuning the diastolic
+    calcium level over many beats.
+  </p>
+
+  <h4>Background Leak Currents ($I_{\text{bNa}}$, $I_{\text{bCa}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(5.12)</span>
+    $$I_{\text{bNa}} = \bar{g}_{\text{bNa}}\,(V_m - E_{\text{Na}}), \qquad I_{\text{bCa}} = \bar{g}_{\text{bCa}}\,(V_m - E_{\text{Ca}})$$
+  </div>
+
+  <p>
+    These small Ohmic currents represent the passive leak of Na$^+$ and Ca$^{2+}$ through non-specific
+    channels. Their conductances are tiny ($\bar{g}_{\text{bNa}} = 2.9 \times 10^{-4}$, $\bar{g}_{\text{bCa}} = 5.92 \times 10^{-4}$ nS/pF), but they serve a critical bookkeeping role: they provide the
+    steady inward Na$^+$ and Ca$^{2+}$ leak that the pumps ($I_{\text{NaK}}$, $I_{\text{pCa}}$, NCX)
+    must counterbalance. Without these background currents, the model would slowly drift to
+    non-physiological concentrations over hundreds of beats.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The balance between background leak currents and pump/exchanger currents is what determines the
+      long-term stability of ionic concentrations. If you modify pump parameters (e.g., reducing
+      $I_{\text{NaK}}$ to simulate ischemia), you must simulate hundreds of beats to reach a new
+      steady state — the first few beats will look normal, but gradual Na$^+$ accumulation will
+      progressively alter the AP shape. This is why cardiac modelers must always run to steady state
+      before collecting data.
+    </p>
+  </div>
+
+  <h3>5.6 &ensp; Currents During Each AP Phase — A Visual Map</h3>
+
+  <!-- ─── Current activity during AP phases diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 620 380" xmlns="http://www.w3.org/2000/svg" style="max-width:560px;">
+      <!-- Column headers (AP phases) -->
+      <text x="170" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="700">Phase 0</text>
+      <text x="170" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Upstroke</text>
+      <text x="250" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#0f3460" font-weight="700">Phase 1</text>
+      <text x="250" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Notch</text>
+      <text x="340" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f" font-weight="700">Phase 2</text>
+      <text x="340" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Plateau</text>
+      <text x="440" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00" font-weight="700">Phase 3</text>
+      <text x="440" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Repol.</text>
+      <text x="540" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175" font-weight="700">Phase 4</text>
+      <text x="540" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Rest</text>
+
+      <!-- Row labels (currents) -->
+      <text x="120" y="58" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{Na}}$</text>
+      <text x="120" y="83" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{CaL}}$</text>
+      <text x="120" y="108" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{to}}$</text>
+      <text x="120" y="133" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{Kr}}$</text>
+      <text x="120" y="158" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{Ks}}$</text>
+      <text x="120" y="183" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{K1}}$</text>
+      <text x="120" y="208" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{pK}}$</text>
+      <text x="120" y="233" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{NaK}}$</text>
+      <text x="120" y="258" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{NaCa}}$</text>
+      <text x="120" y="283" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{pCa}}$</text>
+      <text x="120" y="308" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{bNa}}$</text>
+      <text x="120" y="333" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">$I_{\text{bCa}}$</text>
+
+      <!-- Grid lines -->
+      <line x1="130" y1="38" x2="580" y2="38" stroke="#e0e0e0" stroke-width="0.5"/>
+      <line x1="130" y1="345" x2="580" y2="345" stroke="#e0e0e0" stroke-width="0.5"/>
+
+      <!-- Column separators -->
+      <line x1="210" y1="38" x2="210" y2="345" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="290" y1="38" x2="290" y2="345" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="390" y1="38" x2="390" y2="345" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="490" y1="38" x2="490" y2="345" stroke="#e8e8e8" stroke-width="0.5"/>
+
+      <!-- Activity bars — height and opacity encode magnitude -->
+      <!-- INa: Phase 0 DOMINANT -->
+      <rect x="140" y="48" width="60" height="14" rx="3" fill="#e94560" opacity="0.9"/>
+      <text x="170" y="59" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- ICaL: Phase 1 small, Phase 2 DOMINANT, Phase 3 small -->
+      <rect x="220" y="73" width="60" height="14" rx="3" fill="#e94560" opacity="0.3"/>
+      <rect x="300" y="73" width="80" height="14" rx="3" fill="#e94560" opacity="0.85"/>
+      <text x="340" y="84" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+      <rect x="400" y="73" width="40" height="14" rx="3" fill="#e94560" opacity="0.2"/>
+
+      <!-- Ito: Phase 1 DOMINANT -->
+      <rect x="220" y="98" width="60" height="14" rx="3" fill="#0f3460" opacity="0.85"/>
+      <text x="250" y="109" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IKr: Phase 2 small, Phase 3 DOMINANT -->
+      <rect x="310" y="123" width="70" height="14" rx="3" fill="#0f3460" opacity="0.25"/>
+      <rect x="400" y="123" width="80" height="14" rx="3" fill="#0f3460" opacity="0.8"/>
+      <text x="440" y="134" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IKs: Phase 2-3 building slowly -->
+      <rect x="310" y="148" width="70" height="14" rx="3" fill="#0f3460" opacity="0.15"/>
+      <rect x="400" y="148" width="80" height="14" rx="3" fill="#0f3460" opacity="0.45"/>
+      <text x="440" y="159" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">reserve</text>
+
+      <!-- IK1: Phase 3 late moderate, Phase 4 DOMINANT -->
+      <rect x="440" y="173" width="40" height="14" rx="3" fill="#0f3460" opacity="0.5"/>
+      <rect x="500" y="173" width="70" height="14" rx="3" fill="#0f3460" opacity="0.85"/>
+      <text x="535" y="184" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IpK: Phase 2 small -->
+      <rect x="310" y="198" width="70" height="14" rx="3" fill="#0f3460" opacity="0.15"/>
+      <text x="345" y="209" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">small</text>
+
+      <!-- INaK: all phases, moderate -->
+      <rect x="140" y="223" width="430" height="14" rx="3" fill="#5a6175" opacity="0.25"/>
+      <text x="355" y="234" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#5a6175">continuous — gradient maintenance</text>
+
+      <!-- INaCa: Phase 2 reverse (outward), Phase 3-4 forward (inward) -->
+      <rect x="300" y="248" width="80" height="14" rx="3" fill="#0f3460" opacity="0.2"/>
+      <text x="340" y="259" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">reverse</text>
+      <rect x="400" y="248" width="170" height="14" rx="3" fill="#e94560" opacity="0.35"/>
+      <text x="485" y="259" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">forward (Ca²⁺ extrusion)</text>
+
+      <!-- IpCa: all phases, small -->
+      <rect x="140" y="273" width="430" height="14" rx="3" fill="#5a6175" opacity="0.12"/>
+      <text x="355" y="284" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#5a6175">continuous — fine Ca²⁺ tuning</text>
+
+      <!-- IbNa: all phases, tiny -->
+      <rect x="140" y="298" width="430" height="14" rx="3" fill="#5a6175" opacity="0.08"/>
+      <text x="355" y="309" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#aaa">tiny leak</text>
+
+      <!-- IbCa: all phases, tiny -->
+      <rect x="140" y="323" width="430" height="14" rx="3" fill="#5a6175" opacity="0.08"/>
+      <text x="355" y="334" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#aaa">tiny leak</text>
+
+      <!-- Legend -->
+      <rect x="140" y="355" width="18" height="10" rx="2" fill="#e94560" opacity="0.8"/>
+      <text x="164" y="364" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Inward (depolarizing)</text>
+      <rect x="280" y="355" width="18" height="10" rx="2" fill="#0f3460" opacity="0.8"/>
+      <text x="304" y="364" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Outward (repolarizing)</text>
+      <rect x="420" y="355" width="18" height="10" rx="2" fill="#5a6175" opacity="0.25"/>
+      <text x="444" y="364" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Housekeeping</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 5.1.</span> Activity map of all 12 TTP06 membrane currents across the five AP phases. Bar width represents the temporal extent; opacity represents relative magnitude. Red bars are inward (depolarizing), blue bars are outward (repolarizing), gray bars are housekeeping currents active throughout the cycle.</div>
+  </div>
+
+  <div class="insight insight-math">
+    <p>
+      All gating variables in TTP06 satisfy the same relaxation ODE we derived in equation (1.3):
+      $dx/dt = (x_\infty - x)/\tau_x$. This uniformity is what makes the Rush–Larsen method
+      (Chapter 8) so powerful: you can integrate <em>every</em> gate with the same exponential formula
+      $x^{n+1} = x_\infty + (x^n - x_\infty)\,e^{-\Delta t/\tau_x}$, regardless of how stiff the
+      kinetics are. The concentration variables ($[\text{Na}^+]_i$, $[\text{K}^+]_i$, etc.) do
+      <em>not</em> follow relaxation kinetics and must be integrated with Forward Euler or a similar method.
+    </p>
+  </div>
+
+  <h3>5.7 &ensp; Endo, Epi, and M-Cells: Transmural Heterogeneity</h3>
+
+  <p>
+    One of TTP06's most important features is its ability to represent three distinct cell types
+    across the ventricular wall, each with a different AP morphology:
+  </p>
+
+  <p>
+    <strong>Epicardial cells</strong> (outer wall): Large $I_{\text{to}}$ → deep Phase 1 notch → shorter AP.
+    <strong>Endocardial cells</strong> (inner wall): Small $I_{\text{to}}$ → minimal notch → moderate AP duration.
+    <strong>M-cells</strong> (mid-wall): Small $I_{\text{Ks}}$ → very long plateau → longest AP duration.
+  </p>
+
+  <p>
+    These differences arise from changing just a few maximal conductance values ($\bar{g}_{\text{to}}$,
+    $\bar{g}_{\text{Ks}}$) and some kinetic parameters. The fact that the same model structure, with
+    minor parameter adjustments, reproduces three qualitatively different AP shapes is a testament to
+    how well TTP06 captures the underlying biophysics.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the TTP06 implementation lives in the <code>cardiac_sim/ionic/ttp06/</code> package:
+      <code>model.py</code> (the <code>TTP06Model</code> class), <code>currents.py</code> (all 12 current
+      functions), <code>gating.py</code> (steady-states and time constants), <code>calcium.py</code>
+      (concentration update equations), and <code>parameters.py</code> (the <code>StateIndex</code> enum
+      and <code>TTP06Parameters</code> dataclass). V is stored separately; the 18 ionic states live in a
+      tensor of shape <code>(n_cells, 18)</code>. The <code>cell_type</code> parameter
+      (<code>CellType.ENDO</code>, <code>CellType.EPI</code>, <code>CellType.M_CELL</code>) selects
+      endo/epi/M-cell variants by switching maximal conductances and I$_{\text{to}}$ kinetics. A single
+      tissue simulation can represent the full transmural gradient by assigning different cell types to
+      different spatial regions — essential for realistic ECG simulation.
+    </p>
+  </div>
+
+  <h3>5.8 &ensp; Calcium Handling and CICR</h3>
+
+  <p>
+    The calcium subsystem is perhaps the most physiologically important part of TTP06, because
+    calcium is the link between electrical excitation and mechanical contraction. The model tracks
+    calcium through three compartments connected by fluxes:
+  </p>
+
+  <!-- ─── Calcium cycling diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 460 200" xmlns="http://www.w3.org/2000/svg" style="max-width:400px;">
+      <!-- Compartments -->
+      <rect x="10" y="70" width="100" height="60" rx="8" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.5"/>
+      <text x="60" y="95" font-size="10" fill="#2d6a4f" font-family="serif" text-anchor="middle" font-weight="600">Subspace</text>
+      <text x="60" y="110" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">[Ca²⁺]<tspan font-size="7" dy="2">ss</tspan></text>
+
+      <rect x="180" y="70" width="100" height="60" rx="8" fill="#eef0f8" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="230" y="95" font-size="10" fill="#0f3460" font-family="serif" text-anchor="middle" font-weight="600">Cytoplasm</text>
+      <text x="230" y="110" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">[Ca²⁺]<tspan font-size="7" dy="2">i</tspan></text>
+
+      <rect x="350" y="70" width="100" height="60" rx="8" fill="#fff3e0" stroke="#b36b00" stroke-width="1.5"/>
+      <text x="400" y="95" font-size="10" fill="#b36b00" font-family="serif" text-anchor="middle" font-weight="600">SR Store</text>
+      <text x="400" y="110" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">[Ca²⁺]<tspan font-size="7" dy="2">SR</tspan></text>
+
+      <!-- Arrows -->
+      <!-- ICaL into subspace -->
+      <line x1="60" y1="30" x2="60" y2="68" stroke="#e94560" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+      <text x="60" y="22" font-size="9" fill="#e94560" font-family="serif" text-anchor="middle">I<tspan font-size="7" dy="1">CaL</tspan></text>
+
+      <!-- CICR: SR → subspace -->
+      <path d="M 350,85 Q 270,30 110,85" fill="none" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+      <text x="230" y="42" font-size="9" fill="#2d6a4f" font-family="serif" text-anchor="middle" font-weight="600">CICR (J<tspan font-size="7" dy="1">rel</tspan><tspan dy="-1">)</tspan></text>
+
+      <!-- Diffusion: subspace → cytoplasm -->
+      <line x1="112" y1="100" x2="178" y2="100" stroke="#5a6175" stroke-width="1.3" marker-end="url(#arrowGray)"/>
+      <text x="145" y="93" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">J<tspan font-size="6" dy="1">xfer</tspan></text>
+
+      <!-- SERCA: cytoplasm → SR -->
+      <line x1="282" y1="100" x2="348" y2="100" stroke="#b36b00" stroke-width="1.3" marker-end="url(#arrowOrange)"/>
+      <text x="315" y="93" font-size="8" fill="#b36b00" font-family="serif" text-anchor="middle">J<tspan font-size="6" dy="1">up</tspan></text>
+
+      <!-- SR leak -->
+      <path d="M 370,132 Q 320,170 270,132" fill="none" stroke="#5a6175" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arrowGray)"/>
+      <text x="320" y="178" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">J<tspan font-size="6" dy="1">leak</tspan></text>
+
+      <!-- Buffers note -->
+      <text x="230" y="155" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle" font-style="italic">+ Ca²⁺ buffers in each compartment</text>
+
+      <!-- Arrow markers -->
+      <defs>
+        <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M 0,0 L 8,3 L 0,6 Z" fill="#e94560"/>
+        </marker>
+        <marker id="arrowGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M 0,0 L 8,3 L 0,6 Z" fill="#2d6a4f"/>
+        </marker>
+        <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M 0,0 L 8,3 L 0,6 Z" fill="#5a6175"/>
+        </marker>
+        <marker id="arrowOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M 0,0 L 8,3 L 0,6 Z" fill="#b36b00"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 4.1.</span> Calcium cycling in TTP06. The L-type current $I_{\text{CaL}}$ brings
+      Ca$^{2+}$ into the subspace, triggering CICR from the SR ($J_{\text{rel}}$). Ca$^{2+}$ diffuses to the
+      cytoplasm ($J_{\text{xfer}}$), drives contraction, then is pumped back into the SR by SERCA ($J_{\text{up}}$).
+    </div>
+  </div>
+
+  <p>
+    The CICR mechanism works like a trigger and amplifier:
+  </p>
+
+  <p>
+    <strong>Trigger:</strong> L-type calcium channels open during Phase 2, admitting a small amount of
+    Ca$^{2+}$ into the subspace. This raises $[\text{Ca}^{2+}]_{\text{ss}}$.
+  </p>
+
+  <p>
+    <strong>Amplification:</strong> The elevated $[\text{Ca}^{2+}]_{\text{ss}}$ activates ryanodine
+    receptors (RyR) on the SR membrane, which release a much larger bolus of Ca$^{2+}$ from the SR
+    store into the subspace. This is the "release" flux $J_{\text{rel}}$.
+  </p>
+
+  <p>
+    <strong>Diffusion and contraction:</strong> Ca$^{2+}$ diffuses from the subspace to the bulk
+    cytoplasm ($J_{\text{xfer}}$), where it binds to troponin C and triggers the contractile
+    machinery of the sarcomere.
+  </p>
+
+  <p>
+    <strong>Recovery:</strong> The SERCA pump ($J_{\text{up}}$) actively transports Ca$^{2+}$ from
+    the cytoplasm back into the SR, refilling the store for the next beat. A small leak
+    ($J_{\text{leak}}$) allows some Ca$^{2+}$ to trickle back out.
+  </p>
+
+  <p>
+    Getting this calcium balance right is critical: if the SR is overloaded, spontaneous Ca$^{2+}$
+    release can trigger delayed afterdepolarizations (DADs) and arrhythmias. If the SR is depleted,
+    contractile force drops and the AP shape distorts. The three-compartment model in TTP06 captures
+    these dynamics with reasonable fidelity while remaining computationally tractable for tissue-scale
+    simulations.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 6 — THE O'HARA–RUDY 2011 MODEL                          -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

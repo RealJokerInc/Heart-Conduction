@@ -1,0 +1,201 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 12</div>
+  <h2 class="chapter-title">The Bidomain Equations</h2>
+  <div class="chapter-intro">
+    We now derive the bidomain equations step by step, building on the conservation laws of Chapter 12 and the monodomain equation familiar from Engine V5.4.
+  </div>
+
+  <h3>12.1 &ensp; The Monodomain Equation (Review)</h3>
+
+  <p>
+    The monodomain equation, which Engine V5.4 solves, describes how the transmembrane potential $V_m$ evolves in time:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(12.1)</span>
+    $$\chi \, C_m \frac{\partial V_m}{\partial t} = -\chi \, I_{\text{ion}}(V_m, \mathbf{w}) + \nabla \cdot \bigl(\mathbf{D}\,\nabla V_m\bigr) + I_{\text{stim}}$$
+  </div>
+
+  <p>
+    Reading each term from left to right:
+  </p>
+  <ul>
+    <li><strong>Left-hand side</strong>: rate of change of membrane charge ($\chi C_m\, \partial V_m/\partial t$). The membrane is a capacitor.</li>
+    <li><strong>$-\chi\,I_{\text{ion}}$</strong>: ionic currents through membrane channels — these are nonlinear functions of $V_m$ and gating variables $\mathbf{w}$.</li>
+    <li><strong>$\nabla\cdot(\mathbf{D}\,\nabla V_m)$</strong>: diffusion of voltage through the tissue. The tensor $\mathbf{D}$ encodes the <em>effective</em> conductivity — a blend of intracellular and extracellular contributions.</li>
+    <li><strong>$I_{\text{stim}}$</strong>: externally applied stimulus current.</li>
+  </ul>
+
+  <p>
+    This is a single <strong>parabolic</strong> PDE (it has a time derivative and a second-order spatial derivative). It is well-suited to standard diffusion solvers, LBM, or finite-element methods.
+  </p>
+
+  <h3>12.2 &ensp; Building the Bidomain System</h3>
+
+  <p>
+    Let us now be more precise. In each domain, Ohm's law gives us the current density:
+  </p>
+
+  <div class="equation-block">
+    $$\mathbf{J}_i = -\mathbf{D}_i\,\nabla \phi_i, \qquad \mathbf{J}_e = -\mathbf{D}_e\,\nabla \phi_e$$
+  </div>
+
+  <p>
+    where $\phi_i$ and $\phi_e$ are the intracellular and extracellular potentials, and $\mathbf{D}_i$, $\mathbf{D}_e$ are their respective conductivity tensors.
+  </p>
+  <p>
+    The transmembrane potential is defined as their difference:
+  </p>
+
+  <div class="equation-block">
+    $$V_m = \phi_i - \phi_e$$
+  </div>
+
+  <p>
+    The transmembrane current per unit volume is the sum of capacitive and ionic components:
+  </p>
+
+  <div class="equation-block">
+    $$\chi\, I_m = \chi\,C_m\,\frac{\partial V_m}{\partial t} + \chi\, I_{\text{ion}}(V_m, \mathbf{w})$$
+  </div>
+
+  <p>
+    Now substitute into the conservation laws from Chapter 12. From the intracellular conservation $\nabla\cdot\mathbf{J}_i = -\chi I_m$:
+  </p>
+
+  <div class="equation-block">
+    $$\nabla\cdot(\mathbf{D}_i\,\nabla\phi_i) = \chi\,C_m\,\frac{\partial V_m}{\partial t} + \chi\,I_{\text{ion}}$$
+  </div>
+
+  <p>
+    Since $\phi_i = V_m + \phi_e$, we can rewrite $\nabla\phi_i = \nabla V_m + \nabla\phi_e$, giving us:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(12.2)</span>
+    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} = -\chi\,I_{\text{ion}}(V_m,\mathbf{w}) + \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot(\mathbf{D}_i\,\nabla\phi_e) + I_{\text{stim}}^i$$
+  </div>
+
+  <p>
+    This is the <strong>parabolic equation</strong> of the bidomain system. Compare it to the monodomain equation (12.1): the key difference is the <em>extra coupling term</em> $\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$, which accounts for how the extracellular potential gradient drives intracellular current.
+  </p>
+
+  <p>
+    For the second equation, add both conservation laws: $\nabla\cdot\mathbf{J}_i + \nabla\cdot\mathbf{J}_e = 0$. Expanding:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(12.3)</span>
+    $$0 = \nabla\cdot\bigl(\mathbf{D}_i\,\nabla V_m\bigr) + \nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] + I_{\text{stim}}^e$$
+  </div>
+
+  <p>
+    This is the <strong>elliptic equation</strong>. It has <em>no time derivative</em> — it is a constraint that must hold at every instant. Think of it as saying: "at each moment, the total current flowing into and out of every point in the tissue must balance."
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Why is the second equation elliptic?</strong> Because the extracellular space has no "memory" — it equilibrates instantaneously (on the timescale of cardiac propagation). There is no capacitor in the extracellular space storing charge over time. The extracellular potential adjusts immediately to satisfy current conservation. This makes $\phi_e$ a <em>slave variable</em>: it is completely determined by the current state of $V_m$ at each instant.
+    </p>
+  </div>
+
+  <h3>12.3 &ensp; The Parabolic–Elliptic Couple</h3>
+
+  <p>
+    Equations (12.2) and (12.3) together form the bidomain system. Let us highlight their structure:
+  </p>
+
+  <table>
+    <tr>
+      <th>Equation</th>
+      <th>Type</th>
+      <th>Unknown</th>
+      <th>Character</th>
+    </tr>
+    <tr>
+      <td>(12.2) — Membrane dynamics</td>
+      <td>Parabolic</td>
+      <td>$V_m$ (primary)</td>
+      <td>Evolves in time; has $\partial V_m/\partial t$</td>
+    </tr>
+    <tr>
+      <td>(12.3) — Current conservation</td>
+      <td>Elliptic</td>
+      <td>$\phi_e$ (constraint)</td>
+      <td>No time derivative; instantaneous balance</td>
+    </tr>
+  </table>
+
+  <p>
+    The two equations are <strong>bidirectionally coupled</strong>: the parabolic equation depends on $\phi_e$ (through $\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$), and the elliptic equation depends on $V_m$ (through $\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$). Neither can be solved independently.
+  </p>
+
+  <p>
+    Additionally, the gating variables $\mathbf{w}$ evolve according to a system of ODEs:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(12.4)</span>
+    $$\frac{d\mathbf{w}}{dt} = \mathbf{h}(V_m, \mathbf{w})$$
+  </div>
+
+  <p>
+    These ODEs are <em>local</em> — they depend only on $V_m$ and $\mathbf{w}$ at each point, not on spatial derivatives. This is good news: the ionic solver from Engine V5.4 (e.g., Rush–Larsen exponential integrator) can be reused without modification.
+  </p>
+
+  <h3>12.4 &ensp; When Bidomain Reduces to Monodomain</h3>
+
+  <p>
+    Under the <strong>equal anisotropy ratio</strong> assumption — meaning $\mathbf{D}_e = \lambda\,\mathbf{D}_i$ for some positive scalar $\lambda$ — the elliptic equation (12.3) degenerates. With this assumption, the combined conductivity $(\mathbf{D}_i + \mathbf{D}_e) = (1+\lambda)\,\mathbf{D}_i$, and the elliptic equation becomes $\nabla\cdot(\mathbf{D}_i\,\nabla[V_m + (1+\lambda)\phi_e]) = 0$, which implies $\phi_e$ is essentially constant (or zero with appropriate boundary conditions). The parabolic equation then reduces to the monodomain form with an effective conductivity:
+  </p>
+
+  <div class="equation-block">
+    $$\mathbf{D}_{\text{eff}} = \frac{\mathbf{D}_i \, \mathbf{D}_e}{\mathbf{D}_i + \mathbf{D}_e}$$
+  </div>
+
+  <p>
+    In real cardiac tissue, however, the anisotropy ratios are markedly different:
+  </p>
+
+  <table>
+    <tr><th>Domain</th><th>$\sigma_L$ (S/cm)</th><th>$\sigma_T$ (S/cm)</th><th>Ratio $\sigma_L/\sigma_T$</th></tr>
+    <tr><td>Intracellular</td><td>0.3 – 0.5</td><td>0.03 – 0.05</td><td>$\approx$ 10:1</td></tr>
+    <tr><td>Extracellular</td><td>0.3 – 0.6</td><td>0.15 – 0.3</td><td>$\approx$ 2.5:1</td></tr>
+  </table>
+
+  <p>
+    Because 10:1 $\neq$ 2.5:1, the equal anisotropy assumption fails, and the full bidomain system is needed.
+  </p>
+
+  <h3>12.5 &ensp; Conductivity Tensors and Fiber Architecture</h3>
+
+  <p>
+    In each domain, the conductivity tensor is expressed in local fiber coordinates as a diagonal matrix:
+  </p>
+
+  <div class="equation-block">
+    $$\mathbf{D}_d^{\text{local}} = \begin{pmatrix}\sigma_d^L & 0 & 0 \\ 0 & \sigma_d^T & 0 \\ 0 & 0 & \sigma_d^T\end{pmatrix}, \quad d \in \{i, e\}$$
+  </div>
+
+  <p>
+    where $\sigma_d^L$ and $\sigma_d^T$ are the longitudinal (along-fiber) and transverse (cross-fiber) conductivities. In an anatomically realistic heart model, the fibers rotate transmurally (about 120° from epicardium to endocardium), so the local tensor must be rotated into global coordinates via:
+  </p>
+
+  <div class="equation-block">
+    $$\mathbf{D}_d^{\text{global}}(\mathbf{x}) = \mathbf{R}(\theta(\mathbf{x}))\;\mathbf{D}_d^{\text{local}}\;\mathbf{R}(\theta(\mathbf{x}))^T$$
+  </div>
+
+  <p>
+    This makes the conductivity a <em>spatially varying</em> tensor field — one of the major implementation challenges for any bidomain solver.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      Engine V5.4 already handles fiber-aligned conductivity tensors for the monodomain model. For bidomain, the same rotation machinery can be reused — we simply need to maintain <em>two</em> tensor fields ($\mathbf{D}_i$ and $\mathbf{D}_e$) instead of one effective $\mathbf{D}$.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 11 — SPATIAL DISCRETIZATION                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

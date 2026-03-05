@@ -1,0 +1,128 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 11</div>
+  <h2 class="chapter-title">Why Bidomain? — The Physical Picture</h2>
+  <div class="chapter-intro">
+    Before we write a single equation, let us build a physical picture of what is happening inside a beating heart — and why two "domains" are needed to describe it honestly.
+  </div>
+
+  <h3>11.1 &ensp; Currents in a Living Heart</h3>
+
+  <p>
+    Cardiac tissue is not a simple conducting wire. It is a dense, three-dimensional mesh of individual cells (myocytes), each wrapped in a lipid bilayer membrane that acts as both a capacitor and a nonlinear switch. Between the cells lies a bath of salty fluid — the <em>extracellular space</em>. Inside each cell, the cytoplasm forms another conducting medium — the <em>intracellular space</em>. The two spaces are connected electrically by thousands of gap junctions that stitch neighboring cells together.
+  </p>
+  <p>
+    When a wave of electrical activation sweeps through the heart, current flows simultaneously in <strong>both</strong> spaces:
+  </p>
+  <ul>
+    <li><strong>Intracellular current</strong> $\mathbf{J}_i$ travels from cell to cell through gap junctions, following the fiber direction preferentially (anisotropy ratio $\approx$ 10:1).</li>
+    <li><strong>Extracellular current</strong> $\mathbf{J}_e$ flows through the interstitial fluid, also anisotropic but with a milder ratio ($\approx$ 2.5:1).</li>
+    <li><strong>Transmembrane current</strong> $I_m$ crosses the cell membrane, carried by ion channels, pumps, and membrane capacitance.</li>
+  </ul>
+  <p>
+    The crucial observation is that <em>these anisotropy ratios are not equal</em>. Current takes different preferred paths in the two spaces. This mismatch is what the monodomain model cannot capture — and what the bidomain model was invented to describe.
+  </p>
+
+  <h3>11.2 &ensp; Divergence and Conservation: The Language of Current Flow</h3>
+
+  <p>
+    To build the bidomain equations, we need one fundamental physical law: <strong>conservation of charge</strong>. In a region of tissue, charge cannot appear or disappear — it can only flow in or out. The mathematical way to say "what flows out must equal what is produced inside" is the <em>divergence</em>.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>What is divergence, intuitively?</strong> Imagine placing a tiny balloon at a point in a fluid. If the fluid is flowing outward from that point, the balloon inflates — the divergence is positive. If the fluid converges inward, the balloon deflates — the divergence is negative. For electric current, $\nabla \cdot \mathbf{J}$ measures how much current is "created" at each point (positive) or "absorbed" (negative).
+    </p>
+  </div>
+
+  <p>
+    Now apply this to our two domains. In the intracellular space, current $\mathbf{J}_i$ flows from cell to cell. At any point, some of that current may leak out of the intracellular space across the membrane into the extracellular space. That leaking current <em>is</em> the transmembrane current $I_m$. Conservation says:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(11.1)</span>
+    $$\nabla \cdot \mathbf{J}_i = -\chi \, I_m$$
+  </div>
+
+  <p>
+    The negative sign tells us: if transmembrane current flows <em>outward</em> (from inside the cell to outside), it is a <em>sink</em> for intracellular current — current is leaving the intracellular space.
+  </p>
+
+  <p>
+    Similarly, in the extracellular space, that same transmembrane current is now a <em>source</em> — current arriving from inside:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(11.2)</span>
+    $$\nabla \cdot \mathbf{J}_e = +\chi \, I_m$$
+  </div>
+
+  <p>
+    Here $\chi$ is the surface-to-volume ratio of the cells (how much membrane area per unit volume of tissue — typically 1000–1500 cm$^{-1}$). It converts a current per unit membrane area ($I_m$ in $\mu$A/cm$^2$) into a current per unit volume.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The conservation identity.</strong> If you add equations (11.1) and (11.2), the transmembrane currents cancel exactly:
+      $$\nabla \cdot \mathbf{J}_i + \nabla \cdot \mathbf{J}_e = 0$$
+      This is simply the statement that <em>total current is conserved</em>: every charge that leaves the intracellular space enters the extracellular space, and vice versa. No charge is created or destroyed inside the tissue. This identity is the backbone of the entire bidomain framework.
+    </p>
+  </div>
+
+  <h3>11.3 &ensp; From One Domain to Two</h3>
+
+  <p>
+    In the <strong>monodomain</strong> model, we make a simplifying assumption: the ratio of intracellular to extracellular conductivity is the same in every direction. Under this assumption, the extracellular potential $\phi_e$ becomes spatially uniform (or can be set to zero), and we need to track only one unknown — the transmembrane potential $V_m$. One PDE, one unknown. Simple and fast.
+  </p>
+  <p>
+    But real cardiac tissue violates this assumption. The intracellular space is strongly anisotropic (current flows about 10 times faster along fibers than across them), while the extracellular space is only mildly anisotropic ($\approx$ 2.5:1). This <strong>unequal anisotropy ratio</strong> means the extracellular potential is <em>not</em> uniform — it develops complex spatial patterns of its own.
+  </p>
+  <p>
+    This matters in practice whenever we need to model:
+  </p>
+  <ul>
+    <li><strong>Defibrillation</strong> — an external electric field interacts with the tissue through the extracellular space.</li>
+    <li><strong>Virtual electrode polarization</strong> — field-induced regions of depolarization and hyperpolarization that cannot exist in the monodomain picture.</li>
+    <li><strong>ECG generation</strong> — body-surface potentials are driven by extracellular currents.</li>
+    <li><strong>External stimulation</strong> — electrode stimuli enter through $\phi_e$.</li>
+  </ul>
+  <p>
+    To capture these phenomena, we must solve for <strong>both</strong> $V_m$ and $\phi_e$. We need the <em>bidomain</em> model: two coupled equations, two unknowns, one beautiful (and computationally expensive) system.
+  </p>
+
+  <!-- Diagram: Monodomain vs Bidomain -->
+  <div class="figure">
+    <svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg" style="max-width:600px;">
+      <!-- Monodomain side -->
+      <rect x="20" y="20" width="300" height="240" rx="10" fill="#f4f6fb" stroke="#d0d5e0" stroke-width="1.5"/>
+      <text x="170" y="50" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" font-weight="700" fill="#16213e">Monodomain</text>
+      <rect x="60" y="75" width="220" height="50" rx="6" fill="#16213e" opacity="0.9"/>
+      <text x="170" y="105" text-anchor="middle" font-family="EB Garamond,serif" font-size="15" fill="white">Single Domain: V<tspan baseline-shift="sub" font-size="11">m</tspan></text>
+      <text x="170" y="155" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">1 parabolic PDE</text>
+      <text x="170" y="175" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">N unknowns</text>
+      <text x="170" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">D<tspan baseline-shift="sub" font-size="10">eff</tspan> = harmonic mean</text>
+      <text x="170" y="225" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#2d6a4f" font-style="italic">Assumes equal anisotropy ratios</text>
+      <!-- Arrow -->
+      <line x1="340" y1="140" x2="370" y2="140" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrow)"/>
+      <defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#e94560"/></marker></defs>
+      <!-- Bidomain side -->
+      <rect x="380" y="20" width="300" height="240" rx="10" fill="#f4f6fb" stroke="#d0d5e0" stroke-width="1.5"/>
+      <text x="530" y="50" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" font-weight="700" fill="#16213e">Bidomain</text>
+      <rect x="400" y="70" width="120" height="40" rx="6" fill="#0f3460"/>
+      <text x="460" y="95" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" fill="white">V<tspan baseline-shift="sub" font-size="10">m</tspan> (parabolic)</text>
+      <rect x="540" y="70" width="120" height="40" rx="6" fill="#e94560"/>
+      <text x="600" y="95" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" fill="white">φ<tspan baseline-shift="sub" font-size="10">e</tspan> (elliptic)</text>
+      <!-- coupling arrow -->
+      <path d="M520,90 C530,110 540,110 540,90" fill="none" stroke="#16213e" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="530" y="125" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e">coupled</text>
+      <text x="530" y="155" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">1 parabolic + 1 elliptic PDE</text>
+      <text x="530" y="175" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">2N unknowns</text>
+      <text x="530" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">Separate D<tspan baseline-shift="sub" font-size="10">i</tspan> and D<tspan baseline-shift="sub" font-size="10">e</tspan></text>
+      <text x="530" y="225" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#e94560" font-style="italic">No anisotropy assumption</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 12.1.</span> Comparison of monodomain and bidomain representations. The bidomain model introduces a second unknown ($\phi_e$) and a second equation (elliptic), coupled through the intracellular conductivity tensor.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 11 — THE BIDOMAIN EQUATIONS                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

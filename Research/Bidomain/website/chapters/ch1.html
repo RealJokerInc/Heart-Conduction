@@ -1,0 +1,358 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 1</div>
+  <h2 class="chapter-title">The Hodgkin–Huxley Revolution</h2>
+  <div class="chapter-intro">
+    In 1952, Alan Hodgkin and Andrew Huxley did something no one thought possible: they wrote
+    down a mathematical model of the nerve impulse that was so precise it predicted experiments
+    that hadn't been done yet. Every cardiac cell model used today — from the simplest to the
+    most complex — is a direct descendant of their work.
+  </div>
+
+  <h3>1.1 &ensp; The Membrane as a Circuit</h3>
+
+  <p>
+    A cell membrane is, at its core, a thin lipid bilayer — roughly 7 nm of oily molecules
+    separating two conducting salt solutions. This structure has a remarkable electrical consequence:
+    the membrane acts as a <em>capacitor</em>. Like two metal plates separated by an insulator, the
+    membrane stores charge — positive ions lining up on one side, negative on the other.
+  </p>
+
+  <p>
+    But the membrane is not a perfect insulator. Embedded within it are <em>ion channels</em> — protein
+    pores that allow specific ions (Na$^+$, K$^+$, Ca$^{2+}$, Cl$^-$) to flow through when open.
+    Each channel type acts like a variable resistor: its conductance changes with voltage, time, and
+    chemical signals. At any instant, the total current flowing across the membrane is the sum of the
+    capacitive current (charging the membrane) and the ionic current (flowing through channels):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(1.1)</span>
+    $$I_m = C_m \frac{dV_m}{dt} + I_{\text{ion}}(V_m, t)$$
+  </div>
+
+  <p>
+    Here $C_m \approx 1\;\mu\text{F/cm}^2$ is the specific membrane capacitance (remarkably
+    constant across all cell types), $V_m$ is the transmembrane potential, and $I_{\text{ion}}$
+    is the total ionic current — the quantity that Hodgkin and Huxley set out to understand.
+  </p>
+
+  <!-- ─── HH Circuit Diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 520 250" xmlns="http://www.w3.org/2000/svg" style="max-width:440px;">
+      <!-- membrane line -->
+      <line x1="60" y1="30" x2="460" y2="30" stroke="#16213e" stroke-width="1.5"/>
+      <line x1="60" y1="220" x2="460" y2="220" stroke="#16213e" stroke-width="1.5"/>
+      <text x="20" y="35" font-size="11" fill="#5a6175" font-family="serif">Outside</text>
+      <text x="20" y="217" font-size="11" fill="#5a6175" font-family="serif">Inside</text>
+
+      <!-- Capacitor -->
+      <line x1="120" y1="30" x2="120" y2="90" stroke="#16213e" stroke-width="1.3"/>
+      <line x1="100" y1="90" x2="140" y2="90" stroke="#16213e" stroke-width="2.5"/>
+      <line x1="100" y1="105" x2="140" y2="105" stroke="#16213e" stroke-width="2.5"/>
+      <line x1="120" y1="105" x2="120" y2="220" stroke="#16213e" stroke-width="1.3"/>
+      <text x="104" y="80" font-size="11" fill="#0f3460" font-family="serif" font-weight="600">C<tspan font-size="8" dy="3">m</tspan></text>
+
+      <!-- Na+ channel -->
+      <line x1="230" y1="30" x2="230" y2="80" stroke="#e94560" stroke-width="1.3"/>
+      <rect x="210" y="80" width="40" height="55" rx="4" fill="#fff0f3" stroke="#e94560" stroke-width="1.5"/>
+      <text x="218" y="112" font-size="10" fill="#e94560" font-family="serif" font-weight="600">g<tspan font-size="7" dy="2">Na</tspan></text>
+      <line x1="230" y1="135" x2="230" y2="170" stroke="#e94560" stroke-width="1.3"/>
+      <!-- battery -->
+      <line x1="220" y1="170" x2="240" y2="170" stroke="#e94560" stroke-width="2"/>
+      <line x1="224" y1="180" x2="236" y2="180" stroke="#e94560" stroke-width="1.2"/>
+      <text x="243" y="178" font-size="9" fill="#e94560" font-family="serif">E<tspan font-size="7" dy="2">Na</tspan></text>
+      <line x1="230" y1="180" x2="230" y2="220" stroke="#e94560" stroke-width="1.3"/>
+
+      <!-- K+ channel -->
+      <line x1="340" y1="30" x2="340" y2="80" stroke="#0f3460" stroke-width="1.3"/>
+      <rect x="320" y="80" width="40" height="55" rx="4" fill="#eef0f8" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="330" y="112" font-size="10" fill="#0f3460" font-family="serif" font-weight="600">g<tspan font-size="7" dy="2">K</tspan></text>
+      <line x1="340" y1="135" x2="340" y2="170" stroke="#0f3460" stroke-width="1.3"/>
+      <!-- battery -->
+      <line x1="330" y1="170" x2="350" y2="170" stroke="#0f3460" stroke-width="2"/>
+      <line x1="334" y1="180" x2="346" y2="180" stroke="#0f3460" stroke-width="1.2"/>
+      <text x="353" y="178" font-size="9" fill="#0f3460" font-family="serif">E<tspan font-size="7" dy="2">K</tspan></text>
+      <line x1="340" y1="180" x2="340" y2="220" stroke="#0f3460" stroke-width="1.3"/>
+
+      <!-- Leak channel -->
+      <line x1="440" y1="30" x2="440" y2="80" stroke="#5a6175" stroke-width="1.3"/>
+      <rect x="420" y="80" width="40" height="55" rx="4" fill="#f4f6fb" stroke="#5a6175" stroke-width="1.5"/>
+      <text x="430" y="112" font-size="10" fill="#5a6175" font-family="serif" font-weight="600">g<tspan font-size="7" dy="2">L</tspan></text>
+      <line x1="440" y1="135" x2="440" y2="170" stroke="#5a6175" stroke-width="1.3"/>
+      <line x1="430" y1="170" x2="450" y2="170" stroke="#5a6175" stroke-width="2"/>
+      <line x1="434" y1="180" x2="446" y2="180" stroke="#5a6175" stroke-width="1.2"/>
+      <text x="453" y="178" font-size="9" fill="#5a6175" font-family="serif">E<tspan font-size="7" dy="2">L</tspan></text>
+      <line x1="440" y1="180" x2="440" y2="220" stroke="#5a6175" stroke-width="1.3"/>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 1.1.</span> The Hodgkin–Huxley equivalent circuit. The membrane capacitance
+      $C_m$ sits in parallel with voltage-dependent conductances for Na$^+$, K$^+$, and a leak current.
+      Each ionic branch has a variable conductance $g_x$ in series with a Nernst battery $E_x$.
+    </div>
+  </div>
+
+  <p>
+    The key insight of Figure 1.1 is that each ionic species contributes its own current
+    $I_x = g_x(V_m - E_x)$, where $E_x$ is the <em>reversal potential</em> — the voltage at which
+    the electrochemical gradient for that ion vanishes. For sodium, $E_{\text{Na}} \approx +65$ mV;
+    for potassium, $E_{\text{K}} \approx -88$ mV. The enormous 150 mV difference between these
+    two batteries is the energy source that powers every action potential.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of each ion channel as a door with a bouncer who checks the voltage. At rest ($V_m \approx -85$ mV),
+      the Na$^+$ doors are nearly all shut and the K$^+$ doors are mostly open. The cell sits quietly at a
+      voltage close to $E_{\text{K}}$. But if something pushes $V_m$ above about $-55$ mV, the Na$^+$ doors
+      suddenly swing open — and the positive feedback loop that creates an action potential begins.
+    </p>
+  </div>
+
+  <h3>1.2 &ensp; Gating Variables: m, h, and n</h3>
+
+  <p>
+    Hodgkin and Huxley's genius was not the circuit diagram — that was known. It was their decision
+    to treat each conductance as a product of independent "gates," each opening and closing with its
+    own voltage-dependent kinetics. For the squid axon, they found:
+  </p>
+
+  <div class="equation-block">
+    $$g_{\text{Na}} = \bar{g}_{\text{Na}} \cdot m^3 \cdot h, \qquad g_{\text{K}} = \bar{g}_{\text{K}} \cdot n^4$$
+  </div>
+
+  <p>
+    Here $\bar{g}_{\text{Na}}$ and $\bar{g}_{\text{K}}$ are the <em>maximal conductances</em> — what you'd measure if
+    every channel were fully open. The gating variables $m$, $h$, and $n$ each range between 0 (all gates
+    closed) and 1 (all gates open). They obey first-order kinetics:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(1.2)</span>
+    $$\frac{dx}{dt} = \alpha_x(V_m)(1 - x) - \beta_x(V_m)\,x, \qquad x \in \{m, h, n\}$$
+  </div>
+
+  <p>
+    where $\alpha_x$ and $\beta_x$ are voltage-dependent rate constants that Hodgkin and Huxley measured
+    experimentally from the squid giant axon. This equation says something beautifully simple: each gate
+    transitions between a closed state (population $1-x$) and an open state (population $x$), with
+    forward rate $\alpha_x$ and backward rate $\beta_x$.
+  </p>
+
+  <p>
+    It is often more revealing to rewrite equation (1.2) in <em>relaxation form</em>:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(1.3)</span>
+    $$\frac{dx}{dt} = \frac{x_\infty(V_m) - x}{\tau_x(V_m)}$$
+  </div>
+
+  <p>
+    where $x_\infty = \alpha_x / (\alpha_x + \beta_x)$ is the <em>steady-state</em> value (where the gate
+    would end up if voltage were held constant forever) and $\tau_x = 1/(\alpha_x + \beta_x)$ is the
+    <em>time constant</em> (how fast it gets there). This form makes the physics transparent: the gate
+    exponentially approaches its target $x_\infty(V_m)$ with time constant $\tau_x(V_m)$.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The relaxation form (1.3) is not just prettier notation — it is the foundation of the
+      <strong>Rush–Larsen method</strong>, the standard numerical integrator for gating variables in
+      cardiac simulations. We will meet it again in Chapter 8 when we discuss operator splitting.
+    </p>
+  </div>
+
+  <!-- ─── Gating variable steady-state curves ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 500 240" xmlns="http://www.w3.org/2000/svg" style="max-width:440px;">
+      <!-- Axes -->
+      <line x1="60" y1="200" x2="460" y2="200" stroke="#16213e" stroke-width="1.2"/>
+      <line x1="60" y1="200" x2="60" y2="20" stroke="#16213e" stroke-width="1.2"/>
+      <!-- Axis labels -->
+      <text x="250" y="232" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle">V<tspan font-size="8" dy="3">m</tspan><tspan dy="-3"> (mV)</tspan></text>
+      <text x="18" y="110" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,18,110)">x<tspan font-size="8" dy="3">∞</tspan></text>
+      <!-- Tick marks -->
+      <text x="60" y="215" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-100</text>
+      <text x="160" y="215" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-60</text>
+      <text x="260" y="215" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-20</text>
+      <text x="360" y="215" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">+20</text>
+      <text x="460" y="215" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">+60</text>
+      <text x="52" y="204" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">0</text>
+      <text x="52" y="24" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">1</text>
+
+      <!-- m_inf curve (fast activation, steep, shifts at ~-40mV) -->
+      <path d="M 60,195 Q 130,192 160,185 Q 185,170 200,140 Q 215,90 230,55 Q 250,32 290,25 L 460,23"
+            fill="none" stroke="#e94560" stroke-width="2.2"/>
+      <text x="300" y="18" font-size="11" fill="#e94560" font-family="serif" font-weight="600">m<tspan font-size="8" dy="3">∞</tspan></text>
+
+      <!-- h_inf curve (inactivation, decreasing) -->
+      <path d="M 60,25 Q 100,27 130,30 Q 155,38 170,55 Q 190,90 210,140 Q 230,175 260,190 Q 290,197 460,198"
+            fill="none" stroke="#e94560" stroke-width="2.2" stroke-dasharray="6,3"/>
+      <text x="95" y="18" font-size="11" fill="#e94560" font-family="serif" font-weight="600">h<tspan font-size="8" dy="3">∞</tspan></text>
+
+      <!-- n_inf curve (K activation, slower, shifts at ~-55mV) -->
+      <path d="M 60,195 Q 100,193 130,190 Q 160,182 185,160 Q 210,120 240,70 Q 270,38 310,26 L 460,23"
+            fill="none" stroke="#0f3460" stroke-width="2.2"/>
+      <text x="320" y="50" font-size="11" fill="#0f3460" font-family="serif" font-weight="600">n<tspan font-size="8" dy="3">∞</tspan></text>
+
+      <!-- Resting potential marker -->
+      <line x1="95" y1="20" x2="95" y2="200" stroke="#5a6175" stroke-width="0.8" stroke-dasharray="3,3"/>
+      <text x="95" y="14" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">V<tspan font-size="7" dy="1">rest</tspan></text>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 1.2.</span> Steady-state gating curves for the HH model.
+      At rest, $m_\infty \approx 0$ (Na$^+$ activation off), $h_\infty \approx 0.6$ (Na$^+$ inactivation partially available),
+      and $n_\infty \approx 0.3$ (K$^+$ partially open). The Na$^+$ activation curve $m_\infty$ is notably steeper than $n_\infty$,
+      explaining why sodium channels open faster than potassium channels — the key to the action potential upstroke.
+    </div>
+  </div>
+
+  <p>
+    What do these three gates mean physically? The variable $m$ is the sodium <em>activation</em> gate:
+    it controls how quickly Na$^+$ channels open when the membrane depolarizes. The variable $h$ is the
+    sodium <em>inactivation</em> gate: it shuts Na$^+$ channels back down, even if the voltage stays high.
+    The variable $n$ is the potassium <em>activation</em> gate: it opens K$^+$ channels slowly during
+    depolarization to repolarize the cell.
+  </p>
+
+  <p>
+    The powers ($m^3$ and $n^4$) reflect the cooperativity of channel gating — Hodgkin and Huxley
+    interpreted them as the number of independent "particles" that must simultaneously be in the right
+    position for the channel to conduct. Modern structural biology has confirmed this: voltage-gated
+    channels have four voltage-sensing domains, and the sodium channel's fast gate involves three of them.
+  </p>
+
+  <h3>1.3 &ensp; The Sodium Hypothesis and Positive Feedback</h3>
+
+  <p>
+    The action potential is a self-amplifying event, and understanding <em>why</em> it fires requires
+    tracing a feedback loop. Suppose a small stimulus pushes $V_m$ slightly above the threshold of
+    about $-55$ mV. Here is what happens:
+  </p>
+
+  <p>
+    <strong>Step 1:</strong> The small depolarization causes $m_\infty$ to increase (the $m_\infty$ curve
+    in Figure 1.2 is steeply rising near threshold). Gates start opening: $m$ rises toward $m_\infty$.
+  </p>
+
+  <p>
+    <strong>Step 2:</strong> As $m$ increases, the sodium conductance $g_{\text{Na}} = \bar{g}_{\text{Na}} m^3 h$
+    grows rapidly. Na$^+$ ions rush into the cell (driven by the large electrochemical gradient
+    $V_m - E_{\text{Na}} \approx -55 - 65 = -120$ mV).
+  </p>
+
+  <p>
+    <strong>Step 3:</strong> The inward Na$^+$ current further depolarizes the membrane, which causes
+    even more $m$-gates to open — and the process accelerates explosively.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      This is <em>positive feedback</em>: depolarization opens Na$^+$ gates, which cause more depolarization,
+      which opens more gates. It is the biological equivalent of a spark igniting gasoline. Once started, the upstroke
+      is essentially unstoppable — $V_m$ shoots from $-85$ mV toward $E_{\text{Na}} \approx +65$ mV in less than 1 ms.
+      This is the "all-or-nothing" nature of the action potential.
+    </p>
+  </div>
+
+  <p>
+    What stops this runaway? Two mechanisms, operating on different timescales:
+  </p>
+
+  <p>
+    <strong>Fast shutdown — inactivation ($h$):</strong> While $m$ opens in under 0.5 ms, the inactivation gate $h$
+    closes with a time constant of 1–5 ms. As $h \to 0$, the product $m^3 h \to 0$ even though $m$ is large.
+    The Na$^+$ current self-terminates. This is the fundamental asymmetry: $m$ is fast, $h$ is slower.
+  </p>
+
+  <p>
+    <strong>Slow recovery — potassium ($n$):</strong> The K$^+$ gate $n$ opens even more slowly ($\tau_n \approx$ 5–10 ms).
+    As $n^4$ grows, the outward K$^+$ current $I_K = \bar{g}_K n^4 (V_m - E_K)$ overwhelms the now-extinct
+    Na$^+$ current and pulls $V_m$ back toward $E_K$.
+  </p>
+
+  <h3>1.4 &ensp; Activation vs. Inactivation: The Refractory Period</h3>
+
+  <p>
+    After an action potential, the cell enters a <em>refractory period</em> during which it cannot fire again.
+    This is essential for ordered wave propagation — without it, waves could travel backward and the heart
+    would fibrillate. The refractory period has a clear gating-variable explanation:
+  </p>
+
+  <p>
+    Immediately after the action potential, $h \approx 0$ (Na$^+$ channels are inactivated) and $n$ is still
+    elevated (K$^+$ channels are open). Even if a new stimulus arrives, there are no Na$^+$ channels
+    available to open — the $h$ gate needs time to recover ($h$ must return toward $h_\infty(V_{\text{rest}}) \approx 0.6$).
+    This recovery takes 5–10 ms in nerve, and 200–300 ms in ventricular cardiac cells.
+  </p>
+
+  <!-- ─── Action Potential Timeline ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 500 220" xmlns="http://www.w3.org/2000/svg" style="max-width:440px;">
+      <!-- Axes -->
+      <line x1="50" y1="190" x2="470" y2="190" stroke="#16213e" stroke-width="1.2"/>
+      <line x1="50" y1="190" x2="50" y2="15" stroke="#16213e" stroke-width="1.2"/>
+      <text x="260" y="213" font-size="10" fill="#16213e" font-family="serif" text-anchor="middle">Time (ms)</text>
+      <text x="14" y="100" font-size="10" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,14,100)">V<tspan font-size="7" dy="2">m</tspan><tspan dy="-2"> (mV)</tspan></text>
+
+      <!-- V scale -->
+      <text x="42" y="194" font-size="8" fill="#5a6175" font-family="serif" text-anchor="end">-80</text>
+      <text x="42" y="105" font-size="8" fill="#5a6175" font-family="serif" text-anchor="end">0</text>
+      <text x="42" y="35" font-size="8" fill="#5a6175" font-family="serif" text-anchor="end">+40</text>
+      <!-- time ticks -->
+      <text x="50" y="203" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">0</text>
+      <text x="134" y="203" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">1</text>
+      <text x="218" y="203" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">2</text>
+      <text x="302" y="203" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">3</text>
+      <text x="386" y="203" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">4</text>
+
+      <!-- zero line -->
+      <line x1="50" y1="105" x2="470" y2="105" stroke="#d0d5e0" stroke-width="0.5" stroke-dasharray="3,3"/>
+
+      <!-- AP trace (nerve-like: fast spike, ~1.5ms total) -->
+      <path d="M 50,185 L 90,185 Q 95,185 100,170 Q 108,100 112,32 Q 114,25 118,32 Q 125,55 135,90 Q 150,135 170,165 Q 195,187 250,189 L 470,189"
+            fill="none" stroke="#e94560" stroke-width="2.2"/>
+
+      <!-- Annotations -->
+      <text x="116" y="20" font-size="9" fill="#e94560" font-family="serif" font-weight="600">Overshoot</text>
+      <path d="M 95,173 L 80,155" fill="none" stroke="#0f3460" stroke-width="0.8"/>
+      <text x="50" y="150" font-size="8" fill="#0f3460" font-family="serif">Threshold</text>
+
+      <!-- Refractory period bracket -->
+      <line x1="118" y1="195" x2="250" y2="195" stroke="#4a3d7a" stroke-width="1.5"/>
+      <line x1="118" y1="192" x2="118" y2="198" stroke="#4a3d7a" stroke-width="1.5"/>
+      <line x1="250" y1="192" x2="250" y2="198" stroke="#4a3d7a" stroke-width="1.5"/>
+      <text x="184" y="210" font-size="8" fill="#4a3d7a" font-family="serif" text-anchor="middle" font-style="italic">Refractory period</text>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 1.3.</span> The nerve action potential (squid axon). The upstroke is driven by
+      Na$^+$ influx ($m^3h$ activating), the repolarization by Na$^+$ inactivation ($h \to 0$) and delayed K$^+$
+      activation ($n^4$ increasing). The refractory period corresponds to the time needed for $h$ to recover.
+    </div>
+  </div>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, every ionic model inherits from the <code>IonicModel</code> abstract base class
+      (<code>cardiac_sim/ionic/base.py</code>), which requires: <code>compute_Iion(V, ionic_states)</code>
+      to compute total ionic current, <code>step(V, ionic_states, dt)</code> to advance the full model,
+      and separate methods <code>compute_gate_steady_states()</code> and
+      <code>compute_gate_time_constants()</code> so that the Rush–Larsen solver can update gates
+      externally. V is always stored separately from ionic states. The Hodgkin–Huxley structure —
+      membrane current as sum of conductances times driving forces, gating variables following
+      first-order kinetics — is exactly the pattern this interface encodes. Understanding HH means
+      understanding the API contract of every model in the engine.
+    </p>
+  </div>
+
+  <p>
+    The complete Hodgkin–Huxley system is four coupled ordinary differential equations: one for $V_m$
+    (the circuit equation) and three for the gates ($m$, $h$, $n$). It was the first biophysically
+    detailed cell model and remains the conceptual template for all that followed. But for the heart,
+    we need something quite different — as we'll see in the next chapter.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 2 — FROM NEURONS TO HEART CELLS                         -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

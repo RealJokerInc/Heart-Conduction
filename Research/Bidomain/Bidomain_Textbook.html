@@ -7049,11 +7049,11 @@ $$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f 
 
 This is still a continuous equation &mdash; $f$ lives on a continuous position space, a continuous velocity space, and continuous time. To turn it into something a computer can execute, we make three deliberate discretization choices:
 
-<strong>1. Discretize velocity space.</strong> Replace the continuous velocity $\mathbf{c}$ with a small finite set of lattice velocities $\{\mathbf{c}_0, \mathbf{c}_1, \ldots, \mathbf{c}_{Q-1}\}$. The continuous distribution $f(\mathbf{x}, \mathbf{c}, t)$ becomes a finite collection of distributions $f_i(\mathbf{x}, t)$, one for each lattice direction $i$. This is the step where velocity space &mdash; the infinite-dimensional space from Section 17.1 &mdash; collapses to a handful of directions. The choice of which velocities to keep (and the associated weights) is governed by the Gaussian quadrature constraints we will derive in Section 17.4.
-
-<strong>2. Discretize time.</strong> Replace $\partial f / \partial t$ with a finite difference over a timestep $\Delta t$. This turns the differential equation into an update rule.
-
-<strong>3. Lock the grid to the velocities.</strong> Choose the spatial grid spacing $\Delta x$ and timestep $\Delta t$ so that each lattice velocity $\mathbf{c}_i$ moves a particle from one grid node to an adjacent grid node in exactly one timestep: $\mathbf{c}_i \Delta t = \mathbf{c}_i \Delta x / |\mathbf{c}_i|$. This eliminates interpolation entirely &mdash; streaming is exact.
+<ol style="margin:0.8em 0 0.8em 1.8em; line-height:1.65;">
+<li style="margin-bottom:0.7em;"><strong>Discretize velocity space.</strong> Replace the continuous velocity $\mathbf{c}$ with a small finite set of lattice velocities $\{\mathbf{c}_0, \mathbf{c}_1, \ldots, \mathbf{c}_{Q-1}\}$. The continuous distribution $f(\mathbf{x}, \mathbf{c}, t)$ becomes a finite collection of distributions $f_i(\mathbf{x}, t)$, one for each lattice direction $i$. This is the step where velocity space &mdash; the infinite-dimensional space from Section 17.1 &mdash; collapses to a handful of directions. The choice of which velocities to keep (and the associated weights) is governed by the Gaussian quadrature we will derive in Section 17.4.</li>
+<li style="margin-bottom:0.7em;"><strong>Discretize time.</strong> Replace $\partial f / \partial t$ with a finite difference over a timestep $\Delta t$. This turns the differential equation into an update rule.</li>
+<li style="margin-bottom:0.7em;"><strong>Lock the grid to the velocities.</strong> Choose the spatial grid spacing $\Delta x$ and timestep $\Delta t$ so that each lattice velocity $\mathbf{c}_i$ moves a particle from one grid node to an adjacent grid node in exactly one timestep: $\mathbf{c}_i \Delta t = \mathbf{c}_i \Delta x / |\mathbf{c}_i|$. This eliminates interpolation entirely &mdash; streaming is exact.</li>
+</ol>
 
 Notice one term that is conspicuously absent: the external force $\mathbf{F} \cdot \nabla_{\mathbf{c}} f$ from equation (17.7). Recall that this term describes forces that accelerate particles through velocity space &mdash; gravity pulling molecules downward, electric fields pushing ions. For diffusion and the monodomain equation, there are no such body forces: particles stream freely and collide, but nothing pushes them to change velocity mid-flight. We therefore drop it. (For applications that do require forcing &mdash; buoyancy-driven flows, electrokinetics &mdash; the force re-enters as a source term added to the right-hand side, but that is beyond our scope.)
 
@@ -7186,53 +7186,57 @@ $\phi(\mathbf{x}, t) = \sum_i f_i(\mathbf{x}, t)$ is the recovered macroscopic q
 
 <h3>17.4 &ensp; From the Gaussian to the Lattice: Discretizing $f^{\text{eq}}$, $w_i$, and $\mathbf{c}_i$</h3>
 
-<h4>Returning to the Gaussian</h4>
+<h4>From Integrals to Sums</h4>
 
-In Section 17.1 we established the Maxwell-Boltzmann equilibrium (equation 17.2) and its three physical claims: conservation of mass (17.3), zero net flux at rest (17.4), and isotropic variance (17.5). In Section 17.2, this equilibrium became the target of BGK relaxation &mdash; the distribution $f$ is nudged toward $f^{\text{eq}}$ at every collision. In Section 17.3, we wrote the discrete lattice-Boltzmann equation and used $f_i^{\text{eq}}$, $w_i$, and $\mathbf{c}_i$ as if they were known quantities &mdash; but we never said where they come from.
+In Section 17.1 we wrote down the Maxwell-Boltzmann equilibrium (equation 17.2) and showed that it satisfies three integral identities &mdash; conservation of mass (17.3), momentum (17.4), and isotropic variance (17.5). Each of these is an integral over velocity space: you integrate $f^{\text{eq}}(\mathbf{c})$ &mdash; or $f^{\text{eq}}$ multiplied by some power of $\mathbf{c}$ &mdash; over <em>all directions and all magnitudes</em>.
 
-Now we open that box. Everything in this section &mdash; the discrete velocities, the weights, and the discrete equilibrium &mdash; is derived from a single source: the continuous Gaussian from Section 17.1. The question is: <strong>how do you discretize a bell curve in velocity space so that the discrete version preserves the same physical claims?</strong>
+LBM replaces "all directions and all magnitudes" with <strong>a few lattice vectors $\mathbf{e}_i$ and weights $w_i$</strong>. The lattice vectors are dimensionless integer vectors &mdash; their components are just 0 and $\pm 1$. For example, in D2Q5:
 
-<h4>The Three Claims Become Three Constraints on the Lattice</h4>
+$$\mathbf{e}_0 = (0,0), \quad \mathbf{e}_1 = (1,0), \quad \mathbf{e}_2 = (-1,0), \quad \mathbf{e}_3 = (0,1), \quad \mathbf{e}_4 = (0,-1)$$
 
-Recall the three physical claims of the Gaussian equilibrium from Section 17.1. Each was stated as a continuous integral over velocity space. When we discretize velocity space onto a finite set of $Q$ directions $\{\mathbf{c}_i\}$ with weights $\{w_i\}$, each integral becomes a finite sum &mdash; and each physical claim becomes an algebraic constraint that the lattice must satisfy.
+Each lattice vector comes with a weight $w_i$ that says "this sample point represents this much of the Gaussian bell curve." Every continuous integral becomes a finite sum:
 
-<strong>Zeroth order &mdash; conservation of mass</strong> (discrete form of equation 17.3):
+<div class="equation-block"><span class="equation-label">(17.18)</span>$$\int p(\mathbf{c}) \; \underbrace{\frac{1}{(2\pi c_s^2)^{D/2}} e^{-|\mathbf{c}|^2 / 2c_s^2}}_{\text{Gaussian kernel}} \; d\mathbf{c} \;\approx\; \sum_{i=0}^{Q-1} w_i \; p(\mathbf{e}_i)$$</div>
 
-<div class="equation-block"><span class="equation-label">(17.18)</span>$$\sum_i w_i = 1 \qquad \text{(normalization: the total probability is 1)}$$</div>
+The left-hand side integrates over the full continuous velocity space $\mathbf{c}$. The right-hand side evaluates at the lattice nodes $\mathbf{e}_i$ in dimensionless space &mdash; this is where the quadrature lives. Here $p$ is a placeholder &mdash; it stands for whatever function of velocity you want to integrate against the Gaussian. Plug in $p = 1$ and you compute total mass. Plug in $p = e_{i\alpha}$ (a single component of $\mathbf{e}_i$) and you compute momentum. Plug in $p = e_{i\alpha} e_{i\beta}$ and you compute the stress tensor. The nodes $\mathbf{e}_i$ and their weights $w_i$ are chosen so that these sums are <em>exact</em> for all polynomials up to the degree you need.
 
-The continuous claim $\int f^{\text{eq}} d\mathbf{c} = \rho$ says the total density is conserved. In discrete form, this requires the weights to sum to one &mdash; the discrete bell curve must have the same total area as the continuous one.
+<strong>This is where $w_i$ and $\mathbf{e}_i$ come from.</strong> They are not free parameters that we tune. They are the nodes and weights of a quadrature rule applied to the Gaussian &mdash; a married pair, born together from the bell curve's shape. Once you choose a lattice geometry (how many sample points, and where), the weights are uniquely determined.
 
-<strong>First order &mdash; zero net flux at rest</strong> (discrete form of equation 17.4):
+<div class="insight insight-intuition">
+<strong>How Can Five Points Replace an Entire Plane?</strong> In the continuous integral, $\mathbf{c}$ ranges over all directions and all magnitudes &mdash; an infinite velocity plane. On the lattice, we replace this with just 5 (or 9) sample points whose components are 0 and $\pm 1$. This seems like a drastic reduction. But remember what we are integrating: a Gaussian bell curve that decays rapidly away from the origin. Almost all of the integral's value is concentrated within a few lattice spacings of the center. The quadrature exploits this &mdash; it places its sample points precisely where the Gaussian has significant weight, and the weights $w_i$ encode how much of the bell curve each point represents. Five well-chosen points on a steep hill capture more information than a thousand points in the flat plains beyond it.
+</div>
 
-<div class="equation-block"><span class="equation-label">(17.19)</span>$$\sum_i w_i \, c_{i\alpha} = 0 \qquad \text{or equivalently:} \qquad \sum_i w_i \, \mathbf{c}_i = \mathbf{0}$$</div>
+<h4>Physical Velocities</h4>
 
-The continuous claim $\int \mathbf{c} \, f^{\text{eq}} d\mathbf{c} = \rho\mathbf{u} = \mathbf{0}$ (at rest) says there is no net momentum. In discrete form, the weighted average of the velocity vectors must vanish &mdash; the lattice must be symmetric so that no direction is preferred.
+The $\mathbf{e}_i$ are dimensionless integers &mdash; they tell you which neighbor to hop to on the grid. But the Boltzmann equation and the physics it describes involve velocities with real units. To recover a <strong>physical velocity</strong> $\mathbf{c}_i$ (length/time), scale by the lattice speed $c = \Delta x / \Delta t$:
 
-<strong>Second order &mdash; isotropic variance</strong> (discrete form of equation 17.5):
+$$\mathbf{c}_i = \mathbf{e}_i \, \frac{\Delta x}{\Delta t}$$
 
-<div class="equation-block"><span class="equation-label">(17.20)</span>$$\sum_i w_i \, c_{i\alpha} \, c_{i\beta} = c_s^2 \, \delta_{\alpha\beta} \qquad \text{or equivalently:} \qquad \sum_i w_i \, \mathbf{c}_i \otimes \mathbf{c}_i = c_s^2 \, \mathbf{I}$$</div>
+So $\mathbf{e}_1 = (1,0)$ is a one-node hop on the grid, and $\mathbf{c}_1 = (\Delta x / \Delta t, \; 0)$ is the physical speed of that hop. Throughout this chapter, we use $\mathbf{e}_i$ when writing velocity tables, streaming rules, and the quadrature formula &mdash; anything that lives in lattice space. We use $\mathbf{c}_i$ when connecting to physical quantities: the speed of sound $c_s$, the $\tau$-$D$ diffusion relationship, and the equilibrium distribution in fluid-flow problems.
 
-The continuous claim $\int c_\alpha c_\beta f^{\text{eq}} d\mathbf{c} = \rho c_s^2 \delta_{\alpha\beta}$ says the velocity fluctuations are isotropic. In discrete form, the weighted outer product of velocities must reproduce the variance of the Gaussian times the identity matrix. When $\alpha = \beta$ (e.g., $\alpha = \beta = x$), this says $\sum_i w_i c_{ix}^2 = c_s^2$ &mdash; the quadrature reproduces the Gaussian's variance along each axis. When $\alpha \neq \beta$ (e.g., $\alpha = x$, $\beta = y$), this says $\sum_i w_i c_{ix} c_{iy} = 0$ &mdash; the $x$ and $y$ components are uncorrelated, as required for an isotropic bell curve.
+A natural worry: if $\mathbf{c}_i$ changes when you refine your grid (because $\Delta x / \Delta t$ changes), do the weights $w_i$ change too? They do not. The weights are married to $\mathbf{e}_i$, not to $\mathbf{c}_i$, and $\mathbf{e}_i$ is a fixed set of integer vectors that never changes. When you halve $\Delta x$, every physical velocity $\mathbf{c}_i$ shrinks &mdash; but the lattice speed of sound $c_s$ shrinks by the same factor, so the dimensionless ratio $\mathbf{c}_i / c_s = \mathbf{e}_i / \sqrt{3}$ is unchanged. The Gaussian in lattice units always has the same shape, the sample points sit in the same places relative to its width, and the weights stay fixed. Grid refinement changes the physics that $c_s$ maps to, not the quadrature itself.
 
-These three constraints &mdash; (17.18), (17.19), and (17.20) &mdash; are the bridge between the continuous physics of Section 17.1 and the discrete lattice. Any valid lattice (D2Q5, D2Q9, D3Q7) must satisfy all three. The constraints determine the weights $w_i$ once the velocity set $\mathbf{c}_i$ is chosen.
+<h4>The Discrete Equilibrium</h4>
+
+For <strong>pure diffusion</strong> ($\mathbf{u} = 0$), the Gaussian is centered at the origin. When you evaluate it at the quadrature nodes and fold in the weights, all the velocity-dependent structure vanishes. The discrete equilibrium is simply:
+
+<div class="equation-block"><span class="equation-label">(17.27)</span>$$f_i^{\text{eq}} = w_i \, \phi$$</div>
+
+where $\phi = \sum_j f_j$ is the local macroscopic quantity (temperature, voltage, concentration). Each direction carries a fraction $w_i$ of the total field &mdash; the rest direction carries the most (it sits at the peak of the bell curve), and the moving directions carry the remainder. There is no preferred direction &mdash; the equilibrium is symmetric, just as the centered Gaussian is symmetric.
+
+This is the equilibrium we use for cardiac electrophysiology, since the monodomain and bidomain equations are diffusion equations with no bulk flow.
 
 <h4>Gauss-Hermite Quadrature: Why These Specific Nodes and Weights</h4>
 
-The three constraints above are not arbitrary &mdash; they are the <strong>exactness conditions of Gauss-Hermite quadrature</strong>. This is a classical result in numerical analysis: given a function that looks like a polynomial multiplied by a Gaussian, how do you approximate the integral using a finite sum?
-
-The idea is beautifully geometric. The Gaussian bell curve is a hill in velocity space, and we want to compute integrals under it. Gauss-Hermite quadrature tells us exactly where to place sample points (the <strong>nodes</strong> $\mathbf{c}_i$) and how much weight to give each one (the <strong>weights</strong> $w_i$), so that the finite sum is exact for all polynomials up to a certain degree:
-
-<div class="equation-block"><span class="equation-label">(17.21)</span>$$\int p(\mathbf{c}) \; \underbrace{\frac{1}{(2\pi c_s^2)^{D/2}} e^{-|\mathbf{c}|^2 / 2c_s^2}}_{\text{Gaussian kernel}} \; d\mathbf{c} \;\approx\; \sum_{i=0}^{Q-1} w_i \; p(\mathbf{c}_i)$$</div>
-
-The quadrature nodes become our discrete velocities. The quadrature weights become our lattice weights. The constraints (17.18)&ndash;(17.20) are what you get when you require this sum to be exact for $p = 1$ (zeroth order), $p = c_\alpha$ (first order), and $p = c_\alpha c_\beta$ (second order) &mdash; precisely the three physical claims from Section 17.1.
+The quadrature rule in equation (17.18) has a classical name: <strong>Gauss-Hermite quadrature</strong>. It is the standard method for integrating polynomials multiplied by a Gaussian kernel, and it has been studied since the 19th century. The key result is this: given a Gaussian in $D$ dimensions, there exist specific sets of nodes and weights such that the finite sum is <em>exact</em> (not approximate) for all polynomial integrands up to a certain degree.
 
 <div class="insight insight-intuition">
-<strong>Nodes and Weights Are a Married Pair:</strong> In Gauss-Hermite quadrature, you do not get to choose the nodes and the weights independently. Once you pick a set of sample points on the bell curve, the weights are uniquely determined (and vice versa). This is why every lattice specification &mdash; D2Q5, D2Q9, D3Q7 &mdash; always lists both $\mathbf{c}_i$ AND $w_i$ together. They are a package deal, born from the same Gaussian.
+<strong>Nodes and Weights Are a Married Pair:</strong> In Gauss-Hermite quadrature, you do not get to choose the nodes and the weights independently. Once you pick a set of sample points on the bell curve, the weights are uniquely determined (and vice versa). This is why every lattice specification &mdash; D2Q5, D2Q9, D3Q7 &mdash; always lists both $\mathbf{e}_i$ AND $w_i$ together. They are a package deal, born from the same Gaussian.
 </div>
 
-For <strong>diffusion</strong> (no bulk flow), the equilibrium is the Gaussian centered at zero. The macroscopic equations involve integrals of polynomials up to second degree in $\mathbf{c}$, so exactness through second order &mdash; constraints (17.18)&ndash;(17.20) &mdash; is sufficient. D2Q5 and D3Q7 satisfy these.
+For <strong>diffusion</strong> (no bulk flow), the equilibrium is the Gaussian centered at zero. The macroscopic equations involve integrals of polynomials up to second degree in $\mathbf{c}$, so exactness through second order is sufficient. D2Q5 and D3Q7 satisfy this.
 
-For <strong>fluid flow</strong> (Navier-Stokes), the equilibrium is a shifted Gaussian, and higher-order polynomial terms appear. The quadrature must also be exact for fourth-degree polynomials, which requires additional exactness conditions and more lattice directions (D2Q9 instead of D2Q5).
+For <strong>fluid flow</strong> (Navier-Stokes), the equilibrium is a shifted Gaussian, and higher-order polynomial terms appear. The quadrature must also be exact for fourth-degree polynomials, which requires more lattice directions (D2Q9 instead of D2Q5).
 
 <h4>Discrete vs. Continuous: Lattice Naming Convention</h4>
 
@@ -7271,9 +7275,9 @@ With the quadrature framework in mind, here are the standard lattices. Each is a
 
 <strong>D1Q3 (One-Dimensional):</strong>
 
-<div class="equation-block"><span class="equation-label">(17.17)</span>$$\mathbf{c}_0 = 0, \quad \mathbf{c}_1 = c, \quad \mathbf{c}_2 = -c$$</div>
+<div class="equation-block"><span class="equation-label">(17.17)</span>$$e_0 = 0, \quad e_1 = 1, \quad e_2 = -1$$</div>
 
-where $c = \Delta x / \Delta t$ is the lattice speed. Three quadrature nodes: one at the center of the bell curve (rest), one to the right, one to the left.
+Three quadrature nodes in one dimension: one at the center of the bell curve (rest), one hop to the right, one hop to the left. The physical velocities are $c_i = e_i \cdot \Delta x / \Delta t$.
 
 <strong>D2Q5 (Two-Dimensional, Cardinal Directions):</strong>
 
@@ -7281,7 +7285,7 @@ where $c = \Delta x / \Delta t$ is the lattice speed. Three quadrature nodes: on
 <tr style="background-color:#f0f0f0;">
 <th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
 <th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
-<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{e}_i$</th>
 </tr>
 <tr>
 <td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
@@ -7532,13 +7536,13 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
 
 <strong>D2Q9 (Two-Dimensional, Cardinal + Diagonal):</strong>
 
-For fluid flow, the polynomial expansion of the shifted Gaussian contains terms like $c_{ix} c_{iy}$ (cross-products of velocity components). To integrate these exactly, we need diagonal quadrature nodes. D2Q9 adds four diagonal directions to D2Q5:
+For fluid flow, the polynomial expansion of the shifted Gaussian contains terms like $e_{ix} e_{iy}$ (cross-products of velocity components). To integrate these exactly, we need diagonal quadrature nodes. D2Q9 adds four diagonal directions to D2Q5:
 
 <table style="width:60%; border-collapse:collapse; margin:1em auto; font-size:0.9em;">
 <tr style="background-color:#f0f0f0;">
 <th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
 <th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
-<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{e}_i$</th>
 </tr>
 <tr>
 <td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
@@ -7587,7 +7591,7 @@ For fluid flow, the polynomial expansion of the shifted Gaussian contains terms 
 </tr>
 </table>
 
-Directions 1–4 are the same cardinal nodes as D2Q5. Directions 5–8 are diagonal nodes at distance $\sqrt{2}\,c$ from the center. These sit further out on the bell curve than the cardinal nodes, sampling the Gaussian's tails in diagonal directions.
+Directions 1–4 are the same cardinal nodes as D2Q5. Directions 5–8 are the diagonal nodes. In lattice units, they sit at distance $\sqrt{2}$ from the center (vs. distance 1 for the cardinal nodes). They are further out on the bell curve, sampling the Gaussian's tails in diagonal directions.
 
 <strong>D3Q7 (Three-Dimensional, Face-Centered):</strong>
 
@@ -7597,7 +7601,7 @@ The 3D analogue of D2Q5. One quadrature node at the peak, six at one lattice spa
 <tr style="background-color:#f0f0f0;">
 <th style="border:1px solid #333; padding:0.3em 0.5em;">$i$</th>
 <th style="border:1px solid #333; padding:0.3em 0.5em;">Direction</th>
-<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{c}_i$ (in units of $c$)</th>
+<th style="border:1px solid #333; padding:0.3em 0.5em;">$\mathbf{e}_i$</th>
 </tr>
 <tr>
 <td style="border:1px solid #333; padding:0.3em 0.5em;">0</td>
@@ -7636,75 +7640,65 @@ The 3D analogue of D2Q5. One quadrature node at the peak, six at one lattice spa
 </tr>
 </table>
 
-All six moving nodes sit at the same distance $c$ from the center — they sample the Gaussian at the same height on the bell curve, which is why they all receive the same weight.
+All six moving nodes sit at the same distance (one lattice spacing) from the center — they sample the Gaussian at the same height on the bell curve, which is why they all receive the same weight.
 
 <h4>The Weight Lattice</h4>
 
-The weights paired with each velocity set are determined by the quadrature exactness conditions (17.18)–(17.20). Each weight $w_i$ represents how much of the Gaussian bell curve the quadrature node $\mathbf{c}_i$ is responsible for. Nodes near the peak of the Gaussian (where the bell curve is tallest) represent more of the total area and receive larger weights. Nodes further out (where the bell curve has decayed) represent less area and receive smaller weights.
+The weights paired with each velocity set are determined by Gauss-Hermite quadrature &mdash; equation (17.18). Each weight $w_i$ represents how much of the Gaussian bell curve the quadrature node $\mathbf{e}_i$ is responsible for. Nodes near the peak of the Gaussian (where the bell curve is tallest) represent more of the total area and receive larger weights. Nodes further out (where the bell curve has decayed) represent less area and receive smaller weights.
 
 <strong>D1Q3 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.22)</span>$$w_0 = \frac{2}{3}, \quad w_1 = w_2 = \frac{1}{6}$$</div>
+<div class="equation-block"><span class="equation-label">(17.19)</span>$$w_0 = \frac{2}{3}, \quad w_1 = w_2 = \frac{1}{6}$$</div>
 
 The rest node sits at the peak of the 1D bell curve — it captures two-thirds of the total area. The two moving nodes, one lattice spacing away from the peak, each capture one-sixth. Most of the Gaussian's area is concentrated near the center, which is why the rest weight dominates.
 
 <strong>D2Q5 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.23)</span>$$w_0 = \frac{1}{3}, \quad w_1 = w_2 = w_3 = w_4 = \frac{1}{6}$$</div>
+<div class="equation-block"><span class="equation-label">(17.20)</span>$$w_0 = \frac{1}{3}, \quad w_1 = w_2 = w_3 = w_4 = \frac{1}{6}$$</div>
 
 The rest node captures one-third of the 2D bell curve. Each cardinal node captures one-sixth. The total is $1/3 + 4 \times 1/6 = 1$. All four cardinal nodes are at the same distance from the peak, so they receive the same weight — the bell curve is symmetric.
 
 <strong>D2Q9 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.24)</span>$$w_0 = \frac{4}{9}, \quad w_{1,2,3,4} = \frac{1}{9} \quad (\text{cardinal}), \quad w_{5,6,7,8} = \frac{1}{36} \quad (\text{diagonal})$$</div>
+<div class="equation-block"><span class="equation-label">(17.21)</span>$$w_0 = \frac{4}{9}, \quad w_{1,2,3,4} = \frac{1}{9} \quad (\text{cardinal}), \quad w_{5,6,7,8} = \frac{1}{36} \quad (\text{diagonal})$$</div>
 
-Three distinct weight classes, directly reflecting the Gaussian's shape. The rest node at the peak captures $4/9$ of the area — nearly half. The cardinal nodes at distance $c$ each capture $1/9$. The diagonal nodes at distance $\sqrt{2}\,c$ each capture only $1/36$ — four times less than a cardinal node. This factor of four is the Gaussian at work: moving from distance $c$ to $\sqrt{2}\,c$ from the peak, the bell curve has decayed, so those nodes represent less area. Check: $4/9 + 4 \times 1/9 + 4 \times 1/36 = 4/9 + 4/9 + 1/9 = 1$ ✓.
+Three distinct weight classes, directly reflecting the Gaussian's shape. The rest node at the peak captures $4/9$ of the area — nearly half. The cardinal nodes at distance 1 (in lattice units) each capture $1/9$. The diagonal nodes at distance $\sqrt{2}$ each capture only $1/36$ — four times less than a cardinal node. This factor of four is the Gaussian at work: moving from distance $c$ to $\sqrt{2}\,c$ from the peak, the bell curve has decayed, so those nodes represent less area. Check: $4/9 + 4 \times 1/9 + 4 \times 1/36 = 4/9 + 4/9 + 1/9 = 1$ ✓.
 
 <div class="insight insight-intuition">
-<strong>Why Diagonal Weights Are Smaller:</strong> Picture a 2D bell curve — a smooth hill centered at the origin. The cardinal quadrature nodes sit at distance $c$ from the peak (along the axes). The diagonal nodes sit at distance $\sqrt{2}\,c$ (along the diagonals). Because the Gaussian decays exponentially with distance from the center, the bell curve is lower at the diagonal nodes than at the cardinal nodes. Lower height means less area to represent, which means a smaller quadrature weight. This is not a choice — it is a consequence of the Gaussian's shape. The ratio $w_{\text{diagonal}} / w_{\text{cardinal}} = (1/36)/(1/9) = 1/4$ is determined by the exactness conditions, but the physical reason is the Gaussian decay.
+<strong>Why Diagonal Weights Are Smaller:</strong> Picture a 2D bell curve — a smooth hill centered at the origin. The cardinal quadrature nodes sit at distance 1 from the peak (along the axes). The diagonal nodes sit at distance $\sqrt{2}$ (along the diagonals). Because the Gaussian decays exponentially with distance from the center, the bell curve is lower at the diagonal nodes than at the cardinal nodes. Lower height means less area to represent, which means a smaller quadrature weight. This is not a choice — it is a consequence of the Gaussian's shape. The ratio $w_{\text{diagonal}} / w_{\text{cardinal}} = (1/36)/(1/9) = 1/4$ is determined by the exactness conditions, but the physical reason is the Gaussian decay.
 </div>
 
 <strong>D3Q7 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.25)</span>$$w_0 = \frac{1}{4}, \quad w_1 = \cdots = w_6 = \frac{1}{8}$$</div>
+<div class="equation-block"><span class="equation-label">(17.22)</span>$$w_0 = \frac{1}{4}, \quad w_1 = \cdots = w_6 = \frac{1}{8}$$</div>
 
 The rest node captures one-quarter of the 3D bell curve. Each of the six face-centered nodes captures one-eighth. All moving nodes are at the same distance $c$ from the peak (same height on the bell curve), so they receive equal weight. Check: $1/4 + 6 \times 1/8 = 1/4 + 3/4 = 1$ ✓.
 
 <div class="insight insight-math">
-<strong>Deriving D2Q5 Weights from Exactness:</strong> For D2Q5, we have two unknowns: the rest weight $w_0$ and the cardinal weight $w_c$ (shared by directions 1–4 by symmetry). Two conditions pin them down. First, normalization (17.18): $w_0 + 4w_c = 1$. Second, the variance condition (17.20) applied to the $x$-direction: $\sum_i w_i c_{ix}^2 = c_s^2$. The rest particle contributes zero. Directions 1 and 2 each contribute $w_c \cdot c^2$. Directions 3 and 4 have $c_{ix} = 0$, so they contribute nothing. This gives $2w_c c^2 = c_s^2 = c^2/3$, yielding $w_c = 1/6$. Substituting back: $w_0 = 1 - 4(1/6) = 1/3$. The weights are not chosen — they are uniquely determined by the quadrature exactness conditions on this lattice geometry.
+<strong>Deriving D2Q5 Weights from Quadrature:</strong> For D2Q5, we have two unknowns: the rest weight $w_0$ and the cardinal weight $w_c$ (shared by directions 1–4 by symmetry). Two quadrature exactness conditions pin them down. Plugging $p = 1$ into (17.18): $w_0 + 4w_c = 1$ (the weights must sum to one). Plugging $p = e_{ix}^2$ into (17.18): $\sum_i w_i e_{ix}^2 = 1/3$. The rest node ($e_{0x} = 0$) contributes zero. Directions 1 and 2 ($e_{ix} = \pm 1$) each contribute $w_c \cdot 1$. Directions 3 and 4 ($e_{ix} = 0$) contribute nothing. This gives $2w_c = 1/3$, yielding $w_c = 1/6$. Substituting back: $w_0 = 1 - 4(1/6) = 1/3$. The weights are not chosen — they are uniquely determined by Gauss-Hermite quadrature on this lattice geometry.
 </div>
 
-<h4>The Discrete Equilibrium $f_i^{\text{eq}}$: Closing the Loop</h4>
+<h4>The Navier-Stokes Equilibrium</h4>
 
-We can now close the loop that has been open since Section 17.1. There, we wrote the continuous equilibrium &mdash; the Maxwell-Boltzmann Gaussian (equation 17.2). In Section 17.3, we used $f_i^{\text{eq}}$ as a black box in the collision step (equation 17.14). Here is what that black box actually contains.
+For <strong>fluid flow</strong> (Navier-Stokes), the Gaussian is centered at the bulk velocity $\mathbf{u}$ rather than at zero. Expanding the exponential in (17.2) as a Taylor series in $\mathbf{u}/c_s$ (valid when the flow speed is much smaller than the speed of sound &mdash; the low Mach number regime), the discrete equilibrium becomes:
 
-For <strong>pure diffusion</strong> ($\mathbf{u} = 0$), the Gaussian is centered at the origin. When you evaluate it at the quadrature nodes and fold in the weights, all the velocity-dependent structure vanishes. The discrete equilibrium collapses to:
+<div class="equation-block"><span class="equation-label">(17.28)</span>$$f_i^{\text{eq}} = w_i \rho \left(1 + \frac{\mathbf{u} \cdot \mathbf{c}_i}{c_s^2} + \frac{(\mathbf{u} \cdot \mathbf{c}_i)^2}{2c_s^4} - \frac{u^2}{2c_s^2}\right)$$</div>
 
-<div class="equation-block"><span class="equation-label">(17.30)</span>$$f_i^{\text{eq}} = w_i \, \phi$$</div>
-
-where $\phi = \sum_j f_j$ is the local macroscopic quantity (temperature, voltage, concentration). Each direction carries a fraction $w_i$ of the total field — exactly the quadrature weight. The rest direction carries the most (it sits at the peak of the bell curve), and the moving directions carry the remainder, split according to how much of the Gaussian each node represents. There is no preferred direction — the equilibrium is symmetric, just as the centered Gaussian is symmetric.
-
-This is the equilibrium we use for cardiac electrophysiology, since the monodomain and bidomain equations are diffusion equations with no bulk flow.
-
-For <strong>fluid flow</strong> (Navier-Stokes), the Gaussian is centered at the bulk velocity $\mathbf{u}$. Expanding the exponential in (17.2) as a Taylor series in $\mathbf{u}/c_s$ (valid when the flow speed is much smaller than the speed of sound — the low Mach number regime), the discrete equilibrium becomes:
-
-<div class="equation-block"><span class="equation-label">(17.31)</span>$$f_i^{\text{eq}} = w_i \rho \left(1 + \frac{\mathbf{u} \cdot \mathbf{c}_i}{c_s^2} + \frac{(\mathbf{u} \cdot \mathbf{c}_i)^2}{2c_s^4} - \frac{u^2}{2c_s^2}\right)$$</div>
-
-The terms beyond $w_i \rho$ are the polynomial corrections that arise from shifting the bell curve's center from zero to $\mathbf{u}$. These terms break the directional symmetry — they bias the distribution toward the direction of flow. Because these corrections involve products like $c_{ix} c_{iy}$, the quadrature must exactly integrate fourth-degree polynomials, which is why fluid flow requires more quadrature nodes (D2Q9 instead of D2Q5).
+The terms beyond $w_i \rho$ are the polynomial corrections that arise from shifting the bell curve's center from zero to $\mathbf{u}$. These terms break the directional symmetry &mdash; they bias the distribution toward the direction of flow. Because these corrections involve products like $c_{ix} c_{iy}$, the quadrature must exactly integrate fourth-degree polynomials, which is why fluid flow requires more quadrature nodes (D2Q9 instead of D2Q5).
 
 <h4>Lattice Requirements for Different Physics</h4>
 
-The choice of lattice is determined by how many terms in the polynomial expansion of the Gaussian need to be captured exactly. For diffusion with the isotropic equilibrium (17.30), only terms up to second degree matter — the exactness conditions (17.18)–(17.20) suffice. D2Q5 (and D3Q7 in 3D) satisfy these, making them the most efficient choices for cardiac problems.
+The choice of lattice is determined by how many terms in the polynomial expansion of the Gaussian need to be captured exactly. For diffusion with the isotropic equilibrium (17.27), only terms up to second degree matter — the Gauss-Hermite quadrature (17.18) need only be exact through second order. D2Q5 (and D3Q7 in 3D) satisfy these, making them the most efficient choices for cardiac problems.
 
-For fluid flow with the velocity-dependent equilibrium (17.31), terms up to fourth degree appear. The quadrature must satisfy additional exactness conditions involving the fourth-order product $\sum_i w_i c_{i\alpha} c_{i\beta} c_{i\gamma} c_{i\delta}$. D2Q5 does not have enough nodes to satisfy these, but D2Q9 does.
+For fluid flow with the velocity-dependent equilibrium (17.28), terms up to fourth degree appear. The quadrature must be exact for fourth-order products like $\sum_i w_i e_{i\alpha} e_{i\beta} e_{i\gamma} e_{i\delta}$. D2Q5 does not have enough nodes, but D2Q9 does.
 
 In cardiac electrophysiology, we solve diffusion (not Navier-Stokes), so D2Q5 and D3Q7 are sufficient. Using a minimal lattice saves both memory ($Q$ distributions per node) and computation (fewer collision and streaming operations per timestep).
 
 <h4>Lattice Speed of Sound and the $\tau$-$D$ Relationship</h4>
 
-For each lattice, there is a characteristic speed $c_s$ called the <strong>lattice speed of sound</strong>. From the isotropy condition (17.20) and the lattice geometry, we have:
+For each lattice, there is a characteristic speed $c_s$ called the <strong>lattice speed of sound</strong>. From the Gauss-Hermite exactness conditions and the lattice geometry, we have:
 
-<div class="equation-block"><span class="equation-label">(17.26)</span>$$c_s^2 = \frac{c^2}{3}$$</div>
+<div class="equation-block"><span class="equation-label">(17.23)</span>$$c_s^2 = \frac{c^2}{3}$$</div>
 
 
 The parameter $c_s$ plays a dual role. In the continuous Gaussian of Section 17.1, $c_s^2$ is the <strong>variance</strong> &mdash; it controls the width of the bell curve. On the lattice, this same $c_s$ becomes the <strong>lattice speed of sound</strong>, with the specific value $c_s^2 = c^2/3$ where $c = \Delta x / \Delta t$ is the lattice speed. This is not a coincidence: the lattice speed of sound is inherited directly from the variance of the Maxwellian that the lattice discretizes. Every time you see $c_s^2$ in an LBM formula &mdash; in the weights, in the equilibrium, in the $\tau$-$D$ relationship &mdash; it traces back to this Gaussian width.
@@ -7713,22 +7707,22 @@ The speed of sound $c_s$ is just a lattice constant — it emerges from the geom
 
 Through Chapman-Enskog analysis, one can show that for the BGK collision operator applied to a diffusion problem, the relationship is:
 
-<div class="equation-block"><span class="equation-label">(17.27)</span>$$D = c_s^2 \left(\tau - \frac{\Delta t}{2}\right)$$</div>
+<div class="equation-block"><span class="equation-label">(17.24)</span>$$D = c_s^2 \left(\tau - \frac{\Delta t}{2}\right)$$</div>
 
 or, rearranging:
 
-<div class="equation-block"><span class="equation-label">(17.28)</span>$$\tau = \frac{\Delta t}{2} + \frac{D}{c_s^2}$$</div>
+<div class="equation-block"><span class="equation-label">(17.25)</span>$$\tau = \frac{\Delta t}{2} + \frac{D}{c_s^2}$$</div>
 
 Substituting $c_s^2 = c^2/3 = \Delta x^2 / (3 \Delta t^2)$:
 
-<div class="equation-block"><span class="equation-label">(17.29)</span>$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2}$$</div>
+<div class="equation-block"><span class="equation-label">(17.26)</span>$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2}$$</div>
 
 This is the fundamental bridge between the discrete lattice parameter $\tau$ and the physical diffusivity $D$.
 
 <strong>Practical meaning:</strong> To solve a problem with a given physical diffusivity $D$, you:
 <ol>
 <li>Choose your spatial and temporal resolution: $\Delta x$ and $\Delta t$.</li>
-<li>Compute $\tau$ from equation (17.29).</li>
+<li>Compute $\tau$ from equation (17.26).</li>
 <li>Use that $\tau$ in the collision step (equation 17.14).</li>
 </ol>
 
@@ -7744,11 +7738,11 @@ Note the stability constraint: $\tau > \Delta t/2$ is required for stability. Th
 
 Look again at the BGK collision equation we derived in Section 17.3:
 
-<div class="equation-block"><span class="equation-label">(17.32)</span>$$f_i^*(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
+<div class="equation-block"><span class="equation-label">(17.29)</span>$$f_i^*(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \frac{\Delta t}{\tau}\left[f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\mathbf{x}, t)\right]$$</div>
 
 This equation relaxes each distribution $f_i$ toward its equilibrium value $f_i^{\text{eq}}$, all at the same rate $1/\tau$. It works &mdash; we showed in Section 17.4 that the equilibrium was carefully designed to encode the right physics. But ask yourself: what <em>guarantees</em> that this relaxation conserves mass? What guarantees it produces the correct diffusion coefficient? What guarantees the stress tensor has the right symmetry?
 
-The answers are hiding inside $f^{\text{eq}}$, but equation (17.32) doesn't show them. Each $f_i$ is a single number that mixes together information about density, flux, stress, and energy &mdash; all tangled up. When BGK relaxes $f_1$ toward $f_1^{\text{eq}}$, it is simultaneously relaxing <em>every</em> physical quantity that $f_1$ carries, at the same rate. You can't see which conservation laws are being enforced, and you have no way to control them independently.
+The answers are hiding inside $f^{\text{eq}}$, but equation (17.29) doesn't show them. Each $f_i$ is a single number that mixes together information about density, flux, stress, and energy &mdash; all tangled up. When BGK relaxes $f_1$ toward $f_1^{\text{eq}}$, it is simultaneously relaxing <em>every</em> physical quantity that $f_1$ carries, at the same rate. You can't see which conservation laws are being enforced, and you have no way to control them independently.
 
 Is there a way to <strong>see</strong> what physical laws the collision operator is actually enforcing &mdash; and to <strong>verify</strong> them directly?
 
@@ -7756,25 +7750,25 @@ Is there a way to <strong>see</strong> what physical laws the collision operator
 
 The answer starts not with the lattice, but with the PDE you are trying to solve. Consider the diffusion equation:
 
-<div class="equation-block"><span class="equation-label">(17.33)</span>$$\frac{\partial \phi}{\partial t} = \nabla \cdot (D \nabla \phi)$$</div>
+<div class="equation-block"><span class="equation-label">(17.30)</span>$$\frac{\partial \phi}{\partial t} = \nabla \cdot (D \nabla \phi)$$</div>
 
 This PDE makes three specific physical demands, and each one maps to a weighted sum of the distributions:
 
 <strong>Demand 1 &mdash; Conservation of mass (or charge, or heat):</strong> The total amount of $\phi$ at a node does not change during collision. Only streaming moves $\phi$ between nodes. This means:
 
-<div class="equation-block"><span class="equation-label">(17.34)</span>$$\sum_{i=0}^{Q-1} f_i^* = \sum_{i=0}^{Q-1} f_i$$</div>
+<div class="equation-block"><span class="equation-label">(17.31)</span>$$\sum_{i=0}^{Q-1} f_i^* = \sum_{i=0}^{Q-1} f_i$$</div>
 
 The sum $\sum_i f_i$ is a weighted sum of the distributions with weight 1 for every direction. This is the <strong>zeroth moment</strong> &mdash; the simplest possible summary of the distributions. You take it because <em>mass conservation demands it</em>.
 
 <strong>Demand 2 &mdash; Fick's law (diffusive flux):</strong> The macroscopic flux must satisfy $\mathbf{J} = -D\nabla\phi$. In the lattice-Boltzmann framework, the flux emerges from:
 
-<div class="equation-block"><span class="equation-label">(17.35)</span>$$J_\alpha = \sum_{i=0}^{Q-1} c_{i\alpha} \, f_i$$</div>
+<div class="equation-block"><span class="equation-label">(17.32)</span>$$J_\alpha = \sum_{i=0}^{Q-1} c_{i\alpha} \, f_i$$</div>
 
 These sums weight each distribution by its velocity component $c_{i\alpha}$. They are the <strong>first moments</strong>. You take them because <em>Fick's law demands them</em> &mdash; the diffusion coefficient is encoded in how fast these flux quantities relax toward equilibrium.
 
 <strong>Demand 3 &mdash; Correct tensor structure:</strong> For the diffusion to be isotropic (or anisotropic in exactly the right way), the stress-like quantity:
 
-<div class="equation-block"><span class="equation-label">(17.36)</span>$$\Pi_{\alpha\beta} = \sum_{i=0}^{Q-1} c_{i\alpha} \, c_{i\beta} \, f_i$$</div>
+<div class="equation-block"><span class="equation-label">(17.33)</span>$$\Pi_{\alpha\beta} = \sum_{i=0}^{Q-1} c_{i\alpha} \, c_{i\beta} \, f_i$$</div>
 
 must have the correct symmetry. These are the <strong>second moments</strong>. You take them because <em>the diffusion tensor structure demands them</em>. For isotropic diffusion, $\Pi_{\alpha\beta}$ must be proportional to $\delta_{\alpha\beta}$ at equilibrium. For anisotropic diffusion, its structure must match the physical diffusion tensor.
 
@@ -7786,7 +7780,7 @@ must have the correct symmetry. These are the <strong>second moments</strong>. Y
 
 The pattern is now clear. A <strong>moment</strong> is a weighted sum of the distribution functions, where the weights are chosen to extract a specific macroscopic quantity. In the most general form:
 
-<div class="equation-block"><span class="equation-label">(17.37)</span>$$m_k = \sum_{i=0}^{Q-1} M_{ki} \, f_i$$</div>
+<div class="equation-block"><span class="equation-label">(17.34)</span>$$m_k = \sum_{i=0}^{Q-1} M_{ki} \, f_i$$</div>
 
 where $M_{ki}$ is the weight that the $k$-th moment assigns to the $i$-th distribution. This is not unique to LBM &mdash; it is the same concept that appears across all of engineering:
 
@@ -7801,7 +7795,7 @@ where $M_{ki}$ is the weight that the $k$-th moment assigns to the $i$-th distri
 
 We can collect all the moment definitions into a single matrix equation:
 
-<div class="equation-block"><span class="equation-label">(17.38)</span>$$\mathbf{m} = \mathbf{M} \, \mathbf{f}$$</div>
+<div class="equation-block"><span class="equation-label">(17.35)</span>$$\mathbf{m} = \mathbf{M} \, \mathbf{f}$$</div>
 
 where $\mathbf{m} = (m_0, m_1, \ldots, m_{Q-1})^T$ is the vector of moments and $\mathbf{f} = (f_0, f_1, \ldots, f_{Q-1})^T$ is the vector of distributions. The matrix $\mathbf{M}$ is the <strong>transformation matrix</strong> &mdash; each row is the recipe for extracting one physical quantity from the distributions.
 
@@ -7848,13 +7842,13 @@ For <strong>D2Q5</strong>, we have $Q = 5$ distributions and therefore need a $5
 
 The explicit $5 \times 5$ matrix, using the D2Q5 velocity vectors $(c_{ix}, c_{iy})$ = $(0,0)$, $(1,0)$, $(-1,0)$, $(0,1)$, $(0,-1)$:
 
-<div class="equation-block"><span class="equation-label">(17.39)</span>$$\mathbf{M}_{\text{D2Q5}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 \\ 0 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 \end{pmatrix}$$</div>
+<div class="equation-block"><span class="equation-label">(17.36)</span>$$\mathbf{M}_{\text{D2Q5}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 \\ 0 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 \end{pmatrix}$$</div>
 
 Read it row by row. Row 0: every entry is 1, so this row sums all $f_i$ &mdash; that's the density. Row 1: the entries are the $x$-components of the velocity vectors, so this row computes the $x$-flux. Row 2: the $y$-components &mdash; the $y$-flux. Rows 3 and 4: combinations of $c_{ix}^2$ and $c_{iy}^2$ that complete the basis. The first three rows are <em>demanded by the physics</em>. The last two rows are chosen to make $\mathbf{M}$ invertible (so we can transform back), but any linearly independent choice would work.
 
 For <strong>D3Q7</strong>, the $7 \times 7$ transformation matrix from the Rapaka et al. LBM-EP paper follows the same logic. With velocity ordering $(0,0,0)$, $(1,0,0)$, $(-1,0,0)$, $(0,1,0)$, $(0,-1,0)$, $(0,0,1)$, $(0,0,-1)$:
 
-<div class="equation-block"><span class="equation-label">(17.40)</span>$$\mathbf{M}_{\text{D3Q7}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 & 1 & -1 \\ -6 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 & 0 & 0 \\ 0 & 1 & 1 & 1 & 1 & -2 & -2 \end{pmatrix}$$</div>
+<div class="equation-block"><span class="equation-label">(17.37)</span>$$\mathbf{M}_{\text{D3Q7}} = \begin{pmatrix} 1 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & -1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -1 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 & 1 & -1 \\ -6 & 1 & 1 & 1 & 1 & 1 & 1 \\ 0 & 1 & 1 & -1 & -1 & 0 & 0 \\ 0 & 1 & 1 & 1 & 1 & -2 & -2 \end{pmatrix}$$</div>
 
 Rows 0&ndash;3: density and the three flux components ($x$, $y$, $z$) &mdash; required by mass conservation and Fick's law in 3D. Rows 4&ndash;6: ghost moments with no macroscopic counterpart, chosen to complete the $7 \times 7$ basis.
 
@@ -7868,19 +7862,19 @@ Now we have the tool to see inside the collision operator. The key idea is simpl
 
 <strong>Step 1 &mdash; Decode:</strong> Transform the distributions into moments:
 
-<div class="equation-block"><span class="equation-label">(17.41)</span>$$\mathbf{m} = \mathbf{M}\,\mathbf{f}$$</div>
+<div class="equation-block"><span class="equation-label">(17.38)</span>$$\mathbf{m} = \mathbf{M}\,\mathbf{f}$$</div>
 
 Now $m_0$ is the density, $m_1$ is the $x$-flux, $m_2$ is the $y$-flux, and so on. Each component has exactly one physical meaning.
 
 <strong>Step 2 &mdash; Decode the equilibrium too:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.42)</span>$$\mathbf{m}^{\text{eq}} = \mathbf{M}\,\mathbf{f}^{\text{eq}}$$</div>
+<div class="equation-block"><span class="equation-label">(17.39)</span>$$\mathbf{m}^{\text{eq}} = \mathbf{M}\,\mathbf{f}^{\text{eq}}$$</div>
 
 The equilibrium moments tell you the target state for each physical quantity. For the diffusion equilibrium $f_i^{\text{eq}} = w_i \phi$, the equilibrium density is $m_0^{\text{eq}} = \phi$ (all the field), the equilibrium fluxes are $m_1^{\text{eq}} = m_2^{\text{eq}} = 0$ (no net flow at equilibrium), and the ghost moments take whatever values $w_i$ and the lattice geometry dictate.
 
 <strong>Step 3 &mdash; Relax in moment space:</strong>
 
-<div class="equation-block"><span class="equation-label">(17.43)</span>$$\mathbf{m}^* = \mathbf{m} - \mathbf{S}\left(\mathbf{m} - \mathbf{m}^{\text{eq}}\right)$$</div>
+<div class="equation-block"><span class="equation-label">(17.40)</span>$$\mathbf{m}^* = \mathbf{m} - \mathbf{S}\left(\mathbf{m} - \mathbf{m}^{\text{eq}}\right)$$</div>
 
 where $\mathbf{S} = \text{diag}(s_0, s_1, \ldots, s_{Q-1})$ is the <strong>relaxation matrix</strong>. Each diagonal entry $s_k$ controls how fast moment $k$ relaxes toward its equilibrium value. This is the step where the physics is enforced:
 
@@ -7892,7 +7886,7 @@ where $\mathbf{S} = \text{diag}(s_0, s_1, \ldots, s_{Q-1})$ is the <strong>relax
 
 <strong>Step 4 &mdash; Re-encode:</strong> Transform back to distribution space:
 
-<div class="equation-block"><span class="equation-label">(17.44)</span>$$\mathbf{f}^* = \mathbf{M}^{-1}\,\mathbf{m}^*$$</div>
+<div class="equation-block"><span class="equation-label">(17.41)</span>$$\mathbf{f}^* = \mathbf{M}^{-1}\,\mathbf{m}^*$$</div>
 
 Now $\mathbf{f}^*$ is ready for streaming. The distributions have been updated in a way that <em>explicitly</em> conserves density, <em>explicitly</em> relaxes flux at a controlled rate, and handles the ghost moments separately.
 
@@ -7902,7 +7896,7 @@ Now $\mathbf{f}^*$ is ready for streaming. The distributions have been updated i
 
 <h4>BGK Is a Special Case: All Dials Locked Together</h4>
 
-Here is the crucial connection. Set $\mathbf{S} = \frac{\Delta t}{\tau} \mathbf{I}$ (the identity matrix times a single rate). Then the moment-space collision (17.43) becomes:
+Here is the crucial connection. Set $\mathbf{S} = \frac{\Delta t}{\tau} \mathbf{I}$ (the identity matrix times a single rate). Then the moment-space collision (17.40) becomes:
 
 $$\mathbf{m}^* = \mathbf{m} - \frac{\Delta t}{\tau}\left(\mathbf{m} - \mathbf{m}^{\text{eq}}\right)$$
 
@@ -7910,7 +7904,7 @@ and the full round trip is:
 
 $$\mathbf{f}^* = \mathbf{M}^{-1}\left[\mathbf{M}\mathbf{f} - \frac{\Delta t}{\tau}\mathbf{M}\left(\mathbf{f} - \mathbf{f}^{\text{eq}}\right)\right] = \mathbf{f} - \frac{\Delta t}{\tau}\left(\mathbf{f} - \mathbf{f}^{\text{eq}}\right)$$
 
-The $\mathbf{M}^{-1}$ and $\mathbf{M}$ cancel. We recover exactly the BGK equation (17.32). <strong>BGK was always operating in moment space</strong> &mdash; it just didn't need to make the round trip explicit because every moment was being relaxed at the same rate. The single $\tau$ locks all the dials together: conservation, transport, and ghost moments all receive the same treatment.
+The $\mathbf{M}^{-1}$ and $\mathbf{M}$ cancel. We recover exactly the BGK equation (17.29). <strong>BGK was always operating in moment space</strong> &mdash; it just didn't need to make the round trip explicit because every moment was being relaxed at the same rate. The single $\tau$ locks all the dials together: conservation, transport, and ghost moments all receive the same treatment.
 
 This is why BGK works for isotropic diffusion: when $s_1 = s_2$, the $x$- and $y$-flux moments relax at the same rate, producing equal diffusion in all directions. And this is why BGK <em>cannot</em> produce anisotropic diffusion: there is no way to set $s_1 \neq s_2$ when $\mathbf{S}$ is constrained to be a scalar multiple of the identity.
 
@@ -7929,11 +7923,11 @@ To make this concrete, consider a D2Q5 node mid-simulation. The distributions $f
 <li>$m_3, m_4$ &mdash; the ghost moments. They relax too, but toward values dictated by the lattice weights, not by any conservation law. Their rates $s_3, s_4$ are free parameters.</li>
 </ul>
 
-This decomposition reveals the internal structure that equation (17.32) hides. You can now <strong>verify</strong> conservation (is $m_0$ really unchanged?), <strong>measure</strong> the flux relaxation rate (does it match your desired $D$?), and <strong>tune</strong> the ghost moments independently of the physics.
+This decomposition reveals the internal structure that equation (17.29) hides. You can now <strong>verify</strong> conservation (is $m_0$ really unchanged?), <strong>measure</strong> the flux relaxation rate (does it match your desired $D$?), and <strong>tune</strong> the ghost moments independently of the physics.
 
 <h4>Worked Example: One D2Q5 Collision in Both Spaces</h4>
 
-Let us make the round trip concrete with numbers. Consider a D2Q5 node with $\phi = 1.0$, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms, and isotropic diffusivity $D = 0.001$ cm$^2$/ms. From equation (17.29):
+Let us make the round trip concrete with numbers. Consider a D2Q5 node with $\phi = 1.0$, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms, and isotropic diffusivity $D = 0.001$ cm$^2$/ms. From equation (17.26):
 
 $$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2} = 0.005 + \frac{3(0.001)(0.01)}{0.000625} = 0.005 + 0.048 = 0.053 \text{ ms}$$
 
@@ -8065,7 +8059,7 @@ Applying $\mathbf{f}^* = \mathbf{M}^{-1}\mathbf{m}^*$ gives back the same $\math
 We now have the complete theoretical framework for the lattice-Boltzmann method: the thermodynamic foundation (Section 17.1), the Boltzmann equation and BGK simplification (Section 17.2), the discrete lattice-Boltzmann equation (Section 17.3), the equilibrium distribution and its constraints on weights and velocities (Section 17.4), and the moment-space decomposition that reveals the physical content of the collision operator (Section 17.5). In the next chapter, we will put this machinery to work — the $f_i$ are our fundamental variables, and the BGK collision operator relaxes all of them at the same rate $1/\tau$. But there is a more revealing way to look at the same information. In Section 17.5 above, we transformed the distributions into <strong>moment space</strong>, — first by unlocking the moment-space relaxation rates to achieve anisotropic diffusion (Multiple Relaxation Time), then by applying LBM to the cardiac monodomain and bidomain equations.
 
 <div class="insight insight-intuition">
-<strong>Complete Reference Tables:</strong> Appendix A collects the velocity vectors $\mathbf{c}_i$ and weights $w_i$ for all standard lattices (D1Q3, D2Q5, D2Q9, D3Q7, D3Q19, D3Q27) in a single reference table. These are derived from the exactness conditions (17.18)&ndash;(17.20) and the lattice geometries described in this chapter.
+<strong>Complete Reference Tables:</strong> Appendix A collects the velocity vectors $\mathbf{c}_i$ and weights $w_i$ for all standard lattices (D1Q3, D2Q5, D2Q9, D3Q7, D3Q19, D3Q27) in a single reference table. These are derived from Gauss-Hermite quadrature (17.18) applied to the lattice geometries described in this chapter.
 </div>
 
 
@@ -8080,177 +8074,937 @@ We now have the complete theoretical framework for the lattice-Boltzmann method:
   <h2 class="chapter-title">Lattice-Boltzmann Methods for Monodomain</h2>
   <div class="chapter-intro">
     Chapter 17 built the LBM machinery from first principles: distribution functions, lattice geometry,
-    collision and streaming as fundamental operations, and the τ-D relationship that translates physical
-    diffusion coefficients into lattice parameters. Now we apply that machinery to the cardiac monodomain
-    equation. The key addition is surprisingly simple: an ionic source term that injects stimulus current
-    and ionic feedback into the particle system. This chapter focuses exclusively on this cardiac-specific
-    coupling, the five-stage timestep algorithm, performance trade-offs, and GPU implementation.
+    collision and streaming, the equilibrium distribution born from Gauss-Hermite quadrature, and the
+    moment-space decomposition that reveals the physical content of the collision operator. Now we put
+    that machinery to work on the cardiac monodomain equation. The key additions are surprisingly
+    mechanical: an ionic source term injected into the collision step, operator splitting to separate
+    reaction from diffusion, and bounce-back boundary conditions to handle tissue edges. For anisotropic
+    tissue, we unlock the moment-space relaxation rates derived in Section 17.5 &mdash; but now we must
+    connect them quantitatively to the cardiac conductivity tensor. This chapter derives that connection,
+    presents the complete algorithm, and discusses the implementation choices that make LBM fast on GPUs.
   </div>
 
-  <h3>18.1 &ensp; From LBM Theory to Cardiac Practice</h3>
+  <h3>18.1 &ensp; The Monodomain Equation as a Target PDE</h3>
 
   <p>
-    Chapter 17 showed that the distribution functions $f_i$ in LBM solve the diffusion equation through
-    collision (local relaxation) and streaming (nearest-neighbor shifts). For the cardiac monodomain equation
-    (equation 7.1), the only new ingredient is the <em>ionic source term</em> — the right-hand side of the
-    PDE that couples reaction (ionic model) to diffusion (LBM). This source is simply added to each collision
-    step, distributed among the distributions weighted by $w_i$.
-  </p>
-
-  <p>
-    The core advantage of LBM for cardiac tissue is that it requires no global linear solve. The diffusion
-    substep consists entirely of local operations (collision at each node) and nearest-neighbor shifts
-    (streaming). This is fundamentally different from FEM or implicit RK methods, which assemble and invert
-    large matrices. For GPU computation, where global communication is expensive and fine-grained data locality
-    is prized, this locality is transformative.
-  </p>
-
-  <h3>18.2 &ensp; The Ionic Source Term</h3>
-
-  <p>
-    The monodomain PDE (equation 7.1) couples diffusion and reaction:
+    Our target is equation (7.1), the monodomain PDE that governs wave propagation in cardiac tissue:
   </p>
 
   <p style="text-align:center;">
-    $$\chi C_m \frac{\partial V_m}{\partial t} = \nabla \cdot (D \, \nabla V_m) - (I_{\text{ion}} + I_{\text{stim}})$$
+    $$\chi C_m \frac{\partial V_m}{\partial t} = \nabla \cdot (\mathbf{D}\,\nabla V_m) \;-\; \chi\,I_{\text{ion}}(V_m, \mathbf{w}) \;+\; I_{\text{stim}}$$
   </p>
 
   <p>
-    In the operator-splitting framework (Chapter 8), the diffusion and reaction steps are solved separately.
-    For LBM, the diffusion step is handled by the collision and streaming of distributions. The reaction
-    step computes the ionic current $I_{\text{ion}}$ from the current voltage and gating variables, and
-    applies the stimulus $I_{\text{stim}}$. The coupling between them occurs through a source term in the
-    collision operator:
+    The left-hand side is the rate of change of the transmembrane potential $V_m$, scaled by the
+    surface-to-volume ratio $\chi$ and membrane capacitance $C_m$. On the right, three terms compete:
+    diffusion ($\nabla\cdot(\mathbf{D}\nabla V_m)$) spreads the voltage through tissue, ionic currents
+    ($I_{\text{ion}}$) from the cell membrane shape the action potential, and stimulus current
+    ($I_{\text{stim}}$) initiates activation. Chapters 5 and 6 detailed the ionic models (TTP06 and ORd)
+    that compute $I_{\text{ion}}$ from $V_m$ and the gating variables $\mathbf{w}$. Chapters 9 and 10
+    solved the diffusion side with explicit and implicit finite-difference methods. Now we solve it with
+    LBM.
+  </p>
+
+  <p>
+    The diffusion tensor $\mathbf{D}$ encodes the anisotropy of cardiac tissue. In a 2D slab with fiber
+    direction $\mathbf{a}_l = (\cos\theta, \sin\theta)$, the tensor takes the form:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(18.1)</span>
-    $$S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m}$$
+    $$\mathbf{D} = D_l \,\mathbf{a}_l \mathbf{a}_l^T + D_t\,(\mathbf{I} - \mathbf{a}_l \mathbf{a}_l^T)$$
   </div>
 
   <p>
-    This source has units of voltage per unit time (mV/ms). It is injected into the collision step as
-    $\Delta t \, w_i \, S$ distributed to each direction $i$. This ensures:
-    <br/>
-    (1) The source is spread equally (by weight) across all distributions (isotropy).
-    <br/>
-    (2) The total injected voltage $\sum_i (\Delta t \, w_i \, S) = \Delta t \, S$ is conserved.
+    where $D_l$ is the along-fiber diffusivity and $D_t$ is the cross-fiber diffusivity. Typical values
+    are $D_l \approx 0.001$ cm$^2$/ms and $D_t \approx 0.00025$ cm$^2$/ms (a 4:1 ratio). In component
+    form:
+  </p>
+
+  <p style="text-align:center;">
+    $D_{xx} = D_l\cos^2\theta + D_t\sin^2\theta$, &ensp;
+    $D_{yy} = D_l\sin^2\theta + D_t\cos^2\theta$, &ensp;
+    $D_{xy} = (D_l - D_t)\sin\theta\cos\theta$
+  </p>
+
+  <p>
+    For isotropic tissue ($D_l = D_t = D$), the tensor reduces to $D\,\mathbf{I}$ and the off-diagonal
+    term vanishes. For aligned fibers ($\theta = 0$), we get $D_{xx} = D_l$, $D_{yy} = D_t$, $D_{xy} = 0$.
+    The general case ($\theta \neq 0$, $D_l \neq D_t$) produces a full tensor with off-diagonal coupling.
   </p>
 
   <div class="insight insight-intuition">
-    <p>
-      <strong>Physical interpretation.</strong> The source $S$ is like a faucet (or drain) at each node,
-      adding (or removing) voltage at a prescribed rate. In reality, this comes from ionic currents flowing
-      across the cell membrane. The LBM distributes this source equally among all particle directions, so
-      the injected voltage contributes equally to diffusion in all cardinal directions. This is correct for
-      isotropic diffusion; anisotropic tissue (fibers) is handled by MRT (Section 18.4).
-    </p>
+    <strong>The two-part structure.</strong> The monodomain PDE has a clear two-part structure:
+    <em>diffusion</em> (the divergence term, which spreads voltage through tissue) and <em>reaction</em>
+    (the ionic and stimulus terms, which generate and shape the action potential locally). These two parts
+    operate on vastly different scales &mdash; diffusion is a spatial coupling between neighboring nodes,
+    while reaction is purely local (each node's ionic currents depend only on that node's voltage and
+    gating variables). This separation is exactly what operator splitting exploits, and it maps perfectly
+    onto the LBM framework: collision handles diffusion, and the ionic ODE handles reaction.
   </div>
 
-  <h3>18.3 &ensp; BGK Collision with Ionic Coupling</h3>
+  <h3>18.2 &ensp; Operator Splitting: Reaction Then Diffusion</h3>
 
   <p>
-    Recall from Chapter 17 (Section 17.3) that the BGK collision operator nudges each distribution toward
-    equilibrium at rate $\omega = 1/\tau$. For cardiac LBM, we simply add the ionic source term:
+    Following the Godunov splitting framework of Chapter 8, we solve the monodomain equation in two
+    sequential substeps per timestep. The reaction substep is purely local &mdash; it updates $V_m$ and
+    $\mathbf{w}$ at each node independently. The diffusion substep couples neighbors through LBM collision
+    and streaming.
+  </p>
+
+  <p>
+    <strong>Substep 1 &mdash; Reaction (ionic ODE):</strong> At each node, hold the diffusion term
+    frozen and solve:
+  </p>
+
+  <p style="text-align:center;">
+    $$\chi\,C_m \frac{dV_m}{dt} = -\chi\,I_{\text{ion}}(V_m, \mathbf{w}) + I_{\text{stim}}, \qquad \frac{d\mathbf{w}}{dt} = \mathbf{g}(V_m, \mathbf{w})$$
+  </p>
+
+  <p>
+    This is an ODE system at each node &mdash; identical to what we solve in Chapters 5 and 6. The
+    Rush-Larsen method (equation 8.1) handles the gating variables $\mathbf{w}$, exploiting their
+    exponential relaxation structure for accuracy and stability. After this substep, we have updated
+    gating variables $\mathbf{w}^{n+1}$ and an intermediate voltage $V_m^*$ that includes the ionic
+    contribution but not yet the diffusion.
+  </p>
+
+  <p>
+    <strong>Substep 2 &mdash; Diffusion (LBM):</strong> Now solve the diffusion part
+    $\partial V_m / \partial t = \nabla\cdot(\mathbf{D}\nabla V_m)/(\chi C_m)$ using the LBM
+    collision-streaming cycle. The collision operator splits cleanly into two pieces that mirror
+    the two-part physics of the monodomain equation:
+  </p>
+
+  <ul style="margin-left:1.5em; margin-top:0.8em; margin-bottom:0.8em;">
+    <li><strong>$\Omega^{NR}$ (non-reactive collision)</strong> &mdash; drives distributions toward
+    equilibrium, producing diffusive flux. This is the LBM mechanism for the divergence term
+    $\nabla\cdot(\mathbf{D}\nabla V_m)$.</li>
+    <li><strong>$\Omega^{R}$ (reactive collision)</strong> &mdash; injects the ionic source into the
+    distribution. This is how the reaction substep&rsquo;s output couples back into the
+    lattice populations.</li>
+  </ul>
+
+  <p>
+    The reactive collision needs a <strong>source term</strong> $S$ that encapsulates the net effect
+    of ionic currents and external stimulus:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(18.2)</span>
-    $$f_i^* = f_i - \omega\,(f_i - w_i\,V) + \Delta t\,w_i\,S$$
+    $$S = -\frac{I_{\text{ion}}(V_m^n, \mathbf{w}^n) + I_{\text{stim}}}{\chi\,C_m}$$
   </div>
 
   <p>
-    The first two terms are pure diffusion (the standard BGK relaxation from Chapter 17). The third term
-    injects the ionic source. After collision, streaming (equation 17.15 in Chapter 17) shifts each
-    distribution $f_i^*$ one lattice spacing in direction $\mathbf{e}_i$. No new mathematical machinery is
-    required — it is a straightforward addition of a source term to the relaxation equation.
+    This source has units of voltage per unit time (mV/ms). The sign convention follows equation
+    (7.1): inward current (depolarizing) makes $S > 0$, outward current (repolarizing) makes
+    $S < 0$. The precise definitions of $\Omega^{NR}$ and $\Omega^{R}$ &mdash; and the physical
+    reasons they take the forms they do &mdash; are derived in Section 18.3 (BGK) and
+    Section 18.4 (MRT).
   </p>
 
-  <p>
-    The τ-D relationship (equation 17.29 in Chapter 17) remains unchanged:
-    $\tau = 0.5 + 3D\Delta t/\Delta x^2$, which governs $\omega = 1/\tau$. Stability is guaranteed
-    for any $\tau > 0.5$, which holds for any positive $D$.
-  </p>
+  <div class="insight insight-warning">
+    <strong>Splitting order matters.</strong> Godunov splitting (reaction first, then diffusion) is
+    first-order accurate in time. Strang splitting (half-reaction, full diffusion, half-reaction)
+    is second-order but requires two ionic evaluations per timestep. For cardiac LBM, first-order
+    Godunov splitting is standard because the timestep $\Delta t$ is already small (typically
+    0.005&ndash;0.02 ms) due to the lattice resolution requirements, and the splitting error is
+    dominated by the spatial discretization error. See Chapter 8 for the full analysis.
+  </div>
 
-  <h3>18.4 &ensp; MRT for Anisotropic Tissue</h3>
-
-  <p>
-    Cardiac tissue conducts faster along fibers than across them (1:3–1:4 anisotropy ratio). BGK, which uses
-    a single relaxation rate $\omega$ for all directions, produces only isotropic diffusion. To capture
-    anisotropy, we use MRT (Multiple Relaxation Time), introduced in Chapter 17 (Section 17.5).
-  </p>
+  <h3>18.3 &ensp; BGK Collision with Source Term</h3>
 
   <p>
-    MRT transforms the distributions into moment space using a matrix $\mathbf{M}$, applies directional
-    relaxation rates $\tau_x$ and $\tau_y$ (one per axis), then transforms back. For an arbitrary fiber angle
-    $\theta$, the diffusion tensor is rotated:
+    The diffusion substep is where LBM does its work. Recall from Chapter 17 that each lattice node
+    carries $Q$ distribution functions $f_i$ (five for D2Q5, seven for D3Q7). The macroscopic voltage
+    is their sum: $V_m = \sum_i f_i$. The equilibrium distribution for a pure diffusion problem, derived
+    from Gauss-Hermite quadrature in Section 17.4, is:
   </p>
 
   <p style="text-align:center;">
-    $D_{xx} = D_f \cos^2\theta + D_c \sin^2\theta$, &ensp;
-    $D_{yy} = D_f \sin^2\theta + D_c \cos^2\theta$
+    $$f_i^{\text{eq}} = w_i \, V_m$$
   </p>
 
   <p>
-    where $D_f$ and $D_c$ are along-fiber and cross-fiber coefficients. Then $\tau_x$ and $\tau_y$ are
-    computed from the τ-D relationship (equation 17.29) using $D_{xx}$ and $D_{yy}$ respectively. The full
-    boxed collision equation (with source term) is:
+    This is equation (17.27) with the scalar field $\phi$ replaced by the transmembrane potential $V_m$,
+    and no advection ($\mathbf{u} = 0$). The weights $w_i$ are the Gauss-Hermite quadrature weights from
+    Section 17.4: for D2Q5, $w_0 = 1/3$ and $w_{1,2,3,4} = 1/6$.
+  </p>
+
+  <p>
+    The BGK collision with ionic source combines two physically distinct operations. We define each as a
+    <strong>rate</strong> (per unit time), consistent with the continuous collision operator $\Omega(f)$
+    from equation (17.11). The <strong>non-reactive collision rate</strong> $\Omega_i^{NR}$ is the BGK
+    relaxation toward equilibrium:
+  </p>
+
+  <p style="text-align:center;">
+    $$\Omega_i^{NR} = -\frac{1}{\tau}\bigl(f_i - w_i\,V_m\bigr)$$
+  </p>
+
+  <p>
+    This is a direct transcription of equation (17.11) with $f^{\text{eq}} = w_i V_m$. Physically,
+    $\Omega_i^{NR}$ drives each distribution toward the local equilibrium at rate $1/\tau$. When
+    $f_i > w_i V_m$ (more particles than equilibrium in direction $i$), the rate is negative &mdash;
+    particles are removed. When $f_i < w_i V_m$, particles are added. This redistribution of particles
+    among directions <em>is</em> diffusion: non-equilibrium structure in the distribution function
+    corresponds to flux, and relaxing that structure spreads voltage through tissue. The $\tau$&ndash;$D$
+    relationship (equation 17.26) quantifies exactly how the relaxation rate maps to the macroscopic
+    diffusion coefficient.
+  </p>
+
+  <p>
+    The <strong>reactive collision rate</strong> $\Omega_i^{R}$ injects the ionic source into the
+    distribution:
+  </p>
+
+  <p style="text-align:center;">
+    $$\Omega_i^{R} = w_i\,S$$
+  </p>
+
+  <p>
+    This is a pure source injection: the reaction term $S$ (equation 18.2) &mdash; which encapsulates
+    all ionic currents and external stimulus &mdash; is distributed among lattice directions with weights
+    $w_i$. Since $\sum_i w_i = 1$, the total injected rate is $\sum_i \Omega_i^R = S$, preserving the
+    correct total source. The weights ensure isotropy: the source does not preferentially inject particles
+    in any direction, because ionic currents have no spatial directionality &mdash; they flow across the
+    cell membrane, not along any lattice vector.
+  </p>
+
+  <p>
+    The full collision update discretizes these rates with timestep $\Delta t$:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(18.3)</span>
-    $$\boxed{\mathbf{f}^* = \mathbf{f} - \mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr) + \Delta t\,\mathbf{w}\,S}$$
+    $$f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) = f_i - \frac{\Delta t}{\tau}\bigl(f_i - w_i\,V_m\bigr) + \Delta t\,w_i\,S$$
   </div>
 
   <p>
-    where $\mathbf{S} = \text{diag}(0, 1/\tau_x, 1/\tau_y, 1.0, 1.0)$ for D2Q5, with higher moments set to 1.0
-    for stability. This is a straightforward extension of the BGK source term — the source vector $\Delta t\,\mathbf{w}\,S$
-    is appended to the moment-space relaxation, exactly as in BGK. See Chapter 17 (Section 17.5) for the full
-    derivation of the M matrix and moment-space transformation.
+    The separation is physically exact, not merely algebraic convenience. $\Omega^{NR}$ handles
+    <strong>transport</strong> &mdash; the spatial coupling between neighboring nodes that produces the
+    $\nabla\cdot(\mathbf{D}\nabla V_m)$ term in the monodomain PDE. $\Omega^R$ handles
+    <strong>reaction</strong> &mdash; the purely local ionic and stimulus currents that produce the
+    $-\chi\,I_{\text{ion}} + I_{\text{stim}}$ terms. This mirrors the operator-splitting structure of
+    Section 18.2, but now at the level of the collision operator itself. The decomposition carries
+    directly into the MRT formulation (Section 18.4), where $\Omega^{NR}$ gains direction-dependent
+    relaxation rates to model anisotropic diffusion, while $\Omega^R$ remains unchanged &mdash; because
+    the ionic physics is isotropic.
   </p>
 
-  <h3>18.5 &ensp; The Complete LBM-EP Timestep</h3>
+  <p>
+    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 17.26):
+  </p>
+
+  <p style="text-align:center;">
+    $$\tau = \frac{\Delta t}{2} + \frac{3D\,\Delta t}{\Delta x^2}$$
+  </p>
 
   <p>
-    One full timestep of a cardiac LBM simulation integrates both the ionic model (reaction) and the diffusion.
-    Using Godunov splitting (Chapter 8), the ionic step runs first, then diffusion. The five-stage algorithm
-    is the exact sequence the code executes:
+    For isotropic tissue with $D = 0.001$ cm$^2$/ms, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms:
+    $\tau = 0.005 + 0.048 = 0.053$ ms. The collision rate is $\omega = \Delta t/\tau \approx 0.189$.
+    Stability requires $\tau > \Delta t/2$, which holds for any positive diffusivity.
+  </p>
+
+  <p>
+    After collision, streaming (equation 17.15) shifts each post-collision distribution one lattice
+    spacing in its designated direction:
+  </p>
+
+  <p style="text-align:center;">
+    $$f_i(\mathbf{x} + \mathbf{e}_i \Delta x, \; t + \Delta t) = f_i^*(\mathbf{x}, t)$$
+  </p>
+
+  <p>
+    No new mathematical machinery is required beyond what Chapter 17 established. The cardiac monodomain
+    is solved by the same collide-and-stream cycle that solves any diffusion equation &mdash; the ionic
+    model simply provides the source term.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Physical interpretation.</strong> Think of the source $S$ as a faucet (or drain) at each
+      lattice node. When a stimulus depolarizes a cell ($S > 0$), it adds voltage to the local particle
+      population &mdash; distributed equally among all directions via the weights $w_i$. The collision
+      then relaxes the distribution toward equilibrium (spreading the perturbation), and streaming carries
+      the information to neighboring nodes. This is how a depolarization wave propagates through the
+      lattice: source injection → collision → streaming → recovery, repeated every timestep.
+    </p>
+  </div>
+
+  <h3>18.4 &ensp; MRT for Anisotropic Tissue</h3>
+
+  <h4>Why BGK Fails for Anisotropy</h4>
+
+  <p>
+    Cardiac tissue conducts three to four times faster along fibers than across them. This anisotropy is
+    encoded in the diffusion tensor $\mathbf{D}$ (equation 18.1), which has different eigenvalues along
+    and perpendicular to the fiber direction. Can BGK handle this?
+  </p>
+
+  <p>
+    No. Recall from Section 17.5 that BGK uses a single relaxation rate $\omega = \Delta t/\tau$ for
+    <em>all</em> moments. When we decoded the collision into moment space, we saw that the $x$-flux and
+    $y$-flux moments both relax at the same rate $s_1 = s_2 = \omega$. Since the diffusion coefficient
+    in each direction is determined by the corresponding flux relaxation rate, BGK forces $D_x = D_y$.
+    It can only produce isotropic diffusion. For anisotropic cardiac tissue, we need to unlock those
+    rates &mdash; relax the $x$-flux and $y$-flux at different speeds. This is exactly what MRT
+    (Multiple Relaxation Time) does.
+  </p>
+
+  <h4>From the Conductivity Tensor to Relaxation Rates</h4>
+
+  <p>
+    Section 17.5 showed that MRT relaxes each moment independently: the conserved moment (density) at
+    rate $s_0 = 0$, the flux moments at rates $s_1, s_2$, and the ghost moments at freely chosen rates.
+    The question is: what values of $s_1$ and $s_2$ reproduce a given anisotropic diffusion tensor?
+  </p>
+
+  <p>
+    Start from the scalar $\tau$-$D$ relationship (equation 17.24), which Chapman-Enskog analysis
+    derives for the BGK operator:
+  </p>
+
+  <p style="text-align:center;">
+    $$D = c_s^2\left(\tau - \frac{\Delta t}{2}\right)$$
+  </p>
+
+  <p>
+    This relates a single diffusivity $D$ to a single relaxation time $\tau$. For anisotropic diffusion,
+    we need a <strong>tensor</strong> generalization. The Chapman-Enskog expansion applied to the MRT
+    collision operator (equation 17.40) shows that each component of the diffusion tensor maps to a
+    corresponding relaxation parameter:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.4)</span>
+    $$D_{\alpha\beta} = c_s^2\left(\tau_{\alpha\beta} - \frac{\Delta t}{2}\,\delta_{\alpha\beta}\right)$$
+  </div>
+
+  <p>
+    where $\alpha, \beta \in \{x, y\}$ (or $\{x, y, z\}$ in 3D). This is the tensor $\tau$-$D$
+    relationship &mdash; the natural extension of equation (17.24) from a scalar to a matrix. Rearranging
+    for the relaxation parameters:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.5)</span>
+    $$\tau_{\alpha\beta} = \frac{\Delta t}{2}\,\delta_{\alpha\beta} + \frac{D_{\alpha\beta}}{c_s^2}$$
+  </div>
+
+  <p>
+    Substituting $c_s^2 = \Delta x^2/(3\Delta t^2)$:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.6)</span>
+    $$\tau_{\alpha\beta} = \frac{\Delta t}{2}\,\delta_{\alpha\beta} + \frac{3\,D_{\alpha\beta}\,\Delta t}{\Delta x^2}$$
+  </div>
+
+  <p>
+    This is the tensor generalization of equation (17.26). Each entry of the $\tau$ matrix is determined
+    by the corresponding entry of the diffusion tensor. The Kronecker delta $\delta_{\alpha\beta}$
+    ensures that the $\Delta t/2$ offset only appears on the diagonal.
+  </p>
+
+  <p>
+    For D2Q5 with axis-aligned fibers ($\theta = 0$), the diffusion tensor is diagonal
+    ($D_{xx} = D_l$, $D_{yy} = D_t$, $D_{xy} = 0$), and the relaxation parameters simplify to:
+  </p>
+
+  <p style="text-align:center;">
+    $\tau_{xx} = \frac{\Delta t}{2} + \frac{3D_l\Delta t}{\Delta x^2}$, &ensp;
+    $\tau_{yy} = \frac{\Delta t}{2} + \frac{3D_t\Delta t}{\Delta x^2}$, &ensp;
+    $\tau_{xy} = 0$
+  </p>
+
+  <p>
+    These become the flux relaxation rates: $s_1 = \Delta t/\tau_{xx}$ controls the $x$-flux decay (and
+    hence $D_{xx}$), while $s_2 = \Delta t/\tau_{yy}$ controls the $y$-flux decay (and hence $D_{yy}$).
+    Since $D_l > D_t$, we have $\tau_{xx} > \tau_{yy}$, so the $x$-flux relaxes more slowly &mdash;
+    it takes longer to reach equilibrium, which means more information persists in the $x$-direction,
+    producing faster diffusion along the fiber.
+  </p>
+
+  <div class="insight insight-intuition">
+    <strong>Why slower relaxation means faster diffusion.</strong> This seems backwards at first.
+    A larger $\tau$ means <em>less</em> relaxation per timestep &mdash; the distribution retains more
+    of its non-equilibrium structure. But non-equilibrium structure <em>is</em> the flux. A large
+    departure from equilibrium means a large gradient, which drives faster diffusion. If $\tau$ were
+    very small (rapid relaxation), the distribution would snap to equilibrium immediately &mdash; zero
+    flux, zero diffusion. This is the lattice-Boltzmann version of "a stiff spring returns to rest
+    quickly but doesn't transmit waves far."
+  </div>
+
+  <h4>The Off-Diagonal Problem: Rotated Fibers</h4>
+
+  <p>
+    When fibers are not aligned with the lattice axes ($\theta \neq 0$), the diffusion tensor has
+    off-diagonal entries ($D_{xy} \neq 0$). Equation (18.6) then gives $\tau_{xy} \neq 0$, which means
+    the relaxation matrix $\mathbf{S}$ in equation (17.40) is no longer diagonal in the Cartesian moment
+    basis. There are two standard approaches:
+  </p>
+
+  <p>
+    <strong>Approach 1 &mdash; Rotate the moment basis.</strong> Construct $\mathbf{M}$ using the
+    fiber-aligned coordinate system instead of the lattice axes. The flux moments then align with the
+    fiber and cross-fiber directions, where $\mathbf{D}$ is diagonal, and $\mathbf{S}$ stays diagonal.
+    This requires a different $\mathbf{M}$ at each node (since fiber angles vary spatially), which adds
+    computational cost.
+  </p>
+
+  <p>
+    <strong>Approach 2 &mdash; Modify the equilibrium distribution.</strong> Keep the standard
+    $\mathbf{M}$ (equation 17.36) but replace the isotropic equilibrium $f_i^{\text{eq}} = w_i V_m$
+    with an anisotropic equilibrium that encodes the full diffusion tensor:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.7)</span>
+    $$f_i^{\text{eq}} = w_i \, V_m \left(1 + \frac{e_{i\alpha}\,e_{i\beta}\,D_{\alpha\beta}}{2\,c_s^2\,D_0} - \frac{1}{2}\frac{\text{tr}(\mathbf{D})}{D_0 \cdot d}\right)$$
+  </div>
+
+  <p>
+    where $D_0$ is a reference diffusivity and summation over $\alpha, \beta$ is implied. This approach
+    absorbs the anisotropy into the equilibrium target rather than the relaxation rates, allowing a single
+    scalar $\tau$ to be used. The implementation is simpler (no per-node $\mathbf{M}$ matrices) but the
+    equilibrium is more complex.
+  </p>
+
+  <p>
+    For the remainder of this chapter, we use <strong>Approach 1</strong> (the MRT formulation with
+    diagonal $\mathbf{S}$ in the principal-axis frame), which makes the connection to Chapter 17's
+    moment-space machinery most transparent.
+  </p>
+
+  <h4>The Full MRT Collision with Source</h4>
+
+  <p>
+    Assembling the pieces from Section 17.5 (equations 17.38&ndash;17.41), the MRT collision with ionic
+    source uses the same $\Omega^{NR} + \Omega^R$ decomposition from Section 18.3, but with the
+    non-reactive part now operating in moment space. Defining the rate-based collision operators:
+  </p>
+
+  <p style="text-align:center;">
+    $$\boldsymbol{\Omega}^{NR} = -\frac{1}{\Delta t}\,\mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr), \qquad \boldsymbol{\Omega}^{R} = \mathbf{w}\,S$$
+  </p>
+
+  <p>
+    where $\mathbf{S} = \Delta t \cdot \boldsymbol{\Lambda}$ is the dimensionless relaxation matrix
+    (with entries $s_k = \Delta t / \tau_k$), the factor $1/\Delta t$ converts the finite increment
+    back to a rate. The full MRT update is then:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.8)</span>
+    $$\boxed{\mathbf{f}^* = \mathbf{f} + \Delta t\bigl(\underbrace{\boldsymbol{\Omega}^{NR}}_{\text{diffusion}} + \underbrace{\boldsymbol{\Omega}^{R}}_{\text{reaction}}\bigr) = \mathbf{f} - \mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr) + \Delta t\,\mathbf{w}\,S}$$
+  </div>
+
+  <p>
+    The expanded right-hand side is identical to the standard MRT form &mdash; the $1/\Delta t$ in
+    $\boldsymbol{\Omega}^{NR}$ cancels with $\Delta t$ in the update. But the conceptual decomposition
+    is preserved: $\boldsymbol{\Omega}^{NR}$ is the rate at which moment-space relaxation produces
+    diffusive flux (anisotropic, direction-dependent), while $\boldsymbol{\Omega}^{R}$ is the rate at
+    which ionic source is injected (isotropic, identical to the BGK case).
+  </p>
+
+  <p>
+    Here $\mathbf{M}$ is the transformation matrix (equation 17.36 for D2Q5, equation 17.37 for D3Q7),
+    $\mathbf{S}$ is the diagonal relaxation matrix, $\mathbf{w} = (w_0, w_1, \ldots, w_{Q-1})^T$ is the
+    weight vector, and $S$ is the ionic source (equation 18.2). The relaxation matrix for D2Q5 is:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.9)</span>
+    $$\mathbf{S}_{\text{D2Q5}} = \text{diag}\!\left(0, \;\frac{\Delta t}{\tau_{xx}}, \;\frac{\Delta t}{\tau_{yy}}, \;s_3, \;s_4\right)$$
+  </div>
+
+  <p>
+    The first entry is zero (density is conserved &mdash; never relaxed). Entries 1 and 2 are the flux
+    relaxation rates that control $D_{xx}$ and $D_{yy}$ through equation (18.6). Entries 3 and 4 are the
+    <strong>ghost-moment rates</strong> &mdash; the free parameters discussed in Section 17.5.
+  </p>
+
+  <h4>Ghost-Moment Rates and the Gram-Schmidt Construction</h4>
+
+  <p>
+    Section 17.5 stated that the ghost rows of $\mathbf{M}$ "just need to be linearly independent" from
+    the physical rows to make the matrix invertible. But <em>how</em> do you construct them in practice?
+  </p>
+
+  <p>
+    The standard procedure is <strong>Gram-Schmidt orthogonalization</strong>. Start with the physical
+    rows &mdash; the density row $(1, 1, 1, 1, 1)$ and the flux rows $(0, 1, -1, 0, 0)$,
+    $(0, 0, 0, 1, -1)$ &mdash; which are dictated by conservation laws and Fick's law. Then construct
+    the remaining rows by taking higher-order velocity products ($|\mathbf{e}_i|^2$,
+    $e_{ix}^2 - e_{iy}^2$, etc.) and orthogonalizing them against the physical rows using the
+    Gram-Schmidt process. This yields a well-conditioned $\mathbf{M}$ whose inverse is numerically
+    stable.
+  </p>
+
+  <p>
+    For D2Q5, the two ghost rows in equation (17.36) correspond to the "energy" moment
+    $\sum_i |\mathbf{e}_i|^2 f_i$ and the "energy difference" moment
+    $\sum_i (e_{ix}^2 - e_{iy}^2) f_i$. These are second-order velocity products that are linearly
+    independent of the zeroth- and first-order physical rows. The Gram-Schmidt process ensures they are
+    also orthogonal, which makes $\mathbf{M}$ well-conditioned. For D3Q7 (equation 17.37), the same
+    procedure generates four ghost rows from second-order products in three dimensions.
+  </p>
+
+  <p>
+    What about the ghost relaxation rates $s_3$ and $s_4$? Since no macroscopic conservation law
+    constrains them, they are <strong>free parameters</strong>. The Chapman-Enskog analysis shows that
+    they do not appear in the recovered PDE at leading order &mdash; they affect only the truncation error
+    and numerical stability. In practice, the standard choice is:
+  </p>
+
+  <p style="text-align:center;">
+    $s_3 = s_4 = 1.0$ &ensp; (full relaxation to equilibrium each timestep)
+  </p>
+
+  <p>
+    Setting a ghost rate to 1.0 means the corresponding moment is driven entirely to its equilibrium
+    value in a single collision step &mdash; maximum damping of non-physical modes. This is the most
+    stable choice. Some authors optimize ghost rates for specific accuracy targets (for example, setting
+    $s_3 = s_4 = 8(2 - s_1)/(8 - s_1)$ to cancel certain third-order error terms), but for cardiac
+    simulations where stability matters more than squeezing out extra order of accuracy, $s_3 = s_4 = 1.0$
+    is the standard.
+  </p>
+
+  <div class="insight insight-math">
+    <strong>Why ghost rates affect stability but not the PDE.</strong> The Chapman-Enskog expansion
+    recovers the macroscopic PDE from the lattice-Boltzmann equation order by order in the Knudsen
+    number $\epsilon = \Delta x / L$ (where $L$ is a macroscopic length scale). The zeroth-order
+    recovery gives mass conservation. The first-order recovery gives the diffusion equation, with $D$
+    determined by the flux relaxation rates $s_1, s_2$. The ghost rates $s_3, s_4$ first appear at
+    <em>second</em> order, in the truncation error. They modify the coefficient of the $O(\Delta x^2)$
+    error term but leave the leading-order PDE untouched. This is why different textbooks use different
+    ghost rows and different ghost rates yet recover the same diffusion equation &mdash; they differ
+    only in their numerical error properties.
+  </div>
+
+  <h4>Worked Example: MRT Collision with Anisotropic Tissue</h4>
+
+  <p>
+    Consider D2Q5 with $D_l = 0.001$ cm$^2$/ms, $D_t = 0.00025$ cm$^2$/ms, fiber angle $\theta = 0$
+    (aligned with $x$), $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms.
+  </p>
+
+  <p>
+    From equation (18.6):
+  </p>
+
+  <p style="text-align:center;">
+    $\tau_{xx} = 0.005 + \frac{3 \times 0.001 \times 0.01}{0.000625} = 0.005 + 0.048 = 0.053$ ms
+    <br/>
+    $\tau_{yy} = 0.005 + \frac{3 \times 0.00025 \times 0.01}{0.000625} = 0.005 + 0.012 = 0.017$ ms
+  </p>
+
+  <p>
+    The relaxation rates:
+  </p>
+
+  <p style="text-align:center;">
+    $s_1 = \Delta t / \tau_{xx} = 0.01/0.053 = 0.189$, &ensp;
+    $s_2 = \Delta t / \tau_{yy} = 0.01/0.017 = 0.588$
+  </p>
+
+  <p>
+    As expected, the cross-fiber direction ($y$) relaxes faster ($s_2 > s_1$), producing slower diffusion.
+    The full relaxation matrix is:
+  </p>
+
+  <p style="text-align:center;">
+    $\mathbf{S} = \text{diag}(0, \; 0.189, \; 0.588, \; 1.0, \; 1.0)$
+  </p>
+
+  <p>
+    Now suppose $V_m = -85$ mV, with the same non-equilibrium distributions from the Chapter 17 worked
+    example: $\mathbf{f} = (0.340, \; 0.175, \; 0.155, \; 0.168, \; 0.162)^T \times (-85)$ (scaled to
+    voltage), and a stimulus source $S = 0.0371$ mV/ms. The MRT collision proceeds as:
+  </p>
+
+  <p>
+    1. Decode: $\mathbf{m} = \mathbf{M}\mathbf{f}$ &mdash; extract density, $x$-flux, $y$-flux, and
+    ghost moments. <br/>
+    2. Relax: $m_0^* = m_0$ (conserved), $m_1^* = m_1 - 0.189(m_1 - 0)$, $m_2^* = m_2 - 0.588(m_2 - 0)$,
+    $m_3^* = 0$ (full relaxation), $m_4^* = 0$ (full relaxation). <br/>
+    3. Re-encode: $\mathbf{f}^* = \mathbf{M}^{-1}\mathbf{m}^*$. <br/>
+    4. Add source: $f_i^* \leftarrow f_i^* + \Delta t \, w_i \, S$.
+  </p>
+
+  <p>
+    The $x$-flux decays by 18.9% (slow — high diffusivity along fibers), while the $y$-flux decays by
+    58.8% (fast — low diffusivity across fibers). The ghost moments snap entirely to equilibrium. This is
+    the same collision from the Chapter 17 worked example, but now with the $x$ and $y$ dials set to
+    different values.
+  </p>
+
+  <h3>18.5 &ensp; Boundary Conditions for LBM Electrophysiology</h3>
+
+  <p>
+    In classical methods (FEM, FDM), boundary conditions are applied by modifying
+    the global stiffness matrix or by constraining node values. In LBM, boundaries
+    are handled at the <em>distribution level</em> &mdash; you modify individual $f_i$
+    at boundary nodes, one direction at a time. This local, direction-by-direction
+    approach is one of LBM&rsquo;s most elegant features: no global matrix is ever
+    touched, and complex geometries require no special mesh generation.
+  </p>
+
+  <p>
+    For cardiac electrophysiology, the dominant boundary condition is <strong>no-flux
+    Neumann</strong>: no transmembrane current leaves the tissue domain. Physically,
+    the heart is electrically insulated &mdash; ionic currents flow within the
+    myocardium but cannot escape through the epicardial surface. Mathematically,
+    this is $\nabla V_m \cdot \hat{n} = 0$ at every tissue boundary, where $\hat{n}$
+    is the outward normal.
+  </p>
+
+  <h4>18.5.1 &ensp; Full-Way Bounce-Back</h4>
+
+  <p>
+    Imagine a ball thrown at a wall: it bounces straight back. <strong>Full-way
+    bounce-back</strong> works the same way. When a distribution $f_i$ at a boundary
+    node would stream into a solid (non-tissue) region, it reverses direction &mdash;
+    it becomes $f_{\bar{i}}$, where $\bar{i}$ denotes the opposite direction
+    ($\mathbf{e}_{\bar{i}} = -\mathbf{e}_i$).
+  </p>
+
+  <p>
+    Concretely, at a boundary node $\mathbf{x}_b$, after the collision step produces
+    $f_i^*(\mathbf{x}_b)$, instead of streaming $f_i^*$ to the neighbor
+    $\mathbf{x}_b + \mathbf{e}_i \Delta x$ (which lies outside the domain), we apply:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.10)</span>
+    $$f_{\bar{i}}(\mathbf{x}_b, \, t + \Delta t) = f_i^*(\mathbf{x}_b, \, t)$$
+  </div>
+
+  <p>
+    The post-collision distribution that <em>would have</em> left the domain in
+    direction $i$ is redirected to arrive at the same node in the opposite direction
+    $\bar{i}$. Every unit of &ldquo;flux&rdquo; heading outward is perfectly reflected
+    inward, so the net flux at the boundary is zero &mdash; exactly the no-flux
+    Neumann condition.
+  </p>
+
+  <p>
+    For the D2Q9 lattice used in this chapter, the opposite pairs are:
+  </p>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Direction $i$</th>
+        <th>Velocity $\mathbf{e}_i$</th>
+        <th>Opposite $\bar{i}$</th>
+        <th>Velocity $\mathbf{e}_{\bar{i}}$</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="2">Axial</td><td>1</td><td>$(+1, 0)$</td><td>3</td><td>$(-1, 0)$</td></tr>
+      <tr><td>2</td><td>$(0, +1)$</td><td>4</td><td>$(0, -1)$</td></tr>
+      <tr><td rowspan="2">Diagonal</td><td>5</td><td>$(+1, +1)$</td><td>7</td><td>$(-1, -1)$</td></tr>
+      <tr><td>6</td><td>$(-1, +1)$</td><td>8</td><td>$(+1, -1)$</td></tr>
+      <tr><td>Rest</td><td>0</td><td>$(0, 0)$</td><td colspan="2"><em>No partner &mdash; never streamed</em></td></tr>
+    </tbody>
+  </table>
+
+  <div class="insight insight-intuition">
+    <strong>Corner nodes.</strong> At a corner where two boundaries meet (say, the
+    bottom-left corner of a rectangular domain), bounce-back applies to <em>both</em>
+    boundary directions independently. If $\mathbf{e}_3 = (-1,0)$ and
+    $\mathbf{e}_4 = (0,-1)$ would stream out of the domain, both are reflected:
+    $f_1 \leftarrow f_3^*$ and $f_2 \leftarrow f_4^*$. The diagonal direction
+    $\mathbf{e}_7 = (-1,-1)$ is also reflected: $f_5 \leftarrow f_7^*$. No special
+    corner treatment is needed &mdash; bounce-back handles it automatically,
+    direction by direction.
+  </div>
+
+  <h4>18.5.2 &ensp; Half-Way Bounce-Back</h4>
+
+  <p>
+    Full-way bounce-back places the effective wall <em>at</em> the boundary node itself.
+    <strong>Half-way bounce-back</strong> places the wall halfway between the last fluid
+    node and the first solid node. This seemingly small shift has an important consequence:
+    the boundary condition becomes <strong>second-order accurate</strong> in space, matching
+    the second-order accuracy of the interior LBM scheme.
+  </p>
+
+  <p>
+    The rule is almost identical to full-way bounce-back, but the timing changes. Instead
+    of reflecting at the same timestep, the reflected distribution arrives one timestep
+    later:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(18.10b)</span>
+    $$f_{\bar{i}}(\mathbf{x}_b, \, t + \Delta t) = f_i^*(\mathbf{x}_b, \, t)$$
+  </div>
+
+  <p>
+    The formula <em>looks</em> the same as full-way bounce-back (eq. 18.10), but
+    the interpretation differs: the wall is now located at
+    $\mathbf{x}_b + \tfrac{1}{2}\mathbf{e}_i \Delta x$, not at $\mathbf{x}_b$.
+    On a uniform Cartesian grid, half-way bounce-back is the standard choice because
+    the wall sits exactly at the cell face &mdash; which is where finite-difference
+    methods also place the boundary.
+  </p>
+
+  <div class="insight insight-math">
+    <strong>Why second-order?</strong> The key insight is that the streaming step
+    in LBM is <em>exact</em> &mdash; distributions travel exactly one lattice spacing
+    per timestep. When the wall is at the half-way point, the round-trip distance
+    (fluid node → wall → fluid node) is exactly $\Delta x$, which takes exactly
+    $\Delta t$. This geometric coincidence eliminates the first-order error that
+    arises when the wall does not sit at a half-integer position. For regular
+    Cartesian grids (as used in cardiac LBM), this condition is automatically
+    satisfied.
+  </p>
+  </div>
+
+  <h4>18.5.3 &ensp; Identifying Boundary Nodes</h4>
+
+  <p>
+    Before applying bounce-back, we must know <em>which</em> nodes are boundary
+    nodes and <em>which directions</em> need reflection. In a cardiac simulation
+    on a regular grid, the tissue geometry is typically defined by a binary mask:
+    each grid point is either &ldquo;tissue&rdquo; (active) or &ldquo;non-tissue&rdquo;
+    (inactive).
+  </p>
+
+  <p>
+    A fluid node $\mathbf{x}$ is a <strong>boundary node</strong> if at least one
+    of its lattice neighbors $\mathbf{x} + \mathbf{e}_i \Delta x$ is non-tissue.
+    The specific directions $i$ that point into non-tissue are the
+    <strong>boundary links</strong> &mdash; these are the directions where bounce-back
+    must be applied. In practice, this is precomputed once at initialization:
+  </p>
+
+  <pre class="code-block"><code>for each fluid node x:
+    for each direction i = 1, ..., Q-1:
+        neighbor = x + e_i * dx
+        if neighbor is outside domain or non-tissue:
+            mark (x, i) as a boundary link</code></pre>
+
+  <p>
+    At runtime, the streaming step skips boundary links (no data is sent to
+    non-tissue nodes), and the bounce-back rule (eq. 18.10) is applied instead.
+    This keeps the boundary treatment local and branchless &mdash; ideal for GPU
+    execution.
+  </p>
+
+  <h4>18.5.4 &ensp; Handling Irregular Tissue Geometries</h4>
+
+  <p>
+    Real cardiac tissue is not rectangular. The left ventricle is roughly ellipsoidal,
+    the atria have complex curved surfaces, and scar tissue creates irregular internal
+    boundaries. On a regular Cartesian grid, these curved boundaries are approximated
+    by a <strong>staircase</strong> &mdash; the tissue mask follows the grid lines,
+    creating jagged edges where the true boundary is smooth.
+  </p>
+
+  <p>
+    For cardiac electrophysiology, staircase boundaries are generally acceptable
+    for two reasons:
+  </p>
+
+  <ol>
+    <li><strong>Diffusion dominates geometry.</strong> The monodomain equation is
+    a reaction-diffusion PDE, not a fluid-flow problem. Small geometric errors at
+    the boundary (on the order of $\Delta x$) produce errors in the diffusion flux
+    that are $O(\Delta x)$ &mdash; the same order as the spatial discretization error.
+    Refining the grid improves both simultaneously.</li>
+    <li><strong>No pressure or velocity fields.</strong> In fluid LBM, staircase
+    boundaries create spurious pressure oscillations and inaccurate drag forces.
+    These problems do not arise in diffusion-only LBM because there is no momentum
+    equation &mdash; only a scalar field $V_m$ that diffuses smoothly.</li>
+  </ol>
+
+  <div class="insight insight-warning">
+    <strong>When staircases fail.</strong> If you need sub-grid accuracy at the
+    boundary (e.g., modeling the exact endocardial surface for defibrillation
+    electrode placement), interpolated bounce-back methods exist. The simplest is
+    <strong>linear interpolation bounce-back</strong>, which uses the fractional
+    distance $q$ from the fluid node to the actual wall:
+    $f_{\bar{i}}(\mathbf{x}_b, t+\Delta t) = 2q\,f_i^*(\mathbf{x}_b, t)
+    + (1-2q)\,f_i^*(\mathbf{x}_b - \mathbf{e}_i \Delta x, t)$ for $q < 1/2$,
+    with a complementary formula for $q \geq 1/2$. This restores second-order
+    accuracy on curved boundaries but adds implementation complexity. For most
+    cardiac EP applications, standard bounce-back on a sufficiently fine grid
+    ($\Delta x \leq 0.2$ mm) is adequate.
+  </div>
+
+  <h4>18.5.5 &ensp; Comparison with Classical BC Methods</h4>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead>
+      <tr>
+        <th>Aspect</th>
+        <th>LBM (Bounce-Back)</th>
+        <th>FDM (Ghost Nodes)</th>
+        <th>FEM (Natural BC)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>No-flux Neumann</td>
+        <td>Reflect $f_i^*$</td>
+        <td>Mirror $V_m$ across boundary</td>
+        <td>Omit boundary integral (automatic)</td>
+      </tr>
+      <tr>
+        <td>Implementation</td>
+        <td>Local, per-link</td>
+        <td>Ghost node layer</td>
+        <td>Modify stiffness matrix</td>
+      </tr>
+      <tr>
+        <td>Curved geometry</td>
+        <td>Staircase or interpolated BB</td>
+        <td>Immersed boundary</td>
+        <td>Unstructured mesh (exact)</td>
+      </tr>
+      <tr>
+        <td>Accuracy</td>
+        <td>1st order (full-way) / 2nd order (half-way)</td>
+        <td>2nd order</td>
+        <td>Arbitrary (mesh-dependent)</td>
+      </tr>
+      <tr>
+        <td>GPU friendliness</td>
+        <td>Excellent (local, branchless)</td>
+        <td>Good</td>
+        <td>Moderate (sparse matrix ops)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="insight insight-engine">
+    <strong>Engine V5.4 implementation.</strong> The LBM solver uses half-way
+    bounce-back on a Cartesian grid. Boundary links are precomputed during
+    initialization into a compressed list <code>[(node_idx, direction)]</code>.
+    During the streaming step, boundary links are processed separately: instead of
+    writing to the neighbor, the post-collision value is written back to the opposite
+    direction at the same node. The tissue mask is read from the geometry input
+    (same binary mask used by the FDM solver) and converted to boundary links
+    automatically.
+  </div>
+
+
+  <h3>18.6 &ensp; The Complete LBM-EP Algorithm</h3>
+
+  <p>
+    Assembling all the pieces &mdash; operator splitting (Section 18.2), BGK or MRT collision with source
+    (Sections 18.3&ndash;18.4), streaming (Chapter 17), and bounce-back boundaries (Section 18.5) &mdash;
+    the complete algorithm for one timestep is:
   </p>
 
   <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
-    <span class="equation-label">(18.4)</span>
+    <span class="equation-label">(18.11)</span>
     <p style="margin:0 0 10px 0; font-weight:bold;">Complete LBM-EP step (BGK or MRT):</p>
     $$\begin{aligned}
-      &\textbf{1. Ionic:} &&I_{\text{ion}} = \text{IonicModel.compute\_Iion}(V, \mathbf{s}); \quad \text{update } \mathbf{s} \\[4pt]
+      &\textbf{1. Ionic:} &&I_{\text{ion}} = \text{IonicModel.compute\_Iion}(V_m, \mathbf{w}); \quad \text{update } \mathbf{w} \text{ via Rush-Larsen} \\[4pt]
       &\textbf{2. Source:} &&S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m} \\[4pt]
-      &\textbf{3. Collide:} &&f_i^* = f_i - \omega\,(f_i - w_i\,V) + \Delta t\,w_i\,S \quad \text{(or MRT eq. 18.3)} \\[4pt]
-      &\textbf{4. Stream:} &&f_i(\mathbf{x} + \mathbf{e}_i) \leftarrow f_i^*(\mathbf{x}) \quad \forall\, i \\[4pt]
-      &\textbf{5. Recover:} &&V^{n+1} = \textstyle\sum_i f_i \quad \text{(apply bounce-back on boundaries)}
+      &\textbf{3. Collide:} &&f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) \quad \text{(BGK eq. 18.3, or MRT eq. 18.8)} \\[4pt]
+      &\textbf{4. Stream:} &&f_i(\mathbf{x} + \mathbf{e}_i \Delta x) \leftarrow f_i^*(\mathbf{x}) \quad \forall\, i \\[4pt]
+      &\textbf{5. Bounce-back:} &&f_{\bar{i}}(\mathbf{x}_b) \leftarrow f_i^*(\mathbf{x}_b) \quad \text{at boundary nodes} \\[4pt]
+      &\textbf{6. Recover:} &&V_m^{n+1} = \textstyle\sum_i f_i
     \end{aligned}$$
   </div>
 
   <p>
-    Steps 3–5 constitute the diffusion solver. Note the absence of matrix assembly, matrix-vector products,
-    or iterative convergence checks. This is why LBM achieves its speed advantage on GPUs.
+    Steps 3&ndash;6 constitute the diffusion solver. Note the complete absence of matrix assembly,
+    matrix-vector products, or iterative convergence checks. Every operation is either purely local
+    (collision, source injection, recovery) or a nearest-neighbor shift (streaming). This is why LBM
+    achieves its speed advantage on GPUs.
   </p>
 
   <div class="insight insight-intuition">
     <p>
       <strong>Worked example.</strong> For cardiac tissue with $D = 0.001$ cm$^2$/ms, $\Delta x = 0.025$ cm,
-      $\Delta t = 0.01$ ms: $\tau = 0.5 + 3 \times 0.001 \times 0.01 / 0.025^2 = 0.548$, so $\omega = 1/0.548 = 1.825$.
-      Consider a node with $V = -85$ mV, all distributions at equilibrium, and a stimulus $I_{\text{stim}} = -52\;\mu$A/$\mu$F
-      (with $I_{\text{ion}} = 0$, $\chi = 1400$ cm$^{-1}$, $C_m = 1\;\mu$F/cm$^2$).
+      $\Delta t = 0.01$ ms: $\tau = 0.053$ ms, so $\omega = \Delta t/\tau = 0.189$.
+      Consider a node with $V_m = -85$ mV, all distributions at equilibrium, and a stimulus
+      $I_{\text{stim}} = -52\;\mu$A/$\mu$F (with $I_{\text{ion}} = 0$, $\chi = 1400$ cm$^{-1}$,
+      $C_m = 1\;\mu$F/cm$^2$).
       <br/>
       Then $S = 52 / 1400 = 0.0371$ mV/ms.
       <br/>
       After collision: $f_0^* = f_0 + 0.01 \times \frac{1}{3} \times 0.0371 \approx f_0 + 1.24 \times 10^{-4}$.
       <br/>
-      After streaming and recovery: $V^{n+1} = \sum f_i \approx -85 + 0.01 \times 0.0371 = -84.9996$ mV.
+      After streaming and recovery: $V_m^{n+1} = \sum f_i \approx -85 + 0.01 \times 0.0371 = -84.9996$ mV.
       The stimulus produces a tiny depolarization in one 0.01 ms step, as expected.
     </p>
   </div>
 
-  <h3>18.6 &ensp; LBM vs. Classical Methods: When to Choose What</h3>
+  <h3>18.7 &ensp; Implementation: Memory Layout and GPU Acceleration</h3>
+
+  <p>
+    LBM is a textbook example of SIMD parallelism: every node performs the same collision and streaming
+    operations in lockstep. There are no global data dependencies, no reduce operations, no convergence
+    criteria &mdash; each GPU thread is completely independent. On modern GPUs, this translates to
+    near-peak memory bandwidth utilization and minimal synchronization overhead.
+  </p>
+
+  <h4>The Swap-Streaming Optimization</h4>
+
+  <p>
+    The naive implementation of Algorithm (18.11) uses two arrays: a pre-collision array $\mathbf{f}$ and
+    a post-collision array $\mathbf{f}^*$. After streaming populates $\mathbf{f}^*$, the arrays are
+    swapped. This doubles memory usage. The <strong>swap-streaming</strong> (or "AA-pattern") optimization
+    fuses collision and streaming into a single pass:
+  </p>
+
+  <p>
+    On even timesteps, read $f_i(\mathbf{x})$ from the source node and write $f_i^*$ directly to the
+    destination node $\mathbf{x} + \mathbf{e}_i\Delta x$ (scatter pattern). On odd timesteps, reverse:
+    read $f_i$ from the neighbor $\mathbf{x} - \mathbf{e}_i\Delta x$ and write the post-collision value
+    to $\mathbf{x}$ (gather pattern). By alternating read/write patterns every other timestep, a single
+    array suffices &mdash; halving memory and improving cache performance.
+  </p>
+
+  <h4>Memory Layout: Structure of Arrays</h4>
+
+  <p>
+    For GPU kernels, the distributions are stored in <strong>Structure of Arrays</strong> (SoA) format:
+    one contiguous array per direction $i$, each of size $N_x \times N_y$ (or $N_x \times N_y \times N_z$
+    in 3D). The node at position $(x, y)$ has its $f_i$ stored at index $i \times N_x N_y + y \times N_x + x$.
+    This layout ensures that when a GPU warp processes adjacent nodes, it accesses contiguous memory
+    locations within each direction &mdash; maximizing memory coalescing.
+  </p>
+
+  <h4>Sparse/Indirect Addressing for Irregular Geometries</h4>
+
+  <p>
+    Cardiac tissue is not rectangular. A ventricular slab, a cross-section of the septum, or a full
+    biventricular geometry all have irregular boundaries. Storing distributions on a full Cartesian grid
+    wastes memory on nodes outside the tissue. The solution is <strong>indirect addressing</strong>: an
+    adjacency array maps each active node to its neighbors. Instead of computing neighbor positions from
+    $(x \pm 1, y \pm 1)$, the streaming step looks up the neighbor index from a precomputed table. This
+    adds one integer load per direction per node but eliminates wasted storage on inactive nodes.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the LBM monodomain solver is in the <code>cardiac_sim.simulation.lbm</code> package.
+      The lattice definitions (<code>D2Q5</code>, <code>D3Q7</code>) are frozen dataclasses holding weights,
+      velocity vectors, and the $\tau$-$D$ conversion formula. Collision operators (<code>BGKCollision</code>,
+      <code>MRTCollision</code>) inherit from <code>CollisionOperator(ABC)</code> and implement the update step
+      (equation 18.3 or 18.8). The <code>LBMState</code> container holds the distribution tensor
+      $\mathbf{f}$ (shape $Q \times N_x \times N_y$ for 2D), voltage $V_m$, ionic states $\mathbf{w}$, and
+      the domain mask. The <code>LBMSimulation</code> class orchestrates the six-step loop (18.11): call
+      <code>collision.collide(f, V, source, dt)</code>, apply <code>state.stream()</code> (one
+      <code>torch.roll</code> per direction), <code>state.apply_bounce_back()</code>, and finally
+      <code>state.recover_voltage()</code> to compute $V_m = \sum f_i$. The ionic substep is identical
+      to the classical path &mdash; only the diffusion step changes. Factory functions
+      <code>create_isotropic_bgk(D, dx, dt)</code> and
+      <code>create_anisotropic_mrt(D_fiber, D_cross, fiber_angle, dx, dt)</code> handle initialization.
+    </p>
+  </div>
+
+  <h3>18.8 &ensp; LBM vs. Classical Methods: When to Choose What</h3>
 
   <p>
     LBM, explicit methods (Chapter 9), and implicit methods (Chapter 10) each have distinct trade-offs:
@@ -8262,7 +9016,7 @@ We now have the complete theoretical framework for the lattice-Boltzmann method:
         <th style="padding:8px; border:1px solid #ddd; text-align:left;">Aspect</th>
         <th style="padding:8px; border:1px solid #ddd; text-align:center;">Explicit (Ch 9)</th>
         <th style="padding:8px; border:1px solid #ddd; text-align:center;">Implicit (Ch 10)</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">LBM-BGK</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">LBM-BGK/MRT</th>
       </tr>
     </thead>
     <tbody>
@@ -8273,16 +9027,16 @@ We now have the complete theoretical framework for the lattice-Boltzmann method:
         <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
       </tr>
       <tr style="background:#fafafa;">
-        <td style="padding:6px; border:1px solid #ddd;">CFL-limited?</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes ($\Delta t \leq h^2/2d$)</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No ($\tau > 0.5$ always)</td>
+        <td style="padding:6px; border:1px solid #ddd;">Stability limit?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes ($\Delta t \leq h^2/2dD$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No (unconditional)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">$\tau > \Delta t/2$ (always satisfied)</td>
       </tr>
       <tr>
         <td style="padding:6px; border:1px solid #ddd;">Anisotropy?</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via matrix</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via matrix</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">BGK = isotropic; MRT = anisotropic</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via diffusion tensor</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via diffusion tensor</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">BGK = isotropic only; MRT = full tensor</td>
       </tr>
       <tr style="background:#fafafa;">
         <td style="padding:6px; border:1px solid #ddd;">Unstructured mesh?</td>
@@ -8292,66 +9046,39 @@ We now have the complete theoretical framework for the lattice-Boltzmann method:
       </tr>
       <tr>
         <td style="padding:6px; border:1px solid #ddd;">GPU suitability</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Good (matvec)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Good (SpMV)</td>
         <td style="padding:6px; border:1px solid #ddd; text-align:center;">Fair (global reductions)</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Excellent (zero sync)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Excellent (zero global sync)</td>
       </tr>
       <tr style="background:#fafafa;">
         <td style="padding:6px; border:1px solid #ddd;">Memory per node</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float ($V$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float ($V_m$)</td>
         <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float + sparse $\mathbf{A}$</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">5–7 floats ($f_i$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">$Q$ floats ($f_i$): 5 (D2Q5) or 7 (D3Q7)</td>
       </tr>
       <tr>
         <td style="padding:6px; border:1px solid #ddd;">Typical use</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Coarse mesh, small $\Delta t$</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Fine mesh, larger $\Delta t$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Small problems, rapid prototyping</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Production FEM, large $\Delta t$</td>
         <td style="padding:6px; border:1px solid #ddd; text-align:center;">GPU throughput, parameter sweeps</td>
       </tr>
     </tbody>
   </table>
 
   <p>
-    <strong>When to use LBM:</strong> GPU hardware, Cartesian grids, anisotropic tissue (with MRT), and when
-    throughput (simulations per unit time) matters more than memory. The Rapaka et al. (2012) paper on
-    LBM-EP achieved 8.75× speedup on synthetic slabs and 45× on patient-specific geometries, all on a single
-    CPU core. On modern GPUs without any optimization, the advantage is even larger because LBM eliminates the
-    global synchronization points that slow down PCG solvers.
+    <strong>When to use LBM:</strong> GPU hardware, Cartesian grids, and when throughput (simulations per
+    unit wall-clock time) matters more than memory. The total absence of global synchronization makes LBM
+    ideal for multi-GPU scaling and massive parameter sweeps. <strong>When to use classical methods:</strong>
+    unstructured meshes (patient-specific geometries from MRI), problems where memory is the bottleneck
+    (very large 3D domains), or when existing FEM infrastructure is already validated and optimized.
   </p>
-
-  <h3>18.7 &ensp; GPU Acceleration and the Engine V5.4 Implementation</h3>
-
-  <p>
-    LBM is a textbook example of SIMD parallelism: every node performs the same collision and streaming
-    operations in lockstep. There are no global data dependencies, no reduce operations, no convergence
-    criteria — each GPU thread is completely independent. On modern GPUs, this translates to near-peak
-    memory bandwidth utilization and minimal synchronization overhead.
-  </p>
-
-  <div class="insight insight-engine">
-    <p>
-      In Engine V5.4, the LBM monodomain solver is in the <code>cardiac_sim.simulation.lbm</code> package.
-      The lattice definitions (<code>D2Q5</code>, <code>D3Q7</code>) are frozen dataclasses holding weights,
-      velocity vectors, and the τ-D conversion formula. Collision operators (<code>BGKCollision</code>,
-      <code>MRTCollision</code>) inherit from <code>CollisionOperator(ABC)</code> and implement the update step
-      (equation 18.2 or 18.3). The <code>LBMState</code> container holds the distribution tensor
-      $\mathbf{f}$ (shape $Q \times N_x \times N_y$ for 2D), voltage $V$, ionic states $\mathbf{s}$, and
-      the domain mask. The <code>LBMSimulation</code> class orchestrates the five-step loop: call
-      <code>collision.collide(f, V, source, dt)</code>, apply <code>state.stream()</code> (one
-      <code>torch.roll</code> per direction), <code>state.apply_bounce_back()</code>, and finally
-      <code>state.recover_voltage()</code> to compute $V = \sum f_i$. The ionic substep is identical
-      to the classical path — only the diffusion step changes. Factory functions
-      <code>create_isotropic_bgk(D, dx, dt)</code> and
-      <code>create_anisotropic_mrt(D_fiber, D_cross, fiber_angle, dx, dt)</code> handle initialization.
-    </p>
-  </div>
 
   <p>
     With the monodomain LBM now complete, we turn to its greatest challenge: the bidomain system. The
-    parabolic intracellular equation can be solved by LBM, but the elliptic extracellular equation has no time
-    dependence — it is a constraint that must be satisfied at every instant. Chapter 19 develops three strategies
-    to overcome this fundamental obstacle: pseudo-time relaxation, hybrid LBM–classical solvers, and the
-    dual-lattice architecture.
+    parabolic intracellular equation can be solved by LBM, but the elliptic extracellular equation has no
+    time dependence &mdash; it is a constraint that must be satisfied at every instant. Chapter 19
+    develops three strategies to overcome this fundamental obstacle: pseudo-time relaxation, hybrid
+    LBM&ndash;classical solvers, and the dual-lattice architecture.
   </p>
 </div>
 
@@ -8423,7 +9150,7 @@ We now have the complete theoretical framework for the lattice-Boltzmann method:
   </p>
 
   <p>
-    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.29):
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.26):
   </p>
 
   <div class="equation-block">
@@ -8651,6 +9378,18 @@ class DualLatticeBidomainLBMSolver(ABC):
   <p>
     With the completion of Part IV (Chapters 17–19), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
   </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  APPENDICES PART PAGE                                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="part-page">
+  <div class="part-number">Appendices</div>
+  <div class="part-title">Reference Material</div>
+  <div class="part-subtitle">
+    Key references, a visual guide to differential equations, and an introduction to
+    PyTorch for scientific computing.
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -9127,6 +9866,1177 @@ class DualLatticeBidomainLBMSolver(ABC):
     <p>The treatment in this appendix follows the pedagogical philosophy of Grant Sanderson's <em>3Blue1Brown</em> series on differential equations. For animated visualizations of these concepts, the reader is encouraged to watch the "Differential Equations" playlist on the 3Blue1Brown YouTube channel.</p>
   </div>
 </div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX B — INTRODUCTION TO PYTORCH                            -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="chapter">
+  <div class="chapter-number">Appendix B</div>
+  <h2 class="chapter-title">Introduction to PyTorch</h2>
+  <div class="chapter-intro">
+    This appendix is a self-contained tutorial on PyTorch, written for scientists
+    who know Python and perhaps some NumPy but have never touched PyTorch. We start
+    at the very beginning &mdash; creating a single number &mdash; and build up through
+    arithmetic, matrices, linear algebra, GPU computing, automatic differentiation,
+    neural networks, and the intermediate patterns that bridge them to
+    production simulation code. By the final section, every PyTorch concept you have learned
+    will map directly onto a piece of Engine V5.4&rsquo;s source code, and you will
+    realize you already understand the entire computational backend of this textbook&rsquo;s
+    cardiac simulation engine.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.1 &ensp; Installation and Your First Tensor</h3>
+
+  <p>
+    Install PyTorch with a single command:
+  </p>
+
+  <pre class="code-block"><code>pip install torch</code></pre>
+
+  <p>
+    Now open a Python shell and create your first tensor:
+  </p>
+
+  <pre class="code-block"><code>import torch
+
+x = torch.tensor(3.14)
+print(x)            # tensor(3.1400)
+print(x.shape)      # torch.Size([])       ← a scalar has an empty shape
+print(x.dtype)      # torch.float32        ← default floating-point type
+print(x.item())     # 3.14                 ← extract the plain Python number</code></pre>
+
+  <p>
+    A <strong>tensor</strong> is just a number &mdash; or a collection of numbers &mdash;
+    that PyTorch knows how to do math on. A scalar (single number) is a 0-dimensional
+    tensor. A list of numbers is a 1-D tensor (a vector). A grid of numbers is a 2-D
+    tensor (a matrix). And it keeps going: 3-D, 4-D, any number of dimensions. But at
+    the end of the day, it is just numbers in a box with a shape.
+  </p>
+
+  <pre class="code-block"><code>scalar  = torch.tensor(42.0)                    # shape: []       (0-D)
+vector  = torch.tensor([1.0, 2.0, 3.0])         # shape: [3]      (1-D)
+matrix  = torch.tensor([[1, 2], [3, 4], [5, 6]])  # shape: [3, 2]  (2-D)
+cube    = torch.zeros(2, 3, 4)                   # shape: [2, 3, 4] (3-D)
+
+print(scalar.ndim, vector.ndim, matrix.ndim, cube.ndim)   # 0 1 2 3</code></pre>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.2 &ensp; Arithmetic: Scalars, Vectors, and Matrices</h3>
+
+  <p>
+    PyTorch arithmetic works the same way as Python arithmetic, but it operates on
+    entire tensors at once &mdash; no loops required.
+  </p>
+
+  <p><strong>Scalar arithmetic.</strong></p>
+
+  <pre class="code-block"><code>a = torch.tensor(3.0)
+b = torch.tensor(2.0)
+
+print(a + b)     # tensor(5.)
+print(a - b)     # tensor(1.)
+print(a * b)     # tensor(6.)
+print(a / b)     # tensor(1.5000)
+print(a ** b)    # tensor(9.)       ← 3^2</code></pre>
+
+  <p><strong>Vector arithmetic.</strong> Every operation applies element-by-element:</p>
+
+  <pre class="code-block"><code>u = torch.tensor([1.0, 2.0, 3.0])
+v = torch.tensor([4.0, 5.0, 6.0])
+
+print(u + v)           # tensor([5., 7., 9.])
+print(u * v)           # tensor([ 4., 10., 18.])   ← element-wise, NOT dot product
+print(2.0 * u)         # tensor([2., 4., 6.])      ← scalar × vector</code></pre>
+
+  <p>
+    The <strong>dot product</strong> (inner product) of two vectors is a separate operation:
+  </p>
+
+  <pre class="code-block"><code>print(torch.dot(u, v))   # tensor(32.)   ← 1·4 + 2·5 + 3·6 = 32</code></pre>
+
+  <p><strong>Matrix arithmetic</strong> follows the same pattern. Element-wise operations
+    use <code>+</code>, <code>*</code>, etc. Matrix multiplication uses the <code>@</code>
+    operator (or <code>torch.matmul</code>):
+  </p>
+
+  <pre class="code-block"><code>A = torch.tensor([[1., 2.], [3., 4.]])
+B = torch.tensor([[5., 6.], [7., 8.]])
+
+print(A * B)     # element-wise: tensor([[ 5., 12.], [21., 32.]])
+print(A @ B)     # matrix multiply: tensor([[19., 22.], [43., 50.]])</code></pre>
+
+  <p>
+    If you have used NumPy before, this should feel identical &mdash; because it is.
+    PyTorch deliberately mirrors the NumPy API. The only visible differences appear
+    when we start using GPUs (B.8) and gradients (B.9).
+  </p>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.3 &ensp; Tensors and Shapes</h3>
+
+  <p>
+    The word &ldquo;tensor&rdquo; sounds intimidating, but the idea is simple: a tensor
+    is a multi-dimensional array. You already know the special cases:
+  </p>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead><tr><th>Dimensions</th><th>Name</th><th>Shape example</th><th>What it holds</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Scalar</td><td><code>[]</code></td><td>A single number</td></tr>
+      <tr><td>1</td><td>Vector</td><td><code>[3]</code></td><td>A list of numbers</td></tr>
+      <tr><td>2</td><td>Matrix</td><td><code>[3, 4]</code></td><td>A table (rows &times; columns)</td></tr>
+      <tr><td>3</td><td>3-D tensor</td><td><code>[2, 3, 4]</code></td><td>A stack of matrices (e.g., RGB image)</td></tr>
+      <tr><td>4</td><td>4-D tensor</td><td><code>[8, 3, 256, 256]</code></td><td>A batch of images</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Reshaping.</strong> You can rearrange the elements of a tensor without copying
+    the data:</p>
+
+  <pre class="code-block"><code>x = torch.arange(12)         # tensor([ 0,  1,  2, ..., 11])   shape [12]
+y = x.view(3, 4)             # shape [3, 4] — same data, different layout
+z = x.view(2, 2, 3)          # shape [2, 2, 3]
+
+print(y)
+# tensor([[ 0,  1,  2,  3],
+#          [ 4,  5,  6,  7],
+#          [ 8,  9, 10, 11]])</code></pre>
+
+  <p><strong>Slicing and indexing</strong> works like Python lists and NumPy arrays:</p>
+
+  <pre class="code-block"><code>A = torch.tensor([[10, 20, 30],
+                   [40, 50, 60]])
+
+print(A[0, :])       # tensor([10, 20, 30])   ← first row
+print(A[:, 1])       # tensor([20, 50])        ← second column
+print(A[1, 2])       # tensor(60)              ← single element</code></pre>
+
+  <p><strong>Broadcasting.</strong> When two tensors have different shapes, PyTorch
+    automatically expands the smaller one to match &mdash; the same rules as NumPy.
+    The key rule: dimensions are compared from the right, and a dimension of size 1
+    can stretch to match any size.</p>
+
+  <pre class="code-block"><code>V = torch.tensor([[1.0], [2.0], [3.0]])   # shape [3, 1]
+w = torch.tensor([10.0, 20.0, 30.0])     # shape [3]
+
+# V + w broadcasts: [3,1] + [3] → [3,1] + [1,3] → [3,3]
+print(V + w)
+# tensor([[11., 21., 31.],
+#          [12., 22., 32.],
+#          [13., 23., 33.]])</code></pre>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.4 &ensp; Data Types and Precision</h3>
+
+  <p>
+    Every tensor has a <strong>dtype</strong> that controls how much memory each number
+    uses and how precisely it is stored:
+  </p>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead><tr><th>dtype</th><th>Bits</th><th>Significant digits</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><code>torch.float32</code></td><td>32</td><td>~7</td><td>Machine learning (default)</td></tr>
+      <tr><td><code>torch.float64</code></td><td>64</td><td>~16</td><td>Scientific computing, PDE solvers</td></tr>
+      <tr><td><code>torch.int64</code></td><td>64</td><td>exact (integers)</td><td>Indices, counts</td></tr>
+      <tr><td><code>torch.bool</code></td><td>8</td><td>True / False</td><td>Masks, conditions</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Machine learning uses <code>float32</code> because neural networks are tolerant of
+    rounding &mdash; a gradient that is off by 0.001% still points in the right direction.
+    PDE solvers are not tolerant. Consider a single forward-Euler step of the monodomain
+    equation: $V^{n+1} = V^n + \Delta t \cdot K \cdot V^n$. The stiffness matrix $K$ has
+    entries of order $D / \Delta x^2 \sim 10^4$ s$^{-1}$, and $\Delta t \sim 10^{-5}$ s.
+    The product $\Delta t \cdot K \cdot V$ requires at least 10 significant digits to avoid
+    catastrophic cancellation when subtracted from $V^n$. Seven digits (<code>float32</code>)
+    is not enough.
+  </p>
+
+  <pre class="code-block"><code># The default is float32:
+x = torch.randn(5)
+print(x.dtype)                   # torch.float32
+
+# For scientific computing, use float64:
+V = torch.zeros(1000, dtype=torch.float64)
+
+# Or change the global default:
+torch.set_default_dtype(torch.float64)
+V = torch.zeros(1000)            # now float64 by default</code></pre>
+
+  <div class="insight insight-warning">
+    <strong>Rule of thumb.</strong> If your code involves physical units, differential
+    equations, or any computation where small differences between large numbers matter,
+    use <code>float64</code>. If you are training a neural network, <code>float32</code>
+    (or even <code>float16</code>) is fine.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.5 &ensp; Common Operations Cheat Sheet</h3>
+
+  <p>
+    This section is a quick reference. Skim it now; come back when you need a specific
+    operation.
+  </p>
+
+  <p><strong>Creating tensors.</strong></p>
+
+  <pre class="code-block"><code>torch.zeros(3, 4)                  # 3×4 matrix of zeros
+torch.ones(5)                      # vector of ones
+torch.arange(0, 10, 2)            # tensor([0, 2, 4, 6, 8])
+torch.linspace(0, 1, 11)          # 11 points from 0 to 1 inclusive
+torch.randn(3, 3)                  # 3×3 matrix of standard-normal random numbers
+torch.eye(4)                       # 4×4 identity matrix</code></pre>
+
+  <p><strong>Reductions.</strong></p>
+
+  <pre class="code-block"><code>x = torch.tensor([3.0, 1.0, 4.0, 1.0, 5.0])
+
+x.sum()          # tensor(14.)
+x.mean()         # tensor(2.8000)
+x.max()          # tensor(5.)
+x.min()          # tensor(1.)
+x.argmax()       # tensor(4)         ← index of the maximum
+x.std()          # tensor(1.7889)    ← standard deviation</code></pre>
+
+  <p><strong>Conditional and clamping.</strong></p>
+
+  <pre class="code-block"><code>V = torch.tensor([-120.0, -40.0, 20.0, 80.0])
+
+torch.clamp(V, min=-85.0, max=40.0)   # tensor([-85., -40.,  20.,  40.])
+torch.where(V > 0, V, torch.zeros_like(V))  # ReLU: tensor([0., 0., 20., 80.])</code></pre>
+
+  <p><strong>Stacking and concatenating.</strong></p>
+
+  <pre class="code-block"><code>a = torch.tensor([1, 2, 3])
+b = torch.tensor([4, 5, 6])
+
+torch.cat([a, b])        # tensor([1, 2, 3, 4, 5, 6])     ← concatenate
+torch.stack([a, b])      # tensor([[1, 2, 3], [4, 5, 6]]) ← stack into new dimension</code></pre>
+
+  <p><strong>In-place operations.</strong> Any operation with an underscore suffix modifies
+    the tensor directly, saving memory:</p>
+
+  <pre class="code-block"><code>x = torch.zeros(5)
+x.add_(1.0)        # x is now tensor([1., 1., 1., 1., 1.]) — no copy made
+x.mul_(3.0)        # x is now tensor([3., 3., 3., 3., 3.])</code></pre>
+
+  <p><strong>Math functions.</strong></p>
+
+  <pre class="code-block"><code>x = torch.tensor([0.0, 1.0, 2.0])
+
+torch.exp(x)       # tensor([1.0000, 2.7183, 7.3891])
+torch.log(x + 1)   # tensor([0.0000, 0.6931, 1.0986])
+torch.sin(x)       # tensor([0.0000, 0.8415, 0.9093])
+torch.abs(x - 1)   # tensor([1., 0., 1.])</code></pre>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.6 &ensp; Linear Algebra</h3>
+
+  <p>
+    PyTorch includes a full linear algebra library in <code>torch.linalg</code>. If
+    you have used <code>numpy.linalg</code>, the API is nearly identical.
+  </p>
+
+  <p><strong>Solving $A\mathbf{x} = \mathbf{b}$.</strong></p>
+
+  <pre class="code-block"><code>A = torch.tensor([[2., 1., -1.],
+                   [-3., -1., 2.],
+                   [-2., 1., 2.]], dtype=torch.float64)
+b = torch.tensor([8., -11., -3.], dtype=torch.float64)
+
+x = torch.linalg.solve(A, b)
+print(x)    # tensor([ 2.,  3., -1.])    ← the solution
+
+# Verify: A @ x should equal b
+print(A @ x)   # tensor([  8., -11.,  -3.])</code></pre>
+
+  <p><strong>Norms, determinants, eigenvalues.</strong></p>
+
+  <pre class="code-block"><code>M = torch.tensor([[4., 2.], [1., 3.]], dtype=torch.float64)
+
+torch.linalg.norm(M)          # Frobenius norm: tensor(5.4772)
+torch.linalg.det(M)           # determinant: tensor(10.)
+torch.linalg.inv(M)           # inverse: tensor([[ 0.3, -0.2], [-0.1,  0.4]])
+
+eigvals, eigvecs = torch.linalg.eig(M)
+print(eigvals)    # tensor([5.+0.j, 2.+0.j])  ← eigenvalues (complex)</code></pre>
+
+  <div class="insight insight-intuition">
+    <strong>When to use <code>linalg.solve</code> vs. <code>linalg.inv</code>.</strong>
+    Never compute $A^{-1} b$ by inverting the matrix first. <code>linalg.solve(A, b)</code>
+    is faster, more numerically stable, and uses less memory. The explicit inverse
+    is only useful if you need $A^{-1}$ for a different reason.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.7 &ensp; Sparse Matrices</h3>
+
+  <p>
+    Most matrices in scientific computing are <strong>sparse</strong>: the vast
+    majority of their entries are zero. Think of the stiffness matrix for the
+    monodomain equation on a 512 &times; 512 grid. It has 262,144 rows and
+    262,144 columns &mdash; over 68 billion entries &mdash; but each row contains
+    at most five nonzeros (the node itself and its four neighbours). Storing the
+    full matrix would need 512&nbsp;GB of memory. Storing only the nonzeros needs
+    about 30&nbsp;MB. Every PDE solver in this textbook lives or dies on that
+    ratio.
+  </p>
+
+  <p>
+    PyTorch stores sparse matrices in <strong>COO (Coordinate) format</strong>:
+    each nonzero entry is described by three numbers &mdash; its row index, column
+    index, and value. You build a COO tensor by providing the indices as a
+    <code>[2, nnz]</code> integer tensor and the values as a <code>[nnz]</code>
+    float tensor:
+  </p>
+
+  <pre class="code-block"><code>import torch
+
+# A 4×4 matrix with 6 nonzero entries
+rows = [0, 0, 1, 1, 2, 3]
+cols = [0, 1, 0, 1, 2, 3]
+vals = [4.0, -1.0, -1.0, 4.0, 4.0, 4.0]
+
+indices = torch.tensor([rows, cols], dtype=torch.long)   # shape [2, 6]
+values  = torch.tensor(vals, dtype=torch.float64)         # shape [6]
+S = torch.sparse_coo_tensor(indices, values, size=(4, 4))
+
+print(S.to_dense())
+# tensor([[ 4., -1.,  0.,  0.],
+#          [-1.,  4.,  0.,  0.],
+#          [ 0.,  0.,  4.,  0.],
+#          [ 0.,  0.,  0.,  4.]])</code></pre>
+
+  <p><strong>Coalescing.</strong> A COO tensor can contain duplicate index pairs.
+    For example, during finite-element assembly, two neighbouring elements may both
+    contribute to entry $(i, j)$. Calling <code>.coalesce()</code> sums duplicates
+    and sorts the indices &mdash; most sparse operations require a coalesced tensor:</p>
+
+  <pre class="code-block"><code># Two entries at (0, 0): 2.0 and 3.0
+idx = torch.tensor([[0, 0], [0, 0]], dtype=torch.long)
+val = torch.tensor([2.0, 3.0], dtype=torch.float64)
+A = torch.sparse_coo_tensor(idx, val, size=(2, 2))
+
+print(A.is_coalesced())    # False
+A = A.coalesce()
+print(A.values())          # tensor([5.])   ← 2.0 + 3.0 merged
+print(A.is_coalesced())    # True</code></pre>
+
+  <p><strong>Inspecting a sparse tensor.</strong> Once coalesced, you can read back
+    the internal storage:</p>
+
+  <pre class="code-block"><code>print(S.indices())    # tensor([[0, 0, 1, 1, 2, 3],
+                      #         [0, 1, 0, 1, 2, 3]])       ← [2, nnz]
+print(S.values())     # tensor([ 4., -1., -1.,  4.,  4.,  4.])
+print(S.shape)        # torch.Size([4, 4])
+print(S.is_sparse)    # True
+print(S._nnz())       # 6</code></pre>
+
+  <h4>Operations on sparse tensors</h4>
+
+  <p>
+    The operations you need for PDE solvers form a small but essential set.
+    Here is the complete catalogue:
+  </p>
+
+  <p><strong>1. Sparse &times; dense vector</strong> &mdash; the workhorse of every
+    time-stepping loop. This computes $\mathbf{y} = A \mathbf{x}$ where $A$ is
+    sparse and $\mathbf{x}$ is a dense column vector:</p>
+
+  <pre class="code-block"><code>x = torch.randn(4, 1, dtype=torch.float64)    # column vector [4, 1]
+y = torch.sparse.mm(S, x)                     # sparse matvec → dense [4, 1]
+
+# For a 1-D vector (no column dimension), reshape first:
+x_flat = torch.randn(4, dtype=torch.float64)
+y_flat = torch.sparse.mm(S, x_flat.unsqueeze(1)).squeeze(1)</code></pre>
+
+  <p><strong>2. Scalar &times; sparse</strong> &mdash; scales every nonzero value.
+    The sparsity pattern is unchanged:</p>
+
+  <pre class="code-block"><code>dt = 0.01
+K_scaled = dt * S          # every value multiplied by dt
+K_scaled = S * 0.5         # also works: sparse * scalar</code></pre>
+
+  <p><strong>3. Sparse + sparse</strong> &mdash; adds two sparse matrices with
+    (possibly different) sparsity patterns. The result has the union of both
+    patterns:</p>
+
+  <pre class="code-block"><code># Create a sparse identity
+def speye(n, dtype=torch.float64):
+    idx = torch.arange(n, dtype=torch.long)
+    return torch.sparse_coo_tensor(
+        torch.stack([idx, idx]),
+        torch.ones(n, dtype=dtype),
+        size=(n, n)
+    ).coalesce()
+
+I = speye(4)
+A = (2.0 * I + 0.5 * S).coalesce()   # sparse + sparse → sparse (coalesce after!)</code></pre>
+
+  <p><strong>4. Sparse &minus; sparse</strong> &mdash; works the same way. This
+    is how you build the implicit time-stepping matrix
+    $A = \chi C_m I - \tfrac{1}{2} \Delta t \, K$:</p>
+
+  <pre class="code-block"><code>chi_Cm = 1.0
+dt = 0.01
+A_implicit = (chi_Cm * I - 0.5 * dt * S).coalesce()</code></pre>
+
+  <p><strong>5. Convert to/from dense</strong> &mdash; useful for debugging small
+    matrices. Never do this for production-sized matrices:</p>
+
+  <pre class="code-block"><code>dense = S.to_dense()       # sparse → dense (full matrix in memory)
+sparse_again = dense.to_sparse()   # dense → COO sparse</code></pre>
+
+  <div class="insight insight-warning">
+    <strong>Always coalesce after arithmetic.</strong> Operations like
+    <code>A + B</code> on sparse tensors concatenate the index arrays without
+    merging duplicates. If you skip <code>.coalesce()</code>, the next sparse
+    operation may silently produce wrong results or raise an error. Rule of
+    thumb: coalesce immediately after every <code>+</code>, <code>-</code>, or
+    any operation that combines two sparse tensors.
+  </div>
+
+  <h4>Worked example: the 5-point Laplacian</h4>
+
+  <p>
+    The discrete Laplacian on a uniform grid approximates $\nabla^2 V$ by
+    comparing each node&rsquo;s voltage to its four neighbours:
+  </p>
+
+  <p style="text-align:center;">
+    $\nabla^2 V_{i,j} \;\approx\;
+    \frac{V_{i-1,j} + V_{i+1,j} + V_{i,j-1} + V_{i,j+1} - 4\,V_{i,j}}{\Delta x^2}$
+  </p>
+
+  <p>
+    Written as a matrix-vector product $\mathbf{y} = K \mathbf{V}$, each row of
+    $K$ has at most five nonzero entries: $+1/\Delta x^2$ for each neighbour
+    that exists, and $-n_{\text{nbrs}}/\Delta x^2$ on the diagonal (where
+    $n_{\text{nbrs}}$ is 2, 3, or 4 depending on whether the node is a corner,
+    edge, or interior point). Here is the assembly:
+  </p>
+
+  <pre class="code-block"><code>def build_laplacian(N, dx, dtype=torch.float64):
+    """Assemble the 5-point Laplacian on an N×N grid as a sparse COO tensor."""
+    rows, cols, vals = [], [], []
+    inv_dx2 = 1.0 / dx**2
+
+    for j in range(N):
+        for i in range(N):
+            node = j * N + i
+            nbrs = 0
+            for di, dj in [(1,0), (-1,0), (0,1), (0,-1)]:
+                ni, nj = i + di, j + dj
+                if 0 &lt;= ni &lt; N and 0 &lt;= nj &lt; N:
+                    rows.append(node)
+                    cols.append(nj * N + ni)
+                    vals.append(inv_dx2)
+                    nbrs += 1
+            # Diagonal: negative sum of off-diagonals
+            rows.append(node)
+            cols.append(node)
+            vals.append(-nbrs * inv_dx2)
+
+    indices = torch.tensor([rows, cols], dtype=torch.long)
+    values  = torch.tensor(vals, dtype=dtype)
+    n = N * N
+    return torch.sparse_coo_tensor(indices, values, size=(n, n)).coalesce()
+
+K = build_laplacian(N=4, dx=0.025)
+print(f"Matrix size: {K.shape[0]}×{K.shape[1]},  nonzeros: {K._nnz()}")
+# Matrix size: 16×16,  nonzeros: 56</code></pre>
+
+  <p>
+    A single sparse matrix-vector product now computes the discrete Laplacian of
+    any voltage vector in one call:
+  </p>
+
+  <pre class="code-block"><code>V = torch.randn(16, 1, dtype=torch.float64)
+lap_V = torch.sparse.mm(K, V)     # ∇²V for all 16 nodes simultaneously</code></pre>
+
+  <div class="insight insight-engine">
+    <strong>Engine V5.4 assembly.</strong> The <code>build_laplacian</code> loop
+    above is the pedagogical version. Engine V5.4&rsquo;s
+    <code>FDMDiscretization</code> does the same job but vectorized &mdash; it
+    never loops over nodes in Python. The FEM assembler goes further, using
+    <code>torch.einsum</code> (Section B.9) to compute all element stiffness
+    matrices in a single batched operation, then uses duplicate COO indices with
+    <code>.coalesce()</code> to merge overlapping contributions into the global
+    matrix.
+  </div>
+
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.8 &ensp; GPU Acceleration</h3>
+
+  <p>
+    Everything so far has run on your CPU. Moving to a GPU requires exactly three changes:
+    (1) choose a device, (2) place your tensors there, (3) &hellip; there is no step 3.
+    The math is the same.
+  </p>
+
+  <pre class="code-block"><code># Step 1: choose a device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(device)    # 'cuda' if you have an NVIDIA GPU, else 'cpu'
+
+# Step 2: create tensors on that device (or move existing ones)
+V = torch.zeros(1000, dtype=torch.float64, device=device)
+K = build_laplacian(N=32, device=device)      # your sparse matrix, on GPU
+
+# All operations now run on the GPU automatically:
+KV = torch.sparse.mm(K, V.unsqueeze(1)).squeeze(1)
+V_new = V + dt * KV</code></pre>
+
+  <p>
+    The algorithm reads identically whether <code>device</code> is <code>'cpu'</code>
+    or <code>'cuda'</code>. This is PyTorch&rsquo;s key selling point for scientific
+    computing: <strong>write once, run anywhere</strong>.
+  </p>
+
+  <p>
+    To move data between CPU and GPU:
+  </p>
+
+  <pre class="code-block"><code>x_gpu = x_cpu.to('cuda')       # CPU → GPU  (copies data across PCIe bus)
+x_cpu = x_gpu.cpu()            # GPU → CPU  (copies data back)
+x_gpu = x_gpu.to('cuda')      # already on GPU — no-op, no copy</code></pre>
+
+  <div class="insight insight-warning">
+    <strong>Minimise transfers.</strong> The PCIe bus between CPU and GPU is slow compared
+    to GPU computation. The best practice is to move your data to the GPU once at the start,
+    do all computation there, and move results back only when you need to save or plot.
+    Avoid calling <code>.cpu()</code> inside inner loops.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.9 &ensp; Advanced Operations for Scientific Computing</h3>
+
+  <p>
+    Sections B.1&ndash;B.8 gave you the fundamentals: tensors, arithmetic, sparse
+    matrices, and GPUs. That is enough to <em>understand</em> a PDE solver. But
+    to <em>write</em> one &mdash; to build something like Engine V5.4 from scratch
+    &mdash; you need a handful of intermediate-level operations that bridge the
+    gap between &ldquo;PyTorch as a NumPy replacement&rdquo; and &ldquo;PyTorch as
+    a simulation backend.&rdquo; This section collects them in one place.
+  </p>
+
+  <h4>Piecewise functions with <code>torch.where</code></h4>
+
+  <p>
+    Ionic models are full of piecewise-defined functions. The sodium gate
+    inactivation variable $h$ in TTP06, for instance, has different rate
+    expressions above and below $V = -40$ mV. In plain Python you would write
+    an <code>if/else</code> &mdash; but your voltage array holds 262,144 values,
+    each needing a different branch. <code>torch.where</code> evaluates both
+    branches for the entire array and selects element-by-element:
+  </p>
+
+  <pre class="code-block"><code>V = torch.linspace(-100, 60, 1000, dtype=torch.float64)
+
+# α_h: one formula below -40 mV, zero above
+alpha_h = torch.where(
+    V &lt; -40.0,
+    0.057 * torch.exp(-(V + 80.0) / 6.8),       # branch A: V &lt; -40
+    torch.zeros_like(V)                           # branch B: V ≥ -40
+)
+
+# β_h: different formula in each branch
+beta_h = torch.where(
+    V &lt; -40.0,
+    2.7 * torch.exp(0.079 * V) + 3.1e5 * torch.exp(0.3485 * V),
+    0.77 / (0.13 * (1.0 + torch.exp(-(V + 10.66) / 11.1)))
+)</code></pre>
+
+  <p>
+    This is the most common pattern in cardiac ionic model code. Engine V5.4&rsquo;s
+    TTP06 and ORd implementations use <code>torch.where</code> more than thirty
+    times each &mdash; every gating variable with voltage-dependent kinetics has
+    at least one call.
+  </p>
+
+  <div class="insight insight-warning">
+    <strong>Both branches are always evaluated.</strong> Unlike an <code>if</code>
+    statement, <code>torch.where</code> computes both the true and false tensors
+    before selecting. If a branch contains a division or logarithm that could
+    produce <code>inf</code> or <code>NaN</code> for out-of-range inputs, those
+    bad values will exist briefly in memory. The selection discards them, but if
+    you need to avoid the computation entirely (e.g., for performance or to prevent
+    floating-point exceptions), use masking with separate indexed assignments
+    instead.
+  </div>
+
+  <h4>Circular shifts with <code>torch.roll</code></h4>
+
+  <p>
+    The lattice-Boltzmann streaming step (Chapter 18) moves distribution
+    functions along lattice velocities. On a periodic grid, moving every element
+    one position to the right is a circular shift &mdash; the last element wraps
+    around to the first position. <code>torch.roll</code> does exactly this:
+  </p>
+
+  <pre class="code-block"><code>x = torch.tensor([10., 20., 30., 40., 50.])
+
+print(torch.roll(x, shifts=1))     # tensor([50., 10., 20., 30., 40.])  ← shift right
+print(torch.roll(x, shifts=-1))    # tensor([20., 30., 40., 50., 10.])  ← shift left</code></pre>
+
+  <p>
+    On a 2-D grid, you specify which axis to shift along. The D2Q5 streaming
+    step is five <code>torch.roll</code> calls &mdash; one per lattice velocity:
+  </p>
+
+  <pre class="code-block"><code># f has shape [5, Nx, Ny] — 5 velocities on an Nx×Ny grid
+# After collision, stream each population to its neighbour:
+f_new = torch.zeros_like(f)
+f_new[0] = f[0]                                     # rest: no movement
+f_new[1] = torch.roll(f[1], shifts=-1, dims=0)     # +x direction
+f_new[2] = torch.roll(f[2], shifts=+1, dims=0)     # −x direction
+f_new[3] = torch.roll(f[3], shifts=-1, dims=1)     # +y direction
+f_new[4] = torch.roll(f[4], shifts=+1, dims=1)     # −y direction</code></pre>
+
+  <p>
+    The entire streaming step &mdash; moving a quarter-million distribution
+    functions to their new homes &mdash; takes five lines and runs on the GPU
+    without a single Python loop.
+  </p>
+
+  <h4>Batched contractions with <code>torch.einsum</code></h4>
+
+  <p>
+    Einstein summation notation is a compact way to describe tensor contractions.
+    In the FEM assembler, each triangular element produces a $3 \times 3$ local
+    stiffness matrix from two gradient vectors $\mathbf{b}$ and $\mathbf{c}$
+    (the spatial derivatives of the basis functions). With 100,000 elements, you
+    need 100,000 outer products in parallel. <code>torch.einsum</code> expresses
+    this in a single line:
+  </p>
+
+  <pre class="code-block"><code># b, c have shape [num_elements, 3]  — gradient components per element
+# We want K_local[e, i, j] = b[e,i]*b[e,j] + c[e,i]*c[e,j] for all e
+
+K_local = (
+    torch.einsum('ei,ej->eij', b, b) +    # b_i * b_j for each element
+    torch.einsum('ei,ej->eij', c, c)      # c_i * c_j for each element
+)
+# K_local has shape [num_elements, 3, 3] — all local matrices at once</code></pre>
+
+  <p>
+    The string <code>'ei,ej-&gt;eij'</code> reads: &ldquo;for each element
+    <code>e</code>, take the outer product of index <code>i</code> with index
+    <code>j</code>.&rdquo; The <code>e</code> dimension is the batch axis &mdash;
+    every element is processed independently and in parallel.
+  </p>
+
+  <p>
+    Common <code>einsum</code> patterns you will encounter:
+  </p>
+
+  <pre class="code-block"><code># Matrix multiply:          C[i,j] = Σ_k A[i,k] * B[k,j]
+C = torch.einsum('ik,kj->ij', A, B)
+
+# Batched dot product:      d[e] = Σ_i a[e,i] * b[e,i]
+d = torch.einsum('ei,ei->e', a, b)
+
+# Trace of a matrix:        t = Σ_i A[i,i]
+t = torch.einsum('ii->', A)
+
+# Batched outer product:    O[e,i,j] = a[e,i] * b[e,j]
+O = torch.einsum('ei,ej->eij', a, b)</code></pre>
+
+  <h4>Accumulation with <code>scatter_add_</code></h4>
+
+  <p>
+    When you assemble a global vector from local contributions &mdash; for example,
+    summing element-level forces into a global force vector &mdash; you need to
+    add multiple values to the same index. <code>scatter_add_</code> does this
+    in one vectorized call:
+  </p>
+
+  <pre class="code-block"><code># 4 elements, each contributing to 3 global nodes
+element_nodes = torch.tensor([0, 1, 2,    # element 0 → nodes 0,1,2
+                              1, 2, 3,    # element 1 → nodes 1,2,3
+                              0, 2, 3,    # element 2 → nodes 0,2,3
+                              1, 3, 4])   # element 3 → nodes 1,3,4
+local_values = torch.tensor([1., 2., 3.,
+                             4., 5., 6.,
+                             7., 8., 9.,
+                             10., 11., 12.], dtype=torch.float64)
+
+# Accumulate into global vector of size 5
+global_vec = torch.zeros(5, dtype=torch.float64)
+global_vec.scatter_add_(0, element_nodes, local_values)
+print(global_vec)   # tensor([ 8., 16., 16., 27., 12.])
+# Node 0: 1+7=8,  Node 1: 2+4+10=16,  Node 2: 3+5+8=16, ...</code></pre>
+
+  <p>
+    The Chebyshev solver in Engine V5.4 uses <code>scatter_add_</code> to compute
+    Gershgorin circle radii &mdash; extracting the diagonal and off-diagonal
+    row sums of a sparse matrix to bound its eigenvalues, without converting to
+    dense format.
+  </p>
+
+  <h4>In-place operations and solver workspaces</h4>
+
+  <p>
+    A PDE simulation runs for millions of timesteps. If every linear-solver
+    iteration allocates fresh tensors for the residual, search direction, and
+    matrix-vector product, the garbage collector will spend more time freeing
+    memory than the GPU spends doing math.
+  </p>
+
+  <p>
+    The solution is a <strong>pre-allocated workspace</strong>: create the
+    buffers once, then reuse them every iteration with in-place operations.
+    Here is the pattern used in Engine V5.4&rsquo;s PCG solver, stripped to its
+    essentials:
+  </p>
+
+  <pre class="code-block"><code>class SimplePCG:
+    def __init__(self, n, device, dtype):
+        # Pre-allocate workspace — done ONCE
+        self.r  = torch.zeros(n, device=device, dtype=dtype)   # residual
+        self.z  = torch.zeros(n, device=device, dtype=dtype)   # preconditioned residual
+        self.p  = torch.zeros(n, device=device, dtype=dtype)   # search direction
+        self.Ap = torch.zeros(n, device=device, dtype=dtype)   # matrix-vector product
+
+    def solve(self, A, b, x):
+        r, z, p, Ap = self.r, self.z, self.p, self.Ap
+
+        # r = b - A*x  (in-place)
+        r.copy_(b)                                     # r ← b
+        r.sub_(torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1))  # r ← r - Ax
+
+        z.copy_(r)        # z ← M⁻¹r  (no preconditioner here)
+        p.copy_(z)        # p ← z
+
+        for k in range(100):
+            Ap.copy_(torch.sparse.mm(A, p.unsqueeze(1)).squeeze(1))  # Ap ← A*p
+            alpha = torch.dot(r, z) / torch.dot(p, Ap)
+
+            x.add_(p, alpha=alpha)       # x ← x + α·p    (in-place)
+            r.sub_(Ap, alpha=alpha)       # r ← r − α·Ap   (in-place)
+
+            if torch.norm(r) &lt; 1e-10:
+                break
+
+            z.copy_(r)                    # z ← M⁻¹r
+            beta = torch.dot(r, z) / torch.dot(r, z)
+            p.mul_(beta).add_(z)          # p ← β·p + z    (chain: mul then add)
+
+        return x</code></pre>
+
+  <p>
+    The key operations are <code>.copy_()</code> (overwrite contents),
+    <code>.add_(tensor, alpha=scalar)</code> (scaled accumulate), <code>.sub_()</code>
+    (scaled subtract), and <code>.mul_()</code> (scale in place). The underscore
+    suffix always means &ldquo;modify this tensor directly, do not allocate a new
+    one.&rdquo;
+  </p>
+
+  <div class="insight insight-intuition">
+    <strong>Why this matters.</strong> A naive implementation that writes
+    <code>x = x + alpha * p</code> allocates a new tensor for <code>alpha * p</code>,
+    another for the sum, then discards the old <code>x</code>. At 200,000 nodes
+    in <code>float64</code>, that is 1.6&nbsp;MB per line, hundreds of lines per
+    timestep, millions of timesteps &mdash; terabytes of transient allocations that
+    the garbage collector must clean up. In-place operations produce zero
+    allocations after the initial workspace setup.
+  </div>
+
+  <h4>NumPy interoperability</h4>
+
+  <p>
+    PyTorch tensors and NumPy arrays can share the same memory on the CPU, making
+    conversion essentially free. You will use this constantly for I/O &mdash;
+    loading meshes, saving output, calling Matplotlib:
+  </p>
+
+  <pre class="code-block"><code>import numpy as np
+
+# NumPy → PyTorch (shares memory — no copy on CPU)
+arr = np.array([1.0, 2.0, 3.0])
+t = torch.from_numpy(arr)
+t[0] = 99.0
+print(arr[0])     # 99.0  ← arr changed too! (shared memory)
+
+# PyTorch → NumPy (CPU tensors only)
+t2 = torch.tensor([4.0, 5.0, 6.0])
+arr2 = t2.numpy()
+
+# GPU tensor → NumPy (must go through CPU first)
+if torch.cuda.is_available():
+    t_gpu = torch.randn(5, device='cuda')
+    arr3 = t_gpu.detach().cpu().numpy()    # the canonical pattern</code></pre>
+
+  <p>
+    The three-step chain <code>.detach().cpu().numpy()</code> appears throughout
+    Engine V5.4 whenever simulation results are saved to disk or passed to
+    plotting libraries. <code>.detach()</code> disconnects from the autograd tape
+    (even though the engine disables gradients, this call is a safety net),
+    <code>.cpu()</code> copies from GPU to CPU memory, and <code>.numpy()</code>
+    wraps the CPU data as a NumPy array.
+  </p>
+
+  <h4>Coordinate grids with <code>torch.meshgrid</code></h4>
+
+  <p>
+    Setting up a structured mesh requires coordinate arrays for every node.
+    <code>torch.meshgrid</code> creates these from 1-D coordinate vectors &mdash;
+    the same idea as NumPy&rsquo;s <code>np.meshgrid</code>:
+  </p>
+
+  <pre class="code-block"><code># A 3×4 grid from 0 to 1 cm in x, 0 to 1.5 cm in y
+x = torch.linspace(0, 1.0, 3, dtype=torch.float64)    # [0.0, 0.5, 1.0]
+y = torch.linspace(0, 1.5, 4, dtype=torch.float64)    # [0.0, 0.5, 1.0, 1.5]
+
+xx, yy = torch.meshgrid(x, y, indexing='ij')
+print(xx.shape)   # torch.Size([3, 4])
+
+# xx holds the x-coordinate of each node:
+# tensor([[0.0, 0.0, 0.0, 0.0],
+#          [0.5, 0.5, 0.5, 0.5],
+#          [1.0, 1.0, 1.0, 1.0]])
+
+# To get a flat list of (x,y) pairs:
+nodes = torch.stack([xx.flatten(), yy.flatten()], dim=1)   # shape [12, 2]</code></pre>
+
+  <div class="insight insight-warning">
+    <strong>Always use <code>indexing='ij'</code>.</strong> The default in
+    older PyTorch versions is <code>'xy'</code> (Cartesian convention), which
+    transposes the output. Scientific computing expects matrix indexing
+    (<code>'ij'</code>), where the first axis is rows (x) and the second is
+    columns (y). Engine V5.4 passes <code>indexing='ij'</code> in every
+    <code>meshgrid</code> call.
+  </div>
+
+  <h4>Fourier transforms with <code>torch.fft</code></h4>
+
+  <p>
+    The FFT solver (Chapter 10) exploits the fact that the discrete Laplacian is
+    diagonal in the frequency domain. PyTorch provides a full FFT library:
+  </p>
+
+  <pre class="code-block"><code># 1-D FFT
+x = torch.randn(64, dtype=torch.float64)
+X = torch.fft.fft(x)          # complex-valued frequency coefficients
+x_back = torch.fft.ifft(X)    # inverse FFT recovers the original
+
+# 2-D FFT (for a 2-D voltage grid)
+V_grid = torch.randn(32, 32, dtype=torch.float64)
+V_freq = torch.fft.fft2(V_grid)
+V_back = torch.fft.ifft2(V_freq)
+
+# Wavenumber grid (for building spectral operators)
+k = torch.fft.fftfreq(32, d=0.025)     # frequencies for dx=0.025 cm</code></pre>
+
+  <p>
+    Engine V5.4&rsquo;s FFT solver computes the eigenvalues of the discrete
+    Laplacian analytically, transforms the right-hand side with a DCT (discrete
+    cosine transform), divides by the eigenvalues in frequency space, and
+    transforms back &mdash; solving the implicit diffusion step in
+    $O(N \log N)$ time with no iterative convergence checks.
+  </p>
+
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.10 &ensp; Automatic Differentiation (Autograd)</h3>
+
+  <p>
+    Automatic differentiation is PyTorch&rsquo;s signature feature and the reason it
+    dominates machine learning. The idea: PyTorch can record every arithmetic operation
+    you perform on a tensor, building an invisible
+    <strong>computation graph</strong>. When you ask for gradients, it walks backward
+    through the graph applying the chain rule &mdash; automatically, exactly, and
+    efficiently.
+  </p>
+
+  <p>
+    Think of it like a receipt tape at a cash register. Every operation (add, multiply,
+    exp, matmul) prints a line on the tape. When you call <code>.backward()</code>,
+    PyTorch reads the tape in reverse, computing $\partial(\text{output}) /
+    \partial(\text{each input})$ at every step.
+  </p>
+
+  <pre class="code-block"><code>import torch
+
+# Tell PyTorch to track operations on w
+w = torch.tensor(2.0, requires_grad=True)
+x = torch.tensor(3.0)
+y = torch.tensor(5.0)
+
+L = (w * x - y) ** 2          # L = (2·3 - 5)² = 1.0
+
+L.backward()                   # walk the tape backward
+
+print(w.grad)                  # tensor(6.)
+# Check by hand: dL/dw = 2(wx - y) · x = 2(6-5)(3) = 6 ✓</code></pre>
+
+  <p>
+    The <code>requires_grad=True</code> flag turns on recording. The <code>.backward()</code>
+    call traverses the graph and deposits the gradient in <code>w.grad</code>. This is the
+    same mechanism that trains neural networks with millions of parameters &mdash; the only
+    difference is scale.
+  </p>
+
+  <p>
+    When you do <em>not</em> need gradients (e.g., running a forward simulation),
+    you can disable the tape entirely to save memory and speed:
+  </p>
+
+  <pre class="code-block"><code>with torch.no_grad():
+    # Everything inside this block runs without recording the computation graph.
+    V_new = V + dt * KV    # fast, no tape overhead</code></pre>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.11 &ensp; Building Neural Networks with <code>nn.Module</code></h3>
+
+  <p>
+    PyTorch&rsquo;s neural network library lives in <code>torch.nn</code>. The core
+    abstraction is <code>nn.Module</code>: a class where you define your network&rsquo;s
+    layers in <code>__init__</code> and the forward pass in <code>forward</code>.
+  </p>
+
+  <pre class="code-block"><code>import torch
+import torch.nn as nn
+
+class TinyNet(nn.Module):
+    def __init__(self, n_in, n_hidden, n_out):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_in, n_hidden),     # first layer: n_in → n_hidden
+            nn.Tanh(),                      # activation function
+            nn.Linear(n_hidden, n_hidden),  # second layer
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_out),     # output layer
+        )
+
+    def forward(self, x):
+        return self.net(x)</code></pre>
+
+  <p>
+    <code>nn.Linear(m, n)</code> is a fully connected layer: it stores an $n \times m$
+    weight matrix $W$ and an $n$-vector bias $b$, and computes $y = Wx + b$.
+    <code>nn.Tanh()</code> applies the hyperbolic tangent element-wise &mdash; this
+    introduces the nonlinearity that lets a network approximate complex functions.
+  </p>
+
+  <p><strong>The training loop.</strong> Training a neural network is a four-step cycle
+    repeated many times:</p>
+
+  <ol>
+    <li><strong>Forward pass.</strong> Feed inputs through the network, get predictions.</li>
+    <li><strong>Loss.</strong> Measure how wrong the predictions are (e.g., mean squared error).</li>
+    <li><strong>Backward pass.</strong> Compute gradients of the loss with respect to every weight (autograd).</li>
+    <li><strong>Optimizer step.</strong> Nudge every weight in the direction that reduces the loss.</li>
+  </ol>
+
+  <p>
+    Here is a complete worked example: training a small network to approximate the
+    TTP06 sodium current $I_{Na}(V, m, h, j) = G_{Na} \cdot m^3 \cdot h \cdot j \cdot (V - E_{Na})$
+    from Chapter 5:
+  </p>
+
+  <pre class="code-block"><code># The "true" function we want the network to learn
+def true_INa(V, m, h, j):
+    G_Na = 14.838    # nA/pF
+    E_Na = 67.0      # mV
+    return G_Na * m**3 * h * j * (V - E_Na)
+
+# Generate 10,000 random training samples
+N = 10000
+V = torch.rand(N, 1) * 160 - 100       # V in [-100, 60] mV
+m = torch.rand(N, 1)                    # gating variables in [0, 1]
+h = torch.rand(N, 1)
+j = torch.rand(N, 1)
+X = torch.cat([V, m, h, j], dim=1)     # shape [10000, 4]
+y = true_INa(V, m, h, j)               # shape [10000, 1]
+
+# Create network, loss function, and optimizer
+model = TinyNet(n_in=4, n_hidden=64, n_out=1)
+loss_fn = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+# Training loop
+for epoch in range(2000):
+    y_pred = model(X)                    # 1. forward
+    loss = loss_fn(y_pred, y)            # 2. loss
+    optimizer.zero_grad()                # clear old gradients
+    loss.backward()                      # 3. backward
+    optimizer.step()                     # 4. update weights
+
+    if epoch % 500 == 0:
+        print(f"Epoch {epoch:4d}  Loss: {loss.item():.6f}")
+# After ~2000 epochs: loss ≈ 0.001, relative error < 1%</code></pre>
+
+  <div class="insight insight-warning">
+    <strong>Surrogates are approximations, not replacements.</strong> A trained neural
+    network evaluates in microseconds per batch &mdash; much faster than the original
+    formula when that formula involves expensive sub-expressions (like the GHK flux
+    in $I_{CaL}$). But the surrogate introduces approximation error that accumulates
+    over time. For production simulations where accuracy matters, always validate
+    against the original model.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.12 &ensp; Connecting to Engine V5.4</h3>
+
+  <p>
+    If you have followed sections B.1 through B.11, you now understand every PyTorch
+    concept that Engine V5.4 uses. The engine does not use neural networks or automatic
+    differentiation &mdash; it uses PyTorch purely as a <strong>GPU-accelerated numerical
+    backend</strong>. Here is the map from what you just learned to the engine&rsquo;s
+    source code:
+  </p>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead>
+      <tr>
+        <th>You learned</th>
+        <th>Section</th>
+        <th>Engine V5.4 uses it in</th>
+        <th>What it does there</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Tensors, dtypes</td>
+        <td>B.1&ndash;B.4</td>
+        <td>Everywhere</td>
+        <td>All state variables ($V_m$, gating variables, ionic currents) are <code>float64</code> tensors</td>
+      </tr>
+      <tr>
+        <td>Element-wise ops</td>
+        <td>B.2, B.5</td>
+        <td>Ionic model solvers</td>
+        <td>Gate updates: $m^{n+1} = m_\infty + (m^n - m_\infty) e^{-\Delta t / \tau_m}$ — all element-wise</td>
+      </tr>
+      <tr>
+        <td>Reductions</td>
+        <td>B.5</td>
+        <td>LBM collision step</td>
+        <td>$V_m = \sum_i f_i$ — summing distribution functions to recover voltage</td>
+      </tr>
+      <tr>
+        <td><code>linspace</code>, <code>clamp</code></td>
+        <td>B.5</td>
+        <td><code>cardiac_sim/ionic/lut.py</code></td>
+        <td>Lookup tables: precompute $m_\infty(V)$ on a fine grid, interpolate at runtime via <code>clamp</code> + indexing</td>
+      </tr>
+      <tr>
+        <td>Sparse COO tensors</td>
+        <td>B.7</td>
+        <td><code>cardiac_sim/simulation/classical/discretization_scheme/fdm.py</code></td>
+        <td>Stiffness matrix $K$ assembled as COO, implicit matrices $A = \chi C_m I - \tfrac{1}{2}\Delta t K$</td>
+      </tr>
+      <tr>
+        <td><code>torch.sparse.mm</code></td>
+        <td>B.7</td>
+        <td>All diffusion solvers</td>
+        <td>The sparse matrix-vector product $K \cdot V$ at every timestep</td>
+      </tr>
+      <tr>
+        <td>Device management</td>
+        <td>B.8</td>
+        <td><code>cardiac_sim/utils/backend.py</code></td>
+        <td>The <code>Backend</code> class auto-detects GPU/CPU and passes <code>device</code> to all components</td>
+      </tr>
+      <tr>
+        <td><code>torch.no_grad()</code></td>
+        <td>B.10</td>
+        <td>All solver loops</td>
+        <td>Disables autograd tape &mdash; the engine has no learnable parameters, so recording wastes memory</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Notice what is <em>missing</em> from the engine: <code>nn.Module</code>,
+    <code>nn.Linear</code>, <code>loss.backward()</code>, optimizers. Engine V5.4
+    solves the monodomain and bidomain equations with classical numerical methods
+    (finite differences, finite elements, Crank-Nicolson, LBM). Every coefficient
+    comes from the physics, not from training data. PyTorch is used as a numerical
+    computing library, not a machine-learning framework &mdash; and that is perfectly
+    fine. It is, in fact, the cleanest way to get GPU-accelerated sparse linear algebra
+    in Python.
+  </p>
+
+  <div class="insight insight-engine">
+    <strong>The <code>Backend</code> class.</strong> Every simulation in Engine V5.4
+    begins by instantiating <code>Backend(device='auto')</code>. This checks
+    <code>torch.cuda.is_available()</code> and stores a <code>torch.device</code>.
+    A helper function <code>ensure_tensor(x, device, dtype)</code> converts NumPy
+    arrays, Python lists, and existing tensors to the correct device and dtype in
+    a single call &mdash; this is the most-called utility in the engine. When you
+    see <code>.to(device)</code> in the source, you now know exactly what it does.
+  </div>
+
+  <div class="insight insight-engine">
+    <strong>The <code>LookupTable</code> class.</strong> The ionic solvers in
+    <code>cardiac_sim/ionic/lut.py</code> use <code>torch.linspace</code> to create
+    a voltage grid of 16,001 points from $-100$ to $+60$ mV, then precompute all
+    gate steady-states and time constants on that grid. At each timestep, a single
+    vectorized lookup (using <code>clamp</code> + integer indexing + linear interpolation)
+    retrieves all 18 parameters for every node &mdash; replacing 4.7 million
+    transcendental function evaluations per timestep with memory reads.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>B.13 &ensp; Where Machine Learning Meets Cardiac Modeling</h3>
+
+  <p>
+    The neural network in B.11 was a toy example, but the idea of combining machine
+    learning with physics-based simulation is an active and rapidly growing research
+    area. Three directions are particularly relevant to this textbook:
+  </p>
+
+  <p>
+    <strong>Physics-Informed Neural Networks (PINNs).</strong> Instead of training on
+    data alone, a PINN embeds the PDE itself into the loss function. For the monodomain
+    equation (eq. 7.1), the loss penalizes violations of
+    $\chi C_m \partial V_m / \partial t = \nabla \cdot (D \nabla V_m) - \chi I_{\text{ion}}$.
+    The network learns a solution $V_m(x, y, t)$ that approximately satisfies the PDE
+    without ever assembling a stiffness matrix. PINNs are mesh-free and handle irregular
+    geometries naturally, but they struggle with the sharp wavefronts and fast timescales
+    of cardiac action potentials.
+  </p>
+
+  <p>
+    <strong>Neural ODE surrogates.</strong> The most expensive part of a cardiac simulation
+    is the ionic model &mdash; eighteen coupled ODEs (TTP06) or forty-one (ORd), evaluated
+    at every node at every timestep. A neural ODE replaces this system with a learned
+    vector field $d\mathbf{s}/dt = f_\theta(\mathbf{s}, V)$ trained on trajectories from
+    the original model, yielding 10&ndash;50&times; speedups while preserving action-potential
+    morphology to within a few percent.
+  </p>
+
+  <p>
+    <strong>ML-based classification.</strong> Given simulation output (or clinical recordings),
+    machine learning can classify arrhythmia mechanisms, predict reentry vulnerability, or
+    identify optimal pacing sites. The simulation engine generates training data; the ML model
+    learns the map from tissue parameters to clinical outcomes.
+  </p>
+
+  <div class="insight insight-intuition">
+    <strong>When to use ML vs. when to solve the equations.</strong> Solve the equations
+    when you need quantitative accuracy for a specific case (drug safety, patient-specific
+    planning). Use ML when you need to explore a vast parameter space quickly (sensitivity
+    analysis, real-time tools) or when the forward model is too expensive to run thousands
+    of times (uncertainty quantification, Bayesian inference). The two approaches are
+    complementary: physics generates ground truth, ML learns to interpolate at a fraction
+    of the cost.
+  </div>
+
+  <div class="footnote" style="margin-top:3em;">
+    <p>For PyTorch tutorials, see <em>pytorch.org/tutorials</em>. For PINNs in cardiac EP,
+    see Sahli Costabal et al. (2020). For neural ODE surrogates, see Herrero Martin et al. (2022).</p>
+  </div>
+</div>
+
 
 </body>
 </html>

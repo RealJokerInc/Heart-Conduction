@@ -2,6 +2,119 @@
 
 All major edits to `bidomain_textbook.html`, newest first.
 
+## 2026-02-27 (session 10, continued — part 2)
+
+### Appendix B — B.7 rewrite + new B.9, expanded to 13 sections (B.1–B.13)
+Based on audit of Engine V5.4 PyTorch usage patterns against Appendix B coverage:
+- **B.7 "Sparse Matrices" rewritten**: Cleaner narrative structure, COO format explanation with coalescing worked example, sparse tensor inspection (`.indices()`, `.values()`, `.is_sparse`, `._nnz()`), numbered 5-operation catalogue (sparse×dense via `torch.sparse.mm`, scalar×sparse, sparse+sparse, sparse−sparse for implicit time-stepping, dense conversion), `speye` helper, 5-point Laplacian assembly, Engine V5.4 insight box
+- **B.9 "Advanced Operations for Scientific Computing" (NEW)**: Eight subsections bridging "PyTorch as NumPy replacement" to "PyTorch as simulation backend":
+  - `torch.where` with TTP06 α_h/β_h gating kinetics example (both-branches-evaluated warning)
+  - `torch.roll` with D2Q5 LBM streaming (5-line GPU streaming step)
+  - `torch.einsum` with FEM batched outer products (`'ei,ej->eij'`)
+  - `scatter_add_` with element-to-global FEM assembly + Gershgorin bounds
+  - In-place solver workspaces: simplified PCG class (`.copy_()`, `.add_(p, alpha=α)`, `.sub_()`, `.mul_().add_()`)
+  - NumPy interop: `.detach().cpu().numpy()` canonical chain
+  - `torch.meshgrid` with `indexing='ij'` (always-use-ij warning)
+  - `torch.fft` (fft/ifft/fft2/fftfreq) for spectral solvers
+- **Renumbered**: Old B.9 (Autograd) → B.10, B.10 (Neural Networks) → B.11, B.11 (Engine V5.4) → B.12, B.12 (ML) → B.13
+- **Cross-references updated**: Mapping table "B.1–B.10" → "B.1–B.11", B.9→B.10 in table, B.13 neural network ref B.10→B.11
+- **Chapter intro updated**: Added "and the intermediate patterns that bridge them to production simulation code"
+- Website and standalone rebuilt (appendix-b.html = 1,165 lines, standalone = 724 KB)
+
+### Navigation bug fixes (app.js + standalone)
+- Fixed chapter number extraction regex: `/(\d+|A)/` → `/(\d+|[A-Z])(?:\s|$)/` (supports all appendix letters)
+- Fixed section anchor regex: `/(\d+\.\d+|A\.\d+)/` → `/(\d+\.\d+|[A-Z]\.\d+)/` (supports B.x sections)
+- Added conditional rendering for empty shortNum (References entry no longer shows stray ".")
+- Applied same three fixes to standalone HTML's embedded JavaScript (rebuild_standalone.py only updates data, not JS)
+
+## 2026-02-27 (session 10, continued)
+
+### Appendix B — Introduction to PyTorch (v2 rewrite, 730 lines, B.1–B.12)
+Rewrote as ground-up tutorial ("Intro to PyTorch book" style) instead of Engine V5.4 feature tour:
+- **B.1 "Installation and First Tensor"**: import torch, scalar/vector/matrix/3D, .shape, .item()
+- **B.2 "Arithmetic"**: Scalar/vector/matrix ops, element-wise vs dot product vs matrix multiply (@)
+- **B.3 "Tensors and Shapes"**: Dimension table, reshaping (view/reshape), slicing, broadcasting rules
+- **B.4 "Data Types and Precision"**: float32 vs float64, why EP needs float64 (cancellation argument)
+- **B.5 "Common Operations Cheat Sheet"**: Creating tensors, reductions, clamp/where, stack/cat, in-place ops, math functions
+- **B.6 "Linear Algebra"**: linalg.solve, eig, norm, det, inv; worked Ax=b example; solve-vs-inv insight
+- **B.7 "Sparse Matrices"**: COO format, sparse_coo_tensor, 5-pt Laplacian, sparse.mm, speye, scalar-sparse
+- **B.8 "GPU Acceleration"**: torch.device, .to(device), write-once-run-anywhere, transfer minimization
+- **B.9 "Automatic Differentiation"**: Computation graph, requires_grad, backward, torch.no_grad()
+- **B.10 "Neural Networks"**: nn.Module, nn.Sequential, training loop, I_Na surrogate worked example
+- **B.11 "Connecting to Engine V5.4"**: Summary table mapping concepts → engine files. Backend + LUT boxes
+- **B.12 "ML Meets Cardiac Modeling"**: PINNs, neural ODE surrogates, ML classification (survey only)
+- Fixed build_website.py appendix slug and subsection anchor regexes for multi-letter appendices
+
+### Chapter 18 — Ω convention fix, physical grounding, χ fix
+- **Ω convention change**: Removed Δt from Ω^NR and Ω^R definitions; now rates consistent with eq 17.11. Update: f_i* = f_i + Δt(Ω^NR + Ω^R). Affected: eqs 18.3, 18.8, 18.11
+- **χ fix**: Substep 1 ODE now has χ on left side matching eq (7.1)
+- **Section 18.2 restructured**: Foregrounds Ω^NR/Ω^R decomposition (diffusion vs reaction)
+- **Physical motivation**: Extensive explanation of why Ω^NR = diffusion (flux relaxation → ∇·(D∇V_m)) and Ω^R = reaction (isotropic source injection → ionic currents)
+
+### Chapter 18.5 — Expanded boundary conditions (42 → 252 lines)
+- **18.5.1 "Full-Way Bounce-Back"**: Original content refined, D2Q9 opposite-pair table added
+- **18.5.2 "Half-Way Bounce-Back"**: Second-order accuracy, wall at cell face, eq (18.10b)
+- **18.5.3 "Identifying Boundary Nodes"**: Binary tissue mask, precomputed boundary links, pseudocode
+- **18.5.4 "Handling Irregular Tissue Geometries"**: Staircase adequacy for EP, interpolated bounce-back for sub-grid accuracy
+- **18.5.5 "Comparison with Classical BC Methods"**: LBM vs FDM vs FEM comparison table, Engine V5.4 box
+
+### Presentation — LBM_Monodomain_D2Q9.pptx
+- 8-slide D2Q9 summary (18.1–18.6 + summary), pure white background, MathJax-rendered equations
+- Created with pptxgenjs + mathjax-node
+
+---
+
+## 2026-02-27 (session 10)
+
+### Chapter 18 — Complete rewrite following Campos et al. structure
+
+**Structural overhaul**: Rewrote Chapter 18 from 282 lines to 721 lines, following the structure of the Campos et al. (2015) LBM-for-cardiac-electrophysiology paper while building on all notation and machinery established in Chapter 17.
+
+- **New 18.1 "The Monodomain Equation as a Target PDE"**: Restates eq 7.1 using established notation ($V_m$, $\mathbf{w}$, $\mathbf{D}$), introduces diffusion tensor decomposition (eq 18.1) with fiber direction, $D_l$, $D_t$
+- **New 18.2 "Operator Splitting: Reaction Then Diffusion"**: Full splitting workflow — ODE substep with Rush-Larsen (cross-ref Ch 8), then LBM diffusion substep. Source term $S$ (eq 18.2) properly motivated by splitting
+- **Revised 18.3 "BGK Collision with Source Term"**: Same collision equation (now eq 18.3) but better connected to Ch 17 quadrature ($f_i^{eq} = w_i V_m$ from eq 17.27)
+- **Expanded 18.4 "MRT for Anisotropic Tissue"**: Four sub-sections:
+  - Why BGK fails for anisotropy (recap from 17.5)
+  - **Tensor τ-D derivation** (eqs 18.4–18.6): $\tau_{\alpha\beta} = \frac{\Delta t}{2}\delta_{\alpha\beta} + \frac{3D_{\alpha\beta}\Delta t}{\Delta x^2}$
+  - Off-diagonal problem: two approaches (rotated basis vs modified equilibrium, eq 18.7)
+  - **Ghost-moment rates and Gram-Schmidt**: explains how ghost rows of M are constructed via Gram-Schmidt orthogonalization, why $s_3 = s_4 = 1.0$ is standard, Chapman-Enskog order analysis
+  - Full MRT collision with source (eq 18.8, boxed), relaxation matrix (eq 18.9)
+  - Worked example with $D_l = 0.001$, $D_t = 0.00025$, $\theta = 0$
+- **New 18.5 "Bounce-Back Boundary Conditions"**: Bounce-back rule (eq 18.10), no-flux interpretation, D2Q5 index pairings, corner node handling
+- **Revised 18.6 "Complete LBM-EP Algorithm"**: 6-stage boxed algorithm (eq 18.11, now includes bounce-back step), swap-streaming optimization discussion
+- **Revised 18.7 "Implementation"**: SoA memory layout, swap-streaming, sparse/indirect addressing, Engine V5.4 insight box preserved
+- **18.8 "LBM vs Classical Methods"**: Comparison table kept and enhanced
+
+**Equation registry**: 11 equations (18.1–18.11), all labels unique, all cross-references valid. No broken refs from Ch 19+.
+
+**Notation consistency**: All notation uses established conventions ($V_m$, $\mathbf{w}$, $\mathbf{D}$, $I_{\text{ion}}$, $\mathbf{e}_i$/$\mathbf{c}_i$ distinction from Ch 17).
+
+---
+
+## 2026-02-27 (session 9)
+
+### Chapter 17.4 — Complete "Quadrature First" rewrite
+
+**Pedagogical overhaul**: Replaced the old "three constraints → solve for weights" framing with "Quadrature First" — weights $w_i$ and velocities $\mathbf{c}_i$ come FROM Gauss-Hermite quadrature applied to the Gaussian, not from solving constraint equations.
+
+- **Removed eqs 17.18–17.20** (the three constraint equations). They were consequences of quadrature, not sources — removing them fixes the causal direction
+- **Renumbered all equations**: 17.21→17.18 through 17.44→17.41 (−3 shift to close the gap). Chapter now has eqs 17.1–17.41 + 17.7a
+- **New subsection 1: "From Integrals to Sums"** — recalls the three integrals from 17.1, introduces quadrature formula (eq 17.18): $\int p(\mathbf{c}) G(\mathbf{c})\,d\mathbf{c} \approx \sum w_i p(\mathbf{c}_i)$. Explains $p(\mathbf{c})$ as a placeholder for whatever you're integrating
+- **New subsection 2: "Lattice Velocities vs. Physical Velocities"** — distinguishes $\mathbf{e}_i$ (integer lattice vectors) from $\mathbf{c}_i = \mathbf{e}_i \cdot \Delta x/\Delta t$ (physical velocities with units)
+- **New insight box: "How Can Five Points Replace an Entire Plane?"** — Gaussian decay means most of velocity space contributes negligibly
+- **New subsection 3: "The Discrete Equilibrium"** — eq 17.27 ($f_i^{\text{eq}} = w_i\phi$) for diffusion, with physical explanation of why each direction carries fraction $w_i$
+- **New subsection 4: "Gauss-Hermite Quadrature"** — formal name for the technique, "Nodes and Weights Are a Married Pair" insight box, diffusion (2nd-order) vs fluid flow (4th-order) exactness
+- **Replaced "Closing the Loop"** with "The Navier-Stokes Equilibrium" (eq 17.28 only)
+- **Updated Lattice Requirements** cross-references to new equation numbers
+- Subsections 5–10 (Naming Convention through Speed of Sound) unchanged in content, only equation numbers shifted
+
+### Website and formatting fixes
+- Fixed dark mode contrast for inline `background:#f8f8f8` elements
+- Converted three discretization choices (17.3) from inline `<strong>1.</strong>` to proper `<ol><li>` list
+- Rebuilt standalone website (629 KB) and both PDFs (6.7 MB + 2.8 MB)
+
+---
+
 ## 2026-02-24 (session 8)
 
 ### Chapter 17.3 and 17.4 restructuring

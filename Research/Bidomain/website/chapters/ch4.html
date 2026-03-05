@@ -1,0 +1,880 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 4</div>
+  <h2 class="chapter-title">Intracellular Calcium: The Master Regulator</h2>
+  <div class="chapter-intro">
+    Calcium is the singular ion that links electrical excitation to mechanical contraction. But this
+    link is not simple: it involves nanoscale signaling domains, stochastic release events, multi-protein
+    regulatory complexes, and feedback loops that span timescales from microseconds to minutes. This
+    chapter provides a modern, in-depth account of cardiac calcium handling — from the architecture of
+    the dyadic cleft to the pathological remodeling seen in heart failure.
+  </div>
+
+  <h3>4.1 &ensp; The Dyadic Cleft — Where Electrical Meets Mechanical</h3>
+
+  <p>
+    Excitation-contraction (EC) coupling occurs at <em>dyads</em> — nanoscopic junctions formed where
+    transverse tubules (T-tubules) invaginate to within 10–20 nm of the junctional sarcoplasmic reticulum
+    (jSR). This tiny gap — the <em>dyadic cleft</em> — is the reaction chamber where the electrical signal
+    is transduced into a calcium signal. During an action potential, calcium concentration within the cleft
+    surges from a resting $\sim$100 nM to $\sim$10 $\mu$M, a 100-fold increase confined to a space smaller
+    than a virus particle.
+  </p>
+
+  <p>
+    The cleft is held together by <strong>junctophilin-2 (JPH2)</strong>, a structural protein that
+    physically anchors the T-tubule membrane to the jSR membrane. JPH2 maintains the critical 10–20 nm
+    separation required for efficient local control coupling. As we will see in Section 4.7, the loss
+    of JPH2 in heart failure is one of the earliest and most consequential structural failures.
+  </p>
+
+  <h4>Calcium Release Units and Nanoscale Organization</h4>
+
+  <p>
+    The functional unit of calcium release is the <em>calcium release unit</em> (CRU), also called a
+    <em>couplon</em>. A CRU consists of a cluster of type-2 ryanodine receptors (RyR2) on the jSR
+    membrane, positioned directly beneath a group of L-type calcium channels (Ca$_\text{V}$1.2) on the
+    T-tubule membrane. A typical human ventricular myocyte contains approximately 10,000–20,000 CRUs.
+  </p>
+
+  <p>
+    Recent super-resolution imaging — using dSTORM (direct stochastic optical reconstruction microscopy),
+    DNA-PAINT, and most recently MINFLUX microscopy — has revealed the nanoscale architecture of these
+    clusters in unprecedented detail. Key findings include:
+  </p>
+
+  <p>
+    <strong>RyR2 cluster heterogeneity:</strong> A typical CRU contains 4–20 RyR2 tetramers (16–80
+    individual subunits), but cluster sizes vary widely. RyR2 channels function cohesively as a CRU
+    only when their nearest-neighbor distance (NND) is less than $\sim$100–150 nm. Beyond this threshold,
+    coupling between channels is lost and the release event becomes unreliable.
+  </p>
+
+  <p>
+    <strong>Sparse channel activation:</strong> Despite clusters containing dozens of channels, only
+    2–4 RyR2 channels typically open simultaneously during a single elementary release event under
+    basal conditions. Beta-adrenergic stimulation increases this to 5–8 channels, providing a mechanism
+    for graded calcium release amplification.
+  </p>
+
+  <p>
+    <strong>L-type channel organization:</strong> Super-resolution studies using STED and DNA-PAINT
+    (2024) revealed that Ca$_\text{V}$1.2 and Ca$_\text{V}$1.3 channels form loose clusters of
+    $\sim$9 molecules within $\sim$120 nm domains, arranged in an irregular pattern with significant
+    intermolecular spacing — not densely packed. This loose arrangement reflects the functional need
+    for positioning (close to RyR2) rather than crowding.
+  </p>
+
+  <!-- ─── Dyadic Cleft Architecture Diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 500 310" xmlns="http://www.w3.org/2000/svg" style="max-width:450px;">
+      <!-- T-tubule membrane -->
+      <rect x="40" y="20" width="420" height="12" rx="2" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
+      <text x="250" y="16" font-size="10" fill="#1565c0" font-family="serif" text-anchor="middle" font-weight="600">T-tubule membrane</text>
+
+      <!-- L-type channels -->
+      <rect x="100" y="26" width="18" height="30" rx="3" fill="#e94560" stroke="#c62828" stroke-width="1"/>
+      <rect x="160" y="26" width="18" height="30" rx="3" fill="#e94560" stroke="#c62828" stroke-width="1"/>
+      <rect x="230" y="26" width="18" height="30" rx="3" fill="#e94560" stroke="#c62828" stroke-width="1"/>
+      <rect x="310" y="26" width="18" height="30" rx="3" fill="#e94560" stroke="#c62828" stroke-width="1"/>
+      <rect x="370" y="26" width="18" height="30" rx="3" fill="#e94560" stroke="#c62828" stroke-width="1"/>
+      <text x="470" y="44" font-size="8" fill="#c62828" font-family="serif">Ca<tspan font-size="6" dy="-3">2+</tspan><tspan dy="3"> channels</tspan></text>
+
+      <!-- Dyadic cleft space -->
+      <rect x="70" y="56" width="360" height="35" rx="0" fill="#fff8e1" opacity="0.6"/>
+      <text x="250" y="78" font-size="9" fill="#8a6d00" font-family="serif" text-anchor="middle" font-style="italic">Dyadic cleft (~15 nm) — [Ca²⁺] peaks at ~10 µM</text>
+
+      <!-- Ca2+ arrows from L-type into cleft -->
+      <line x1="109" y1="56" x2="109" y2="70" stroke="#e94560" stroke-width="1.2" marker-end="url(#arrowRed4)"/>
+      <line x1="169" y1="56" x2="169" y2="70" stroke="#e94560" stroke-width="1.2" marker-end="url(#arrowRed4)"/>
+      <line x1="239" y1="56" x2="239" y2="70" stroke="#e94560" stroke-width="1.2" marker-end="url(#arrowRed4)"/>
+
+      <!-- jSR membrane -->
+      <rect x="40" y="91" width="420" height="12" rx="2" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.2"/>
+      <text x="250" y="88" font-size="10" fill="#2e7d32" font-family="serif" text-anchor="middle" font-weight="600">jSR membrane</text>
+
+      <!-- RyR2 cluster -->
+      <rect x="85" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="115" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="145" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="175" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="215" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="245" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="285" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="315" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <rect x="355" y="91" width="22" height="24" rx="3" fill="#2d6a4f" stroke="#1b5e20" stroke-width="1"/>
+      <text x="470" y="108" font-size="8" fill="#1b5e20" font-family="serif">RyR2 cluster</text>
+
+      <!-- CICR arrows from RyR2 downward -->
+      <line x1="126" y1="115" x2="126" y2="140" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arrowGreen4)"/>
+      <line x1="186" y1="115" x2="186" y2="140" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arrowGreen4)"/>
+      <line x1="256" y1="115" x2="256" y2="140" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arrowGreen4)"/>
+      <line x1="326" y1="115" x2="326" y2="140" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arrowGreen4)"/>
+      <text x="395" y="132" font-size="8" fill="#2d6a4f" font-family="serif" font-weight="600">CICR</text>
+
+      <!-- SR lumen -->
+      <rect x="60" y="103" width="380" height="50" rx="6" fill="#e8f5e9" opacity="0.3" stroke="#2e7d32" stroke-width="0.5" stroke-dasharray="3,2"/>
+
+      <!-- CASQ2 polymers inside SR -->
+      <circle cx="120" cy="135" r="5" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="135" cy="130" r="5" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="150" cy="138" r="4" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="220" cy="132" r="5" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="235" cy="140" r="4" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="300" cy="135" r="5" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="315" cy="130" r="4" fill="#66bb6a" opacity="0.7"/>
+      <circle cx="370" cy="136" r="5" fill="#66bb6a" opacity="0.7"/>
+      <text x="408" y="148" font-size="7" fill="#2e7d32" font-family="serif">CASQ2</text>
+
+      <!-- Cytoplasm label -->
+      <text x="250" y="175" font-size="10" fill="#0f3460" font-family="serif" text-anchor="middle" font-weight="600">Cytoplasm</text>
+
+      <!-- JPH2 bridges -->
+      <line x1="75" y1="32" x2="75" y2="91" stroke="#5a6175" stroke-width="1.5" stroke-dasharray="2,2"/>
+      <line x1="400" y1="32" x2="400" y2="91" stroke="#5a6175" stroke-width="1.5" stroke-dasharray="2,2"/>
+      <text x="56" y="65" font-size="7" fill="#5a6175" font-family="serif" transform="rotate(-90,56,65)">JPH2</text>
+      <text x="418" y="65" font-size="7" fill="#5a6175" font-family="serif" transform="rotate(-90,418,65)">JPH2</text>
+
+      <!-- Triadin/Junctin labels -->
+      <text x="96" y="101" font-size="6" fill="white" font-family="serif">T</text>
+      <text x="146" y="101" font-size="6" fill="white" font-family="serif">J</text>
+      <text x="216" y="101" font-size="6" fill="white" font-family="serif">T</text>
+      <text x="286" y="101" font-size="6" fill="white" font-family="serif">J</text>
+
+      <!-- SERCA pumps and NCX lower -->
+      <rect x="80" y="195" width="80" height="30" rx="5" fill="#fff3e0" stroke="#b36b00" stroke-width="1.2"/>
+      <text x="120" y="214" font-size="9" fill="#b36b00" font-family="serif" text-anchor="middle" font-weight="600">SERCA2a</text>
+
+      <rect x="210" y="195" width="80" height="30" rx="5" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="1.2"/>
+      <text x="250" y="214" font-size="9" fill="#6a1b9a" font-family="serif" text-anchor="middle" font-weight="600">NCX</text>
+
+      <rect x="340" y="195" width="80" height="30" rx="5" fill="#fce4ec" stroke="#c62828" stroke-width="1.2"/>
+      <text x="380" y="209" font-size="8" fill="#c62828" font-family="serif" text-anchor="middle" font-weight="600">Na/K</text>
+      <text x="380" y="219" font-size="8" fill="#c62828" font-family="serif" text-anchor="middle" font-weight="600">ATPase</text>
+
+      <!-- Arrows: SERCA uptake -->
+      <path d="M 120,195 L 120,170 Q 120,155 140,155 L 200,155 Q 220,155 220,140" fill="none" stroke="#b36b00" stroke-width="1.2" marker-end="url(#arrowOrange4)"/>
+      <text x="170" y="150" font-size="7" fill="#b36b00" font-family="serif" text-anchor="middle">J<tspan font-size="5" dy="1">up</tspan></text>
+
+      <!-- NCX: Ca out, Na in -->
+      <path d="M 250,195 L 250,180" fill="none" stroke="#6a1b9a" stroke-width="1.2" marker-end="url(#arrowPurple4)"/>
+      <text x="265" y="186" font-size="7" fill="#6a1b9a" font-family="serif">3Na⁺↔Ca²⁺</text>
+
+      <!-- Buffers -->
+      <text x="80" y="265" font-size="9" fill="#5a6175" font-family="serif" font-weight="600">Cytoplasmic buffers:</text>
+      <text x="80" y="278" font-size="8" fill="#5a6175" font-family="serif">Troponin C (~35%) · Calmodulin (~12%) · SR membranes (~15%) · Other (~37%)</text>
+      <text x="80" y="293" font-size="8" fill="#e94560" font-family="serif" font-style="italic">Only ~1–2% of total Ca²⁺ is free — the rest is bound to buffers</text>
+
+      <!-- Arrow defs -->
+      <defs>
+        <marker id="arrowRed4" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#e94560"/>
+        </marker>
+        <marker id="arrowGreen4" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#2d6a4f"/>
+        </marker>
+        <marker id="arrowOrange4" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#b36b00"/>
+        </marker>
+        <marker id="arrowPurple4" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#6a1b9a"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 4.1.</span> Architecture of the dyadic cleft. L-type Ca$^{2+}$ channels
+      on the T-tubule membrane face RyR2 clusters on the jSR, separated by $\sim$15 nm. Junctophilin-2 (JPH2)
+      anchors the two membranes. Triadin (T) and junctin (J) link RyR2 to luminal CASQ2 polymers. SERCA2a
+      pumps Ca$^{2+}$ back into the SR; NCX extrudes Ca$^{2+}$ across the sarcolemma. Only 1–2% of
+      cytoplasmic Ca$^{2+}$ is free.
+    </div>
+  </div>
+
+  <h3>4.2 &ensp; Calcium-Induced Calcium Release — Local Control Theory</h3>
+
+  <h4>Calcium Sparks: The Elementary Release Event</h4>
+
+  <p>
+    A <em>calcium spark</em> is the optical signature of the concerted opening of a small group (typically
+    2–10) of RyR2 channels within a single CRU. Discovered by Cheng, Lederer, and Bhatt in 1993 using
+    confocal line-scanning and the fluorescent indicator fluo-3, sparks are now understood as the
+    fundamental building blocks of the whole-cell calcium transient.
+  </p>
+
+  <p>
+    Each spark has well-defined characteristics: a peak amplitude of 0.5–2 $\mu$M above baseline, a
+    spatial half-width of 1–3 $\mu$M, a rise time of 2–5 ms, and a full-width-at-half-maximum (FWHM)
+    duration of 15–50 ms. During a normal heartbeat, the action potential triggers $\sim$10,000 sparks
+    nearly simultaneously across the myocyte; their spatial and temporal summation produces the global
+    calcium transient that drives contraction.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of CRUs as thousands of tiny fireworks launchers spread throughout the cell. When the
+      action potential arrives, it does not light them all at once with a single fuse. Instead, each
+      launcher has its own independent trigger — an L-type channel — that fires with a certain probability
+      ($\sim$30–40% per beat). The global calcium transient is the <em>sum</em> of thousands of probabilistic,
+      independent sparks. This is why calcium release is <em>graded</em>: more L-type current recruits
+      more sparks, producing a larger transient — without the all-or-nothing behavior you might expect
+      from positive feedback.
+    </p>
+  </div>
+
+  <!-- ─── Spark-to-wave transition diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 560 200" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Normal: isolated sparks -->
+      <text x="130" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#2d6a4f" font-weight="700">Normal: Isolated Sparks</text>
+      <!-- CRU dots with sparks -->
+      <circle cx="30" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <circle cx="70" cy="80" r="6" fill="#2d6a4f" stroke="#2d6a4f" stroke-width="1.5"/>
+      <circle cx="70" cy="50" r="12" fill="#2d6a4f" opacity="0.15"/>
+      <circle cx="110" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <circle cx="150" cy="80" r="6" fill="#2d6a4f" stroke="#2d6a4f" stroke-width="1.5"/>
+      <circle cx="150" cy="50" r="12" fill="#2d6a4f" opacity="0.15"/>
+      <circle cx="190" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <circle cx="230" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <!-- Labels -->
+      <text x="130" y="110" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#5a6175">sparks confined to single CRUs</text>
+      <text x="130" y="124" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f">→ graded release, no propagation</text>
+
+      <!-- Arrow between panels -->
+      <text x="280" y="70" text-anchor="middle" font-family="EB Garamond,serif" font-size="22" fill="#e94560">→</text>
+      <text x="280" y="90" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">SR overload</text>
+      <text x="280" y="100" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">or leaky RyR2</text>
+
+      <!-- Pathological: calcium wave -->
+      <text x="430" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#e94560" font-weight="700">Pathological: Calcium Wave</text>
+      <circle cx="330" cy="80" r="6" fill="#e94560" stroke="#e94560" stroke-width="1.5"/>
+      <circle cx="330" cy="50" r="16" fill="#e94560" opacity="0.12"/>
+      <circle cx="370" cy="80" r="6" fill="#e94560" stroke="#e94560" stroke-width="1.5"/>
+      <circle cx="370" cy="50" r="16" fill="#e94560" opacity="0.12"/>
+      <circle cx="410" cy="80" r="6" fill="#e94560" stroke="#e94560" stroke-width="1.5"/>
+      <circle cx="410" cy="50" r="16" fill="#e94560" opacity="0.12"/>
+      <circle cx="450" cy="80" r="6" fill="#e94560" stroke="#e94560" stroke-width="1.5" opacity="0.7"/>
+      <circle cx="450" cy="55" r="12" fill="#e94560" opacity="0.08"/>
+      <circle cx="490" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <circle cx="530" cy="80" r="6" fill="#ccc" stroke="#999" stroke-width="1"/>
+      <!-- Wave arrow -->
+      <path d="M 330,68 Q 400,35 490,68" fill="none" stroke="#e94560" stroke-width="1.8" marker-end="url(#arrCaWave)"/>
+      <text x="410" y="38" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560" font-weight="600">propagating wave</text>
+      <text x="430" y="110" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#5a6175">sparks recruit neighbors</text>
+      <text x="430" y="124" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560">→ DADs → arrhythmia</text>
+
+      <!-- NCX inward current annotation -->
+      <rect x="330" y="140" width="200" height="40" rx="5" fill="#e94560" opacity="0.08" stroke="#e94560" stroke-width="0.8"/>
+      <text x="430" y="156" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#e94560">Elevated [Ca²⁺]<tspan font-size="7" dy="1">i</tspan><tspan dy="-1"> activates NCX</tspan></text>
+      <text x="430" y="170" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#e94560">→ inward I<tspan font-size="7" dy="1">NCX</tspan><tspan dy="-1"> → membrane depolarization</tspan></text>
+
+      <defs>
+        <marker id="arrCaWave" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M 0,0 L 8,3 L 0,6 Z" fill="#e94560"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 4.2.</span> The spark-to-wave transition. <em>Left:</em> Under normal conditions, individual sparks (green) are spatially isolated — positive feedback is confined within each CRU. <em>Right:</em> With SR overload or leaky RyR2, sparks recruit neighboring CRUs, generating a propagating calcium wave that activates NCX and triggers DADs.</div>
+  </div>
+
+  <h4>Local Control vs. Common Pool</h4>
+
+  <p>
+    The <em>local control</em> theory, established in the 1990s and continuously refined through 2025,
+    resolves a paradox that troubled the field for decades: how can CICR be both <em>high-gain</em>
+    (a tiny calcium trigger from L-type channels produces a large SR release) and <em>graded</em>
+    (release is proportional to trigger size, not all-or-nothing)?
+  </p>
+
+  <p>
+    The answer is spatial isolation. Each RyR2 cluster senses <em>local</em> calcium concentration
+    within its dyadic cleft ($\sim$10 $\mu$M during activation), not the global cytosolic concentration
+    ($\sim$1 $\mu$M). Positive feedback — calcium from one RyR2 opening its neighbors — is confined
+    within the CRU because the cleft's tiny volume ($\sim$10$^{-18}$ L) means even picoampere currents
+    produce micromolar concentrations locally, while rapid diffusion dilutes the signal before it reaches
+    neighboring CRUs $\sim$2 $\mu$m away.
+  </p>
+
+  <p>
+    This contrasts with the older <em>common pool</em> model, which assumed a single well-mixed cytoplasmic
+    calcium compartment. Common pool models predict all-or-nothing release — once any RyR2 opens, the
+    resulting calcium elevation should trigger all other RyR2s. Experimentally, this is not what happens:
+    sparks occur at discrete locations without propagating, and the total release scales smoothly with
+    L-type current magnitude. Local control explains both observations.
+  </p>
+
+  <h4>SR Load: The Central Regulator of Release</h4>
+
+  <p>
+    The SR calcium content ($[\text{Ca}^{2+}]_{\text{SR}}$, typically 1–2 mM total, of which only
+    $\sim$20–50 $\mu$M is free — the rest bound to calsequestrin) is the single most powerful determinant
+    of release properties. Spark frequency increases <em>exponentially</em> with SR load: doubling the
+    load can increase spontaneous release 5–10-fold. Spark amplitude increases more modestly, while the
+    probability that a given L-type channel opening will trigger a spark (the <em>coupling fidelity</em>)
+    rises steeply with load.
+  </p>
+
+  <p>
+    This load-dependence creates an inherent negative feedback: release depletes the store, which reduces
+    the probability of further release. In healthy cells, this feedback stabilizes the system. In disease,
+    when SR load is chronically elevated or RyR2 sensitivity is pathologically increased, the feedback
+    can be overwhelmed — sparks merge into waves, and arrhythmias follow.
+  </p>
+
+  <h4>The Spark-to-Wave Transition</h4>
+
+  <p>
+    Under pathological conditions — elevated SR load, increased diastolic calcium, enhanced RyR2
+    sensitivity — isolated sparks can recruit their neighbors, generating <em>calcium waves</em> that
+    propagate through the myocyte at $\sim$100 $\mu$m/s. The wave front advances by saltatory
+    conduction: a spark at one CRU raises local calcium enough to trigger sparks at neighboring CRUs
+    $\sim$2 $\mu$m away. The critical radius for wave propagation is $\sim$2.7 $\mu$m — below this,
+    the calcium elevation dissipates before reaching the next CRU.
+  </p>
+
+  <p>
+    Calcium waves are the primary trigger for <em>delayed afterdepolarizations</em> (DADs). As the wave
+    sweeps through the cell, the elevated cytoplasmic calcium activates the sodium-calcium exchanger
+    (NCX) in forward mode, generating a net inward current that depolarizes the membrane. If this
+    depolarization reaches threshold during diastole, a triggered action potential fires — the
+    cellular mechanism behind many clinical arrhythmias.
+  </p>
+
+  <h3>4.3 &ensp; The Ryanodine Receptor — Gatekeeper of the SR</h3>
+
+  <p>
+    RyR2 is the largest known ion channel ($\sim$2.2 MDa as a homotetramer) and the primary gate
+    controlling calcium release from the SR. Its regulation involves a remarkable convergence of
+    signals: cytoplasmic calcium (activation), luminal calcium (load sensing), phosphorylation by
+    multiple kinases, oxidative modifications, and protein–protein interactions.
+  </p>
+
+  <h4>Phosphorylation by PKA and CaMKII</h4>
+
+  <p>
+    Two kinases dominate RyR2 regulation, each targeting a distinct serine residue with different
+    physiological and pathological consequences:
+  </p>
+
+  <p>
+    <strong>PKA at Serine 2808:</strong> During beta-adrenergic stimulation (exercise, stress), PKA
+    phosphorylates RyR2 at S2808, increasing the channel's sensitivity to calcium activation. The
+    channel opens more frequently and requires less trigger calcium. This is the acute "fight-or-flight"
+    enhancement of calcium release. Phosphatase 1 (PP1) rapidly reverses the phosphorylation when
+    adrenergic tone subsides.
+  </p>
+
+  <p>
+    <strong>CaMKII at Serine 2814:</strong> CaMKII, activated by calcium/calmodulin, phosphorylates
+    RyR2 at S2814 with more potent effects on spark frequency than PKA. Critically, CaMKII also
+    increases the channel's sensitivity to <em>luminal</em> calcium, amplifying the load-dependent
+    release mechanism. This creates a positive feedback loop: more calcium → more CaMKII activation →
+    more RyR2 phosphorylation → more calcium release.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      Recent work (2023–2025) has established that CaMKII phosphorylation at S2814 — not PKA
+      phosphorylation at S2808 — is the primary driver of pro-arrhythmic calcium leak in chronic
+      heart failure. A 2025 study in <em>Nature Cardiovascular Research</em> found an unexpected
+      twist: preventing RyR2 phosphorylation reduced calcium leak but paradoxically reactivated the
+      sodium current $I_{\text{Na}}$, suggesting a previously unknown crosstalk between RyR2 status
+      and sarcolemmal channel regulation. This has implications for anti-arrhythmic drug design.
+    </p>
+  </div>
+
+  <h4>Luminal Calcium Sensing: The CASQ2–Triadin–Junctin Complex</h4>
+
+  <p>
+    RyR2 possesses an intrinsic ability to sense the calcium concentration <em>inside</em> the SR,
+    independent of cytoplasmic calcium. This luminal sensing is mediated by a multi-protein complex
+    anchored to the SR luminal face of RyR2:
+  </p>
+
+  <p>
+    <strong>Calsequestrin 2 (CASQ2)</strong> is the primary SR calcium storage protein, binding
+    $\sim$40–50 calcium ions per molecule across a broad affinity range ($K_d \approx$ 0.1–10 mM).
+    At low luminal $[\text{Ca}^{2+}]$ ($\lt$1 mM), CASQ2 exists as a monomer and directly inhibits
+    RyR2 via triadin and junctin — a molecular "brake" that prevents release from a depleted store.
+    As luminal calcium rises through intermediate concentrations (3–5 mM), CASQ2 undergoes progressive
+    oligomerization: monomer → dimer → polymer. The polymeric form dissociates from the
+    triadin–junctin bridge, <em>relieving</em> RyR2 inhibition and permitting calcium release.
+  </p>
+
+  <p>
+    <strong>Triadin</strong> (primarily the 95 kDa junctional isoform) and <strong>junctin</strong>
+    are integral SR membrane proteins that serve as molecular scaffolds linking CASQ2 to RyR2. Their
+    ablation causes complete loss of functional CRUs, severe arrhythmias, and cardiomyopathy —
+    underscoring their essential structural role. Mutations in triadin and junctin are now recognized
+    causes of catecholaminergic polymorphic ventricular tachycardia (CPVT).
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      The CASQ2 sensing mechanism works like a pressure gauge. When the SR "tank" is nearly empty
+      (low luminal calcium), CASQ2 monomers bind to the RyR2 "valve" and hold it shut — preventing
+      futile release from a depleted store. As the tank fills (SERCA pumps calcium back in), CASQ2
+      polymers form and detach from the valve, allowing it to open on the next trigger. This
+      self-regulating mechanism ensures that release magnitude tracks store content — a form of
+      automatic gain control.
+    </p>
+  </div>
+
+  <h4>The "Leaky RyR" Hypothesis and Heart Failure</h4>
+
+  <p>
+    Andrew Marks and colleagues demonstrated that RyR2 dysfunction is central to heart failure
+    pathophysiology through a mechanism now termed the <em>leaky RyR hypothesis</em>. In failing
+    hearts, chronic neurohormonal activation leads to persistent hyperphosphorylation of RyR2 at
+    both S2808 (PKA) and S2814 (CaMKII). This, combined with oxidative modification
+    (S-nitrosylation, sulfhydryl oxidation), increases the channel's diastolic open probability —
+    creating a sustained <em>calcium leak</em> from the SR even when the cell should be at rest.
+  </p>
+
+  <p>
+    The consequences cascade: elevated diastolic $[\text{Ca}^{2+}]_i$ ($\sim$200–300 nM vs. normal
+    50–100 nM) impairs relaxation, activates calcium-dependent proteases (calpains), and drives
+    maladaptive hypertrophic signaling via calcineurin/NFAT. Simultaneously, the increased forward-mode
+    NCX activity needed to extrude the leaked calcium brings excess sodium into the cell, raising
+    $[\text{Na}^+]_i$ and further compromising SERCA efficiency. The leaked SR calcium is also
+    unavailable for systolic release, weakening contraction.
+  </p>
+
+  <h4>Store-Overload-Induced Calcium Release (SOICR)</h4>
+
+  <p>
+    When SR calcium load exceeds a critical threshold ($[\text{Ca}^{2+}]_{\text{SR}} \gt$ $\sim$1.5 mM
+    free), spontaneous calcium release occurs without any electrical trigger — a phenomenon called
+    SOICR. At such high loads, CASQ2 inhibition is completely relieved, and the tiny amount of calcium
+    that inevitably leaks through any channel is amplified by CICR into full-scale spontaneous waves.
+  </p>
+
+  <p>
+    SOICR is the cellular mechanism behind digitalis toxicity (Na/K-ATPase inhibition → sodium overload →
+    reverse NCX → calcium overload → SOICR → arrhythmia), and it is a primary trigger for CPVT — a
+    genetic arrhythmia syndrome caused by RyR2 or CASQ2 mutations that lower the load threshold for
+    spontaneous release. Carvedilol, a nonselective beta-blocker, uniquely suppresses SOICR by directly
+    reducing RyR2 open duration, independent of its beta-blocking properties — making it particularly
+    effective for CPVT and heart failure arrhythmias.
+  </p>
+
+  <h3>4.4 &ensp; SERCA2a and Phospholamban — The Pump and Its Brake</h3>
+
+  <p>
+    The sarco/endoplasmic reticulum calcium-ATPase 2a (SERCA2a) is the workhorse of diastolic calcium
+    removal, responsible for 70–90% of cytoplasmic calcium clearance in human ventricular myocytes.
+    Understanding its regulation is essential for understanding both normal relaxation and the diastolic
+    dysfunction that characterizes heart failure.
+  </p>
+
+  <h4>SERCA2a Kinetics</h4>
+
+  <p>
+    SERCA2a transports 2 Ca$^{2+}$ ions per ATP hydrolyzed, with a $K_m$ of $\sim$0.5–1 $\mu$M for
+    calcium — meaning it operates at roughly half-maximal velocity at resting diastolic $[\text{Ca}^{2+}]$.
+    The pump consumes an estimated 30–40% of the myocyte's total ATP budget during active beating — a
+    staggering metabolic cost that underscores calcium cycling's importance. A typical human ventricular
+    myocyte contains $\sim$1,000–2,000 SERCA2a molecules per unit SR surface.
+  </p>
+
+  <!-- ─── SERCA/PLB pump-brake diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 560 190" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Left panel: PLB inhibited (baseline) -->
+      <text x="140" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#b36b00" font-weight="700">Baseline: PLB Inhibits SERCA</text>
+      <!-- SR membrane -->
+      <rect x="30" y="80" width="220" height="8" rx="2" fill="#fff3e0" stroke="#b36b00" stroke-width="1"/>
+      <text x="140" y="107" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#b36b00">SR membrane</text>
+      <!-- SERCA pump (circle embedded in membrane) -->
+      <circle cx="120" cy="84" r="22" fill="#2d6a4f" opacity="0.2" stroke="#2d6a4f" stroke-width="1.5"/>
+      <text x="120" y="81" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#2d6a4f" font-weight="700">SERCA</text>
+      <text x="120" y="91" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#2d6a4f">slow</text>
+      <!-- PLB bound (red X on pump) -->
+      <circle cx="150" cy="65" r="12" fill="#e94560" opacity="0.2" stroke="#e94560" stroke-width="1.5"/>
+      <text x="150" y="69" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#e94560" font-weight="700">PLB</text>
+      <!-- Ca arrows (slow, thin) -->
+      <path d="M 120,55 L 120,30" fill="none" stroke="#5a6175" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arrGraySerca)"/>
+      <text x="105" y="28" font-family="Source Code Pro,monospace" font-size="7" fill="#5a6175">Ca²⁺ ↓ slow</text>
+      <!-- Cytoplasm label -->
+      <text x="140" y="130" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Cytoplasm</text>
+      <text x="140" y="45" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">SR lumen</text>
+      <!-- Km annotation -->
+      <text x="140" y="150" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560">K<tspan font-size="6" dy="1">m</tspan><tspan dy="-1"> ≈ 1.5 µM (low affinity)</tspan></text>
+
+      <!-- Arrow between panels -->
+      <text x="280" y="70" text-anchor="middle" font-family="EB Garamond,serif" font-size="20" fill="#2d6a4f">→</text>
+      <text x="280" y="88" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#2d6a4f">PKA / CaMKII</text>
+      <text x="280" y="98" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#2d6a4f">phosphorylation</text>
+
+      <!-- Right panel: PLB released (β-adrenergic) -->
+      <text x="430" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f" font-weight="700">β-Adrenergic: PLB Released</text>
+      <rect x="320" y="80" width="220" height="8" rx="2" fill="#fff3e0" stroke="#b36b00" stroke-width="1"/>
+      <text x="430" y="107" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#b36b00">SR membrane</text>
+      <!-- SERCA pump (bright, active) -->
+      <circle cx="410" cy="84" r="22" fill="#2d6a4f" opacity="0.5" stroke="#2d6a4f" stroke-width="2"/>
+      <text x="410" y="81" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="white" font-weight="700">SERCA</text>
+      <text x="410" y="91" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white">FAST</text>
+      <!-- PLB dissociated (moved away) -->
+      <circle cx="480" cy="65" r="10" fill="#5a6175" opacity="0.15" stroke="#5a6175" stroke-width="1" stroke-dasharray="2,2"/>
+      <text x="480" y="68" text-anchor="middle" font-family="EB Garamond,serif" font-size="7" fill="#5a6175">PLB-P</text>
+      <!-- Ca arrows (fast, thick) -->
+      <path d="M 410,55 L 410,30" fill="none" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#arrGreenSerca)"/>
+      <text x="395" y="28" font-family="Source Code Pro,monospace" font-size="7" fill="#2d6a4f" font-weight="700">Ca²⁺ ↓ FAST</text>
+      <text x="430" y="130" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Cytoplasm</text>
+      <text x="430" y="45" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">SR lumen</text>
+      <text x="430" y="150" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f">K<tspan font-size="6" dy="1">m</tspan><tspan dy="-1"> ≈ 0.5 µM (high affinity)</tspan></text>
+
+      <defs>
+        <marker id="arrGraySerca" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <path d="M 0,0 L 6,2.5 L 0,5 Z" fill="#5a6175"/>
+        </marker>
+        <marker id="arrGreenSerca" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#2d6a4f"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 4.3.</span> The SERCA2a/phospholamban pump-brake system. <em>Left:</em> At baseline, PLB inhibits SERCA2a by reducing its calcium affinity (high $K_m$), resulting in slow calcium reuptake. <em>Right:</em> After PKA phosphorylation (β-adrenergic stimulation), PLB dissociates, restoring SERCA2a's full affinity and dramatically accelerating calcium reuptake — the molecular basis of lusitropy.</div>
+  </div>
+
+  <h4>Phospholamban: The Molecular Brake</h4>
+
+  <p>
+    Phospholamban (PLB) is a 52-amino-acid transmembrane protein that constitutively <em>inhibits</em>
+    SERCA2a in its unphosphorylated state. It reduces SERCA2a's calcium affinity 2–3-fold (shifting
+    $K_m$ from $\sim$0.5 $\mu$M to $\sim$1.5 $\mu$M), dramatically slowing calcium reuptake at
+    diastolic calcium concentrations. PLB is the reason that at baseline, SERCA2a operates far below
+    its maximum capacity — a reserve that can be unlocked on demand.
+  </p>
+
+  <p>
+    During beta-adrenergic stimulation, PKA phosphorylates PLB at serine-16 (and CaMKII at threonine-17),
+    causing PLB to dissociate from SERCA2a. This relieves inhibition and dramatically accelerates
+    calcium reuptake — the molecular basis of the <em>lusitropic</em> (relaxation-enhancing) effect
+    of sympathetic stimulation. The coordinated phosphorylation of both RyR2 (more release) and PLB
+    (faster reuptake) ensures that the enhanced systolic transient is followed by faster relaxation,
+    allowing the heart to fill adequately at elevated heart rates.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The CUPID trials (Calcium Upregulation by Percutaneous Administration of Gene Therapy in Cardiac
+      Disease) attempted to restore SERCA2a expression in failing hearts using AAV1-delivered gene
+      therapy. Early-phase results were encouraging, but the pivotal CUPID 2 trial (2016) did not meet
+      its primary endpoint. Current research has shifted toward upstream approaches: rather than
+      adding more pump protein, investigators are targeting phosphatase-1 inhibitors (e.g., AB-1002)
+      to relieve PLB-mediated inhibition of the <em>endogenous</em> SERCA2a — a more physiologically
+      regulated strategy.
+    </p>
+  </div>
+
+  <h3>4.5 &ensp; The Sodium-Calcium Exchanger — Dual-Mode Transport</h3>
+
+  <p>
+    The sodium-calcium exchanger NCX1 is a bidirectional transporter that exchanges 3 Na$^+$ for 1
+    Ca$^{2+}$ across the sarcolemma. The direction of transport depends on the electrochemical
+    gradients of both ions and the membrane potential — making NCX a voltage-sensitive, context-dependent
+    player in calcium homeostasis.
+  </p>
+
+  <!-- ─── NCX bidirectional operation diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 560 180" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Left: Forward mode -->
+      <text x="130" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="700">Forward Mode (Diastole / Phase 3–4)</text>
+      <!-- Membrane -->
+      <rect x="20" y="75" width="220" height="8" rx="2" fill="#eef0f8" stroke="#0f3460" stroke-width="1"/>
+      <!-- NCX transporter -->
+      <rect x="95" y="55" width="70" height="48" rx="8" fill="#0f3460" opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="130" y="78" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#0f3460" font-weight="700">NCX</text>
+      <!-- 3 Na⁺ in -->
+      <path d="M 110,45 L 110,55" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedNCX)"/>
+      <text x="110" y="40" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560" font-weight="600">3 Na⁺ IN</text>
+      <!-- 1 Ca²⁺ out -->
+      <path d="M 150,103 L 150,115" fill="none" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arrGreenNCX)"/>
+      <text x="150" y="130" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f" font-weight="600">1 Ca²⁺ OUT</text>
+      <!-- Net current -->
+      <rect x="45" y="140" width="170" height="22" rx="4" fill="#e94560" opacity="0.1"/>
+      <text x="130" y="155" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560">Net: 1 charge IN → inward current</text>
+      <!-- Labels -->
+      <text x="40" y="50" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Extracellular</text>
+      <text x="40" y="116" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Intracellular</text>
+
+      <!-- Arrow between panels -->
+      <text x="280" y="80" text-anchor="middle" font-family="EB Garamond,serif" font-size="18" fill="#5a6175">⇌</text>
+
+      <!-- Right: Reverse mode -->
+      <text x="430" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#0f3460" font-weight="700">Reverse Mode (Early Phase 0–1)</text>
+      <rect x="320" y="75" width="220" height="8" rx="2" fill="#eef0f8" stroke="#0f3460" stroke-width="1"/>
+      <rect x="395" y="55" width="70" height="48" rx="8" fill="#0f3460" opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="430" y="78" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#0f3460" font-weight="700">NCX</text>
+      <!-- 3 Na⁺ out -->
+      <path d="M 410,103 L 410,115" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedNCX)"/>
+      <text x="410" y="130" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560" font-weight="600">3 Na⁺ OUT</text>
+      <!-- 1 Ca²⁺ in -->
+      <path d="M 450,45 L 450,55" fill="none" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arrGreenNCX)"/>
+      <text x="450" y="40" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f" font-weight="600">1 Ca²⁺ IN</text>
+      <rect x="345" y="140" width="170" height="22" rx="4" fill="#0f3460" opacity="0.1"/>
+      <text x="430" y="155" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#0f3460">Net: 1 charge OUT → outward current</text>
+      <text x="340" y="50" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Extracellular</text>
+      <text x="340" y="116" font-family="EB Garamond,serif" font-size="8" fill="#5a6175" font-style="italic">Intracellular</text>
+
+      <defs>
+        <marker id="arrRedNCX" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#e94560"/>
+        </marker>
+        <marker id="arrGreenNCX" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M 0,0 L 7,2.5 L 0,5 Z" fill="#2d6a4f"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 4.4.</span> The two operating modes of the Na$^+$/Ca$^{2+}$ exchanger (NCX). <em>Left:</em> Forward mode — dominant during diastole and late repolarization — extrudes Ca$^{2+}$ while importing Na$^+$, generating a net inward (depolarizing) current. <em>Right:</em> Reverse mode — briefly active during early depolarization — imports Ca$^{2+}$ and exports Na$^+$, generating a net outward current. The reversal potential depends on both $[\text{Na}^+]$ and $[\text{Ca}^{2+}]$ gradients plus $V_m$.</div>
+  </div>
+
+  <h4>Forward Mode (Calcium Extrusion)</h4>
+
+  <p>
+    Under normal diastolic conditions, NCX operates in <em>forward mode</em>: 3 Na$^+$ ions enter
+    the cell down their concentration gradient, providing the energy to extrude 1 Ca$^{2+}$ against
+    its gradient. This accounts for $\sim$10–30% of diastolic calcium removal (with SERCA2a handling
+    the remainder). Because the exchange is electrogenic (net transfer of one positive charge inward),
+    forward-mode NCX generates a small depolarizing current — normally negligible, but significant
+    when calcium is elevated.
+  </p>
+
+  <h4>Reverse Mode and Arrhythmogenesis</h4>
+
+  <p>
+    When intracellular sodium is elevated (as in heart failure or digitalis toxicity) or the membrane
+    is strongly depolarized, NCX reverses: Na$^+$ exits and Ca$^{2+}$ enters. This reverse-mode
+    operation contributes to calcium overload. More importantly, during spontaneous calcium waves,
+    the large forward-mode NCX current (extruding the wave-elevated calcium) generates substantial
+    inward current — 100–500 pA when summed over the cell — sufficient to depolarize the membrane
+    and trigger delayed afterdepolarizations (DADs). This is the primary mechanism linking calcium
+    instability to electrical arrhythmia.
+  </p>
+
+  <p>
+    Recent cryo-EM structures of human NCX1 (2023) revealed distinct inactivated and activated
+    conformations, with a sodium-dependent inactivation mechanism that serves as an intrinsic "brake"
+    when intracellular sodium is chronically elevated. A 2024 study showed that gain-of-function NCX1
+    mutations paradoxically depress contractility by excessive calcium extrusion, demonstrating that
+    too much of either forward or reverse NCX activity is maladaptive.
+  </p>
+
+  <h4>The Calcium Clock in Pacemaker Cells</h4>
+
+  <p>
+    In sinoatrial node (SAN) cells, a fundamentally different calcium cycling mechanism contributes
+    to automaticity. During diastole, spontaneous calcium sparks from the SR activate NCX in forward
+    mode, generating a ramp-like inward current that gradually depolarizes the membrane toward threshold.
+    This "calcium clock" works in concert with the classical "membrane clock" (funny current $I_f$,
+    T-type calcium current) to set heart rate. Disruption of the calcium clock — through RyR2 inhibition
+    or SERCA2a depression — slows or abolishes pacemaker activity, demonstrating that spontaneous
+    calcium cycling is not merely a byproduct but an active driver of the heartbeat.
+  </p>
+
+  <h3>4.6 &ensp; Calcium Buffering — The 1% Rule</h3>
+
+  <p>
+    Perhaps the most underappreciated fact in cardiac calcium biology is that <strong>only $\sim$1–2%
+    of total intracellular calcium exists as free Ca$^{2+}$ ions</strong>. The remaining 98–99% is
+    bound to proteins. This massive buffering has profound consequences for calcium signaling: it
+    drastically slows effective calcium diffusion (to $\sim$10–30 $\mu$m$^2$/s, roughly 10× slower
+    than free aqueous diffusion) and shapes the kinetics of every calcium-dependent process.
+  </p>
+
+  <p>
+    The buffer capacity $\beta$ — defined as the ratio of total calcium change to free calcium change —
+    ranges from $\sim$20 to 100 depending on the cell compartment. During a typical beat, free
+    $[\text{Ca}^{2+}]_i$ rises from $\sim$100 nM to $\sim$1–2 $\mu$M, a 10–20-fold increase. But the
+    total calcium flux required to achieve this is 20–100 times larger, because most of the released
+    calcium is immediately captured by buffers.
+  </p>
+
+  <!-- ─── Calcium buffering pie chart ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 520 220" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <!-- Left: total Ca pie -->
+      <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="700">Total Cytoplasmic Ca²⁺</text>
+      <!-- Bound portion (large) -->
+      <circle cx="110" cy="120" r="70" fill="#0f3460" opacity="0.15" stroke="#0f3460" stroke-width="1.5"/>
+      <!-- Free portion (tiny slice) — approximated as a thin wedge -->
+      <path d="M 110,120 L 180,120 A 70,70 0 0,0 177,99 Z" fill="#e94560" opacity="0.7" stroke="#e94560" stroke-width="1"/>
+      <!-- Labels -->
+      <text x="85" y="125" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#0f3460" font-weight="700">98–99%</text>
+      <text x="85" y="140" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#0f3460">bound to buffers</text>
+      <text x="188" y="105" font-family="EB Garamond,serif" font-size="10" fill="#e94560" font-weight="700">1–2%</text>
+      <text x="188" y="117" font-family="EB Garamond,serif" font-size="8" fill="#e94560">free Ca²⁺</text>
+
+      <!-- Right: buffer partitioning -->
+      <text x="380" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="700">Cytoplasmic Buffer Partitioning</text>
+      <!-- Stacked bar chart -->
+      <rect x="300" y="38" width="160" height="36" rx="0" fill="#2d6a4f" opacity="0.6"/>
+      <text x="380" y="55" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Troponin C  ~35%</text>
+      <text x="380" y="67" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white">contractile sensor</text>
+
+      <rect x="300" y="76" width="160" height="26" rx="0" fill="#5a6175" opacity="0.45"/>
+      <text x="380" y="93" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">ATP/Mg²⁺  ~15%</text>
+
+      <rect x="300" y="104" width="160" height="26" rx="0" fill="#0f3460" opacity="0.4"/>
+      <text x="380" y="121" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Calmodulin  ~12%</text>
+
+      <rect x="300" y="132" width="160" height="20" rx="0" fill="#b36b00" opacity="0.35"/>
+      <text x="380" y="146" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Other  ~38%</text>
+
+      <!-- SR buffer annotation -->
+      <rect x="300" y="165" width="160" height="36" rx="4" fill="#fff3e0" stroke="#b36b00" stroke-width="1"/>
+      <text x="380" y="180" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#b36b00" font-weight="600">Inside SR:</text>
+      <text x="380" y="193" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#b36b00">CASQ2 buffers 95–98%</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 4.5.</span> Calcium buffering in the cardiomyocyte. <em>Left:</em> Only 1–2% of total cytoplasmic calcium is free; the rest is bound to buffer proteins. <em>Right:</em> Partitioning among the major cytoplasmic buffers. Troponin C (the contractile sensor) is the largest single buffer pool. Inside the SR, calsequestrin-2 (CASQ2) binds 95–98% of luminal calcium.</div>
+  </div>
+
+  <h4>The Major Buffers</h4>
+
+  <p>
+    <strong>Troponin C ($\sim$35% of cytoplasmic buffering):</strong> The regulatory calcium sensor of
+    the contractile apparatus. Each troponin C molecule has 4 calcium-binding sites (2 regulatory with
+    $K_d \approx 1{-}10\;\mu$M, 2 structural with $K_d \approx 100$ nM). With $\sim$10–15 million
+    troponin C molecules per myocyte, this represents the largest single buffer pool. Calcium binding
+    to the regulatory sites triggers the conformational cascade (tropomyosin shift → myosin binding site
+    exposure → cross-bridge cycling) that produces contraction. Thus troponin C is simultaneously a
+    buffer, a sensor, and the effector of the entire contractile process.
+  </p>
+
+  <p>
+    <strong>Calmodulin ($\sim$12% of buffering):</strong> A ubiquitous calcium sensor with 4 EF-hand
+    binding motifs ($K_d$ range 100 nM to 5 $\mu$M). Calmodulin activates CaMKII, calcineurin, and
+    numerous other enzymes — serving as the cell's primary calcium-to-kinase signal transducer.
+    With $\sim$1–2 million molecules per myocyte and faster on/off kinetics than troponin C, calmodulin
+    is particularly responsive to rapid calcium transients.
+  </p>
+
+  <p>
+    <strong>Calsequestrin 2 ($\sim$95–98% of SR luminal buffering):</strong> Inside the SR,
+    CASQ2 binds $\sim$40–50 calcium ions per molecule, maintaining total SR calcium at 1–2 mM while
+    keeping free SR calcium at only $\sim$20–50 $\mu$M. This enormous buffer capacity allows the SR
+    to function as a high-capacity store without the osmotic stress that millimolar free calcium
+    would create.
+  </p>
+
+  <p>
+    <strong>Other contributors:</strong> ATP and its magnesium complexes ($\sim$15%), mitochondrial
+    uptake ($\lt$5% acutely but important for long-term calcium homeostasis), and various smaller
+    calcium-binding proteins collectively account for the remaining buffering capacity.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      In computational models, calcium buffering is typically handled by either <em>rapid-equilibrium
+      approximation</em> (assuming buffer binding/unbinding is instantaneous, valid when buffer
+      kinetics are much faster than calcium transient kinetics) or <em>dynamic buffering ODEs</em>
+      (explicitly tracking bound and free buffer pools). TTP06 uses a rapid-equilibrium approach
+      for most buffers, while ORd tracks selected buffer states dynamically. The choice matters:
+      dynamic buffering adds state variables but captures the delay between calcium rise and buffer
+      saturation — important for accurate spark modeling.
+    </p>
+  </div>
+
+  <h3>4.7 &ensp; T-Tubule Remodeling — When Structure Fails</h3>
+
+  <p>
+    The T-tubule network consists of regular sarcolemmal invaginations ($\sim$0.2–0.5 $\mu$m diameter)
+    that penetrate deep into the myocyte at $\sim$2 $\mu$m intervals, aligned with the Z-lines of the
+    sarcomere. This regular architecture ensures that every CRU across the cell volume is within
+    $\sim$1 $\mu$m of a T-tubule, enabling near-synchronous calcium release during the action potential.
+  </p>
+
+  <h4>T-Tubule Loss in Heart Failure</h4>
+
+  <p>
+    One of the earliest and most consequential structural changes in the failing myocardium is
+    progressive loss and disorganization of the T-tubule network. Advanced heart failure can show
+    50–80% reduction in T-tubular density, with the remaining tubules becoming tortuous, dilated,
+    and misaligned.
+  </p>
+
+  <p>
+    The primary mechanism is <strong>calpain-mediated cleavage of junctophilin-2</strong>. Elevated
+    diastolic calcium in failing cells activates the protease calpain, which cleaves JPH2 — the very
+    protein that anchors T-tubules to the jSR. Once this anchor is lost, the T-tubule membrane
+    retracts from the SR surface, physically separating L-type channels from RyR2 clusters.
+  </p>
+
+  <h4>Orphaned RyR2 and Dyssynchronous Release</h4>
+
+  <p>
+    As T-tubules withdraw, the RyR2 clusters they once faced become <em>orphaned</em> — physically
+    uncoupled from their L-type channel triggers. These orphaned RyR2s cannot be activated by the
+    normal CICR mechanism (the L-type channel calcium signal no longer reaches them). Instead, they
+    can only be activated secondarily, by the slower wave-like diffusion of calcium from neighboring
+    intact dyads. The result is <em>dyssynchronous calcium release</em>: surface dyads fire promptly
+    with the action potential, while interior orphaned clusters fire with a variable delay of
+    10–100 ms.
+  </p>
+
+  <p>
+    This dyssynchrony has dual consequences. First, the contractile force is reduced — not all
+    sarcomeres are activated simultaneously. Second, the orphaned RyR2s, no longer under the tight
+    local control of a nearby L-type channel, often exhibit increased sensitivity to luminal calcium
+    and are prone to spontaneous opening. They become sources of diastolic calcium leak and
+    spontaneous waves — contributing to both systolic dysfunction and arrhythmia susceptibility.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      From a modeling perspective, the T-tubule remodeling story highlights a limitation of standard
+      ionic models like TTP06 and ORd: they assume a single, well-coupled dyadic compartment. Capturing
+      the spatial heterogeneity of heart failure — some CRUs coupled, some orphaned, some partially
+      coupled — requires either multi-compartment extensions or spatially explicit subcellular models.
+      This remains an active area of computational research, with multiscale models (2021–2024)
+      integrating nanoscale dyadic dynamics into whole-cell and tissue-level simulations.
+    </p>
+  </div>
+
+  <h3>4.8 &ensp; Emerging Frontiers: Imaging, Modeling, and Therapy</h3>
+
+  <h4>Super-Resolution Imaging of Living Cardiomyocytes</h4>
+
+  <p>
+    The past five years have seen transformative advances in visualizing calcium handling machinery
+    in intact, living cells. <strong>MINFLUX microscopy</strong> (2024–2025) can now resolve individual
+    RyR2 subunits and determine their 3D orientation within clusters — approaching atomic-level structural
+    information in the native cellular environment. Live-cell photoactivated localization microscopy (PALM,
+    2022) has correlated nanoscale RyR2 cluster configuration with functional calcium spark properties,
+    revealing that heart failure induces fragmentation of large RyR2 clusters into numerous smaller
+    groupings with increased nearest-neighbor distances and impaired cooperative gating.
+  </p>
+
+  <h4>Next-Generation Calcium Indicators</h4>
+
+  <p>
+    Genetically encoded calcium indicators continue to evolve. The jGCaMP8 family (2023) achieves
+    submillisecond rise times with the highest sensitivity yet — enabling real-time nanodomain calcium
+    imaging. The NEMOer sensor family (2025) was specifically designed for endoplasmic/sarcoplasmic
+    reticulum calcium imaging, overcoming the limited dynamic range of previous luminal indicators.
+    These tools are beginning to provide direct experimental access to the $[\text{Ca}^{2+}]_{\text{SR}}$
+    dynamics that models have long predicted but experiments could not resolve.
+  </p>
+
+  <h4>Graph-Theoretic Prediction of Spark Fidelity</h4>
+
+  <p>
+    A striking computational advance (2023) uses graph theory to predict calcium spark probability
+    directly from nanoscale cluster architecture. By constructing an adjacency graph of RyR2 positions
+    within a CRU (nodes = channels, edges = functional coupling), researchers showed that the
+    <em>maximum eigenvalue</em> of this adjacency matrix predicts spark probability with remarkable
+    accuracy. This bridges the gap between structure (super-resolution images) and function
+    (calcium spark recordings), explaining why some RyR2 clusters reliably produce sparks while
+    others are functionally "silent."
+  </p>
+
+  <p>
+    With this deep understanding of calcium handling in hand, we are now prepared to examine the
+    quantitative ionic models that encode these mechanisms computationally. The next chapter dissects
+    the ten Tusscher–Panfilov 2006 model — 18 state variables that capture the calcium cycling
+    machinery alongside every ionic current we have discussed.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 5 — THE TEN TUSSCHER–PANFILOV 2006 MODEL                  -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

@@ -1,0 +1,439 @@
+<div class="chapter">
+  <div class="chapter-number">Appendix A</div>
+  <h2 class="chapter-title">A Visual Guide to Differential Equations</h2>
+  <div class="chapter-intro">
+    This appendix steps back from the bidomain model to build a deep, visual intuition for the three fundamental types of partial differential equations: parabolic, elliptic, and hyperbolic. We begin with the heat equation — the simplest and most intuitive PDE — and use it as a lens to understand all three families. The style here follows the philosophy of 3Blue1Brown: start with a concrete picture, build understanding layer by layer, and let the math emerge naturally from the intuition.
+  </div>
+
+  <h3>A.1 &ensp; The Heat Equation: Where It All Begins</h3>
+
+  <p>
+    Imagine you have a thin metal rod. You heat one spot in the middle with a blowtorch, creating a sharp temperature peak, and then you turn off the blowtorch. What happens?
+  </p>
+
+  <p>
+    You already know the answer intuitively: the hot spot cools down, and the warmth spreads outward into the cooler parts of the rod. Over time, the temperature profile gets smoother and flatter, until eventually the whole rod reaches a uniform temperature. This simple physical process — heat spreading from hot regions to cold regions — is described by one of the most important equations in all of mathematics:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.1)</span>
+    $$\frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}$$
+  </div>
+
+  <p>
+    This is the <strong>heat equation</strong> in one dimension. Here $u(x,t)$ is the temperature at position $x$ and time $t$, and $\alpha > 0$ is the <em>thermal diffusivity</em> — a material property that tells you how quickly heat spreads (copper has high $\alpha$; wood has low $\alpha$).
+  </p>
+
+  <p>
+    But what does this equation actually <em>say</em>? Let us read it like a sentence.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Reading the heat equation as English:</strong> "The rate at which the temperature changes at a point ($\partial u/\partial t$) is proportional to how much that point's temperature differs from the average of its neighbors ($\partial^2 u/\partial x^2$)." If a point is hotter than its surroundings, it cools down. If it is cooler, it warms up. The equation says nothing more — and nothing less — than this.
+    </p>
+  </div>
+
+  <p>
+    This is the fundamental insight, and it is worth dwelling on. The second derivative $\partial^2 u/\partial x^2$ is not just a mathematical abstraction — it measures <em>concavity</em>. At a temperature peak (concave down), the second derivative is negative, so $\partial u/\partial t < 0$: the temperature decreases. At a temperature valley (concave up), the second derivative is positive, so $\partial u/\partial t > 0$: the temperature increases. The heat equation is a machine that relentlessly destroys peaks and fills valleys.
+  </p>
+
+  <!-- SVG: Heat diffusion evolution -->
+  <div class="figure">
+    <svg viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
+      <!-- Axes -->
+      <line x1="50" y1="210" x2="490" y2="210" stroke="#5a6175" stroke-width="1.2"/>
+      <line x1="50" y1="210" x2="50" y2="20" stroke="#5a6175" stroke-width="1.2"/>
+      <text x="270" y="235" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">position $x$</text>
+      <text x="30" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175" transform="rotate(-90,30,115)">temperature $u$</text>
+      <!-- t=0: sharp peak -->
+      <path d="M 60,200 Q 150,200 200,195 Q 230,185 250,80 Q 260,35 270,80 Q 290,185 320,195 Q 370,200 480,200" fill="none" stroke="#e94560" stroke-width="2.5"/>
+      <text x="285" y="48" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">t = 0</text>
+      <!-- t=1: spreading -->
+      <path d="M 60,198 Q 140,196 190,185 Q 225,165 250,115 Q 265,85 270,115 Q 295,165 330,185 Q 380,196 480,198" fill="none" stroke="#d35400" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="340" y="170" font-family="EB Garamond,serif" font-size="11" fill="#d35400" font-weight="600">t = 1</text>
+      <!-- t=3: broad and flat -->
+      <path d="M 60,194 Q 130,190 180,180 Q 220,168 250,152 Q 265,145 270,152 Q 300,168 340,180 Q 390,190 480,194" fill="none" stroke="#e67e22" stroke-width="1.8" stroke-dasharray="3,3"/>
+      <text x="385" y="175" font-family="EB Garamond,serif" font-size="11" fill="#e67e22" font-weight="600">t = 3</text>
+      <!-- t=10: nearly flat -->
+      <path d="M 60,192 Q 150,190 220,187 Q 255,185 270,184 Q 285,185 330,187 Q 400,190 480,192" fill="none" stroke="#f39c12" stroke-width="1.5" stroke-dasharray="2,4"/>
+      <text x="420" y="182" font-family="EB Garamond,serif" font-size="11" fill="#f39c12" font-weight="600">t = 10</text>
+      <!-- Annotation arrow -->
+      <path d="M 270,60 L 270,100" fill="none" stroke="#888" stroke-width="0.8" marker-end="url(#arr)"/>
+      <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker></defs>
+      <text x="270" y="106" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#888">peak decays</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.1.</span> A sharp temperature peak (red) diffuses over time, becoming broader and flatter. The heat equation smooths all discontinuities — information about the initial sharp shape is irreversibly lost.</div>
+  </div>
+
+  <p>
+    Notice three properties that are visible even from the picture:
+  </p>
+
+  <ol>
+    <li><strong>Smoothing.</strong> The solution gets smoother over time. A sharp corner at $t=0$ becomes an infinitely smooth curve at any $t>0$. The heat equation is a "smoothing machine."</li>
+    <li><strong>Irreversibility.</strong> You cannot run time backwards and recover the sharp peak from the flat profile. Information is destroyed. (Mathematically: the backwards heat equation is ill-posed.)</li>
+    <li><strong>Maximum principle.</strong> The hottest point at any later time is never hotter than the hottest point at $t=0$. Diffusion can only reduce extremes, never amplify them.</li>
+  </ol>
+
+  <p>
+    These three properties — smoothing, irreversibility, and a maximum principle — are the <em>defining fingerprint</em> of <strong>parabolic</strong> equations. Every parabolic PDE shares them.
+  </p>
+
+  <h3>A.2 &ensp; What the Laplacian Really Means</h3>
+
+  <p>
+    Before we classify PDEs, we need to build intuition for the single most important differential operator in physics: the <strong>Laplacian</strong> $\nabla^2 u$ (also written $\Delta u$).
+  </p>
+
+  <p>
+    In one dimension, $\nabla^2 u = \partial^2 u/\partial x^2$ — just the second derivative. In two or three dimensions:
+  </p>
+
+  <div class="equation-block">
+    $$\nabla^2 u = \frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial y^2} + \frac{\partial^2 u}{\partial z^2}$$
+  </div>
+
+  <p>
+    But what does it <em>mean</em>? Here is the deepest and most useful interpretation:
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The Laplacian measures the difference between a point's value and the average of its neighbors.</strong> Specifically, for a function $u$ that is smooth enough:
+    </p>
+    <p>
+      $$\nabla^2 u(\mathbf{x}) = \lim_{r\to 0}\; \frac{2d}{r^2}\Bigl[\overline{u}_r(\mathbf{x}) - u(\mathbf{x})\Bigr]$$
+    </p>
+    <p>
+      where $\overline{u}_r(\mathbf{x})$ is the average of $u$ on a sphere of radius $r$ centered at $\mathbf{x}$, and $d$ is the spatial dimension. If $u(\mathbf{x})$ is <em>less</em> than its neighborhood average, then $\nabla^2 u > 0$. If <em>more</em>, then $\nabla^2 u < 0$.
+    </p>
+  </div>
+
+  <!-- SVG: Laplacian as neighbor averaging -->
+  <div class="figure">
+    <svg viewBox="0 0 520 180" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <!-- Left panel: point above average -->
+      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Peak: $u > $ neighbors</text>
+      <!-- Circle of neighbors -->
+      <circle cx="130" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
+      <!-- Neighbor dots -->
+      <circle cx="80" cy="100" r="5" fill="#42a5f5"/>
+      <circle cx="130" cy="50" r="5" fill="#42a5f5"/>
+      <circle cx="180" cy="100" r="5" fill="#42a5f5"/>
+      <circle cx="130" cy="150" r="5" fill="#42a5f5"/>
+      <!-- Center: hot -->
+      <circle cx="130" cy="100" r="7" fill="#e94560" stroke="#c0392b" stroke-width="1.5"/>
+      <!-- Arrows inward -->
+      <text x="130" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">H</text>
+      <text x="80" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="180" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
+      <text x="130" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#c0392b">$\nabla^2 u < 0$ → cools down</text>
+
+      <!-- Right panel: point below average -->
+      <text x="390" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Valley: $u < $ neighbors</text>
+      <circle cx="390" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
+      <circle cx="340" cy="100" r="5" fill="#e94560"/>
+      <circle cx="390" cy="50" r="5" fill="#e94560"/>
+      <circle cx="440" cy="100" r="5" fill="#e94560"/>
+      <circle cx="390" cy="150" r="5" fill="#e94560"/>
+      <circle cx="390" cy="100" r="7" fill="#42a5f5" stroke="#1565c0" stroke-width="1.5"/>
+      <text x="390" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">C</text>
+      <text x="340" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="440" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
+      <text x="390" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#1565c0">$\nabla^2 u > 0$ → warms up</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.2.</span> The Laplacian as a "disagreement detector." Left: a hot point (H) surrounded by cool neighbors (C) has $\nabla^2 u < 0$. Right: a cool point surrounded by hot neighbors has $\nabla^2 u > 0$. The heat equation says: resolve the disagreement.</div>
+  </div>
+
+  <p>
+    This is why the Laplacian appears in so many equations across physics. Any time nature wants to smooth out differences — heat, chemical concentration, electrical potential — the Laplacian is doing the work. The heat equation $\partial u/\partial t = \alpha\,\nabla^2 u$ simply says: <em>evolve toward the local average</em>.
+  </p>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>A discrete analogy.</strong> On a grid, approximate $\nabla^2 u$ at node $i$ as $\nabla^2 u_i \approx \frac{1}{h^2}(\bar{u}_{\text{neighbors}} - u_i)$ where $\bar{u}_{\text{neighbors}}$ is the average of the neighboring values. The heat equation on a grid becomes: each node moves a small fraction toward the average of its neighbors at each time step. This is literally a smoothing filter — the same operation used in image processing.
+    </p>
+  </div>
+
+  <h3>A.3 &ensp; The Three Families of PDEs</h3>
+
+  <p>
+    Now we are ready for the big classification. Consider the most general second-order linear PDE in two variables:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.2)</span>
+    $$A\,\frac{\partial^2 u}{\partial x^2} + 2B\,\frac{\partial^2 u}{\partial x\,\partial y} + C\,\frac{\partial^2 u}{\partial y^2} + \text{(lower-order terms)} = 0$$
+  </div>
+
+  <p>
+    The character of this equation — its fundamental behavior, the types of solutions it admits, the numerical methods that work — is determined by a single number: the <strong>discriminant</strong>
+  </p>
+
+  <div class="equation-block">
+    $$\Delta = B^2 - AC$$
+  </div>
+
+  <p>
+    This is exactly the same discriminant from the quadratic formula, and the analogy to conic sections is deep. Just as $B^2 - 4AC$ classifies conics into ellipses, parabolas, and hyperbolas, this discriminant classifies PDEs into three families:
+  </p>
+
+  <div class="pde-grid">
+    <div class="pde-card pde-card-parabolic">
+      <h4>Parabolic ($\Delta = 0$)</h4>
+      <p><strong>Prototype:</strong> Heat equation</p>
+      <p>$\dfrac{\partial u}{\partial t} = \alpha\,\nabla^2 u$</p>
+      <p><em>Diffusion, smoothing, irreversible</em></p>
+    </div>
+    <div class="pde-card pde-card-elliptic">
+      <h4>Elliptic ($\Delta < 0$)</h4>
+      <p><strong>Prototype:</strong> Laplace equation</p>
+      <p>$\nabla^2 u = 0$</p>
+      <p><em>Equilibrium, steady-state, no time</em></p>
+    </div>
+    <div class="pde-card pde-card-hyperbolic">
+      <h4>Hyperbolic ($\Delta > 0$)</h4>
+      <p><strong>Prototype:</strong> Wave equation</p>
+      <p>$\dfrac{\partial^2 u}{\partial t^2} = c^2\,\nabla^2 u$</p>
+      <p><em>Propagation, waves, reversible</em></p>
+    </div>
+  </div>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>Why does the name "parabolic" come from the degenerate case $\Delta=0$?</strong> Think of the conic $Ax^2 + 2Bxy + Cy^2 = 1$. When $\Delta = 0$, this degenerates from a closed curve (ellipse) to an open, unbounded shape (parabola). Similarly, the PDE loses one "degree of freedom" — information propagates in one direction only (forward in time), just as a parabola is open in one direction.
+    </p>
+  </div>
+
+  <p>
+    Let us now build deep intuition for each family.
+  </p>
+
+  <h3>A.4 &ensp; Parabolic Equations: Diffusion and Smoothing</h3>
+
+  <p>
+    The heat equation is the prototype, but parabolic equations describe far more than heat. Any process where "stuff" spreads out from high-concentration regions to low-concentration regions is parabolic: chemical diffusion (Fick's law), financial option pricing (Black–Scholes), probability spreading (Fokker–Planck), and — most relevant to us — the evolution of the transmembrane potential $V_m$ in the monodomain equation.
+  </p>
+
+  <p>
+    The unifying feature is the structure: <strong>one time derivative balanced against two spatial derivatives</strong>. This mismatch ($\partial_t$ vs. $\partial_{xx}$) dictates everything:
+  </p>
+
+  <div class="equation-block">
+    $$\underbrace{\frac{\partial u}{\partial t}}_{\text{1st order in }t} = \alpha \underbrace{\frac{\partial^2 u}{\partial x^2}}_{\text{2nd order in }x}$$
+  </div>
+
+  <p>
+    Because there is only a <em>first</em> derivative in time, you need only <em>one</em> initial condition: $u(x,0) = u_0(x)$. Time marches in one direction only. There is no "bouncing back." This is why parabolic equations model irreversible processes.
+  </p>
+
+  <p>
+    <strong>The smoothing property, precisely stated.</strong> If you start with any initial condition — even one with sharp corners or discontinuities — the solution $u(x,t)$ is infinitely smooth for all $t > 0$. This is remarkable. A square-wave initial condition instantly (at any positive time, no matter how small) becomes a $C^\infty$ function. Intuitively: diffusion smears out all sharp features immediately.
+  </p>
+
+  <p>
+    <strong>Infinite propagation speed.</strong> Here is a subtle and often confusing point. Heat propagates at <em>infinite speed</em> in the mathematical heat equation — if you heat one end of an infinitely long rod, the other end feels it instantly (though the effect is exponentially small). This is physically unrealistic but mathematically convenient. The parabolic monodomain equation inherits this property: a stimulus at one point technically affects the entire domain immediately, though the practical effect dies off exponentially fast.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The parabolic CFL condition.</strong> When you discretize a parabolic equation with an explicit time stepper (like forward Euler), stability demands $\Delta t \leq C\,\Delta x^2$. The <em>quadratic</em> dependence on $\Delta x$ is severe: halving the mesh spacing requires quartering the time step. This is why implicit methods (Crank–Nicolson, BDF, SDIRK) are essential for parabolic problems — they are unconditionally stable, allowing $\Delta t$ dictated by accuracy rather than stability.
+    </p>
+  </div>
+
+  <h3>A.5 &ensp; Elliptic Equations: Equilibrium and Constraints</h3>
+
+  <p>
+    Now remove time from the picture entirely. Ask: <em>what does the temperature look like after the system has fully equilibrated?</em> At equilibrium, $\partial u/\partial t = 0$, and the heat equation becomes:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.3)</span>
+    $$\nabla^2 u = 0 \qquad \text{(Laplace's equation)}$$
+  </div>
+
+  <p>
+    This is the prototypical <strong>elliptic</strong> equation. It says: at every point, the value of $u$ equals the average of its neighbors. There is no time. There is no evolution. It is a pure <em>constraint</em>.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The rubber sheet analogy.</strong> Imagine a flat rubber membrane stretched over a wire frame. The frame is bent into some shape (the boundary condition). Where does the membrane settle? At every interior point, the height of the membrane equals the average height of the surrounding points — because the elastic forces balance in all directions. The equilibrium shape satisfies Laplace's equation.
+    </p>
+  </div>
+
+  <!-- SVG: Rubber sheet equilibrium -->
+  <div class="figure">
+    <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <!-- Wire frame (boundary) -->
+      <path d="M 60,160 Q 130,40 200,80 Q 270,120 340,50 Q 410,20 480,130" fill="none" stroke="#16213e" stroke-width="2.5"/>
+      <!-- Membrane surface (smooth interpolation) -->
+      <path d="M 60,160 Q 100,100 140,100 Q 180,100 220,95 Q 260,90 300,75 Q 340,60 380,55 Q 420,60 480,130" fill="none" stroke="#42a5f5" stroke-width="2" stroke-dasharray="6,3"/>
+      <!-- Fixed boundary markers -->
+      <circle cx="60" cy="160" r="5" fill="#e94560"/>
+      <circle cx="480" cy="130" r="5" fill="#e94560"/>
+      <!-- Labels -->
+      <text x="55" y="178" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
+      <text x="470" y="148" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
+      <text x="270" y="55" font-family="EB Garamond,serif" font-size="12" fill="#42a5f5" font-weight="600">equilibrium surface</text>
+      <text x="350" y="38" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">boundary shape</text>
+      <!-- Interior point annotation -->
+      <circle cx="270" cy="85" r="3" fill="#42a5f5"/>
+      <text x="270" y="110" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$u =$ average of neighbors</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.3.</span> The rubber sheet analogy for Laplace's equation. The boundary conditions (wire frame) determine the shape; the interior settles into an equilibrium where each point's value equals the average of its neighbors.</div>
+  </div>
+
+  <p>
+    The key properties of elliptic equations mirror the equilibrium intuition:
+  </p>
+
+  <ol>
+    <li><strong>Mean value property.</strong> The value at any interior point equals the average over any surrounding sphere. This is the deepest characterization of harmonic functions (solutions to $\nabla^2 u = 0$).</li>
+    <li><strong>Maximum principle.</strong> The maximum and minimum of $u$ occur on the <em>boundary</em>, never in the interior. The rubber sheet cannot bulge above or below the wire frame.</li>
+    <li><strong>Global coupling.</strong> Changing the boundary condition at one point affects the solution <em>everywhere</em> in the interior. Information propagates in all directions simultaneously. There is no concept of "marching" from one end to the other.</li>
+    <li><strong>No time, no initial conditions.</strong> You need only boundary conditions. The equation determines the interior values uniquely from the boundary.</li>
+  </ol>
+
+  <div class="insight insight-think">
+    <p>
+      <strong>Why you cannot "march" an elliptic equation.</strong> In a parabolic equation, you know $u$ at $t=0$ and march forward to $t = \Delta t$, then to $t = 2\Delta t$, and so on. In an elliptic equation, there is no "forward." Changing one boundary value ripples through the <em>entire</em> domain simultaneously. This is why elliptic equations always require solving a <strong>global linear system</strong> — you must find all unknowns at once.
+    </p>
+  </div>
+
+  <p>
+    If there is a source term, Laplace's equation becomes <strong>Poisson's equation</strong>: $\nabla^2 u = f$. This is still elliptic. It says: the difference between a point's value and its neighborhood average is proportional to the local source strength $f$. This is exactly the form of the bidomain elliptic constraint.
+  </p>
+
+  <h3>A.6 &ensp; Hyperbolic Equations: Waves and Propagation</h3>
+
+  <p>
+    The third family is fundamentally different from the first two. Consider the <strong>wave equation</strong>:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.4)</span>
+    $$\frac{\partial^2 u}{\partial t^2} = c^2 \frac{\partial^2 u}{\partial x^2}$$
+  </div>
+
+  <p>
+    Notice the crucial structural difference: the <em>second</em> derivative in time. Where the heat equation had $\partial_t$ (first order), the wave equation has $\partial_{tt}$ (second order). This single change transforms the physics completely.
+  </p>
+
+  <p>
+    With a first-order time derivative, you need one initial condition ($u$ at $t=0$). With a second-order time derivative, you need <em>two</em>: the initial shape $u(x,0)$ and the initial velocity $\partial u/\partial t\big|_{t=0}$. This is like specifying both the position and velocity of a particle — and it means the equation is <em>reversible</em>. You can run time forward or backward and get valid solutions.
+  </p>
+
+  <!-- SVG: Wave propagation -->
+  <div class="figure">
+    <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
+      <!-- Axis -->
+      <line x1="40" y1="100" x2="500" y2="100" stroke="#d0d5e0" stroke-width="0.8"/>
+      <!-- t=0: initial pulse -->
+      <path d="M 50,100 Q 200,100 230,100 Q 245,95 255,55 Q 260,40 265,55 Q 275,95 290,100 Q 320,100 490,100" fill="none" stroke="#16213e" stroke-width="2.5"/>
+      <text x="260" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="600">t = 0</text>
+      <!-- t=2: two pulses moving apart -->
+      <path d="M 50,100 Q 100,100 130,100 Q 145,96 155,75 Q 160,65 165,75 Q 175,96 190,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
+      <path d="M 330,100 Q 355,96 365,75 Q 370,65 375,75 Q 385,96 400,100 Q 450,100 490,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="160" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
+      <text x="370" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
+      <!-- Arrows showing propagation -->
+      <path d="M 230,120 L 180,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
+      <text x="195" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed $c$</text>
+      <path d="M 290,120 L 340,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
+      <text x="325" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed $c$</text>
+      <!-- Key difference label -->
+      <text x="260" y="188" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">Pulse splits and travels at finite speed — shape preserved</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure A.4.</span> The wave equation splits an initial pulse into two copies traveling in opposite directions at speed $c$. Unlike diffusion, the pulse shape is preserved — no smoothing occurs.</div>
+  </div>
+
+  <p>
+    The contrast with the heat equation could not be sharper:
+  </p>
+
+  <table>
+    <tr><th>Property</th><th>Parabolic (heat)</th><th>Hyperbolic (wave)</th></tr>
+    <tr><td>Time derivative order</td><td>1st ($\partial_t$)</td><td>2nd ($\partial_{tt}$)</td></tr>
+    <tr><td>Initial conditions needed</td><td>1 (value)</td><td>2 (value + velocity)</td></tr>
+    <tr><td>Reversible?</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Propagation speed</td><td>Infinite (exponential decay)</td><td>Finite ($c$)</td></tr>
+    <tr><td>Smoothing?</td><td>Yes — destroys sharp features</td><td>No — preserves sharp features</td></tr>
+    <tr><td>Energy</td><td>Dissipated over time</td><td>Conserved</td></tr>
+  </table>
+
+  <p>
+    The finite propagation speed is the hallmark of hyperbolic equations. A disturbance at point $x_0$ at time $t_0$ can only be felt at point $x$ after time $(x - x_0)/c$. This region of influence is called the <strong>light cone</strong> (even for non-relativistic waves), and the boundary of this cone consists of <strong>characteristics</strong> — curves in space-time along which information travels.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Why cardiac EP is NOT hyperbolic.</strong> At first glance, the action potential "wavefront" sweeping through the heart looks like a traveling wave — so you might expect a wave equation. But it is not a wave in the hyperbolic sense. The action potential front is driven by <em>diffusion</em> (current spreading from depolarized cells to resting cells) plus a <em>nonlinear reaction</em> (ion channels opening in a cascade). There is no second time derivative. There is no energy conservation. And the wavefront <em>does</em> smooth out over time. The monodomain and bidomain equations are parabolic, not hyperbolic — the traveling wavefront emerges from the interplay of diffusion and reaction, not from wave mechanics.
+    </p>
+  </div>
+
+  <h3>A.7 &ensp; Why the Bidomain Model Has Two Types</h3>
+
+  <p>
+    We can now understand the bidomain model's structure at a much deeper level. The bidomain system is not a single PDE — it is a <em>coupled pair</em>, and each equation belongs to a different family:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.5)</span>
+    $$\underbrace{\chi C_m \frac{\partial V_m}{\partial t} = -\chi\,I_{\text{ion}} + \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)}_{\text{Parabolic: has }\partial V_m/\partial t}$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.6)</span>
+    $$\underbrace{0 = \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr]}_{\text{Elliptic: no time derivative at all}}$$
+  </div>
+
+  <p>
+    This mixed parabolic–elliptic structure is the source of both the model's physical richness and its computational difficulty:
+  </p>
+
+  <ol>
+    <li><strong>The parabolic equation</strong> governs the evolution of the transmembrane potential $V_m$. It is a diffusion equation — with all the properties we discussed: smoothing, irreversibility, CFL restrictions for explicit methods. The "stuff" being diffused is electrical charge, and the diffusion coefficient is determined by the intracellular conductivity tensor $\mathbf{D}_i$. It can in principle be marched forward in time.</li>
+    <li><strong>The elliptic equation</strong> constrains the extracellular potential $\phi_e$. It has no time derivative — it is an <em>equilibrium condition</em> that must hold at every instant, like the rubber sheet analogy. At every moment, the extracellular potential adjusts <em>instantly</em> so that the total current in and out of every point balances. It cannot be marched — it must be solved as a global linear system.</li>
+  </ol>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>The fundamental computational consequence.</strong> The parabolic equation can (in theory) be treated explicitly. The elliptic equation <em>cannot</em> — ever. This is why every bidomain solver requires at least one implicit linear solve per time step: the elliptic constraint demands it. This is not a choice of method; it is a consequence of the equation's type. No clever algorithm can avoid it, because the elliptic equation couples all spatial points simultaneously.
+    </p>
+  </div>
+
+  <p>
+    The monodomain equation, by contrast, is purely parabolic — a single equation with a single time derivative. This is why it is so much cheaper: you never need to solve an elliptic constraint. The LBM methods in Chapter 17 exploit this: a lattice-Boltzmann scheme can handle a parabolic PDE naturally (the collision-streaming cycle is essentially an explicit time stepper), but it has no mechanism for enforcing a global elliptic constraint.
+  </p>
+
+  <p>
+    Understanding the type of each equation also tells you <em>which numerical methods to reach for</em>:
+  </p>
+
+  <table>
+    <tr><th>Equation type</th><th>Natural solvers</th><th>Avoid</th></tr>
+    <tr><td>Parabolic ($V_m$)</td><td>Implicit time steppers (CN, BDF, SDIRK), operator splitting, IMEX, LBM</td><td>Fully explicit on fine meshes (CFL: $\Delta t \propto \Delta x^2$)</td></tr>
+    <tr><td>Elliptic ($\phi_e$)</td><td>Direct solvers, CG/MINRES with AMG preconditioner, multigrid</td><td>Explicit time stepping (impossible — no time derivative)</td></tr>
+  </table>
+
+  <p>
+    The classification of PDEs into parabolic, elliptic, and hyperbolic is not merely academic taxonomy. It determines which initial/boundary conditions are needed, which numerical methods will work, what stability restrictions apply, and whether information flows forward only or in all directions simultaneously. For the bidomain model, this classification is the key to understanding why the computational challenge is fundamentally harder than monodomain — and why the solver strategies of Chapter 15 are not optional refinements but structural necessities.
+  </p>
+
+  <div class="footnote" style="margin-top:3em;">
+    <p>The treatment in this appendix follows the pedagogical philosophy of Grant Sanderson's <em>3Blue1Brown</em> series on differential equations. For animated visualizations of these concepts, the reader is encouraged to watch the "Differential Equations" playlist on the 3Blue1Brown YouTube channel.</p>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  APPENDIX B — INTRODUCTION TO PYTORCH                            -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

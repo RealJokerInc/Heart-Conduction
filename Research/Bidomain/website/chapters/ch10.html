@@ -1,0 +1,334 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 10</div>
+  <h2 class="chapter-title">Implicit Diffusion Solvers</h2>
+  <div class="chapter-intro">
+    When meshes are fine or three-dimensional, the CFL constraint makes explicit methods impractical.
+    Implicit methods trade the simplicity of a matrix-free update for unconditional stability — at the
+    cost of solving a linear system at every timestep.
+  </div>
+
+  <h3>10.1 &ensp; Why Implicit? The CFL Wall</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Explicit methods (Chapter 9) are like steering a boat by looking only at where you <em>are</em>. If
+    the river is calm, this works fine. But in rapids (fine meshes, fast diffusion), the boat oscillates
+    wildly because you are always reacting to where you <em>were</em>, not where you are <em>going</em>.
+    Implicit methods fix this by peeking ahead: they ask "where will I be at the end of this step?"
+    and solve for that future state directly. This costs more per step (you must solve a system of
+    equations), but the payoff is unconditional stability — you can take any step size without blowing up.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The fundamental issue is that the CFL condition (equation 9.2) scales as $h^2$: halve the mesh
+    spacing and the maximum timestep drops by a factor of four. For a 3D mesh with $h = 0.1$ mm
+    ($d_{\max} = 0.174$ mm$^2$/ms), the CFL limit is $\Delta t \leq 0.004$ ms — far below the
+    $0.01{-}0.05$ ms range the ionic solver prefers. Running 5–12 explicit diffusion substeps per
+    ionic step wastes enormous effort. Implicit methods eliminate this constraint entirely: they are
+    <em>unconditionally stable</em>, meaning $\Delta t$ is limited only by accuracy, not by stability.
+    In practice, this lets us match the diffusion timestep to the ionic timestep, halving or more
+    the total simulation time.
+  </p>
+
+  <p>
+    The price is that at each timestep, the new voltage $\mathbf{V}^{n+1}$ appears on <em>both sides</em>
+    of the equation — so we must solve a linear system $\mathbf{A}\,\mathbf{V}^{n+1} = \mathbf{b}$ to
+    find it. This is where the machinery of Chapter 7 pays off: the stiffness matrix $\mathbf{K}$ and
+    mass matrix $\mathbf{M}$ from the spatial discretization become the building blocks of $\mathbf{A}$
+    and $\mathbf{b}$.
+  </p>
+
+  <h3>10.2 &ensp; Backward Euler (BDF1): The Simplest Implicit Method</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    If Forward Euler asks "where am I now, and where does the slope say I should go?", Backward Euler
+    asks the reverse: "where do I end up such that the slope <em>there</em> points back to where I started?"
+    This backward-looking logic makes it inherently stable — it cannot overshoot because it is defined by
+    the destination, not the departure.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    Formally, Backward Euler evaluates the diffusion operator at the <em>new</em> time level:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(10.1)</span>
+    $$\mathbf{V}^{n+1} = \mathbf{V}^n + \Delta t\;\mathcal{D}(\mathbf{V}^{n+1})$$
+  </div>
+
+  <p>
+    Since $\mathbf{V}^{n+1}$ appears on both sides, this is an <em>implicit</em> equation. To solve it,
+    we substitute the semi-discrete diffusion operator from Chapter 7:
+    $\mathbf{M}\,d\mathbf{V}/dt = -\mathbf{K}\,\mathbf{V}$. Replacing $d\mathbf{V}/dt$ with the
+    backward difference $(\mathbf{V}^{n+1} - \mathbf{V}^n)/\Delta t$ and rearranging:
+  </p>
+
+  <!-- Layer 3: Matrix form (what the code computes) -->
+  <div class="equation-block">
+    <span class="equation-label">(10.2)</span>
+    $$\boxed{\underbrace{\bigl(\mathbf{M} + \Delta t\,\mathbf{K}\bigr)}_{\mathbf{A}_{\text{lhs}}}\;\mathbf{V}^{n+1} = \underbrace{\mathbf{M}}_{\mathbf{B}_{\text{rhs}}}\;\mathbf{V}^n}$$
+  </div>
+
+  <p>
+    This is the exact linear system the code solves. The left-hand side matrix
+    $\mathbf{A}_{\text{lhs}} = \mathbf{M} + \Delta t\,\mathbf{K}$ is symmetric positive definite (SPD)
+    for the standard monodomain problem with Neumann boundary conditions, so the conjugate gradient
+    method converges reliably. The right-hand side is simply $\mathbf{B}_{\text{rhs}} \cdot \mathbf{V}^n$
+    — a single sparse matrix-vector product.
+  </p>
+
+  <p>
+    Backward Euler is first-order accurate ($O(\Delta t)$) and <em>L-stable</em> — meaning it not only
+    stays bounded but actively <em>damps</em> high-frequency modes. This aggressive damping is useful
+    after discontinuous events (stimulus application, wavefront collision) where oscillations would
+    otherwise pollute the solution. It is also the natural first step for multi-step methods like BDF2.
+  </p>
+
+  <p>
+    For FDM with lumped mass ($\mathbf{M} = \mathbf{I}$), the system simplifies to
+    $(\mathbf{I} + \Delta t\,\mathbf{K})\,\mathbf{V}^{n+1} = \mathbf{V}^n$.
+  </p>
+
+  <h3>10.3 &ensp; Crank–Nicolson: Second-Order Implicit</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Backward Euler looks only at the destination; Forward Euler looks only at the start. Crank–Nicolson
+    <em>averages the two</em> — evaluating the diffusion operator at both the old and new time levels and
+    taking the midpoint. This averaging is what gives it second-order accuracy: by sampling both ends of
+    the interval, it captures the curvature that either method alone would miss.
+  </p>
+
+  <!-- Layer 2: Continuous form -->
+  <p>
+    The Crank–Nicolson method (also called the trapezoidal rule) applies the diffusion operator at the
+    half-way point between old and new:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(10.3)</span>
+    $$\mathbf{V}^{n+1} = \mathbf{V}^n + \frac{\Delta t}{2}\bigl[\mathcal{D}(\mathbf{V}^n) + \mathcal{D}(\mathbf{V}^{n+1})\bigr]$$
+  </div>
+
+  <p>
+    Substituting $\mathcal{D}(\mathbf{V}) = -\mathbf{M}^{-1}\mathbf{K}\,\mathbf{V}$, multiplying through
+    by $\mathbf{M}$, and collecting terms:
+  </p>
+
+  <!-- Layer 3: Matrix form (what the code computes) -->
+  <div class="equation-block">
+    <span class="equation-label">(10.4)</span>
+    $$\boxed{\underbrace{\bigl(\mathbf{M} + \tfrac{\Delta t}{2}\mathbf{K}\bigr)}_{\mathbf{A}_{\text{lhs}}}\;\mathbf{V}^{n+1} = \underbrace{\bigl(\mathbf{M} - \tfrac{\Delta t}{2}\mathbf{K}\bigr)}_{\mathbf{B}_{\text{rhs}}}\;\mathbf{V}^n}$$
+  </div>
+
+  <p>
+    Compare with Backward Euler (10.2): the only difference is the $\frac{1}{2}$ on the $\mathbf{K}$
+    terms and the appearance of $\mathbf{K}$ on the right-hand side. Both sides now involve the stiffness
+    matrix, but the computation is the same: one sparse matrix-vector product for the RHS, then a
+    linear solve with $\mathbf{A}_{\text{lhs}}$.
+  </p>
+
+  <p>
+    Crank–Nicolson is second-order accurate ($O(\Delta t^2)$) and A-stable — unconditionally stable, but
+    <em>not</em> L-stable. The practical consequence: at very sharp wavefronts, CN can produce mild 2$\Delta t$
+    oscillations (the Crank–Nicolson "ringing" artifact). These oscillations do not grow (A-stability) but
+    they can be aesthetically unpleasant and may trigger spurious ionic model activation. For most cardiac
+    simulations with $\Delta t \leq 0.05$ ms, the oscillations are negligible.
+  </p>
+
+  <!-- Layer 4: Worked example -->
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example.</strong> Consider a 5-node 1D cable (FDM, lumped mass, $\mathbf{M} = \mathbf{I}$)
+      with stiffness matrix $\mathbf{K}$ from Chapter 7 and $\Delta t = 0.02$ ms. The CN matrices are:
+    </p>
+    <p>
+      $\mathbf{A}_{\text{lhs}} = \mathbf{I} + 0.01\,\mathbf{K}$, &ensp;
+      $\mathbf{B}_{\text{rhs}} = \mathbf{I} - 0.01\,\mathbf{K}$
+    </p>
+    <p>
+      At each timestep: (1) compute $\mathbf{b} = \mathbf{B}_{\text{rhs}} \cdot \mathbf{V}^n$
+      (sparse matvec, $\sim 5N$ flops), then (2) solve $\mathbf{A}_{\text{lhs}} \cdot \mathbf{V}^{n+1} = \mathbf{b}$
+      (CG iteration, 10–30 iterations × $\sim 5N$ flops per iteration). Compare with Forward Euler:
+      one matvec per step, but requiring $\Delta t \leq h^2/(2d) \approx 0.003$ ms — meaning CN can
+      take $\sim$7× larger steps for the same total cost per unit simulation time.
+    </p>
+  </div>
+
+  <div class="insight insight-warning">
+    <p>
+      Both $\mathbf{A}_{\text{lhs}}$ and $\mathbf{B}_{\text{rhs}}$ are precomputed once at the start
+      of the simulation (or when $\Delta t$ changes) and reused at every timestep. They are sparse
+      matrices with the same sparsity pattern as $\mathbf{K}$. This one-time assembly cost is amortized
+      over thousands of timesteps.
+    </p>
+  </div>
+
+  <h3>10.4 &ensp; BDF2: Second-Order with Strong Damping</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    BDF2 is like Crank–Nicolson's tougher cousin. Both are second-order accurate, but BDF2 achieves this
+    by using <em>two previous time levels</em> — $\mathbf{V}^n$ and $\mathbf{V}^{n-1}$ — rather than
+    averaging the diffusion operator. The payoff is <em>L-stability</em>: BDF2 aggressively damps stiff
+    transients that would cause CN to ring. For the steep cardiac wavefront ($\sim$0.3 mm wide, crossing a
+    grid cell in $\sim$0.01 ms), this damping is usually beneficial.
+  </p>
+
+  <!-- Layer 2: Continuous form -->
+  <p>
+    The BDF2 formula replaces the first-order backward difference with a second-order version using
+    two history levels:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(10.5)</span>
+    $$\frac{3\,\mathbf{V}^{n+1} - 4\,\mathbf{V}^n + \mathbf{V}^{n-1}}{2\,\Delta t} = \mathcal{D}(\mathbf{V}^{n+1})$$
+  </div>
+
+  <p>
+    The left side is a second-order backward difference approximation to $d\mathbf{V}/dt$ at time
+    $t^{n+1}$, using the three points $\{t^{n-1}, t^n, t^{n+1}\}$. Multiplying through by
+    $2\,\Delta t\,\mathbf{M}$ and substituting $\mathcal{D} = -\mathbf{M}^{-1}\mathbf{K}$:
+  </p>
+
+  <!-- Layer 3: Matrix form (what the code computes) -->
+  <div class="equation-block">
+    <span class="equation-label">(10.6)</span>
+    $$\boxed{\underbrace{\bigl(3\,\mathbf{M} + 2\,\Delta t\,\mathbf{K}\bigr)}_{\mathbf{A}_{\text{lhs}}}\;\mathbf{V}^{n+1} = \underbrace{4\,\mathbf{M}}_{\mathbf{B}_{\text{rhs}}}\;\mathbf{V}^n - \mathbf{M}\,\mathbf{V}^{n-1}}$$
+  </div>
+
+  <p>
+    The right-hand side now involves <em>two</em> previous voltage vectors: $4\,\mathbf{M}\,\mathbf{V}^n - \mathbf{M}\,\mathbf{V}^{n-1}$.
+    This is the price of being a two-step method: the solver must store the previous timestep's voltage
+    $\mathbf{V}^{n-1}$ in addition to the current $\mathbf{V}^n$. Since $\mathbf{V}^{n-1}$ is not
+    available at $t = 0$, the first step must use BDF1 (Backward Euler) as a bootstrap — a one-step
+    method that requires only $\mathbf{V}^0$.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      BDF2 is A-stable but (despite its strong damping) technically not L-stable — that distinction
+      belongs to BDF1. However, BDF2's damping of high-frequency modes is much stronger than CN's.
+      The stability function $R(z) = (4 - 1/(1 + 2z/3))$ satisfies $|R(\infty)| = 1/3$, compared to
+      $|R(\infty)| = 1$ for CN. In practice, this means BDF2 suppresses the "ringing" at sharp
+      wavefronts that CN can exhibit.
+    </p>
+  </div>
+
+  <h3>10.5 &ensp; Comparing the Three Methods</h3>
+
+  <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
+    <thead>
+      <tr style="background:#f0f0f0;">
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Method</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Order</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\mathbf{A}_{\text{lhs}}$</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\mathbf{B}_{\text{rhs}} \cdot \mathbf{V}^n$</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Stability</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Best when...</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding:8px; border:1px solid #ddd;">BDF1</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$\mathbf{M} + \Delta t\,\mathbf{K}$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$\mathbf{M}\,\mathbf{V}^n$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">L-stable</td>
+        <td style="padding:8px; border:1px solid #ddd;">First step; after discontinuities</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:8px; border:1px solid #ddd;">CN</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">2</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$\mathbf{M} + \frac{\Delta t}{2}\mathbf{K}$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$(\mathbf{M} - \frac{\Delta t}{2}\mathbf{K})\,\mathbf{V}^n$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">A-stable</td>
+        <td style="padding:8px; border:1px solid #ddd;">Default choice; smooth solutions</td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border:1px solid #ddd;">BDF2</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">2</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$3\mathbf{M} + 2\Delta t\,\mathbf{K}$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$4\mathbf{M}\,\mathbf{V}^n - \mathbf{M}\,\mathbf{V}^{n-1}$</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">A-stable, strongly damping</td>
+        <td style="padding:8px; border:1px solid #ddd;">Sharp wavefronts; large $\Delta t$</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    All three methods share the same computational skeleton: precompute $\mathbf{A}_{\text{lhs}}$ and
+    $\mathbf{B}_{\text{rhs}}$ once, then at each timestep perform one sparse matrix-vector product
+    (the RHS) followed by one linear solve (the LHS). The linear solve dominates the cost — typically
+    60–80% of wall-clock time in an implicit monodomain simulation.
+  </p>
+
+  <h3>10.6 &ensp; Linear Solvers: PCG, Chebyshev, and FFT</h3>
+
+  <p>
+    The linear system $\mathbf{A}_{\text{lhs}}\,\mathbf{V}^{n+1} = \mathbf{b}$ must be solved
+    efficiently at every timestep. Since $\mathbf{A}_{\text{lhs}}$ is SPD (for Neumann boundary
+    conditions), the conjugate gradient method is the natural choice. Engine V5.4 offers three
+    solver strategies, each suited to different hardware and problem configurations:
+  </p>
+
+  <p>
+    <strong>PCG (Preconditioned Conjugate Gradient)</strong> with Jacobi preconditioning is the
+    default. It is robust, well-understood, and converges in $O(\sqrt{\kappa})$ iterations, where
+    $\kappa$ is the condition number of the system. For the monodomain problem, $\kappa \propto h^{-2}$,
+    so finer meshes require more iterations — but typically 10–30 suffice for the tolerance levels
+    needed in cardiac simulation.
+  </p>
+
+  <p>
+    <strong>Chebyshev iteration</strong> is a fixed-polynomial method that requires no inner products —
+    making it ideal for GPU computation, where global reductions (inner products) are expensive. It
+    requires an estimate of the eigenvalue bounds of $\mathbf{A}_{\text{lhs}}$, but these can be
+    precomputed once. The Chebyshev solver achieves zero-synchronization operation: every thread computes
+    independently for a fixed number of iterations.
+  </p>
+
+  <p>
+    <strong>FFT/DCT solver</strong> applies when the domain is a regular rectangle with uniform
+    spacing. The discrete Laplacian diagonalizes under a cosine transform (for Neumann BC), giving
+    a direct solve: transform → divide by eigenvalues → inverse transform. This is $O(N \log N)$ and
+    exact to machine precision — no iterations needed. It is the fastest option when applicable, but
+    limited to rectangular domains with constant conductivity.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The choice of linear solver often dominates the total simulation cost. In a typical implicit
+      monodomain simulation, 60–80% of wall-clock time is spent in the linear solver. This is why
+      the Chebyshev (GPU-friendly) and FFT (direct) solvers exist in V5.4 alongside PCG — each
+      targets a different performance bottleneck.
+    </p>
+  </div>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the implicit solvers (<code>CrankNicolsonSolver</code>, <code>BDF1Solver</code>,
+      <code>BDF2Solver</code>) each inherit from <code>DiffusionSolver</code> and additionally own a
+      <code>LinearSolver</code>. At construction, each calls
+      <code>spatial.get_diffusion_operators(dt, scheme)</code> with <code>scheme</code> = <code>"CN"</code>,
+      <code>"BDF1"</code>, or <code>"BDF2"</code> — this returns a <code>DiffusionOperators</code>
+      object containing the precomputed sparse matrices $\mathbf{A}_{\text{lhs}}$ and $\mathbf{B}_{\text{rhs}}$.
+      The <code>step()</code> method is then identical for all three: compute
+      <code>rhs = B_rhs @ V</code>, solve <code>A_lhs @ V_new = rhs</code>. BDF2 additionally stores
+      <code>V_prev</code> and subtracts <code>M @ V_prev</code> from the RHS, with an automatic
+      fallback to BDF1 for the first timestep.
+    </p>
+  </div>
+</div>
+
+
+<!-- Part II ends here — LBM methods are covered in Part IV -->
+
+
+<!-- ██████████████████████████████████████████████████████████████████ -->
+<!--                    PART III — THE BIDOMAIN EXTENSION               -->
+<!-- ██████████████████████████████████████████████████████████████████ -->

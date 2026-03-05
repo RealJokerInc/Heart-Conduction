@@ -1,0 +1,738 @@
+[
+  {
+    "type": "part",
+    "id": "part-i",
+    "num": "Part I",
+    "title": "Single Cell Dynamics",
+    "chapters": [
+      {
+        "type": "chapter",
+        "id": "ch1",
+        "num": "Chapter 1",
+        "title": "The Hodgkin\u2013Huxley Revolution",
+        "subsections": [
+          {
+            "title": "1.1 &ensp; The Membrane as a Circuit",
+            "anchor": "1-1"
+          },
+          {
+            "title": "1.2 &ensp; Gating Variables: m, h, and n",
+            "anchor": "1-2"
+          },
+          {
+            "title": "1.3 &ensp; The Sodium Hypothesis and Positive Feedback",
+            "anchor": "1-3"
+          },
+          {
+            "title": "1.4 &ensp; Activation vs. Inactivation: The Refractory Period",
+            "anchor": "1-4"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch2",
+        "num": "Chapter 2",
+        "title": "From Neurons to Heart Cells",
+        "subsections": [
+          {
+            "title": "2.1 &ensp; Why the Heart Needs a Longer Action Potential",
+            "anchor": "2-1"
+          },
+          {
+            "title": "2.2 &ensp; The L-type Calcium Current and the Plateau",
+            "anchor": "2-2"
+          },
+          {
+            "title": "2.3 &ensp; Minimal Cardiac Models: FitzHugh\u2013Nagumo to Fenton\u2013Karma",
+            "anchor": "2-3"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch3",
+        "num": "Chapter 3",
+        "title": "Anatomy of the Cardiac Action Potential",
+        "subsections": [
+          {
+            "title": "3.1 &ensp; Phase 0: The Sodium Upstroke",
+            "anchor": "3-1"
+          },
+          {
+            "title": "3.2 &ensp; Phase 1: Early Repolarization ($I_{\\text{to}}$)",
+            "anchor": "3-2"
+          },
+          {
+            "title": "3.3 &ensp; Phase 2: The Plateau \u2014 A Delicate Balance",
+            "anchor": "3-3"
+          },
+          {
+            "title": "3.4 &ensp; Phase 3: Repolarization \u2014 The Potassium Takeover",
+            "anchor": "3-4"
+          },
+          {
+            "title": "3.5 &ensp; Phase 4: Rest and the Role of $I_{\\text{K1}}$",
+            "anchor": "3-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch4",
+        "num": "Chapter 4",
+        "title": "Intracellular Calcium: The Master Regulator",
+        "subsections": [
+          {
+            "title": "4.1 &ensp; The Dyadic Cleft \u2014 Where Electrical Meets Mechanical",
+            "anchor": "4-1"
+          },
+          {
+            "title": "4.2 &ensp; Calcium-Induced Calcium Release \u2014 Local Control Theory",
+            "anchor": "4-2"
+          },
+          {
+            "title": "4.3 &ensp; The Ryanodine Receptor \u2014 Gatekeeper of the SR",
+            "anchor": "4-3"
+          },
+          {
+            "title": "4.4 &ensp; SERCA2a and Phospholamban \u2014 The Pump and Its Brake",
+            "anchor": "4-4"
+          },
+          {
+            "title": "4.5 &ensp; The Sodium-Calcium Exchanger \u2014 Dual-Mode Transport",
+            "anchor": "4-5"
+          },
+          {
+            "title": "4.6 &ensp; Calcium Buffering \u2014 The 1% Rule",
+            "anchor": "4-6"
+          },
+          {
+            "title": "4.7 &ensp; T-Tubule Remodeling \u2014 When Structure Fails",
+            "anchor": "4-7"
+          },
+          {
+            "title": "4.8 &ensp; Emerging Frontiers: Imaging, Modeling, and Therapy",
+            "anchor": "4-8"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch5",
+        "num": "Chapter 5",
+        "title": "The ten Tusscher\u2013Panfilov 2006 Model",
+        "subsections": [
+          {
+            "title": "5.1 &ensp; 18 State Variables: What and Why",
+            "anchor": "5-1"
+          },
+          {
+            "title": "5.2 &ensp; The Complete Current Inventory",
+            "anchor": "5-2"
+          },
+          {
+            "title": "5.3 &ensp; Voltage-Gated Depolarizing Currents",
+            "anchor": "5-3"
+          },
+          {
+            "title": "5.4 &ensp; Voltage-Gated Repolarizing Currents",
+            "anchor": "5-4"
+          },
+          {
+            "title": "5.5 &ensp; Pumps, Exchangers, and Background Currents",
+            "anchor": "5-5"
+          },
+          {
+            "title": "5.6 &ensp; Currents During Each AP Phase \u2014 A Visual Map",
+            "anchor": "5-6"
+          },
+          {
+            "title": "5.7 &ensp; Endo, Epi, and M-Cells: Transmural Heterogeneity",
+            "anchor": "5-7"
+          },
+          {
+            "title": "5.8 &ensp; Calcium Handling and CICR",
+            "anchor": "5-8"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch6",
+        "num": "Chapter 6",
+        "title": "The O'Hara\u2013Rudy 2011 Model",
+        "subsections": [
+          {
+            "title": "6.1 &ensp; 41 State Variables: What and Why",
+            "anchor": "6-1"
+          },
+          {
+            "title": "6.2 &ensp; The Complete Current Inventory",
+            "anchor": "6-2"
+          },
+          {
+            "title": "6.3 &ensp; Voltage-Gated Depolarizing Currents",
+            "anchor": "6-3"
+          },
+          {
+            "title": "6.4 &ensp; Voltage-Gated Repolarizing Currents",
+            "anchor": "6-4"
+          },
+          {
+            "title": "6.5 &ensp; Pumps, Exchangers, and Background Currents",
+            "anchor": "6-5"
+          },
+          {
+            "title": "6.6 &ensp; The CaMKII Signaling Pathway",
+            "anchor": "6-6"
+          },
+          {
+            "title": "6.7 &ensp; Currents During Each AP Phase \u2014 A Visual Map",
+            "anchor": "6-7"
+          },
+          {
+            "title": "6.8 &ensp; Endo, Epi, and M-Cells: Transmural Heterogeneity",
+            "anchor": "6-8"
+          },
+          {
+            "title": "6.9 &ensp; Calcium Handling: Two SR Compartments",
+            "anchor": "6-9"
+          },
+          {
+            "title": "6.10 &ensp; TTP06 vs. ORd at a Glance",
+            "anchor": "6-10"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "part",
+    "id": "part-ii",
+    "num": "Part II",
+    "title": "Tissue-Level Monodomain Modeling",
+    "chapters": [
+      {
+        "type": "chapter",
+        "id": "ch7",
+        "num": "Chapter 7",
+        "title": "The Monodomain Equation",
+        "subsections": [
+          {
+            "title": "7.1 &ensp; From Single Cell to Tissue: Adding Diffusion",
+            "anchor": "7-1"
+          },
+          {
+            "title": "7.2 &ensp; The Reaction\u2013Diffusion Formulation",
+            "anchor": "7-2"
+          },
+          {
+            "title": "7.3 &ensp; Conductivity, Fibers, and Anisotropy",
+            "anchor": "7-3"
+          },
+          {
+            "title": "7.4 &ensp; Spatial Discretization: What It Means Physically",
+            "anchor": "7-4"
+          },
+          {
+            "title": "7.5 &ensp; Finite Difference Method (FDM)",
+            "anchor": "7-5"
+          },
+          {
+            "title": "7.6 &ensp; Finite Element Method (FEM)",
+            "anchor": "7-6"
+          },
+          {
+            "title": "7.7 &ensp; Finite Volume Method (FVM)",
+            "anchor": "7-7"
+          },
+          {
+            "title": "7.8 &ensp; Choosing Your Method: A Practical Guide",
+            "anchor": "7-8"
+          },
+          {
+            "title": "7.9 &ensp; Connecting the Pieces: From PDE to Matrix System",
+            "anchor": "7-9"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch8",
+        "num": "Chapter 8",
+        "title": "Operator Splitting: Divide and Conquer",
+        "subsections": [
+          {
+            "title": "8.1 &ensp; Why Split? The Stiffness Argument",
+            "anchor": "8-1"
+          },
+          {
+            "title": "8.2 &ensp; Godunov (First-Order) Splitting",
+            "anchor": "8-2"
+          },
+          {
+            "title": "8.3 &ensp; Strang (Second-Order) Splitting",
+            "anchor": "8-3"
+          },
+          {
+            "title": "8.4 &ensp; The Rush\u2013Larsen Method for Ionic Variables",
+            "anchor": "8-4"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch9",
+        "num": "Chapter 9",
+        "title": "Explicit Diffusion Solvers",
+        "subsections": [
+          {
+            "title": "9.1 &ensp; Forward Euler and the CFL Condition",
+            "anchor": "9-1"
+          },
+          {
+            "title": "9.2 &ensp; Why Go Beyond Forward Euler?",
+            "anchor": "9-2"
+          },
+          {
+            "title": "9.3 &ensp; RK2 \u2014 Heun's Method (The Two-Sample Correction)",
+            "anchor": "9-3"
+          },
+          {
+            "title": "9.4 &ensp; RK4 \u2014 The Classical Four-Stage Method",
+            "anchor": "9-4"
+          },
+          {
+            "title": "9.5 &ensp; Stability Regions: How Large Can $\\Delta t$ Be?",
+            "anchor": "9-5"
+          },
+          {
+            "title": "9.6 &ensp; Cost vs. Accuracy: Choosing Your Explicit Method",
+            "anchor": "9-6"
+          },
+          {
+            "title": "9.7 &ensp; When Explicit Methods Shine",
+            "anchor": "9-7"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch10",
+        "num": "Chapter 10",
+        "title": "Implicit Diffusion Solvers",
+        "subsections": [
+          {
+            "title": "10.1 &ensp; Why Implicit? The CFL Wall",
+            "anchor": "10-1"
+          },
+          {
+            "title": "10.2 &ensp; Backward Euler (BDF1): The Simplest Implicit Method",
+            "anchor": "10-2"
+          },
+          {
+            "title": "10.3 &ensp; Crank\u2013Nicolson: Second-Order Implicit",
+            "anchor": "10-3"
+          },
+          {
+            "title": "10.4 &ensp; BDF2: Second-Order with Strong Damping",
+            "anchor": "10-4"
+          },
+          {
+            "title": "10.5 &ensp; Comparing the Three Methods",
+            "anchor": "10-5"
+          },
+          {
+            "title": "10.6 &ensp; Linear Solvers: PCG, Chebyshev, and FFT",
+            "anchor": "10-6"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "part",
+    "id": "part-iii",
+    "num": "Part III",
+    "title": "The Bidomain Extension",
+    "chapters": [
+      {
+        "type": "chapter",
+        "id": "ch11",
+        "num": "Chapter 11",
+        "title": "Why Bidomain? \u2014 The Physical Picture",
+        "subsections": [
+          {
+            "title": "11.1 &ensp; Currents in a Living Heart",
+            "anchor": "11-1"
+          },
+          {
+            "title": "11.2 &ensp; Divergence and Conservation: The Language of Current Flow",
+            "anchor": "11-2"
+          },
+          {
+            "title": "11.3 &ensp; From One Domain to Two",
+            "anchor": "11-3"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch12",
+        "num": "Chapter 12",
+        "title": "The Bidomain Equations",
+        "subsections": [
+          {
+            "title": "12.1 &ensp; The Monodomain Equation (Review)",
+            "anchor": "12-1"
+          },
+          {
+            "title": "12.2 &ensp; Building the Bidomain System",
+            "anchor": "12-2"
+          },
+          {
+            "title": "12.3 &ensp; The Parabolic\u2013Elliptic Couple",
+            "anchor": "12-3"
+          },
+          {
+            "title": "12.4 &ensp; When Bidomain Reduces to Monodomain",
+            "anchor": "12-4"
+          },
+          {
+            "title": "12.5 &ensp; Conductivity Tensors and Fiber Architecture",
+            "anchor": "12-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch13",
+        "num": "Chapter 13",
+        "title": "Spatial Discretization",
+        "subsections": [
+          {
+            "title": "13.1 &ensp; From One Stiffness Matrix to Two",
+            "anchor": "13-1"
+          },
+          {
+            "title": "13.2 &ensp; The Bidomain Weak Form",
+            "anchor": "13-2"
+          },
+          {
+            "title": "13.3 &ensp; The 2\u00d72 Block System",
+            "anchor": "13-3"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch14",
+        "num": "Chapter 14",
+        "title": "Time Integration and Operator Splitting",
+        "subsections": [
+          {
+            "title": "14.1 &ensp; Operator Splitting Applied to Bidomain",
+            "anchor": "14-1"
+          },
+          {
+            "title": "14.2 &ensp; Time Steppers: Crank\u2013Nicolson vs. SDIRK2",
+            "anchor": "14-2"
+          },
+          {
+            "title": "14.3 &ensp; IMEX Methods",
+            "anchor": "14-3"
+          },
+          {
+            "title": "14.4 &ensp; Why Fully Explicit Methods Fail",
+            "anchor": "14-4"
+          },
+          {
+            "title": "14.5 &ensp; Explicit Stabilized Methods (RKC)",
+            "anchor": "14-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch15",
+        "num": "Chapter 15",
+        "title": "Linear Solvers for the Block System",
+        "subsections": [
+          {
+            "title": "15.1 &ensp; The Saddle-Point Structure",
+            "anchor": "15-1"
+          },
+          {
+            "title": "15.2 &ensp; Block Preconditioners",
+            "anchor": "15-2"
+          },
+          {
+            "title": "15.3 &ensp; Algebraic Multigrid (AMG)",
+            "anchor": "15-3"
+          },
+          {
+            "title": "15.4 &ensp; Krylov Methods: MINRES, GMRES, and Friends",
+            "anchor": "15-4"
+          },
+          {
+            "title": "15.5 &ensp; The Null-Space Problem",
+            "anchor": "15-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch16",
+        "num": "Chapter 16",
+        "title": "Implementation Roadmap for Engine V5.4",
+        "subsections": [
+          {
+            "title": "16.1 &ensp; Architecture Extensions",
+            "anchor": "16-1"
+          },
+          {
+            "title": "16.2 &ensp; Recommended Solver Stack",
+            "anchor": "16-2"
+          },
+          {
+            "title": "16.3 &ensp; Performance Expectations",
+            "anchor": "16-3"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "part",
+    "id": "part-iv",
+    "num": "Part IV",
+    "title": "Lattice-Boltzmann Methods",
+    "chapters": [
+      {
+        "type": "chapter",
+        "id": "ch17",
+        "num": "Chapter 17",
+        "title": "The Lattice-Boltzmann Method: From Kinetic Theory to Computation",
+        "subsections": [
+          {
+            "title": "17.1 &ensp; The Thermodynamic Foundation: Phase Space and the Equilibrium State",
+            "anchor": "17-1"
+          },
+          {
+            "title": "17.2 &ensp; The Boltzmann Equation and Kinetic Theory",
+            "anchor": "17-2"
+          },
+          {
+            "title": "17.3 &ensp; The Lattice-Boltzmann Equation: Single Relaxation Time (SRT/BGK)",
+            "anchor": "17-3"
+          },
+          {
+            "title": "17.4 &ensp; From the Gaussian to the Lattice: Discretizing $f^{\\text{eq}}$, $w_i$, and $\\mathbf{c}_i$",
+            "anchor": "17-4"
+          },
+          {
+            "title": "17.5 &ensp; Moment Space: The Physical Decomposition of the Collision Operator",
+            "anchor": "17-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch18",
+        "num": "Chapter 18",
+        "title": "Lattice-Boltzmann Methods for Monodomain",
+        "subsections": [
+          {
+            "title": "18.1 &ensp; The Monodomain Equation as a Target PDE",
+            "anchor": "18-1"
+          },
+          {
+            "title": "18.2 &ensp; Operator Splitting: Reaction Then Diffusion",
+            "anchor": "18-2"
+          },
+          {
+            "title": "18.3 &ensp; BGK Collision with Source Term",
+            "anchor": "18-3"
+          },
+          {
+            "title": "18.4 &ensp; MRT for Anisotropic Tissue",
+            "anchor": "18-4"
+          },
+          {
+            "title": "18.5 &ensp; Boundary Conditions for LBM Electrophysiology",
+            "anchor": "18-5"
+          },
+          {
+            "title": "18.6 &ensp; The Complete LBM-EP Algorithm",
+            "anchor": "18-6"
+          },
+          {
+            "title": "18.7 &ensp; Implementation: Memory Layout and GPU Acceleration",
+            "anchor": "18-7"
+          },
+          {
+            "title": "18.8 &ensp; LBM vs. Classical Methods: When to Choose What",
+            "anchor": "18-8"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch19",
+        "num": "Chapter 19",
+        "title": "Lattice-Boltzmann Methods for Bidomain",
+        "subsections": [
+          {
+            "title": "19.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic",
+            "anchor": "19-1"
+          },
+          {
+            "title": "19.2 &ensp; Strategy 1: Pseudo-Time Relaxation",
+            "anchor": "19-2"
+          },
+          {
+            "title": "19.3 &ensp; Strategy 2: Hybrid LBM\u2013Classical Solver",
+            "anchor": "19-3"
+          },
+          {
+            "title": "19.4 &ensp; The Dual-Lattice Architecture",
+            "anchor": "19-4"
+          },
+          {
+            "title": "19.5 &ensp; Performance and Implementation Outlook",
+            "anchor": "19-5"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "part",
+    "id": "appendices",
+    "num": "Appendices",
+    "title": "Reference Material",
+    "chapters": [
+      {
+        "type": "chapter",
+        "id": "references",
+        "num": "Appendix",
+        "title": "Key References",
+        "subsections": [
+          {
+            "title": "Core Bidomain Theory",
+            "anchor": ""
+          },
+          {
+            "title": "Numerical Methods and Solvers",
+            "anchor": ""
+          },
+          {
+            "title": "Lattice-Boltzmann Methods for Cardiac EP",
+            "anchor": ""
+          },
+          {
+            "title": "Software Frameworks",
+            "anchor": ""
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "appendix-a",
+        "num": "Appendix A",
+        "title": "A Visual Guide to Differential Equations",
+        "subsections": [
+          {
+            "title": "A.1 &ensp; The Heat Equation: Where It All Begins",
+            "anchor": "A-1"
+          },
+          {
+            "title": "A.2 &ensp; What the Laplacian Really Means",
+            "anchor": "A-2"
+          },
+          {
+            "title": "A.3 &ensp; The Three Families of PDEs",
+            "anchor": "A-3"
+          },
+          {
+            "title": "A.4 &ensp; Parabolic Equations: Diffusion and Smoothing",
+            "anchor": "A-4"
+          },
+          {
+            "title": "A.5 &ensp; Elliptic Equations: Equilibrium and Constraints",
+            "anchor": "A-5"
+          },
+          {
+            "title": "A.6 &ensp; Hyperbolic Equations: Waves and Propagation",
+            "anchor": "A-6"
+          },
+          {
+            "title": "A.7 &ensp; Why the Bidomain Model Has Two Types",
+            "anchor": "A-7"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "appendix-b",
+        "num": "Appendix B",
+        "title": "Introduction to PyTorch",
+        "subsections": [
+          {
+            "title": "B.1 &ensp; Installation and Your First Tensor",
+            "anchor": "B-1"
+          },
+          {
+            "title": "B.2 &ensp; Arithmetic: Scalars, Vectors, and Matrices",
+            "anchor": "B-2"
+          },
+          {
+            "title": "B.3 &ensp; Tensors and Shapes",
+            "anchor": "B-3"
+          },
+          {
+            "title": "B.4 &ensp; Data Types and Precision",
+            "anchor": "B-4"
+          },
+          {
+            "title": "B.5 &ensp; Common Operations Cheat Sheet",
+            "anchor": "B-5"
+          },
+          {
+            "title": "B.6 &ensp; Linear Algebra",
+            "anchor": "B-6"
+          },
+          {
+            "title": "B.7 &ensp; Sparse Matrices",
+            "anchor": "B-7"
+          },
+          {
+            "title": "B.8 &ensp; GPU Acceleration",
+            "anchor": "B-8"
+          },
+          {
+            "title": "B.9 &ensp; Advanced Operations for Scientific Computing",
+            "anchor": "B-9"
+          },
+          {
+            "title": "B.10 &ensp; Automatic Differentiation (Autograd)",
+            "anchor": "B-10"
+          },
+          {
+            "title": "B.11 &ensp; Building Neural Networks with nn.Module",
+            "anchor": "B-11"
+          },
+          {
+            "title": "B.12 &ensp; Connecting to Engine V5.4",
+            "anchor": "B-12"
+          },
+          {
+            "title": "B.13 &ensp; Where Machine Learning Meets Cardiac Modeling",
+            "anchor": "B-13"
+          }
+        ]
+      }
+    ]
+  }
+]

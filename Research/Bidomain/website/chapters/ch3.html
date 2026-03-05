@@ -1,0 +1,189 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 3</div>
+  <h2 class="chapter-title">Anatomy of the Cardiac Action Potential</h2>
+  <div class="chapter-intro">
+    The ventricular action potential is traditionally divided into five phases (0 through 4). Each phase
+    has a dominant current, a clear biophysical story, and direct consequences for the heart's electrical
+    and mechanical function. Understanding these phases is the Rosetta Stone for reading any cardiac
+    cell model. Chapter 5 provides the complete mathematical formulations for all 12 membrane currents
+    in the TTP06 model; here we build the qualitative intuition first.
+  </div>
+
+  <!-- ─── Cardiac AP with phases labeled ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 520 280" xmlns="http://www.w3.org/2000/svg" style="max-width:470px;">
+      <!-- Axes -->
+      <line x1="55" y1="240" x2="500" y2="240" stroke="#16213e" stroke-width="1.2"/>
+      <line x1="55" y1="240" x2="55" y2="15" stroke="#16213e" stroke-width="1.2"/>
+      <text x="280" y="272" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle">Time (ms)</text>
+      <text x="14" y="130" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,14,130)">V<tspan font-size="8" dy="2">m</tspan><tspan dy="-2"> (mV)</tspan></text>
+
+      <!-- Voltage ticks -->
+      <text x="47" y="244" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-85</text>
+      <text x="47" y="165" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-20</text>
+      <text x="47" y="105" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+20</text>
+      <text x="47" y="40" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+40</text>
+      <!-- Time ticks -->
+      <text x="55" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">0</text>
+      <text x="155" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">50</text>
+      <text x="255" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">150</text>
+      <text x="355" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">250</text>
+      <text x="455" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">350</text>
+
+      <!-- zero line -->
+      <line x1="55" y1="140" x2="500" y2="140" stroke="#d0d5e0" stroke-width="0.5" stroke-dasharray="3,3"/>
+
+      <!-- AP trace (ventricular-like: fast upstroke, notch, plateau, repolarization) -->
+      <path d="M 55,235 L 72,235 Q 75,235 77,200 Q 80,90 82,35 Q 84,28 86,35 Q 89,55 93,75 Q 96,85 100,80
+               Q 120,72 170,75 Q 220,80 270,90 Q 310,110 340,145
+               Q 370,190 390,218 Q 410,232 430,235 L 500,235"
+            fill="none" stroke="#e94560" stroke-width="2.5"/>
+
+      <!-- Phase labels -->
+      <!-- Phase 0 -->
+      <rect x="71" y="20" width="20" height="16" rx="3" fill="#e94560" opacity="0.15"/>
+      <text x="81" y="32" font-size="10" fill="#e94560" font-family="serif" font-weight="700" text-anchor="middle">0</text>
+      <path d="M 81,38 L 81,120" fill="none" stroke="#e94560" stroke-width="0.7" stroke-dasharray="2,2"/>
+
+      <!-- Phase 1 -->
+      <rect x="85" y="54" width="20" height="16" rx="3" fill="#0f3460" opacity="0.15"/>
+      <text x="95" y="66" font-size="10" fill="#0f3460" font-family="serif" font-weight="700" text-anchor="middle">1</text>
+
+      <!-- Phase 2 -->
+      <rect x="155" y="54" width="20" height="16" rx="3" fill="#2d6a4f" opacity="0.15"/>
+      <text x="165" y="66" font-size="10" fill="#2d6a4f" font-family="serif" font-weight="700" text-anchor="middle">2</text>
+
+      <!-- Phase 3 -->
+      <rect x="325" y="120" width="20" height="16" rx="3" fill="#8a6d00" opacity="0.15"/>
+      <text x="335" y="132" font-size="10" fill="#8a6d00" font-family="serif" font-weight="700" text-anchor="middle">3</text>
+
+      <!-- Phase 4 -->
+      <rect x="445" y="222" width="20" height="16" rx="3" fill="#5a6175" opacity="0.15"/>
+      <text x="455" y="234" font-size="10" fill="#5a6175" font-family="serif" font-weight="700" text-anchor="middle">4</text>
+
+      <!-- Current arrows/labels -->
+      <text x="72" y="145" font-size="8" fill="#e94560" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Na</tspan></text>
+      <text x="92" y="96" font-size="8" fill="#0f3460" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">to</tspan></text>
+      <text x="170" y="96" font-size="8" fill="#2d6a4f" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">CaL</tspan></text>
+      <text x="310" y="156" font-size="8" fill="#8a6d00" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Kr</tspan><tspan dy="-1">,I</tspan><tspan font-size="6" dy="1">Ks</tspan></text>
+      <text x="440" y="218" font-size="8" fill="#5a6175" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">K1</tspan></text>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 3.1.</span> The five phases of the human ventricular action potential with dominant
+      currents. Phase 0: Na$^+$ upstroke. Phase 1: transient outward K$^+$ (notch). Phase 2: Ca$^{2+}$-K$^+$ plateau.
+      Phase 3: K$^+$-driven repolarization. Phase 4: resting potential maintained by $I_{\text{K1}}$.
+    </div>
+  </div>
+
+  <h3>3.1 &ensp; Phase 0: The Sodium Upstroke</h3>
+
+  <p>
+    Phase 0 is the fastest event in cardiac electrophysiology. When an arriving wavefront brings $V_m$
+    above threshold ($\approx -65$ mV), sodium channels undergo the same explosive positive feedback
+    we saw in the HH model: $m$-gates open rapidly, Na$^+$ floods inward, and $V_m$ rockets from
+    $-85$ mV to about $+40$ mV in roughly 1–2 ms.
+  </p>
+
+  <p>
+    The maximum rate of rise, $dV/dt_{\text{max}}$, is a clinical measure of sodium channel
+    availability. In healthy ventricular tissue, $dV/dt_{\text{max}} \approx 200{-}300$ V/s. This
+    is also what determines <em>conduction velocity</em> — the faster the upstroke, the larger the
+    local current source that can depolarize neighboring cells, and the faster the wave propagates.
+    In the monodomain equation (Chapter 7), this translates directly to the source term.
+  </p>
+
+  <h3>3.2 &ensp; Phase 1: Early Repolarization ($I_{\text{to}}$)</h3>
+
+  <p>
+    Immediately after the peak, a brief notch appears — a small dip in voltage before the plateau.
+    This is caused by the <em>transient outward</em> potassium current $I_{\text{to}}$, which activates
+    rapidly during depolarization and inactivates within tens of milliseconds.
+  </p>
+
+  <p>
+    Phase 1 may look like a minor detail, but it has major consequences. The depth of the notch varies
+    across the ventricular wall: epicardial cells (outer surface) have large $I_{\text{to}}$ and a
+    deep notch, while endocardial cells (inner surface) have little $I_{\text{to}}$ and almost no notch.
+    This <em>transmural gradient</em> in AP morphology creates voltage differences across the wall
+    that are visible on the ECG — the J-wave and T-wave both depend on it.
+  </p>
+
+  <h3>3.3 &ensp; Phase 2: The Plateau — A Delicate Balance</h3>
+
+  <p>
+    The plateau is the heart's signature. For 150–250 ms, the membrane voltage hovers between
+    $-10$ and $+20$ mV, sustained by the near-cancellation of two opposing current groups:
+  </p>
+
+  <p>
+    <strong>Inward (depolarizing):</strong> The L-type calcium current $I_{\text{CaL}}$ is the
+    dominant plateau current. Ca$^{2+}$ ions enter through slowly inactivating channels, holding
+    the voltage up. A smaller late sodium current ($I_{\text{NaL}}$) also contributes, especially
+    in disease states.
+  </p>
+
+  <p>
+    <strong>Outward (repolarizing):</strong> Two delayed-rectifier potassium currents slowly activate:
+    $I_{\text{Kr}}$ (rapid component, carried by hERG channels) and $I_{\text{Ks}}$ (slow component).
+    The inward-rectifier $I_{\text{K1}}$ is largely blocked at plateau voltages due to its voltage
+    dependence — it will become important again in Phase 3–4.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The plateau balance explains why the cardiac AP duration (APD) is so sensitive to perturbations.
+      Block 30% of $I_{\text{Kr}}$ (as many common drugs do), and the plateau suddenly lacks enough
+      repolarizing current. APD extends, the QT interval on the ECG lengthens, and the risk of
+      arrhythmia rises. This is why <em>in silico</em> drug testing with models like TTP06 and ORd has
+      become a regulatory focus (the CiPA initiative).
+    </p>
+  </div>
+
+  <h3>3.4 &ensp; Phase 3: Repolarization — The Potassium Takeover</h3>
+
+  <p>
+    As $I_{\text{CaL}}$ gradually inactivates (driven both by voltage-dependent inactivation and by
+    rising intracellular Ca$^{2+}$ concentration), the balance tips irreversibly toward outward current.
+    The K$^+$ currents $I_{\text{Kr}}$ and $I_{\text{Ks}}$, which have been slowly building, now dominate.
+    As the voltage falls, $I_{\text{K1}}$ — the strong inward rectifier that was blocked at plateau
+    voltages — begins to unblock and adds its large outward conductance to the repolarization.
+  </p>
+
+  <p>
+    Phase 3 repolarization is <em>regenerative</em>: as $V_m$ falls, more $I_{\text{K1}}$ unblocks,
+    which pulls $V_m$ down further, which unblocks more $I_{\text{K1}}$. This positive feedback
+    (now outward) ensures that repolarization, once started, proceeds rapidly to completion. The
+    membrane returns to its resting potential of about $-85$ mV.
+  </p>
+
+  <h3>3.5 &ensp; Phase 4: Rest and the Role of $I_{\text{K1}}$</h3>
+
+  <p>
+    At rest, the membrane potential sits near $E_K \approx -88$ mV because $I_{\text{K1}}$ dominates
+    the conductance. The "inward rectifier" name refers to a peculiar property: $I_{\text{K1}}$ passes
+    large outward current at voltages just below $E_K$, but essentially zero current at plateau
+    voltages. This voltage-dependent block (caused by intracellular magnesium and polyamines plugging
+    the channel pore) is what allows the plateau to exist — without it, K$^+$ would short-circuit the
+    plateau and the AP would collapse.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of $I_{\text{K1}}$ as a two-state switch. At rest, it is "on" — a strong anchor holding
+      $V_m$ near $E_K$. During the plateau, it switches "off" — stepping aside to let the delicate
+      Ca$^{2+}$/K$^+$ balance play out. Then in Phase 3, it switches back "on" to slam the door shut
+      and restore the resting potential. No other current has this dual role.
+    </p>
+  </div>
+
+  <p>
+    With the five phases clearly in mind, we now turn to the single most important ion in cardiac
+    physiology: calcium. The next chapter is devoted entirely to the intracellular calcium machinery —
+    from the nanoscale architecture of the dyadic cleft to the pathological remodeling that drives
+    heart failure and arrhythmia.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 4 — INTRACELLULAR CALCIUM: THE MASTER REGULATOR           -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

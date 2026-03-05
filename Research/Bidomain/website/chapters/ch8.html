@@ -1,0 +1,149 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 8</div>
+  <h2 class="chapter-title">Operator Splitting: Divide and Conquer</h2>
+  <div class="chapter-intro">
+    The monodomain equation couples a stiff, nonlinear ODE system (ion channels) with a linear
+    diffusion PDE. Trying to solve them simultaneously would be nightmarish. Operator splitting
+    breaks the problem into two simpler subproblems — and it works remarkably well.
+  </div>
+
+  <h3>8.1 &ensp; Why Split? The Stiffness Argument</h3>
+
+  <p>
+    Imagine you are cooking a stir-fry. The vegetables need to sizzle at high heat for 30 seconds (fast
+    process), while the rice simmers gently for 20 minutes (slow process). Trying to cook both in the
+    same pot at the same temperature is hopeless — you either burn the rice or undercook the vegetables.
+    The smart approach: cook them in separate pots, each at the right temperature, then combine at the end.
+    Operator splitting does exactly this for the monodomain equation: the ionic channels (fast, local,
+    nonlinear) get their own "pot," and the diffusion (slow, global, linear) gets another.
+  </p>
+
+  <p>
+    The fundamental problem is <em>timescale separation</em>. During the upstroke (Phase 0), the
+    sodium gate $m$ changes with a time constant of $\sim 0.1$ ms, while the diffusion length
+    scale requires timesteps of $\sim 0.01$ ms for stability. But during the plateau (Phase 2),
+    everything moves slowly — $\tau \sim 50{-}200$ ms. Any method that tries to handle both regimes
+    in a single system must either use tiny timesteps everywhere (wasting computation during the
+    plateau) or use implicit methods for the full coupled system (requiring the solution of a
+    massive nonlinear system at each step).
+  </p>
+
+  <p>
+    Operator splitting exploits the structure of the problem. Write equation (7.1) as:
+  </p>
+
+  <div class="equation-block">
+    $$\frac{\partial V_m}{\partial t} = \underbrace{\frac{1}{\chi C_m}\nabla \cdot (\mathbf{D}\nabla V_m)}_{\mathcal{D}(V_m)} + \underbrace{\frac{-I_{\text{ion}}(V_m, \mathbf{w})}{ C_m}}_{\mathcal{R}(V_m, \mathbf{w})}$$
+  </div>
+
+  <p>
+    Instead of solving $\partial V_m/\partial t = \mathcal{D} + \mathcal{R}$ as one equation,
+    we solve them sequentially: first advance the reaction $\mathcal{R}$ (purely local ODE at each
+    point), then advance the diffusion $\mathcal{D}$ (linear PDE, no ionic coupling).
+  </p>
+
+  <h3>8.2 &ensp; Godunov (First-Order) Splitting</h3>
+
+  <p>
+    The simplest splitting method advances from $t^n$ to $t^{n+1} = t^n + \Delta t$ in two stages:
+  </p>
+
+  <p>
+    <strong>Stage 1 — Reaction:</strong> At every spatial point, solve the ODE system
+    $dV_m/dt = \mathcal{R}(V_m, \mathbf{w})$ and $d\mathbf{w}/dt = \mathbf{g}(V_m, \mathbf{w})$
+    from $t^n$ to $t^{n+1}$, using $V_m^n$ as the initial condition.
+  </p>
+
+  <p>
+    <strong>Stage 2 — Diffusion:</strong> Starting from the updated $V_m^*$ (output of Stage 1),
+    solve $\partial V_m/\partial t = \mathcal{D}(V_m)$ from $t^n$ to $t^{n+1}$.
+  </p>
+
+  <p>
+    Godunov splitting is first-order accurate in time: the splitting error is $O(\Delta t)$. For
+    cardiac simulations with $\Delta t = 0.01{-}0.05$ ms, this error is generally acceptable
+    because the spatial and temporal discretization errors are of similar magnitude.
+  </p>
+
+  <h3>8.3 &ensp; Strang (Second-Order) Splitting</h3>
+
+  <p>
+    For higher accuracy, Strang splitting uses a symmetric sequence:
+  </p>
+
+  <p>
+    <strong>Half-step reaction</strong> ($\Delta t/2$) → <strong>Full-step diffusion</strong> ($\Delta t$) →
+    <strong>Half-step reaction</strong> ($\Delta t/2$).
+  </p>
+
+  <p>
+    The symmetry cancels the leading-order splitting error, yielding $O(\Delta t^2)$ accuracy. The cost
+    is modestly higher (two reaction solves instead of one, though each is half as long), but the
+    improved accuracy can allow larger timesteps for the same error tolerance.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      Strang splitting is second-order because of a <em>symmetry argument</em>. If the error of
+      $\mathcal{R}\to\mathcal{D}$ is $+c\,\Delta t^2$ for some constant $c$, then the error of
+      $\mathcal{D}\to\mathcal{R}$ is $-c\,\Delta t^2$ (the error changes sign when you swap the order).
+      By sandwiching — $\mathcal{R}(\Delta t/2)\to\mathcal{D}(\Delta t)\to\mathcal{R}(\Delta t/2)$ — the
+      first-order errors cancel, leaving $O(\Delta t^3)$ local error and $O(\Delta t^2)$ global error.
+    </p>
+  </div>
+
+  <h3>8.4 &ensp; The Rush–Larsen Method for Ionic Variables</h3>
+
+  <p>
+    During the reaction substep, we must integrate the gating ODEs $dx/dt = (x_\infty - x)/\tau_x$.
+    Forward Euler would require very small substeps for gates with fast kinetics (small $\tau_x$).
+    The Rush–Larsen method sidesteps this entirely by noting that for <em>fixed voltage</em>, the
+    gating ODE has an exact exponential solution:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(8.1)</span>
+    $$x^{n+1} = x_\infty(V_m^n) + \bigl(x^n - x_\infty(V_m^n)\bigr)\,e^{-\Delta t / \tau_x(V_m^n)}$$
+  </div>
+
+  <p>
+    This is unconditionally stable for any $\Delta t > 0$: even if $\tau_x = 0.01$ ms (the fastest
+    Na$^+$ gate during the upstroke), the exponential simply drives $x$ to $x_\infty$ without
+    oscillation. For slow gates ($\tau_x \gg \Delta t$), the exponential reduces to Forward Euler,
+    so no accuracy is lost.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Rush–Larsen is like solving the "easy part" of the ODE exactly and only approximating the
+      "hard part" (the voltage dependence of $x_\infty$ and $\tau_x$). Since these parameters change
+      slowly compared to the gate dynamics during an upstroke, the approximation is excellent.
+      It transforms the stiffest part of the problem — fast gating — from a numerical headache into
+      a single exponential evaluation per gate per timestep.
+    </p>
+  </div>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the splitting and ionic integration are cleanly separated. The
+      <code>SplittingStrategy</code> ABC (<code>solver/splitting/base.py</code>) owns an
+      <code>IonicSolver</code> and a <code>DiffusionSolver</code> and calls them in the appropriate
+      order. <code>GodunovSplitting</code> calls <code>ionic_solver.step(state, dt)</code> then
+      <code>diffusion_solver.step(state, dt)</code>. <code>StrangSplitting</code> calls ionic at
+      <code>dt/2</code>, diffusion at <code>dt</code>, ionic at <code>dt/2</code>.
+    </p>
+    <p>
+      The <code>RushLarsenSolver</code> (<code>solver/ionic_time_stepping/rush_larsen.py</code>) is
+      a subclass of the <code>IonicSolver</code> ABC. Its <code>step()</code> method follows a
+      specific order: (1) compute $I_{\text{ion}}$ from the current state, (2) compute
+      $x_\infty$ and $\tau_x$ from the <em>old</em> voltage, (3) Forward Euler on voltage,
+      (4) Rush–Larsen exponential update on gates, (5) Forward Euler on concentrations.
+      A separate <code>ForwardEulerIonicSolver</code> is available for debugging. Concentration
+      variables always use Forward Euler because they do not follow relaxation kinetics.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 9 — EXPLICIT DIFFUSION SOLVERS                           -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

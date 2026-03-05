@@ -1,0 +1,296 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 19</div>
+  <h2 class="chapter-title">Lattice-Boltzmann Methods for Bidomain</h2>
+  <div class="chapter-intro">
+    Engine V5.4's LBM solver achieves 10–45× speedups over FEM for the monodomain equation. Can this advantage be preserved for bidomain? Yes — but the elliptic equation requires creative treatment. This chapter develops the core strategies: pseudo-time relaxation, hybrid LBM–classical solvers, and the dual-lattice architecture that couples two independent distribution systems. We show how to extend the computational fiction of particle distributions to solve problems with fundamentally different mathematical structure.
+  </div>
+
+  <h3>19.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Imagine two fish tanks connected by pipes: an intracellular tank (inside the cells) and an extracellular tank (outside the cells). Water flows from one tank to the other through countless tiny pipes — the ion channels. The voltage across the cell membrane is the water-level difference. Now here is the key: the intracellular voltage evolves over time (it changes as currents flow), so it satisfies a time-dependent equation. But the extracellular voltage is constrained to always satisfy a balance — at every instant, whatever current flows out of the intracellular space must flow through the external medium. This constraint is instantaneous, with no time dependence. One tank's level evolves; the other's is a slave variable determined by the constraint.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The bidomain equations (from Chapter 12) are:
+  </p>
+
+  <div class="equation-block">
+    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} + I_{\text{ion}} = \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla\phi_e)$$
+  </div>
+
+  <div class="equation-block">
+    $$0 = \nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
+  </div>
+
+  <p>
+    The first equation is <em>parabolic</em> — it has a time derivative, so it describes an evolution. The second is <em>elliptic</em> — no time derivative at all. It is a constraint that must be satisfied at every instant. LBM, by its nature, is a time-marching method: it evolves distributions forward in time. This is perfect for the parabolic equation but fundamentally at odds with the elliptic constraint.
+  </p>
+
+  <p>
+    The core mismatch is this: LBM asks "How do the distributions evolve?" But the elliptic equation says "The distributions must be such that this constraint is satisfied right now." These are two different questions. Resolving the tension between them — evolution versus constraint — is the central challenge of bidomain LBM.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of the monodomain equation (Chapter 18) as a single fish tank with a changing water level. LBM marches the level forward in time with each step. The bidomain is two tanks. The intracellular tank (Vm) still evolves. But the extracellular tank (φe) is not free to evolve — its level is pinned down by the requirement that water conservation is always satisfied. This is why φe is an elliptic equation: it is an instantaneous constraint, not a time-evolution equation.
+    </p>
+  </div>
+
+  <h3>19.2 &ensp; Strategy 1: Pseudo-Time Relaxation</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    If you heat a cold metal plate in a furnace with a fixed pattern of heat sources, the temperature rises over time. Eventually it reaches a steady state where the heat input exactly balances the heat loss through the edges. The temperature at that steady state is determined by the heat sources alone — it is independent of the initial condition or the "time" you waited. In mathematics, finding this steady state is the same as solving the elliptic equation that governs heat diffusion in equilibrium.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    Pseudo-time relaxation exploits this observation. We cannot use LBM directly on an elliptic equation because there is no time-derivative to march. But we can invent a fictitious time — call it $\tau$ (not to be confused with the relaxation time parameter) — and add an artificial time derivative to the elliptic equation:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.1)</span>
+    $$\frac{\partial\phi_e}{\partial\tau} = \nabla\!\cdot\!\bigl[(\mathbf{D}_i\!+\!\mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
+  </div>
+
+  <p>
+    This is now a parabolic equation in the pseudo-time $\tau$. We march it with LBM in pseudo-time for many sub-iterations until the solution settles to a steady state, meaning $\partial\phi_e/\partial\tau$ becomes negligibly small. At that point, the solution is the same as what the elliptic equation demands — the constraint is satisfied.
+  </p>
+
+  <p>
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.26):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.2)</span>
+    $$\tau_e = \frac{1}{2} + \frac{3\,(\mathbf{D}_i + \mathbf{D}_e)\,\Delta\tau}{\Delta x^2}$$
+  </div>
+
+  <p>
+    where $\Delta\tau$ is the pseudo-time step size and the conductivity is $\mathbf{D}_i + \mathbf{D}_e$ (the sum of intracellular and extracellular tensors, as required by the elliptic equation).
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      The convergence speed depends on $\tau_e$ (which determines the collision rate) and on the geometry of the domain. A larger $\tau_e$ means gentler relaxation and slower convergence. Typical practice is to use a moderately large $\tau_e$ (around 0.8–1.5) to balance stability with speed. The number of pseudo-time sub-iterations per physical time step is usually 10–100, depending on the desired residual reduction. With multigrid acceleration (not detailed here), this can be reduced to 5–10 iterations.
+    </p>
+  </div>
+
+  <h3>19.3 &ensp; Strategy 2: Hybrid LBM–Classical Solver</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    You would not use a hammer to write on paper — you use a pen. And you would not use a pen to drive nails — you use a hammer. The principle is simple: use the right tool for the job. LBM is superb at time-marching parabolic equations on Cartesian grids with GPUs. Classical solvers (conjugate gradient with multigrid preconditioning) are superb at solving elliptic systems exactly (or nearly exactly) without iteration over a fictitious time.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The hybrid approach splits the labor:
+  </p>
+
+  <ul>
+    <li><strong>$V_m$ equation (parabolic)</strong>: Use LBM with MRT collision (as in monodomain). Advance it by one physical time step.</li>
+    <li><strong>$\phi_e$ equation (elliptic)</strong>: Use a classical solver — Conjugate Gradient (CG) preconditioned by Algebraic Multigrid (AMG). Solve it directly to a tight tolerance.</li>
+  </ul>
+
+  <p>
+    At each physical time step:
+  </p>
+
+  <ol>
+    <li>Compute ionic currents and update gates (Rush–Larsen).</li>
+    <li>March $V_m$ forward one LBM step using the $V_m$ distribution lattice.</li>
+    <li>Assemble the right-hand side for the elliptic $\phi_e$ equation, which includes the $V_m$ gradient (now known from step 2) and the stimulus term.</li>
+    <li>Solve the elliptic system $\nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] = \cdots$ using CG+AMG, yielding $\phi_e$.</li>
+    <li>Feed $\phi_e$ back as a source term for the next step's $V_m$ equation.</li>
+  </ol>
+
+  <p>
+    The key advantage: avoiding the pseudo-time convergence loop. The classical solver reaches machine precision in 10–30 iterations (typically much faster than 100 pseudo-time iterations). The tradeoff: data must be transferred between the LBM lattice (which lives on a Cartesian GPU grid) and the classical solver's matrix assembly (which may involve FEM or FDM operators).
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      The hybrid approach requires careful bookkeeping of the gradient $\nabla V_m$ on the LBM lattice and its transfer to the classical solver. One way to do this: compute $\nabla V_m$ on the Cartesian grid using finite differences (natural in LBM since we have nearest-neighbor data), then pass this to the classical solver's RHS assembly. The solver can run on the same grid (FDM) or on a finer/coarser grid (via interpolation operators) to trade memory for accuracy.
+    </p>
+  </div>
+
+  <h3>19.4 &ensp; The Dual-Lattice Architecture</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    Instead of mixing tools, use two of the same tool — but in different modes. Imagine having two bookkeepers, each tracking inventory for different tanks. Tank 1's bookkeeper (Lattice 1) evolves the intracellular voltage. Tank 2's bookkeeper (Lattice 2) repeatedly adjusts the extracellular potential until the water-balance constraint is met. They hand notes to each other at the end of each physical time step, telling each other what changed.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    The dual-lattice architecture maintains two independent LBM lattices, each solving its own equation:
+  </p>
+
+  <ul>
+    <li><strong>Lattice 1</strong>: Distribution functions $f_i^{(m)}(\mathbf{x}, t)$ solving the parabolic $V_m$ equation.
+    Relaxation time $\tau_m$ encodes the intracellular diffusivity $\mathbf{D}_i$.</li>
+    <li><strong>Lattice 2</strong>: Distribution functions $f_i^{(e)}(\mathbf{x}, t)$ solving the pseudo-time-augmented $\phi_e$ equation.
+    Relaxation time $\tau_e$ encodes the sum $\mathbf{D}_i + \mathbf{D}_e$.</li>
+  </ul>
+
+  <p>
+    The two lattices are coupled through source terms. The source for Lattice 1 includes the gradient of $\phi_e$ (the extracellular potential) plus the ionic current. The source for Lattice 2 includes the gradient of $V_m$ plus the stimulus:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.3)</span>
+    $$f_i^{(m)*} = f_i^{(m)} - \omega_m\,(f_i^{(m)} - f_i^{(m)\text{eq}}) + \Delta t\,w_i\,\bigl[\text{ionic term} + \text{coupling to } \phi_e\bigr]$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.4)</span>
+    $$f_i^{(e)*} = f_i^{(e)} - \omega_e\,(f_i^{(e)} - f_i^{(e)\text{eq}}) + \Delta\tau\,w_i\,\bigl[\text{coupling to } V_m + \text{stimulus}\bigr]$$
+  </div>
+
+  <p>
+    The algorithm at each physical time step is:
+  </p>
+
+  <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
+    <p style="margin:0 0 10px 0; font-weight:bold;">Dual-Lattice Bidomain LBM Timestep:</p>
+    $$\begin{aligned}
+      &\textbf{1. Reaction:} &&\text{Ionic currents and state updates (Rush–Larsen)} \\[4pt]
+      &\textbf{2. Vm update:} &&\text{One LBM step on Lattice 1 (physical time step } \Delta t\text{)} \\[4pt]
+      &\textbf{3. φ}_e\textbf{ convergence:} &&\text{Iterate Lattice 2 until } \frac{\partial\phi_e}{\partial\tau} \text{ is negligible} \\[4pt]
+      &\textbf{4. Source exchange:} &&\text{Compute coupling terms for the next physical step}
+    \end{aligned}$$
+  </div>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example outline.</strong> Suppose at the start of a timestep: $V_m$ is known (say, $-85$ mV at most nodes), and $\phi_e$ is at its previous steady state. We compute ionic currents (depends on $V_m$ and gates). Lattice 1 takes one LBM step, advancing $V_m$ to $-84$ mV (approximately). Now $V_m$ has changed, so the constraint for $\phi_e$ has changed (because the RHS includes $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$). Lattice 2 then iterates in pseudo-time, re-adjusting $\phi_e$ at every node until the new steady state is reached. This typically takes 10–50 pseudo-time iterations. Once converged, Lattice 1 knows the new $\phi_e$ value for the next physical step's source term.
+    </p>
+  </div>
+
+  <!-- Layer 3: Architecture comparison -->
+  <p>
+    How do the three strategies compare?
+  </p>
+
+  <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
+    <thead>
+      <tr style="background:#f0f0f0;">
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Architecture</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$V_m$ Solver</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\phi_e$ Solver</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Pros</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Cons</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>A: Dual-Lattice</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM (pseudo-time)</td>
+        <td style="padding:6px; border:1px solid #ddd;">Pure LBM; maximal GPU parallelism; unified code path</td>
+        <td style="padding:6px; border:1px solid #ddd;">Pseudo-time convergence overhead (typically 20–100 sub-iterations)</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>B: Hybrid</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">CG+AMG</td>
+        <td style="padding:6px; border:1px solid #ddd;">Optimal solver for each PDE type; fewer iterations for $\phi_e$</td>
+        <td style="padding:6px; border:1px solid #ddd;">Data transfer overhead between LBM and classical grids</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>C: Full Classical</strong></td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
+        <td style="padding:6px; border:1px solid #ddd;">Mature solver ecosystem; handles unstructured meshes</td>
+        <td style="padding:6px; border:1px solid #ddd;">Slower than LBM for parabolic; matrix assembly overhead</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Architecture A (dual-lattice) is the most elegant and maximizes GPU utilization. It is the natural choice for research and exploration. Architecture B (hybrid) trades elegance for robustness: it leverages decades of optimization in multigrid solvers and avoids the pseudo-time convergence cost. In practice, Architecture A is recommended as the starting point for Engine V5.4, with Architecture B as a fallback.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      Engine V5.4 already has the infrastructure for Lattice 1: the D3Q7 lattice definitions, the MRT collision operator, and the torch-based streaming and recovery. For Lattice 2, you need: (1) a second set of distribution arrays $f_i^{(e)}$, (2) a pseudo-time loop that iterates until convergence (checking $\|\partial\phi_e/\partial\tau\|$ after each step), (3) source term construction that couples $V_m$ gradients from Lattice 1 into Lattice 2's collision. The factory functions can be extended: <code>create_dual_lattice_bidomain(D_i, D_e, dx, dt)</code> would initialize both lattices and return a <code>DualLatticeBidomainSolver</code> object with methods <code>step_reaction()</code>, <code>step_vm()</code>, <code>converge_phi_e(residual_tol)</code>.
+    </p>
+  </div>
+
+  <h3>19.5 &ensp; Performance and Implementation Outlook</h3>
+
+  <!-- Layer 1: ELI5 -->
+  <p>
+    How much faster is bidomain LBM than classical bidomain solvers? That depends on how much time the classical solver spends on the elliptic solve. If the elliptic solve is fast (because the domain is simple or multigrid works well), then the speedup is modest. If the elliptic solve dominates, then LBM's advantage is large.
+  </p>
+
+  <!-- Layer 2: Conceptual -->
+  <p>
+    Based on the literature for monodomain LBM (which achieves 10–45× speedup over FEM) and accounting for the added cost of the elliptic $\phi_e$ equation, estimated performance ranges for bidomain LBM are:
+  </p>
+
+  <ul>
+    <li><strong>Dual-Lattice (Architecture A)</strong>: 5–20× speedup over classical FEM bidomain, depending on the pseudo-time convergence rate and domain geometry. The lower end occurs when pseudo-time takes many iterations; the upper end occurs on simple geometries or with multigrid acceleration of the pseudo-time loop.</li>
+    <li><strong>Hybrid (Architecture B)</strong>: 3–10× speedup. The elliptic solve using AMG is already near-optimal, so gains come mainly from the LBM parabolic solve and from avoiding the global reductions (inner products) required by iterative classical solvers.</li>
+  </ul>
+
+  <p>
+    Memory overhead: Each architecture stores two voltage fields ($V_m$ and $\phi_e$) plus either one or two lattices. The dual-lattice uses $2Q$ floats per node (two sets of $Q$ distributions); the hybrid uses $Q$ floats plus the classical solver's matrix storage. For a 3D grid with D3Q7 ($Q=7$), the dual-lattice costs 14 floats per node — manageable on modern GPUs with 24–80 GB.
+  </p>
+
+  <!-- Layer 3: Implementation path -->
+  <p>
+    The recommended implementation path for Engine V5.4:
+  </p>
+
+  <ol>
+    <li><strong>Phase 1:</strong> Extend the existing LBM infrastructure to support dual lattices. Test on a simple 2D domain with uniform conductivity.</li>
+    <li><strong>Phase 2:</strong> Implement pseudo-time convergence checks and convergence acceleration (e.g., line-by-line SOR, incomplete factorization).</li>
+    <li><strong>Phase 3:</strong> Add the hybrid solver as an alternative path: call external AMG libraries (AMGX on GPU, Hypre on CPU).</li>
+    <li><strong>Phase 4:</strong> Benchmark against classical FEM bidomain solvers on realistic geometries and compare accuracy and wall-clock time.</li>
+    <li><strong>Phase 5:</strong> Extend to anisotropic conductivity (different $D_f$ and $D_c$ for intracellular and extracellular spaces) using MRT on both lattices.</li>
+  </ol>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Recommended starting point for Engine V5.4:</strong> Implement Architecture A (dual-lattice) first. The pseudocode:
+    </p>
+    <pre style="background:#f5f5f5; padding:10px; border-radius:4px; overflow-x:auto;"><code>
+class DualLatticeBidomainLBMSolver(ABC):
+    def __init__(self, D_i, D_e, dx, dt, ionic_model):
+        self.lattice_vm = LBMLattice(D_i, dx, dt)
+        self.lattice_phi_e = LBMLattice(D_i + D_e, dx, dt_pseudo)
+        self.ionic = ionic_model
+
+    def step(self, V_m, phi_e, I_stim, residual_tol=1e-6):
+        # Step 1: Ionic
+        I_ion, gates = self.ionic.step(V_m)
+
+        # Step 2: V_m LBM
+        source_vm = -(I_ion + I_stim) / (chi * Cm)
+        source_vm += gradient_phi_e  # coupling term
+        V_m = self.lattice_vm.step(source_vm)
+
+        # Step 3: phi_e convergence (pseudo-time loop)
+        source_phi_e = -gradient(D_i @ gradient(V_m)) + I_stim_e
+        phi_e = self.lattice_phi_e.converge(source_phi_e, tol=residual_tol)
+
+        return V_m, phi_e, gates
+    </code></pre>
+    <p>
+      Extend <code>LBMLattice</code> (already in the codebase for monodomain) to support pseudo-time iteration with convergence checks. Reuse the collision operator; only the time step size and convergence criterion change.
+    </p>
+  </div>
+
+  <p>
+    With the completion of Part IV (Chapters 17–19), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  APPENDICES PART PAGE                                              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

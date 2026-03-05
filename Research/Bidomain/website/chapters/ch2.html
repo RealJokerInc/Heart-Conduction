@@ -1,0 +1,153 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 2</div>
+  <h2 class="chapter-title">From Neurons to Heart Cells</h2>
+  <div class="chapter-intro">
+    The nerve action potential is a brief spark — over in 2 milliseconds. The cardiac action potential is
+    a sustained flame, lasting 200–400 ms. This chapter explains why the heart demands such a profoundly
+    different electrical signature, and what new biophysics makes it possible.
+  </div>
+
+  <h3>2.1 &ensp; Why the Heart Needs a Longer Action Potential</h3>
+
+  <p>
+    A nerve fiber has one job: transmit a binary signal from point A to point B as fast as possible.
+    It fires and recovers quickly so it can fire again. But a cardiac myocyte has a very different job:
+    it must <em>contract</em>, and contraction takes time. The heart needs the electrical signal to
+    outlast the mechanical event so that every cell stays activated long enough to squeeze in synchrony.
+  </p>
+
+  <p>
+    If the cardiac AP were as short as a nerve spike, the cell would repolarize before it finished
+    contracting. Worse, a new electrical impulse could arrive and re-activate parts of the heart while
+    other parts were still contracting — leading to chaotic, uncoordinated contraction. The long AP
+    duration serves as a <em>built-in safety mechanism</em>: by keeping the cell depolarized for hundreds
+    of milliseconds, it prevents premature re-excitation.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Think of it this way: the nerve AP is like a camera flash — bright, instantaneous, done.
+      The cardiac AP is like holding a light switch on for a deliberate period. The heart needs this
+      "held" state because mechanical contraction is slow compared to electrical activation. The electrical
+      plateau is the heart's way of saying "stay contracted until I tell you to relax."
+    </p>
+  </div>
+
+  <h3>2.2 &ensp; The L-type Calcium Current and the Plateau</h3>
+
+  <p>
+    So how does the heart stretch a 2 ms spike into a 300 ms plateau? The answer is a current that
+    neurons barely use: the <em>L-type calcium current</em>, $I_{\text{CaL}}$. This inward current
+    activates during depolarization (like Na$^+$), but it inactivates <em>much more slowly</em> — on a
+    timescale of 50–200 ms rather than 1–2 ms.
+  </p>
+
+  <p>
+    During the plateau phase (Phase 2 of the cardiac AP), the membrane sits at roughly 0 to +20 mV
+    because two opposing forces are nearly balanced:
+  </p>
+
+  <div class="equation-block">
+    $$\underbrace{I_{\text{CaL}}}_{\text{inward, depolarizing}} \approx -\underbrace{I_{\text{Kr}} + I_{\text{Ks}}}_{\text{outward, repolarizing}}$$
+  </div>
+
+  <p>
+    The L-type Ca$^{2+}$ current holds the voltage up, while slowly activating delayed-rectifier
+    K$^+$ currents ($I_{\text{Kr}}$ and $I_{\text{Ks}}$) try to pull it down. This tug-of-war
+    creates a nearly flat plateau that can last over 200 ms. Eventually, as $I_{\text{CaL}}$ inactivates
+    (both via voltage and via rising intracellular Ca$^{2+}$), the K$^+$ currents win and repolarization
+    accelerates.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      The plateau is a <em>fragile equilibrium</em>. A small change in any current during Phase 2 can
+      dramatically alter AP duration. This is why drug-induced QT prolongation (blocking $I_{\text{Kr}}$) is
+      so dangerous — it tips the balance toward inward current, lengthens the plateau, and can trigger
+      the lethal arrhythmia <em>torsades de pointes</em>. Understanding this balance is central to
+      computational drug safety testing.
+    </p>
+  </div>
+
+  <p>
+    The L-type calcium current also serves a second critical role: it triggers the release of a much
+    larger amount of calcium from the sarcoplasmic reticulum (SR) — the cell's internal calcium store.
+    This process, called <em>calcium-induced calcium release</em> (CICR), amplifies the Ca$^{2+}$ signal
+    roughly 10-fold and drives actual muscle contraction. We will see this calcium handling machinery in
+    detail when we study the TTP06 model in Chapter 5.
+  </p>
+
+  <h3>2.3 &ensp; Minimal Cardiac Models: FitzHugh–Nagumo to Fenton–Karma</h3>
+
+  <p>
+    Before diving into the full complexity of modern ionic models, it is instructive to see how
+    the cardiac AP can be captured with just 2–3 variables. These minimal models sacrifice biophysical
+    detail for mathematical tractability, but they capture the essential shape.
+  </p>
+
+  <h4>The FitzHugh–Nagumo Model (2 variables)</h4>
+
+  <p>
+    In 1961, Richard FitzHugh realized that the HH equations could be distilled to their essence.
+    The key insight: the fast variable (Na$^+$ activation) and the slow variable (recovery) are
+    what matter most. He proposed:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(2.1)</span>
+    $$\frac{dv}{dt} = v - \tfrac{v^3}{3} - w + I_{\text{ext}}, \qquad \frac{dw}{dt} = \epsilon(v + a - bw)$$
+  </div>
+
+  <p>
+    Here $v$ is a rescaled voltage, $w$ is a slow recovery variable (combining $h$ and $n$ into a
+    single "how recovered is the cell" variable), and $\epsilon \ll 1$ ensures that $w$ moves much
+    slower than $v$. The cubic nonlinearity $v - v^3/3$ creates the bistability needed for excitation:
+    $v$ has two stable branches (resting and excited) and the system jumps between them.
+  </p>
+
+  <p>
+    FitzHugh–Nagumo captures excitability, threshold behavior, and refractoriness — but it produces a
+    triangular AP, not the flat plateau of a cardiac cell.
+  </p>
+
+  <h4>The Fenton–Karma Model (3 variables)</h4>
+
+  <p>
+    In 1998, Flavio Fenton and Alain Karma introduced a three-variable model specifically designed for
+    cardiac tissue. The key addition: a slow inward current that produces the plateau.
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(2.2)</span>
+    $$\frac{dV}{dt} = -\bigl(I_{\text{fi}}(V,v) + I_{\text{so}}(V) + I_{\text{si}}(V,w)\bigr)$$
+  </div>
+
+  <p>
+    The three currents map directly to cardiac physiology: $I_{\text{fi}}$ is a fast inward current (like Na$^+$
+    creating the upstroke), $I_{\text{so}}$ is a slow outward current (like K$^+$ causing repolarization), and
+    $I_{\text{si}}$ is a slow inward current (like Ca$^{2+}$ sustaining the plateau). With just three variables
+    ($V$, $v$, $w$), the Fenton–Karma model reproduces realistic AP shapes, spiral waves, and even
+    alternans — all phenomena seen in real cardiac tissue.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      Minimal models like Fenton–Karma are not toys. In Engine V5.4, they serve as essential
+      <em>validation benchmarks</em>: if the monodomain solver produces the correct spiral-wave dynamics
+      with a 3-variable model, you can have confidence in the diffusion numerics before scaling up to
+      TTP06 (18 variables) or ORd (40 variables). They are also used for parameter sweeps and
+      machine-learning studies where millions of simulations are needed.
+    </p>
+  </div>
+
+  <p>
+    The progression from HH (4 variables, nerve) → FitzHugh–Nagumo (2 variables, generic excitable) →
+    Fenton–Karma (3 variables, cardiac) → full ionic models (18–40+ variables, human ventricle) is
+    the story of matching model complexity to the scientific question being asked. In the next chapter,
+    we zoom in on the full cardiac action potential and dissect each phase.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  CHAPTER 3 — ANATOMY OF THE CARDIAC ACTION POTENTIAL              -->
+<!-- ══════════════════════════════════════════════════════════════════ -->

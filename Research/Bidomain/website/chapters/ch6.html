@@ -1,0 +1,829 @@
+<div class="chapter">
+  <div class="chapter-number">Chapter 6</div>
+  <h2 class="chapter-title">The O'Hara–Rudy 2011 Model</h2>
+  <div class="chapter-intro">
+    The O'Hara–Rudy dynamic (ORd) model was built from an unprecedented dataset of undiseased human
+    ventricular myocyte recordings. With 41 state variables, 15 membrane currents, and a CaMKII
+    signaling pathway that confers rate adaptation, it represents the current gold standard for human
+    ventricular electrophysiology simulation. This chapter provides the same comprehensive treatment
+    given to TTP06 in Chapter 5 — every current, every equation, organized by physiological function.
+  </div>
+
+  <h3>6.1 &ensp; 41 State Variables: What and Why</h3>
+
+  <p>
+    ORd has more than twice the state variables of TTP06 (41 vs. 18). The additional complexity
+    arises from three sources: (1) separate fast and slow inactivation gates for most currents,
+    (2) CaMKII-phosphorylated variants of several gates, and (3) two additional ionic compartments
+    (subspace sodium and potassium). Every state variable has a clear biophysical justification.
+  </p>
+
+  <p>
+    <strong>29 gating variables</strong> (each between 0 and 1, following Hodgkin–Huxley-style kinetics):
+  </p>
+
+  <table>
+    <tr><th>Gate(s)</th><th>Current</th><th>Role</th><th>CaMKII variant?</th></tr>
+    <tr><td>$m$</td><td>$I_{\text{Na}}$</td><td>Fast Na$^+$ activation</td><td>No</td></tr>
+    <tr><td>$h_f$, $h_s$</td><td>$I_{\text{Na}}$</td><td>Fast and slow inactivation</td><td>$h_{sp}$ (slow, phosphorylated)</td></tr>
+    <tr><td>$j$</td><td>$I_{\text{Na}}$</td><td>Recovery from inactivation</td><td>$j_p$</td></tr>
+    <tr><td>$m_L$</td><td>$I_{\text{NaL}}$</td><td>Late Na$^+$ activation</td><td>No</td></tr>
+    <tr><td>$h_L$</td><td>$I_{\text{NaL}}$</td><td>Late Na$^+$ inactivation</td><td>$h_{Lp}$</td></tr>
+    <tr><td>$d$</td><td>$I_{\text{CaL}}$</td><td>Ca$^{2+}$ activation</td><td>No</td></tr>
+    <tr><td>$f_f$, $f_s$</td><td>$I_{\text{CaL}}$</td><td>Fast and slow voltage inactivation</td><td>$f_{fp}$</td></tr>
+    <tr><td>$f_{\text{Ca},f}$, $f_{\text{Ca},s}$</td><td>$I_{\text{CaL}}$</td><td>Fast and slow Ca$^{2+}$-dependent inactivation</td><td>$f_{\text{Ca},fp}$</td></tr>
+    <tr><td>$j_{\text{Ca}}$</td><td>$I_{\text{CaL}}$</td><td>Ca$^{2+}$-dependent recovery</td><td>No</td></tr>
+    <tr><td>$n_{\text{Ca}}$</td><td>$I_{\text{CaL}}$</td><td>CaMKII phosphorylation transition</td><td>—</td></tr>
+    <tr><td>$a$</td><td>$I_{\text{to}}$</td><td>Transient outward activation</td><td>$a_p$</td></tr>
+    <tr><td>$i_F$, $i_S$</td><td>$I_{\text{to}}$</td><td>Fast and slow inactivation</td><td>$i_{Fp}$, $i_{Sp}$</td></tr>
+    <tr><td>$x_{r,f}$, $x_{r,s}$</td><td>$I_{\text{Kr}}$</td><td>Fast and slow activation</td><td>No</td></tr>
+    <tr><td>$x_{s1}$, $x_{s2}$</td><td>$I_{\text{Ks}}$</td><td>Slow delayed rectifier gates</td><td>No</td></tr>
+    <tr><td>$x_{K1}$</td><td>$I_{\text{K1}}$</td><td>Inward rectifier (now dynamic!)</td><td>No</td></tr>
+  </table>
+
+  <p>
+    A key design principle of ORd is the <em>CaMKII-phosphorylated population</em> concept. For currents
+    modulated by CaMKII ($I_{\text{Na}}$, $I_{\text{NaL}}$, $I_{\text{CaL}}$, $I_{\text{to}}$), the model
+    maintains separate gating variables for the phosphorylated channel population. The total current is
+    then a weighted average: $(1 - \Phi)\cdot I_{\text{normal}} + \Phi\cdot I_{\text{phosphorylated}}$,
+    where $\Phi$ is the CaMKII-dependent phosphorylation fraction. This doubles the gate count for
+    affected currents but allows rate-dependent modulation of channel kinetics.
+  </p>
+
+  <p>
+    <strong>8 concentration variables</strong> (dynamic, changing each beat):
+  </p>
+
+  <table>
+    <tr><th>Variable</th><th>Description</th><th>Typical Value</th><th>New vs. TTP06?</th></tr>
+    <tr><td>$[\text{Na}^+]_i$</td><td>Intracellular sodium (bulk)</td><td>$\sim$7 mM</td><td>Same concept</td></tr>
+    <tr><td>$[\text{Na}^+]_{\text{ss}}$</td><td>Subspace sodium</td><td>$\sim$7 mM</td><td><strong>New</strong></td></tr>
+    <tr><td>$[\text{K}^+]_i$</td><td>Intracellular potassium (bulk)</td><td>$\sim$145 mM</td><td>Same concept</td></tr>
+    <tr><td>$[\text{K}^+]_{\text{ss}}$</td><td>Subspace potassium</td><td>$\sim$145 mM</td><td><strong>New</strong></td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_i$</td><td>Cytoplasmic calcium (free)</td><td>$\sim$0.0001 mM</td><td>Same concept</td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_{\text{ss}}$</td><td>Subspace calcium</td><td>$\sim$0.0001 mM</td><td>Same concept</td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_{\text{nsr}}$</td><td>Network SR calcium</td><td>$\sim$1.2 mM</td><td><strong>Split from $[\text{Ca}^{2+}]_{\text{SR}}$</strong></td></tr>
+    <tr><td>$[\text{Ca}^{2+}]_{\text{jsr}}$</td><td>Junctional SR calcium</td><td>$\sim$1.2 mM</td><td><strong>Split from $[\text{Ca}^{2+}]_{\text{SR}}$</strong></td></tr>
+  </table>
+
+  <p>
+    <strong>Additional state variables:</strong>
+  </p>
+
+  <table>
+    <tr><th>Variable</th><th>Description</th><th>Role</th></tr>
+    <tr><td>$\text{CaMK}_{\text{trap}}$</td><td>CaMKII trapped (autophosphorylated) fraction</td><td>Long-term kinase memory; drives rate adaptation</td></tr>
+    <tr><td>$V_m$</td><td>Membrane potential</td><td>Primary electrical variable</td></tr>
+    <tr><td>$J_{\text{rel,NP}}$</td><td>SR release flux (non-phosphorylated)</td><td>RyR release dynamics</td></tr>
+    <tr><td>$J_{\text{rel,CaMK}}$</td><td>SR release flux (CaMKII-phosphorylated)</td><td>Enhanced RyR release</td></tr>
+  </table>
+
+  <p>
+    The most important structural differences from TTP06 are the addition of subspace Na$^+$ and K$^+$
+    compartments (reflecting the fact that these ions also have local concentrations near the membrane),
+    the split of the SR into network and junctional compartments (SERCA pumps into the nSR; RyR releases
+    from the jSR), and the CaMKII trapped state that provides long-term "memory" of recent heart rate.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      Why does ORd track subspace Na$^+$ and K$^+$? In TTP06, only Ca$^{2+}$ had a subspace compartment
+      because its concentration can change dramatically during a single beat ($\times$10–100 locally). Na$^+$
+      and K$^+$ concentrations change by much less ($\lt$1%), so a single bulk compartment seemed sufficient.
+      But ORd found that even small Na$^+$ gradients near the membrane affect NCX and Na$^+$/K$^+$-ATPase
+      activity — the subspace compartments improve accuracy when these transporters are the focus.
+    </p>
+  </div>
+
+  <h3>6.2 &ensp; The Complete Current Inventory</h3>
+
+  <p>
+    ORd models 15 distinct membrane currents. Every current contributes to the total ionic current:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.1)</span>
+    $$\begin{aligned}
+    I_{\text{ion}} \;=\; & \underbrace{I_{\text{Na}} + I_{\text{NaL}} + I_{\text{CaL}}}_{\text{depolarizing}} \;+\; \underbrace{I_{\text{to}} + I_{\text{Kr}} + I_{\text{Ks}} + I_{\text{K1}} + I_{\text{Kb}}}_{\text{repolarizing}} \\[6pt]
+    & +\; \underbrace{I_{\text{NaK}} + I_{\text{NaCa,i}} + I_{\text{NaCa,ss}} + I_{\text{pCa}}}_{\text{pumps/exchangers}} \;+\; \underbrace{I_{\text{Nab}} + I_{\text{Cab}}}_{\text{background}} \;+\; \underbrace{I_{\text{ClCa}} + I_{\text{Clb}}}_{\text{chloride}}
+    \end{aligned}$$
+  </div>
+
+  <p>
+    Compared to TTP06's 12 currents, ORd adds $I_{\text{NaL}}$ (late sodium), splits $I_{\text{NaCa}}$
+    into two populations, adds chloride currents ($I_{\text{ClCa}}$, $I_{\text{Clb}}$), and replaces
+    the plateau potassium current $I_{\text{pK}}$ with a background potassium current $I_{\text{Kb}}$.
+    The L-type calcium current is further decomposed into three ionic components ($I_{\text{CaL,Ca}}$,
+    $I_{\text{CaL,Na}}$, $I_{\text{CaL,K}}$). The table below provides the complete reference.
+  </p>
+
+  <!-- ─── Comprehensive ORd current table ─── -->
+  <table>
+    <tr><th>Current</th><th>Type</th><th>Ion</th><th>AP Phase</th><th>Direction</th><th>Clinical Relevance</th></tr>
+    <tr><td>$I_{\text{Na}}$</td><td>Voltage-gated channel</td><td>Na$^+$</td><td>0 (upstroke)</td><td>Inward</td><td>Conduction velocity; Class I antiarrhythmics</td></tr>
+    <tr><td>$I_{\text{NaL}}$</td><td>Voltage-gated channel</td><td>Na$^+$</td><td>2 (plateau)</td><td>Inward</td><td><strong>NEW:</strong> APD modulation; ranolazine target; LQT3</td></tr>
+    <tr><td>$I_{\text{CaL}}$</td><td>Voltage-gated channel</td><td>Ca$^{2+}$/Na$^+$/K$^+$</td><td>2 (plateau)</td><td>Inward</td><td>EC coupling trigger; 3 ionic components; CaMKII-modulated</td></tr>
+    <tr><td>$I_{\text{to}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>1 (notch)</td><td>Outward</td><td>Transmural heterogeneity; Brugada syndrome</td></tr>
+    <tr><td>$I_{\text{Kr}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>3 (repolarization)</td><td>Outward</td><td>hERG block; drug-induced LQTS; CiPA assessment</td></tr>
+    <tr><td>$I_{\text{Ks}}$</td><td>Voltage-gated channel</td><td>K$^+$</td><td>3 (repolarization reserve)</td><td>Outward</td><td>Rate adaptation (CaMKII); LQT1; $\beta$-adrenergic</td></tr>
+    <tr><td>$I_{\text{K1}}$</td><td>Inward rectifier</td><td>K$^+$</td><td>4 (rest) / 3 (late)</td><td>Outward</td><td>Resting potential; now with dynamic gate</td></tr>
+    <tr><td>$I_{\text{Kb}}$</td><td>Background leak</td><td>K$^+$</td><td>All</td><td>Outward</td><td>Replaces TTP06's $I_{\text{pK}}$; small repolarization</td></tr>
+    <tr><td>$I_{\text{NaK}}$</td><td>ATP-driven pump</td><td>Na$^+$/K$^+$</td><td>All</td><td>Net outward</td><td>Thermodynamic cycle model; digitalis target</td></tr>
+    <tr><td>$I_{\text{NaCa,i}}$</td><td>Exchanger</td><td>Na$^+$/Ca$^{2+}$</td><td>2–3 / 4</td><td>Both$^*$</td><td>Bulk cytoplasm NCX; calcium extrusion</td></tr>
+    <tr><td>$I_{\text{NaCa,ss}}$</td><td>Exchanger</td><td>Na$^+$/Ca$^{2+}$</td><td>2–3 / 4</td><td>Both$^*$</td><td><strong>NEW:</strong> Subspace NCX; local Ca$^{2+}$ control</td></tr>
+    <tr><td>$I_{\text{pCa}}$</td><td>ATP-driven pump</td><td>Ca$^{2+}$</td><td>All</td><td>Outward</td><td>Fine calcium homeostasis (PMCA)</td></tr>
+    <tr><td>$I_{\text{Nab}}$</td><td>Background leak</td><td>Na$^+$</td><td>All</td><td>Inward</td><td>Resting Na$^+$ influx; balanced by $I_{\text{NaK}}$</td></tr>
+    <tr><td>$I_{\text{Cab}}$</td><td>Background leak</td><td>Ca$^{2+}$</td><td>All</td><td>Inward</td><td>Resting Ca$^{2+}$ influx; GHK formulation</td></tr>
+    <tr><td>$I_{\text{ClCa}}$</td><td>Ca$^{2+}$-activated channel</td><td>Cl$^-$</td><td>1–2</td><td>Inward$^\dagger$</td><td><strong>NEW:</strong> Contributes to Phase 1 notch and plateau</td></tr>
+    <tr><td>$I_{\text{Clb}}$</td><td>Background leak</td><td>Cl$^-$</td><td>All</td><td>Inward$^\dagger$</td><td><strong>NEW:</strong> Background Cl$^-$ leak</td></tr>
+  </table>
+
+  <p style="font-size:0.85em; color:#5a6175; margin-top:-0.5em;">
+    $^*$$I_{\text{NaCa}}$ operates in forward mode (inward, extruding Ca$^{2+}$) during late repolarization and diastole, and in reverse mode (outward, bringing Ca$^{2+}$ in) briefly during early depolarization.
+    $^\dagger$Cl$^-$ currents are depolarizing (inward by convention) because Cl$^-$ efflux = inward current, with $E_{\text{Cl}} \approx -40$ mV.
+  </p>
+
+  <h3>6.3 &ensp; Voltage-Gated Depolarizing Currents</h3>
+
+  <h4>Fast Sodium Current ($I_{\text{Na}}$) — Phase 0</h4>
+
+  <p>
+    The fast sodium current retains the classical HH structure from TTP06, but with two key upgrades:
+    refitted kinetics from undiseased human data, and CaMKII phosphorylation of the slow inactivation gate.
+    The total current blends non-phosphorylated and phosphorylated channel populations:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.2)</span>
+    $$I_{\text{Na}} = \bar{g}_{\text{Na}}\,m^3\,\bigl[(1 - \Phi_{\text{Na}})\,h\,j + \Phi_{\text{Na}}\,h_p\,j_p\bigr]\,(V_m - E_{\text{Na}})$$
+  </div>
+
+  <p>
+    Here $\Phi_{\text{Na}}$ is the CaMKII phosphorylation fraction for the sodium channel, and the
+    composite inactivation gate $h$ is a weighted sum of fast and slow components:
+    $h = A_{hf}\,h_f + (1 - A_{hf})\,h_s$, with the weight $A_{hf}$ depending on voltage (fast
+    inactivation dominates at depolarized potentials). The phosphorylated population uses $h_p =
+    A_{hf}\,h_f + (1 - A_{hf})\,h_{sp}$, where $h_{sp}$ has a shifted voltage dependence — CaMKII
+    phosphorylation slows recovery from inactivation, contributing to rate-dependent sodium channel
+    availability. The maximal conductance $\bar{g}_{\text{Na}} = 75$ mS/$\mu$F is substantially larger
+    than TTP06's 14.838 nS/pF (note different units), reflecting the refitting to human data.
+  </p>
+
+  <h4>Late Sodium Current ($I_{\text{NaL}}$) — Phase 2</h4>
+
+  <p>
+    The late sodium current is the most important addition in ORd relative to TTP06. It represents a small
+    but persistent Na$^+$ influx that flows throughout the plateau — generated by sodium channels that
+    briefly reopen or fail to fully inactivate:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.3)</span>
+    $$I_{\text{NaL}} = \bar{g}_{\text{NaL}}\,m_L\,\bigl[(1 - \Phi_{\text{NaL}})\,h_L + \Phi_{\text{NaL}}\,h_{Lp}\bigr]\,(V_m - E_{\text{Na}})$$
+  </div>
+
+  <p>
+    The maximal conductance $\bar{g}_{\text{NaL}} = 0.0075$ mS/$\mu$F is roughly 1/10,000th of peak
+    $I_{\text{Na}}$, but because $I_{\text{NaL}}$ flows for 200+ ms (vs. $\lt$2 ms for peak $I_{\text{Na}}$),
+    it carries significant charge and contributes approximately 5% of APD. The activation gate $m_L$ is
+    similar to the fast sodium $m$ gate but with slightly slower kinetics. The inactivation gate $h_L$ has
+    a time constant of $\sim$200 ms — orders of magnitude slower than the fast sodium $h$ gate — explaining
+    why this current persists through the plateau.
+  </p>
+
+  <p>
+    CaMKII phosphorylation of $I_{\text{NaL}}$ ($h_{Lp}$) shifts the inactivation, increasing the late
+    current at faster heart rates. This creates a positive feedback loop: faster rate → more Ca$^{2+}$
+    entry → more CaMKII activation → more $I_{\text{NaL}}$ → more Na$^+$ entry → potentially dangerous
+    if unchecked. Clinically, this pathway is relevant to arrhythmia in heart failure.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      $I_{\text{NaL}}$ is the primary target of <strong>ranolazine</strong>, an antianginal drug that
+      selectively inhibits late sodium current without significantly affecting peak $I_{\text{Na}}$.
+      This specificity is impossible to study computationally without explicitly modeling $I_{\text{NaL}}$
+      — one of the main reasons TTP06 is inadequate for drug safety assessment. In Long QT syndrome
+      type 3 (LQT3), gain-of-function mutations in SCN5A increase $I_{\text{NaL}}$ by 2–5 fold,
+      dangerously prolonging the plateau. ORd can reproduce this pathology by simply scaling
+      $\bar{g}_{\text{NaL}}$.
+    </p>
+  </div>
+
+  <h4>L-Type Calcium Current ($I_{\text{CaL}}$) — Phase 2</h4>
+
+  <p>
+    The L-type calcium current in ORd is substantially more complex than in TTP06. It is decomposed into
+    three ionic components, reflecting the imperfect selectivity of the Cav1.2 channel:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.4)</span>
+    $$I_{\text{CaL}} = I_{\text{CaL,Ca}} + I_{\text{CaL,Na}} + I_{\text{CaL,K}}$$
+  </div>
+
+  <p>
+    Each component uses the GHK flux equation with its respective permeability. The calcium component
+    (by far the largest) is:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.5)</span>
+    $$I_{\text{CaL,Ca}} = P_{\text{Ca}}\,d\,\bigl[(1 - \Phi_{\text{CaL}})\,f\,j_{\text{Ca}}\,f_{\text{Ca}} + \Phi_{\text{CaL}}\,f_p\,j_{\text{Ca}}\,f_{\text{Ca},p}\bigr] \cdot \Psi_{\text{Ca}}(V_m, [\text{Ca}^{2+}]_{\text{ss}})$$
+  </div>
+
+  <p>
+    where $\Psi_{\text{Ca}}$ is the GHK flux:
+    $\Psi_{\text{Ca}} = 4\tfrac{F^2}{RT}\,V_m\,\tfrac{[\text{Ca}^{2+}]_{\text{ss}}\,e^{2FV_m/RT} - 0.341\,[\text{Ca}^{2+}]_o}{e^{2FV_m/RT}-1}$,
+    and the composite gates are: $f = A_{ff}\,f_f + (1 - A_{ff})\,f_s$ (voltage inactivation, blending fast
+    and slow components) and $f_{\text{Ca}} = A_{\text{Ca},f}\,f_{\text{Ca},f} + (1 - A_{\text{Ca},f})\,f_{\text{Ca},s}$
+    (calcium-dependent inactivation).
+  </p>
+
+  <p>
+    The CaMKII-phosphorylated population ($\Phi_{\text{CaL}}$) uses separate gates $f_p$ and
+    $f_{\text{Ca},p}$ with shifted kinetics — phosphorylation facilitates channel reopening and slows
+    CDI, increasing calcium influx at faster rates. This CaMKII-mediated enhancement of $I_{\text{CaL}}$
+    is counterbalanced by increased SERCA activity (also CaMKII-dependent), maintaining calcium
+    homeostasis while strengthening contraction — a key component of the positive force-frequency
+    relationship.
+  </p>
+
+  <p>
+    The Na$^+$ and K$^+$ components follow the same gating but use sodium and potassium permeabilities
+    ($P_{\text{Na}} = 0.00125\,P_{\text{Ca}}$ and $P_{\text{K}} = 3.574\times10^{-4}\,P_{\text{Ca}}$)
+    and their respective GHK fluxes. Though individually small, these components contribute to the ion
+    balance over many beats.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      Why split $I_{\text{CaL}}$ into three components? In TTP06, only Ca$^{2+}$ permeation was modeled
+      because Ca$^{2+}$ is the dominant charge carrier. But when tracking Na$^+$ and K$^+$ concentrations
+      dynamically over thousands of beats (as ORd does with its subspace compartments), even the small
+      Na$^+$ and K$^+$ fluxes through L-type channels contribute to concentration drift. Ignoring them
+      causes slow, insidious accumulation errors that manifest as AP duration changes after hundreds of
+      beats — exactly the kind of subtle bug that plagues long-running simulations.
+    </p>
+  </div>
+
+  <h3>6.4 &ensp; Voltage-Gated Repolarizing Currents</h3>
+
+  <h4>Transient Outward Current ($I_{\text{to}}$) — Phase 1</h4>
+
+  <p>
+    The transient outward current in ORd has separate fast and slow inactivation gates (replacing TTP06's
+    single $s$ gate), plus CaMKII-phosphorylated variants:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.6)</span>
+    $$I_{\text{to}} = \bar{g}_{\text{to}}\,\bigl[(1 - \Phi_{\text{to}})\,a\,i + \Phi_{\text{to}}\,a_p\,i_p\bigr]\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    where $i = A_{iF}\,i_F + (1 - A_{iF})\,i_S$ blends fast and slow inactivation, with the weight $A_{iF}$
+    depending on voltage. The CaMKII-phosphorylated inactivation $i_p = A_{iF}\,i_{Fp} + (1-A_{iF})\,i_{Sp}$
+    has shifted kinetics. The maximal conductance $\bar{g}_{\text{to}}$ retains the dramatic transmural
+    gradient: 0.02 mS/$\mu$F in endocardium vs. 0.08 mS/$\mu$F in epicardium and M-cells.
+  </p>
+
+  <h4>Rapid Delayed Rectifier ($I_{\text{Kr}}$) — Phase 3</h4>
+
+  <p>
+    $I_{\text{Kr}}$ in ORd uses refitted kinetics from undiseased human hERG data. Like TTP06, it has
+    two activation components, but ORd blends fast and slow activation:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.7)</span>
+    $$I_{\text{Kr}} = \bar{g}_{\text{Kr}}\,\sqrt{[\text{K}^+]_o / 5.4}\,x_r\,r_{Kr}(V_m)\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    Here $x_r = A_{xr,f}\,x_{r,f} + (1 - A_{xr,f})\,x_{r,s}$ is a weighted blend of fast and slow
+    activation, and $r_{Kr}(V_m)$ is an instantaneous rectification factor that captures the
+    voltage-dependent inactivation of hERG channels. The $\sqrt{[\text{K}^+]_o/5.4}$ factor preserves
+    the extracellular K$^+$ dependence from TTP06. Notably, $I_{\text{Kr}}$ is <em>not</em> CaMKII-modulated
+    in ORd — its kinetics are purely voltage-dependent. This is the key current for the CiPA
+    (Comprehensive <em>in vitro</em> Proarrhythmia Assay) initiative, which uses ORd as its reference
+    model for predicting drug-induced arrhythmia risk.
+  </p>
+
+  <h4>Slow Delayed Rectifier ($I_{\text{Ks}}$) — Repolarization Reserve</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.8)</span>
+    $$I_{\text{Ks}} = \bar{g}_{\text{Ks}}\,K_{\text{s,Ca}}\,x_{s1}\,x_{s2}\,(V_m - E_{\text{Ks}})$$
+  </div>
+
+  <p>
+    A key difference from TTP06 is the calcium-sensitivity factor $K_{\text{s,Ca}} = 1 + 0.6\bigl/\bigl(1 + (3.8\times10^{-5}/[\text{Ca}^{2+}]_i)^{1.4}\bigr)$,
+    which increases $I_{\text{Ks}}$ when intracellular calcium is elevated. At resting calcium ($\sim$100 nM),
+    $K_{\text{s,Ca}} \approx 1$ and the current is near baseline. During systolic calcium peaks ($\sim$1 $\mu$M),
+    $K_{\text{s,Ca}}$ increases to $\sim$1.6, boosting repolarization reserve precisely when the cell needs it most.
+    Combined with CaMKII modulation of $\bar{g}_{\text{Ks}}$ at faster heart rates, this creates robust
+    rate-dependent enhancement of repolarization reserve. The reversal potential
+    $E_{\text{Ks}}$ remains a mixed Na$^+$/K$^+$ potential, computed from the Goldman equation.
+    The maximal conductance shows strong transmural variation: $\bar{g}_{\text{Ks}} = 0.0034$ mS/$\mu$F
+    (baseline) in endocardial cells, scaled $1.4\times$ in epicardial cells, with reduced values in M-cells
+    explaining the prolonged M-cell APD and the T-wave morphology on the ECG.
+  </p>
+
+  <h4>Inward Rectifier ($I_{\text{K1}}$) — Phase 4 and Late Phase 3</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.9)</span>
+    $$I_{\text{K1}} = \bar{g}_{\text{K1}}\,\sqrt{[\text{K}^+]_o}\,x_{K1}\,r_{K1}(V_m)\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    Unlike TTP06 — where $I_{\text{K1}}$ used only an instantaneous steady-state function — ORd gives
+    $I_{\text{K1}}$ a <em>dynamic</em> gating variable $x_{K1}$ with its own time constant (though still
+    fast, $\tau \sim 1{-}10$ ms). The instantaneous rectification factor $r_{K1}(V_m)$ captures the
+    polyamine block at depolarized voltages. This formulation better reproduces the terminal repolarization
+    phase and the resting membrane potential measured in human ventricular myocytes.
+  </p>
+
+  <h4>Background Potassium Current ($I_{\text{Kb}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.10)</span>
+    $$I_{\text{Kb}} = \bar{g}_{\text{Kb}}\,x_{Kb}(V_m)\,(V_m - E_{\text{K}})$$
+  </div>
+
+  <p>
+    $I_{\text{Kb}}$ replaces TTP06's $I_{\text{pK}}$. The gating is instantaneous (a sigmoidal function
+    of voltage). Like its predecessor, it provides a small outward current during the plateau.
+  </p>
+
+  <h3>6.5 &ensp; Pumps, Exchangers, and Background Currents</h3>
+
+  <h4>Na$^+$/K$^+$ ATPase ($I_{\text{NaK}}$) — Thermodynamic Cycle Model</h4>
+
+  <p>
+    The Na$^+$/K$^+$-ATPase in ORd represents the most significant single-equation change from TTP06.
+    Instead of the Hill-type empirical formulation, ORd uses a thermodynamically constrained cycle model
+    that explicitly accounts for the pump's conformational states:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.11)</span>
+    $$I_{\text{NaK}} = 30\,\frac{z_{\text{Na}} \cdot a_1 \cdot k_{1p} - z_{\text{Na}} \cdot b_1 \cdot k_{1m}}{1 + \frac{a_1\,k_{1p}}{b_2\,k_{2m}} + \frac{b_1\,k_{1m}}{a_2\,k_{2p}} + \frac{a_2\,k_{2p}}{b_3\,k_{3m}} + \frac{b_2\,k_{2m}}{a_3\,k_{3p}} + \frac{a_3\,k_{3p}}{b_4\,k_{4m}} + \frac{b_3\,k_{3m}}{a_4\,k_{4p}}}$$
+  </div>
+
+  <p>
+    The rate constants $a_i$, $b_i$, $k_{ip}$, $k_{im}$ depend on $[\text{Na}^+]_i$, $[\text{K}^+]_o$,
+    ATP, and $V_m$ through microscopic detailed balance. This formulation satisfies the second law of
+    thermodynamics — the pump cannot generate flux against its electrochemical gradient without ATP
+    hydrolysis, a constraint that the simpler TTP06 formulation does not enforce. The practical consequence
+    is more accurate pump behavior under extreme conditions (ischemia, low ATP, hyperkalemia) where the
+    driving forces are close to equilibrium.
+  </p>
+
+  <h4>Na$^+$/Ca$^{2+}$ Exchanger — Split Populations</h4>
+
+  <p>
+    ORd explicitly models two NCX populations operating in different calcium environments:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.12)</span>
+    $$I_{\text{NaCa}} = I_{\text{NaCa,i}} + I_{\text{NaCa,ss}}$$
+  </div>
+
+  <p>
+    where $I_{\text{NaCa,i}}$ (80% of NCX) senses bulk cytoplasmic $[\text{Ca}^{2+}]_i$ and
+    $[\text{Na}^+]_i$, while $I_{\text{NaCa,ss}}$ (20% of NCX) senses subspace $[\text{Ca}^{2+}]_{\text{ss}}$
+    and $[\text{Na}^+]_{\text{ss}}$. Each uses a thermodynamic formulation:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.13)</span>
+    $$I_{\text{NaCa,x}} = 0.8\,\bar{g}_{\text{NaCa}}\cdot\frac{k_{3p}\,k_{4pp}\,[\text{Na}^+]_x^3 - k_{3pp}\,k_{4p}\,[\text{Ca}^{2+}]_x}{(1 + Q_{10})(h_1 \cdot h_2 + h_3)(1/h_7 + h_8)}$$
+  </div>
+
+  <p>
+    The split is physiologically motivated: NCX molecules near the dyadic cleft "see" a very different
+    calcium signal (high, fast transient from CICR) than those in the bulk cytoplasm (lower, slower rise).
+    In TTP06's single-population NCX, forward-mode extrusion is driven by a spatially averaged
+    $[\text{Ca}^{2+}]_i$ that underestimates the local signal near the release sites. The subspace NCX
+    population responds to the actual local calcium in the dyad, providing more accurate calcium cycling
+    and a better match to experimental measurements of NCX current during the action potential.
+  </p>
+
+  <h4>Sarcolemmal Ca$^{2+}$ Pump ($I_{\text{pCa}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.14)</span>
+    $$I_{\text{pCa}} = \frac{\bar{g}_{\text{pCa}}\,[\text{Ca}^{2+}]_i}{K_{m,\text{pCa}} + [\text{Ca}^{2+}]_i}$$
+  </div>
+
+  <p>
+    The PMCA formulation is essentially unchanged from TTP06: a Michaelis–Menten-style saturating function
+    of cytoplasmic calcium. It contributes roughly 1–2% of total calcium extrusion per beat.
+  </p>
+
+  <h4>Background Leak Currents ($I_{\text{Nab}}$, $I_{\text{Cab}}$)</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.15)</span>
+    $$I_{\text{Nab}} = \bar{g}_{\text{Nab}}\,(V_m - E_{\text{Na}})$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.16)</span>
+    $$I_{\text{Cab}} = P_{\text{Cab}}\cdot\Psi_{\text{Ca}}(V_m, [\text{Ca}^{2+}]_i)$$
+  </div>
+
+  <p>
+    The sodium background current retains TTP06's Ohmic formulation. However, the calcium background
+    current in ORd switches from an Ohmic to a GHK formulation ($\Psi_{\text{Ca}}$), providing more
+    physically correct behavior at the very low intracellular Ca$^{2+}$ concentrations where the Ohmic
+    approximation breaks down.
+  </p>
+
+  <h4>Chloride Currents ($I_{\text{ClCa}}$, $I_{\text{Clb}}$) — New in ORd</h4>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.17)</span>
+    $$I_{\text{ClCa}} = \bar{g}_{\text{ClCa}}\,\frac{[\text{Ca}^{2+}]_{\text{ss}}}{K_{d,\text{ClCa}} + [\text{Ca}^{2+}]_{\text{ss}}}\,(V_m - E_{\text{Cl}})$$
+  </div>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.18)</span>
+    $$I_{\text{Clb}} = \bar{g}_{\text{Clb}}\,(V_m - E_{\text{Cl}})$$
+  </div>
+
+  <p>
+    ORd introduces chloride currents, absent from TTP06. The calcium-activated chloride current
+    $I_{\text{ClCa}}$ is gated by subspace calcium and contributes to the Phase 1 notch alongside
+    $I_{\text{to}}$. With $E_{\text{Cl}} \approx -40$ mV (between rest and plateau), this current
+    is depolarizing at rest and repolarizing during the plateau, adding nuance to the Phase 1–2
+    transition. The background chloride leak $I_{\text{Clb}}$ is small but ensures chloride balance.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      Engine V5.4's ORd implementation omits the chloride currents ($I_{\text{ClCa}}$ and $I_{\text{Clb}}$).
+      Their combined contribution is typically $\lt$1% of total ionic current, and many benchmark ORd
+      implementations (including the CiPA reference) also exclude them. If chloride sensitivity is needed
+      for a specific study, these currents can be added as post-hoc corrections without modifying the
+      core state variable system.
+    </p>
+  </div>
+
+  <h3>6.6 &ensp; The CaMKII Signaling Pathway</h3>
+
+  <p>
+    The calcium/calmodulin-dependent protein kinase II (CaMKII) signaling pathway is the largest
+    conceptual addition in ORd and the primary mechanism underlying rate adaptation. CaMKII is
+    activated by calcium/calmodulin binding and can autophosphorylate to maintain activity even
+    after calcium levels fall — creating a molecular "memory" of recent heart rate.
+  </p>
+
+  <p>
+    The active CaMKII fraction in ORd is:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.19)</span>
+    $$\text{CaMK}_{\text{active}} = \text{CaMK}_{\text{bound}} + \text{CaMK}_{\text{trap}}$$
+  </div>
+
+  <p>
+    where $\text{CaMK}_{\text{bound}} = \text{CaMK}_0\,(1 - \text{CaMK}_{\text{trap}})/(1 + K_m/[\text{Ca}^{2+}]_{\text{ss}})$
+    is the fraction bound to calcium/calmodulin (instantaneous, set by current subspace Ca$^{2+}$), and
+    $\text{CaMK}_{\text{trap}}$ is the autophosphorylated fraction that decays slowly:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(6.20)</span>
+    $$\frac{d\,\text{CaMK}_{\text{trap}}}{dt} = \alpha_{\text{CaMK}}\,\text{CaMK}_{\text{bound}}\,\text{CaMK}_{\text{active}} - \beta_{\text{CaMK}}\,\text{CaMK}_{\text{trap}}$$
+  </div>
+
+  <p>
+    The time constant for CaMKII trapping is on the order of seconds — much slower than any gating variable.
+    This creates a hierarchical timescale structure:
+  </p>
+
+  <p>
+    <strong>Milliseconds:</strong> Gate kinetics (m, h, d, f, etc.) — respond within a single AP.
+    <strong>Hundreds of milliseconds:</strong> Concentration changes ($[\text{Ca}^{2+}]_i$, $[\text{Na}^+]_i$) — settle over a few beats.
+    <strong>Seconds to minutes:</strong> CaMKII trapping — requires dozens to hundreds of beats to equilibrate.
+  </p>
+
+  <p>
+    Active CaMKII phosphorylates four main targets in ORd:
+  </p>
+
+  <table>
+    <tr><th>Target</th><th>Effect of CaMKII Phosphorylation</th><th>Consequence for AP</th></tr>
+    <tr><td>$I_{\text{CaL}}$</td><td>Slowed voltage inactivation; enhanced recovery</td><td>Increased Ca$^{2+}$ entry → stronger contraction</td></tr>
+    <tr><td>$I_{\text{NaL}}$</td><td>Slowed inactivation → increased late Na$^+$</td><td>Slight APD prolongation at fast rates</td></tr>
+    <tr><td>RyR / $J_{\text{rel}}$</td><td>Increased open probability and release fraction</td><td>Larger Ca$^{2+}$ transient; potential for diastolic leak</td></tr>
+    <tr><td>SERCA / $J_{\text{up}}$</td><td>Faster Ca$^{2+}$ reuptake into SR</td><td>Faster relaxation; maintains SR load at fast rates</td></tr>
+  </table>
+
+  <p>
+    The net effect of CaMKII at faster heart rates is: more calcium entry per beat (via enhanced $I_{\text{CaL}}$),
+    faster calcium reuptake (via enhanced SERCA), larger SR release (via enhanced RyR sensitivity), and
+    slightly increased late sodium influx. The enhanced SERCA activity dominates the APD effect — by removing
+    calcium from the cytoplasm faster, it reduces the duration of the calcium transient and the plateau currents
+    that depend on it, resulting in APD shortening. This is how ORd achieves rate adaptation.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      CaMKII makes ORd simulations significantly more expensive than TTP06. With 41 state variables (vs. 18),
+      the per-cell cost roughly doubles. But the bigger issue is the slow CaMKII equilibration time: reaching
+      steady state after a rate change requires 300–600 beats (2–5 minutes of simulated time), compared to
+      50–100 beats for TTP06. For tissue-scale studies where CaMKII effects are not the primary focus, TTP06
+      remains the pragmatic choice.
+    </p>
+  </div>
+
+  <h3>6.7 &ensp; Currents During Each AP Phase — A Visual Map</h3>
+
+  <!-- ─── ORd current activity during AP phases diagram ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 620 470" xmlns="http://www.w3.org/2000/svg" style="max-width:560px;">
+      <!-- Column headers (AP phases) -->
+      <text x="170" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="700">Phase 0</text>
+      <text x="170" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Upstroke</text>
+      <text x="250" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#0f3460" font-weight="700">Phase 1</text>
+      <text x="250" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Notch</text>
+      <text x="340" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f" font-weight="700">Phase 2</text>
+      <text x="340" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Plateau</text>
+      <text x="440" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00" font-weight="700">Phase 3</text>
+      <text x="440" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Repol.</text>
+      <text x="540" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175" font-weight="700">Phase 4</text>
+      <text x="540" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Rest</text>
+
+      <!-- Row labels -->
+      <text x="120" y="55" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INa</text>
+      <text x="120" y="77" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INaL</text>
+      <text x="120" y="99" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">ICaL</text>
+      <text x="120" y="121" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">Ito</text>
+      <text x="120" y="143" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IKr</text>
+      <text x="120" y="165" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IKs</text>
+      <text x="120" y="187" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IK1</text>
+      <text x="120" y="209" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IKb</text>
+      <text x="120" y="231" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INaK</text>
+      <text x="120" y="253" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INaCa,i</text>
+      <text x="120" y="275" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INaCa,ss</text>
+      <text x="120" y="297" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IpCa</text>
+      <text x="120" y="319" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">INab</text>
+      <text x="120" y="341" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">ICab</text>
+      <text x="120" y="363" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IClCa</text>
+      <text x="120" y="385" text-anchor="end" font-family="EB Garamond,serif" font-size="10" fill="#16213e">IClb</text>
+
+      <!-- Grid lines -->
+      <line x1="130" y1="38" x2="580" y2="38" stroke="#e0e0e0" stroke-width="0.5"/>
+      <line x1="130" y1="395" x2="580" y2="395" stroke="#e0e0e0" stroke-width="0.5"/>
+
+      <!-- Column separators -->
+      <line x1="210" y1="38" x2="210" y2="395" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="290" y1="38" x2="290" y2="395" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="390" y1="38" x2="390" y2="395" stroke="#e8e8e8" stroke-width="0.5"/>
+      <line x1="490" y1="38" x2="490" y2="395" stroke="#e8e8e8" stroke-width="0.5"/>
+
+      <!-- INa: Phase 0 DOMINANT -->
+      <rect x="140" y="46" width="60" height="13" rx="3" fill="#e94560" opacity="0.9"/>
+      <text x="170" y="56" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- INaL: Phase 2 moderate, Phase 3 trailing -->
+      <rect x="300" y="68" width="80" height="13" rx="3" fill="#e94560" opacity="0.4"/>
+      <text x="340" y="78" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">persistent</text>
+      <rect x="400" y="68" width="50" height="13" rx="3" fill="#e94560" opacity="0.2"/>
+
+      <!-- ICaL: Phase 1 small, Phase 2 DOMINANT, Phase 3 small -->
+      <rect x="220" y="90" width="60" height="13" rx="3" fill="#e94560" opacity="0.3"/>
+      <rect x="300" y="90" width="80" height="13" rx="3" fill="#e94560" opacity="0.85"/>
+      <text x="340" y="100" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+      <rect x="400" y="90" width="40" height="13" rx="3" fill="#e94560" opacity="0.2"/>
+
+      <!-- Ito: Phase 1 DOMINANT -->
+      <rect x="220" y="112" width="60" height="13" rx="3" fill="#0f3460" opacity="0.85"/>
+      <text x="250" y="122" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IKr: Phase 2 small, Phase 3 DOMINANT -->
+      <rect x="310" y="134" width="70" height="13" rx="3" fill="#0f3460" opacity="0.25"/>
+      <rect x="400" y="134" width="80" height="13" rx="3" fill="#0f3460" opacity="0.8"/>
+      <text x="440" y="144" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IKs: Phase 2-3 building -->
+      <rect x="310" y="156" width="70" height="13" rx="3" fill="#0f3460" opacity="0.15"/>
+      <rect x="400" y="156" width="80" height="13" rx="3" fill="#0f3460" opacity="0.45"/>
+      <text x="440" y="166" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">reserve</text>
+
+      <!-- IK1: Phase 3 late, Phase 4 DOMINANT -->
+      <rect x="440" y="178" width="40" height="13" rx="3" fill="#0f3460" opacity="0.5"/>
+      <rect x="500" y="178" width="70" height="13" rx="3" fill="#0f3460" opacity="0.85"/>
+      <text x="535" y="188" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white" font-weight="700">DOMINANT</text>
+
+      <!-- IKb: Phase 2 small -->
+      <rect x="310" y="200" width="70" height="13" rx="3" fill="#0f3460" opacity="0.15"/>
+      <text x="345" y="210" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">small</text>
+
+      <!-- INaK: all phases, moderate -->
+      <rect x="140" y="222" width="430" height="13" rx="3" fill="#5a6175" opacity="0.25"/>
+      <text x="355" y="232" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#5a6175">continuous — thermodynamic cycle</text>
+
+      <!-- INaCa,i: Phase 2 reverse, Phase 3-4 forward -->
+      <rect x="300" y="244" width="80" height="13" rx="3" fill="#0f3460" opacity="0.2"/>
+      <text x="340" y="254" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">reverse</text>
+      <rect x="400" y="244" width="170" height="13" rx="3" fill="#e94560" opacity="0.35"/>
+      <text x="485" y="254" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">forward (80%)</text>
+
+      <!-- INaCa,ss: similar but subspace -->
+      <rect x="300" y="266" width="80" height="13" rx="3" fill="#0f3460" opacity="0.15"/>
+      <text x="340" y="276" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#0f3460">reverse</text>
+      <rect x="400" y="266" width="170" height="13" rx="3" fill="#e94560" opacity="0.25"/>
+      <text x="485" y="276" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#e94560">forward (20%)</text>
+
+      <!-- IpCa: all phases, small -->
+      <rect x="140" y="288" width="430" height="13" rx="3" fill="#5a6175" opacity="0.12"/>
+      <text x="355" y="298" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#5a6175">continuous — fine Ca²⁺ tuning</text>
+
+      <!-- INab: all phases, tiny -->
+      <rect x="140" y="310" width="430" height="13" rx="3" fill="#5a6175" opacity="0.08"/>
+      <text x="355" y="320" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#aaa">tiny leak</text>
+
+      <!-- ICab: all phases, tiny -->
+      <rect x="140" y="332" width="430" height="13" rx="3" fill="#5a6175" opacity="0.08"/>
+      <text x="355" y="342" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#aaa">tiny leak (GHK)</text>
+
+      <!-- IClCa: Phase 1-2, calcium activated -->
+      <rect x="220" y="354" width="140" height="13" rx="3" fill="#8a6d00" opacity="0.35"/>
+      <text x="290" y="364" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#8a6d00">Ca²⁺-activated</text>
+
+      <!-- IClb: all phases, tiny -->
+      <rect x="140" y="376" width="430" height="13" rx="3" fill="#8a6d00" opacity="0.08"/>
+      <text x="355" y="386" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="#aaa">tiny leak</text>
+
+      <!-- Legend -->
+      <rect x="130" y="410" width="18" height="10" rx="2" fill="#e94560" opacity="0.8"/>
+      <text x="154" y="419" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Inward (depolarizing)</text>
+      <rect x="280" y="410" width="18" height="10" rx="2" fill="#0f3460" opacity="0.8"/>
+      <text x="304" y="419" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Outward (repolarizing)</text>
+      <rect x="420" y="410" width="18" height="10" rx="2" fill="#5a6175" opacity="0.25"/>
+      <text x="444" y="419" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Housekeeping</text>
+      <rect x="530" y="410" width="18" height="10" rx="2" fill="#8a6d00" opacity="0.4"/>
+      <text x="554" y="419" font-family="EB Garamond,serif" font-size="8" fill="#5a6175">Chloride</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 6.1.</span> Activity map of all ORd membrane currents across the five AP phases. Bar width represents temporal extent; opacity represents relative magnitude. Red bars are inward (depolarizing), blue bars are outward (repolarizing), gray bars are housekeeping currents, gold bars are chloride currents. Compare with Figure 5.1 for TTP06 — note the addition of $I_{\text{NaL}}$ (persistent through the plateau), split NCX populations, and chloride currents.</div>
+  </div>
+
+  <div class="insight insight-math">
+    <p>
+      As in TTP06, all gating variables in ORd satisfy the relaxation ODE $dx/dt = (x_\infty - x)/\tau_x$.
+      The Rush–Larsen exponential integrator (Chapter 8) applies to every gate, regardless of CaMKII
+      phosphorylation status. The key numerical difference is that ORd has 29 gates vs. TTP06's 12,
+      so the Rush–Larsen evaluation cost roughly doubles. The concentration ODEs remain non-relaxation
+      and require explicit or implicit integration.
+    </p>
+  </div>
+
+  <h3>6.8 &ensp; Endo, Epi, and M-Cells: Transmural Heterogeneity</h3>
+
+  <p>
+    Like TTP06, ORd supports three transmural cell types. However, ORd's transmural differences are
+    more nuanced, affecting more parameters:
+  </p>
+
+  <table>
+    <tr><th>Parameter</th><th>Endocardial</th><th>Epicardial</th><th>M-Cell</th><th>Physiological Basis</th></tr>
+    <tr><td>$\bar{g}_{\text{to}}$</td><td>0.02</td><td>0.08 ($4\times$)</td><td>0.08 ($4\times$)</td><td>Large epi/M-cell notch; minimal endo notch</td></tr>
+    <tr><td>$P_{\text{CaL}}$</td><td>$1\times$</td><td>$1.2\times$</td><td>$2.5\times$</td><td>Enhanced plateau in M-cells</td></tr>
+    <tr><td>$\bar{g}_{\text{Kr}}$</td><td>$1\times$</td><td>$1.3\times$</td><td>$0.8\times$</td><td>M-cell APD prolongation</td></tr>
+    <tr><td>$\bar{g}_{\text{Ks}}$</td><td>0.0034</td><td>0.00476 ($1.4\times$)</td><td>Reduced</td><td>M-cell APD prolongation (reduced repol. reserve)</td></tr>
+    <tr><td>$\bar{g}_{\text{K1}}$</td><td>$1\times$</td><td>$1.2\times$</td><td>$1.3\times$</td><td>Resting potential variation</td></tr>
+    <tr><td>$\bar{g}_{\text{NaL}}$</td><td>$1\times$</td><td>$0.6\times$</td><td>$1\times$</td><td>Reduced late Na$^+$ in epicardium</td></tr>
+    <tr><td>$I_{\text{NaCa}}$</td><td>$1\times$</td><td>$1.1\times$</td><td>$1.4\times$</td><td>Enhanced Ca$^{2+}$ extrusion in M-cells</td></tr>
+    <tr><td>$I_{\text{NaK}}$</td><td>$1\times$</td><td>$0.9\times$</td><td>$0.7\times$</td><td>Reduced pump activity in M-cells</td></tr>
+  </table>
+
+  <p>
+    The M-cell phenotype in ORd arises from the combination of reduced $I_{\text{Ks}}$ (less repolarization
+    reserve), reduced $I_{\text{Kr}}$ ($0.8\times$), enhanced $I_{\text{CaL}}$ ($2.5\times$), and
+    reduced $I_{\text{NaK}}$ ($0.7\times$). These changes collectively produce the
+    longest APD of any cell type — a feature that is important for generating the T-wave on the surface
+    ECG. The transmural APD gradient (endo $\lt$ epi $\lt$ M-cell) drives the voltage gradient that
+    produces the terminal T-wave inscription.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, both TTP06 and ORd implement the same <code>IonicModel</code> interface. The
+      <code>cell_type</code> parameter selects transmural variant by switching maximal conductances.
+      A simulation can mix cell types spatially — endocardial cells on the inner surface, epicardial
+      on the outer surface, M-cells in between — reproducing the full transmural gradient with a single
+      model class.
+    </p>
+  </div>
+
+  <h3>6.9 &ensp; Calcium Handling: Two SR Compartments</h3>
+
+  <p>
+    ORd refines the calcium subsystem beyond TTP06's three-compartment model (subspace, cytoplasm, SR)
+    by splitting the SR into two functionally distinct regions:
+  </p>
+
+  <p>
+    <strong>Network SR (nSR):</strong> The bulk of the SR volume. SERCA pumps calcium from the cytoplasm
+    into the nSR. Calcium diffuses freely within the nSR toward the junctional terminals.
+  </p>
+
+  <p>
+    <strong>Junctional SR (jSR):</strong> The terminal cisternae directly apposed to the T-tubule
+    membrane, containing the RyR2 clusters. This compartment empties rapidly during CICR and must
+    refill from the nSR between beats.
+  </p>
+
+  <p>
+    The calcium fluxes in ORd are:
+  </p>
+
+  <p>
+    <strong>$J_{\text{up}}$</strong> (SERCA2a, cytoplasm → nSR): CaMKII-enhanced pump with phospholamban
+    relief. At faster rates, CaMKII increases the maximum pump rate, enabling faster reuptake.
+  </p>
+
+  <p>
+    <strong>$J_{\text{tr}}$</strong> (nSR → jSR diffusion): A simple first-order transfer with time
+    constant $\tau_{\text{tr}} = 60$ ms. This creates a delay between SERCA refilling and jSR recovery —
+    the jSR content lags behind the nSR, explaining why premature beats (before full jSR recovery) produce
+    weaker calcium transients.
+  </p>
+
+  <p>
+    <strong>$J_{\text{rel}}$</strong> (RyR, jSR → subspace): CaMKII-enhanced release. The release flux
+    is proportional to the jSR-subspace calcium gradient and is activated by subspace calcium (CICR trigger).
+    CaMKII phosphorylation increases the RyR open probability, producing larger releases at faster rates.
+    The ORd release model blends non-phosphorylated and CaMKII-phosphorylated populations, with the total
+    release $J_{\text{rel}} = (1 - \Phi)\,J_{\text{rel,NP}} + \Phi\,J_{\text{rel,CaMK}}$.
+  </p>
+
+  <p>
+    <strong>$J_{\text{xfer}}$</strong> (subspace → cytoplasm diffusion): First-order transfer with time
+    constant $\tau_{\text{xfer}} = 8$ ms. Combined with the subspace Na$^+$ and K$^+$ diffusion, this
+    maintains the subspace as a distinct microenvironment that equilibrates with the bulk cytoplasm on
+    a timescale of tens of milliseconds.
+  </p>
+
+  <p>
+    <strong>$J_{\text{leak}}$</strong> (nSR → cytoplasm): A small passive leak proportional to
+    $[\text{Ca}^{2+}]_{\text{nsr}}$. This leak is the starting point for modeling diastolic SR calcium
+    leak in heart failure — by increasing the leak rate, one can simulate the RyR2 dysfunction that
+    drives spontaneous calcium waves and DADs.
+  </p>
+
+  <h3>6.10 &ensp; TTP06 vs. ORd at a Glance</h3>
+
+  <p>
+    The following table summarizes the key differences between TTP06 and ORd for quick reference:
+  </p>
+
+  <table>
+    <tr><th>Feature</th><th>TTP06</th><th>ORd</th></tr>
+    <tr><td>State variables</td><td>18</td><td>41</td></tr>
+    <tr><td>Membrane currents</td><td>12</td><td>15 (+ chloride)</td></tr>
+    <tr><td>Data source</td><td>Mixed species/cell lines</td><td>Undiseased human ventricle</td></tr>
+    <tr><td>Late Na$^+$ current</td><td>Not modeled</td><td>Explicit $I_{\text{NaL}}$</td></tr>
+    <tr><td>CaMKII signaling</td><td>Not modeled</td><td>Full pathway; rate adaptation</td></tr>
+    <tr><td>SR compartments</td><td>1 (single SR)</td><td>2 (nSR + jSR)</td></tr>
+    <tr><td>NCX populations</td><td>1 (bulk)</td><td>2 (bulk + subspace)</td></tr>
+    <tr><td>Na$^+$/K$^+$ pump</td><td>Hill-type empirical</td><td>Thermodynamic cycle</td></tr>
+    <tr><td>Subspace ions</td><td>Ca$^{2+}$ only</td><td>Ca$^{2+}$, Na$^+$, K$^+$</td></tr>
+    <tr><td>Beats to steady state</td><td>$\sim$50–100</td><td>$\sim$300–600 (CaMKII)</td></tr>
+    <tr><td>Cost per cell per step</td><td>$1\times$ (baseline)</td><td>$\sim$2–2.5$\times$</td></tr>
+    <tr><td>Best for</td><td>Wave dynamics, large-scale 3D, prototyping</td><td>Drug safety (CiPA), rate-dependent phenomena</td></tr>
+  </table>
+
+  <div class="insight insight-engine">
+    <p>
+      Engine V5.4 implements both models behind the same <code>IonicModel</code> interface. Switching
+      from TTP06 to ORd requires changing a single configuration parameter — the spatial solver, mesh,
+      operator splitting strategy, and output pipeline remain identical. The <code>step(V, ionic_states,
+      dt)</code> method handles the internal complexity, whether updating TTP06's 18 or ORd's 40 ionic
+      state variables (V stored separately in both). The <code>RushLarsenSolver</code> calls each
+      model's <code>compute_gate_steady_states()</code> and <code>compute_gate_time_constants()</code>
+      to perform the exponential update, and <code>compute_concentration_rates()</code> for Forward
+      Euler — all defined identically on the <code>IonicModel</code> ABC. This abstraction is
+      what allows the same tissue solver to work with any ionic model.
+    </p>
+  </div>
+
+  <p>
+    With both ionic models thoroughly characterized — from 18-variable TTP06 to 41-variable ORd — we now
+    have the single-cell building blocks that will be embedded at every spatial point in the tissue. In
+    Part II, we add the spatial dimension: diffusion, the monodomain equation, and the numerical methods
+    that make tissue-scale simulation possible.
+  </p>
+</div>
+
+
+<!-- ██████████████████████████████████████████████████████████████████ -->
+<!--                    PART II — TISSUE-LEVEL MONODOMAIN               -->
+<!-- ██████████████████████████████████████████████████████████████████ -->

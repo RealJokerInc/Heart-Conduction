@@ -1,9 +1,9 @@
 # Cardiac Computational Modeling — Document Index
 
-**Source**: `bidomain_textbook.html` (~8455 lines)
-**Output**: `Cardiac_Computational_Modeling.pdf` (2289 MathJax containers, 5.3 MB)
-**Standalone LBM**: `LBM_Textbook_Part_IV.pdf` (540 MathJax containers, 1.4 MB)
-**Last updated**: 2026-02-19 (session 6, Ch 17 v3.1 — Gaussian quadrature rewrite)
+**Source**: `bidomain_textbook.html` (~11043 lines)
+**Output**: `Cardiac_Computational_Modeling.pdf` (2567 MathJax containers, 6.7 MB)
+**Standalone LBM**: `LBM_Textbook_Part_IV.pdf` (818 MathJax containers, 2.8 MB)
+**Last updated**: 2026-02-27 (session 10 pt 2, B.7 rewrite + B.9 addition + renumbering B.10–B.13 + nav fixes)
 
 ## Part I — Single Cell Dynamics
 
@@ -40,8 +40,8 @@
 
 | Ch | Title | Sections | Style Status |
 |----|-------|----------|-------------|
-| 17 | The Lattice-Boltzmann Method: From Kinetic Theory to Computation | 17.1–17.3 | **Rewritten v3.1** — Boltzmann eq, LBM-SRT/BGK, Gaussian quadrature framework for weights/velocities, 26 equations, 1 SVG, 9 insight boxes |
-| 18 | Lattice-Boltzmann Methods for Monodomain | 18.1–18.7 | **Refactored** — redundancy removed, cross-refs Ch 17, focused on cardiac coupling + 5-stage LBM-EP algorithm |
+| 17 | The Lattice-Boltzmann Method: From Kinetic Theory to Computation | 17.1–17.4 | **Rewritten v4.0** — "Quadrature First" rewrite of 17.4: weights/velocities born from Gauss-Hermite quadrature, $\mathbf{e}_i$ vs $\mathbf{c}_i$ notation, eqs 17.1–17.41 + 17.7a, 1 SVG, 9 insight boxes |
+| 18 | Lattice-Boltzmann Methods for Monodomain | 18.1–18.8 | **Rewritten v2.1** — v2.0 + Ω^NR/Ω^R notation (18.3, 18.4), expanded BC section (18.5.1–18.5.5: full-way/half-way bounce-back, boundary node identification, irregular geometry, BC comparison table); 12 equations (18.1–18.11 + 18.10b) |
 | 19 | Lattice-Boltzmann Methods for Bidomain | 19.1–19.5 | **New** — Dual-lattice, pseudo-time, hybrid approaches |
 
 ## Appendices
@@ -50,6 +50,7 @@
 |----|-------|----------|-------------|
 | Refs | Key References | 3 groups | Fine |
 | A | A Visual Guide to Differential Equations | A.1–A.7 | Good — 3B1B style |
+| B | Introduction to PyTorch | B.1–B.13 | **Rewritten v2.1** — v2 + B.7 rewritten (cleaner sparse ops catalogue), new B.9 "Advanced Operations for Scientific Computing" (torch.where, roll, einsum, scatter_add_, in-place workspaces, NumPy interop, meshgrid, FFT); old B.9–B.12 renumbered → B.10–B.13 (1,165 lines) |
 
 ## Equation Number Registry
 
@@ -67,8 +68,8 @@
 | 12 (Bidomain Eqs) | (12.1)–(12.4) | 12.2 = parabolic, 12.3 = elliptic, 12.4 = gating ODE |
 | 13 (Bidomain FEM) | (13.1)–(13.2) | 13.1 = semi-discrete block, 13.2 = 2×2 block system |
 | 14 (Time Integ) | (14.1)–(14.2) | 14.1 = elliptic constraint, 14.2 = bidomain CFL |
-| 17 (LBM) | (17.1)–(17.25) | 17.1 = Boltzmann eq, 17.4 = BGK approx, 17.7 = LBM-BGK unified, 17.8 = collision, 17.9 = streaming, 17.12 = Maxwell-Boltzmann, 17.12a = Gauss-Hermite quadrature, 17.13–17.15 = exactness conditions, 17.23 = τ-D, 17.24 = diffusion f_eq, 17.25 = NS f_eq |
-| 18 (LBM Mono) | (18.1)–(18.4) | 18.1 = source term S, 18.2 = BGK with source, 18.3 = MRT with source (boxed), 18.4 = LBM-EP 5-stage step (boxed) |
+| 17 (LBM) | (17.1)–(17.44) + (17.7a) | **17.1** Phase Space: 17.1=distribution, 17.2=M-B equil, 17.3–17.5=three claims, 17.6=diffusion equil. **17.2** Boltzmann: 17.7=Eulerian, 17.7a=Lagrangian, 17.8=collision integral, 17.9–17.10=Navier-Stokes/diffusion, 17.11=BGK, 17.12=BGK-Boltzmann. **17.3** LBE: 17.13=discrete LBE, 17.14=collision, 17.15=streaming, 17.16=combined. **17.4** Quadrature: 17.18–17.20=exactness conditions, 17.21=Gauss-Hermite, 17.22–17.25=weights, 17.26=c_s², 17.27–17.29=τ-D, 17.30=diffusion f_eq, 17.31=NS f_eq. **17.5** Moment Space: 17.32–17.44=M matrices, round trip, BGK special case, worked example. |
+| 18 (LBM Mono) | (18.1)–(18.11) + (18.10b) | 18.1 = diffusion tensor, 18.2 = source term S, 18.3 = BGK with source (Ω^NR + Ω^R), 18.4 = tensor τ-D, 18.5 = τ_αβ rearranged, 18.6 = τ_αβ with Δx, 18.7 = anisotropic f_eq, 18.8 = MRT with source (boxed, Ω underbrace), 18.9 = S_D2Q5 relaxation matrix, 18.10 = full-way bounce-back, 18.10b = half-way bounce-back, 18.11 = LBM-EP 6-stage step (boxed) |
 | 19 (LBM Bi) | (19.1)–(19.4) | 19.1 = pseudo-time eq, 19.2 = phi_e relaxation, 19.3 = Vm lattice, 19.4 = phi_e lattice |
 | A (Appendix) | (A.1) | Heat equation |
 
@@ -101,3 +102,4 @@
 | `CHANGELOG.md` | All major edits with dates |
 | `INDEX.md` | This file |
 | `LBM_Textbook_Part_IV.pdf` | Standalone Part IV extraction |
+| `LBM_Monodomain_D2Q9.pptx` | D2Q9 presentation (slides 18.1–18.6 + summary) |
