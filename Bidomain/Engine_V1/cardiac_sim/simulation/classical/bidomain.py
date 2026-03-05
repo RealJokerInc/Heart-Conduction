@@ -46,13 +46,18 @@ class BidomainSimulation:
     def __init__(self, spatial, ionic_model, stimulus=None, dt=0.02,
                  splitting='strang', ionic_solver='rush_larsen',
                  diffusion_solver='decoupled', parabolic_solver='pcg',
-                 elliptic_solver='auto', theta=0.5):
+                 elliptic_solver='auto', theta=0.5, device=None):
 
         self.dt = dt
         self._spatial = spatial
 
+        # Resolve device from spatial discretization if not specified
+        if device is None:
+            device = spatial.grid.device
+        self.device = device
+
         # 1. Resolve ionic model
-        model = _resolve_ionic_model(ionic_model)
+        model = _resolve_ionic_model(ionic_model, device=device)
 
         # 2. Auto-select elliptic solver
         if elliptic_solver == 'auto':
@@ -68,7 +73,7 @@ class BidomainSimulation:
         self.splitting = _build_splitting(splitting, ionic, diffusion)
 
         # 4. Build state
-        self.state = _build_state(spatial, model, stimulus)
+        self.state = _build_state(spatial, model, stimulus, device=device)
 
     @staticmethod
     def _auto_select_elliptic_solver(spatial):
@@ -117,16 +122,19 @@ class BidomainSimulation:
 
 # === Factory Functions ===
 
-def _resolve_ionic_model(ionic_model):
+def _resolve_ionic_model(ionic_model, device=None):
     """Resolve ionic model from string or instance."""
+    if device is None:
+        device = torch.device('cpu')
+    dev_str = str(device) if not isinstance(device, str) else device
     if isinstance(ionic_model, str):
         name = ionic_model.lower()
         if name == 'ttp06':
             from ...ionic import TTP06Model
-            return TTP06Model(device='cpu')
+            return TTP06Model(device=dev_str)
         elif name == 'ord':
             from ...ionic import ORdModel
-            return ORdModel(device='cpu')
+            return ORdModel(device=dev_str)
         else:
             raise ValueError(f"Unknown ionic model: {ionic_model}")
     return ionic_model
@@ -176,7 +184,10 @@ def _build_linear_solver(name, spatial):
         dy = grid.Ly / (ny - 1)
         D = spatial._conductivity.D_i + spatial._conductivity.D_e
         bc = grid.boundary_spec
-        bc_type = bc.spectral_transform
+        # spectral_transform returns 'dct'/'dst', but SpectralSolver expects
+        # physics names 'neumann'/'dirichlet'
+        transform_to_bc = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
+        bc_type = transform_to_bc[bc.spectral_transform]
         return SpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type)
     elif name == 'pcg_spectral':
         from .solver.linear_solver.pcg_spectral import PCGSpectralSolver
@@ -186,7 +197,8 @@ def _build_linear_solver(name, spatial):
         dy = grid.Ly / (ny - 1)
         D = spatial._conductivity.D_i + spatial._conductivity.D_e
         bc = grid.boundary_spec
-        bc_type = bc.spectral_transform
+        transform_to_bc = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
+        bc_type = transform_to_bc[bc.spectral_transform]
         return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type)
     elif name == 'pcg_gmg':
         # Stub — falls back to PCG
@@ -218,11 +230,12 @@ def _build_splitting(name, ionic_solver, diffusion_solver):
         raise ValueError(f"Unknown splitting strategy: {name}")
 
 
-def _build_state(spatial, ionic_model, stimulus):
+def _build_state(spatial, ionic_model, stimulus, device=None):
     """Build BidomainState from spatial discretization and ionic model."""
     x, y = spatial.coordinates
     n_dof = spatial.n_dof
-    device = torch.device('cpu')
+    if device is None:
+        device = spatial.grid.device
     dtype = torch.float64
 
     Vm = torch.full((n_dof,), ionic_model.V_rest, device=device, dtype=dtype)
@@ -239,7 +252,7 @@ def _build_state(spatial, ionic_model, stimulus):
     if stimulus is not None:
         masks = []
         for s in stimulus.stimuli:
-            mask = s.get_mask(x, y).to(dtype=dtype)
+            mask = s.get_mask(x, y).to(device=device, dtype=dtype)
             masks.append(mask)
             stim_starts.append(s.start_time)
             stim_durations.append(s.duration)

@@ -19,7 +19,42 @@ Ref: improvement.md L1055-1242 (SpectralSolver spec)
 """
 
 import torch
+import torch_dct
 from .base import LinearSolver
+
+
+# === GPU-native DST-I via torch.fft ===
+
+def _dst1_1d(x, dim):
+    """DST-I along one dimension via odd-extension FFT."""
+    N = x.shape[dim]
+    M = 2 * (N + 1)
+
+    shape = list(x.shape)
+    shape[dim] = M
+    ext = x.new_zeros(shape)
+
+    def sl(d, s, e):
+        slices = [slice(None)] * len(shape)
+        slices[d] = slice(s, e)
+        return tuple(slices)
+
+    ext[sl(dim, 1, N + 1)] = x
+    ext[sl(dim, N + 2, M)] = -torch.flip(x, [dim])
+
+    fft_ext = torch.fft.fft(ext, dim=dim)
+    return -fft_ext[sl(dim, 1, N + 1)].imag
+
+
+def dst1_2d(x):
+    """2D DST-I forward via torch.fft. GPU-native."""
+    return _dst1_1d(_dst1_1d(x, dim=1), dim=0)
+
+
+def idst1_2d(X):
+    """2D DST-I inverse. DST-I is self-inverse up to normalization."""
+    mx, my = X.shape
+    return dst1_2d(X) / (4.0 * (mx + 1) * (my + 1))
 
 
 class SpectralSolver(LinearSolver):
@@ -94,25 +129,19 @@ class SpectralSolver(LinearSolver):
 
     def _solve_neumann(self, b):
         rhs = b.reshape(self.nx, self.ny)
-        rhs_hat = self._dct2(rhs)
+        rhs_hat = torch_dct.dct_2d(rhs, norm='ortho')
         u_hat = rhs_hat / self._eigenvalues
         u_hat[0, 0] = 0.0  # Null space: set mean to zero
-        u = self._idct2(u_hat)
+        u = torch_dct.idct_2d(u_hat, norm='ortho')
         return u.flatten()
 
     def _solve_dirichlet(self, b):
         rhs_full = b.reshape(self.nx, self.ny)
-        # Extract interior nodes only
         rhs_int = rhs_full[1:-1, 1:-1].contiguous()
-        mx, my = rhs_int.shape
-        # Forward DST-I
-        rhs_hat = self._dst1_2d_forward(rhs_int)
-        # Spectral division
+        rhs_hat = dst1_2d(rhs_int)
         u_hat = rhs_hat / self._eigenvalues
-        # Inverse DST-I
-        u_int = self._dst1_2d_inverse(u_hat)
-        # Pad with zeros (Dirichlet boundary value = 0)
-        u_full = torch.zeros(self.nx, self.ny, device=b.device, dtype=b.dtype)
+        u_int = idst1_2d(u_hat)
+        u_full = b.new_zeros(self.nx, self.ny)
         u_full[1:-1, 1:-1] = u_int
         return u_full.flatten()
 
@@ -124,85 +153,3 @@ class SpectralSolver(LinearSolver):
         u = torch.fft.ifft2(u_hat).real
         return u.flatten()
 
-    # === DCT-II/III via FFT (Neumann) ===
-
-    def _dct2(self, x):
-        """2D DCT-II via FFT."""
-        nx, ny = x.shape
-        # DCT along dim 0
-        x_mirror = torch.cat([x, x.flip(0)], dim=0)
-        fft_x = torch.fft.rfft(x_mirror, dim=0)
-        k = torch.arange(nx, device=x.device, dtype=x.dtype)
-        phase = torch.exp(-1j * torch.pi * k / (2 * nx))
-        dct_x = (fft_x[:nx] * phase.unsqueeze(1)).real * (2.0 / nx) ** 0.5
-        dct_x[0] *= 0.5 ** 0.5
-        # DCT along dim 1
-        dct_x_mirror = torch.cat([dct_x, dct_x.flip(1)], dim=1)
-        fft_y = torch.fft.rfft(dct_x_mirror, dim=1)
-        k = torch.arange(ny, device=x.device, dtype=x.dtype)
-        phase = torch.exp(-1j * torch.pi * k / (2 * ny))
-        dct_xy = (fft_y[:, :ny] * phase.unsqueeze(0)).real * (2.0 / ny) ** 0.5
-        dct_xy[:, 0] *= 0.5 ** 0.5
-        return dct_xy
-
-    def _idct2(self, x):
-        """2D IDCT (DCT-III) via FFT."""
-        nx, ny = x.shape
-        x_scaled = x.clone()
-        x_scaled[0, :] *= 2.0 ** 0.5
-        x_scaled[:, 0] *= 2.0 ** 0.5
-        x_scaled *= (nx * ny / 4.0) ** 0.5
-        # IDCT along dim 1
-        k = torch.arange(ny, device=x.device, dtype=x.dtype)
-        phase = torch.exp(1j * torch.pi * k / (2 * ny))
-        x_complex = x_scaled * phase.unsqueeze(0)
-        x_padded = torch.cat([x_complex, torch.zeros_like(x_complex)], dim=1)
-        idct_y = torch.fft.irfft(x_padded, n=2 * ny, dim=1)[:, :ny]
-        # IDCT along dim 0
-        k = torch.arange(nx, device=x.device, dtype=x.dtype)
-        phase = torch.exp(1j * torch.pi * k / (2 * nx))
-        idct_y_complex = idct_y * phase.unsqueeze(1)
-        idct_y_padded = torch.cat([idct_y_complex, torch.zeros_like(idct_y_complex)], dim=0)
-        result = torch.fft.irfft(idct_y_padded, n=2 * nx, dim=0)[:nx, :]
-        return result.real
-
-    # === DST-I via FFT (Dirichlet) ===
-
-    def _dst1_1d(self, x, dim):
-        """1D DST-I via FFT along specified dimension. Returns 2*DST-I(x)."""
-        N = x.shape[dim]
-        M = 2 * (N + 1)
-
-        # Build odd extension along dim
-        shape = list(x.shape)
-        shape[dim] = M
-        ext = torch.zeros(shape, device=x.device, dtype=x.dtype)
-
-        # Slice helpers
-        def _slice(dim, start, end):
-            s = [slice(None)] * len(shape)
-            s[dim] = slice(start, end)
-            return tuple(s)
-
-        ext[_slice(dim, 1, N + 1)] = x
-        ext[_slice(dim, N + 2, M)] = -torch.flip(x, [dim])
-
-        # FFT along dim
-        fft_ext = torch.fft.fft(ext, dim=dim)
-
-        # Extract -imag of indices 1..N
-        result = -fft_ext[_slice(dim, 1, N + 1)].imag
-
-        return result
-
-    def _dst1_2d_forward(self, x):
-        """2D DST-I forward transform. Returns 4*DST-I-2D(x)."""
-        y = self._dst1_1d(x, dim=1)  # 2*DST-I along dim 1
-        y = self._dst1_1d(y, dim=0)  # 2*DST-I along dim 0
-        return y  # = 4 * DST-I-2D(x)
-
-    def _dst1_2d_inverse(self, X):
-        """2D DST-I inverse transform. Consistent with _dst1_2d_forward."""
-        mx, my = X.shape
-        raw = self._dst1_2d_forward(X)
-        return raw / (4.0 * (mx + 1) * (my + 1))

@@ -220,7 +220,7 @@ def build_bidomain_sim(nx, ny, dx, dt, D_i, D_e, bc_type='insulated',
         dt=dt,
         splitting='strang',
         parabolic_solver='pcg',
-        elliptic_solver='pcg',
+        elliptic_solver='auto',
         theta=theta,
     )
     return sim, grid
@@ -241,6 +241,95 @@ def run_bidomain(nx=NX, ny=NY, dx=DX, dt=DT, D_i=D_I, D_e=D_E,
         times.append(state.t)
         V_grid = grid.flat_to_grid(state.Vm)
         V_hist.append(V_grid.clone())
+    return times, V_hist
+
+
+# ============================================================
+# Monodomain FDM Control (V5.3-style explicit Euler)
+# ============================================================
+def run_monodomain_fdm(nx=NX, ny=NY, dx=DX, dt=DT, D=D_EFF,
+                       t_end=T_END, save_every=SAVE_EVERY,
+                       stim_cols=STIM_COLS, stim_start=STIM_START,
+                       stim_dur=STIM_DUR, stim_amp=STIM_AMP):
+    """Run a simple monodomain FDM simulation (explicit diffusion + Rush-Larsen).
+
+    Uses V5.3-style operator splitting:
+      1. Ionic step (Rush-Larsen)
+      2. Diffusion step (explicit Euler, 5-point stencil)
+
+    Direct equation: dV/dt = D * nabla^2(V) - I_ion + I_stim
+    """
+    from cardiac_sim.ionic.ttp06.model import TTP06Model
+
+    model = TTP06Model(device='cpu')
+    V = torch.full((nx, ny), model.V_rest, dtype=torch.float64)
+    S = model.get_initial_state(nx * ny).reshape(nx, ny, -1)
+
+    # Stability check
+    dt_max = dx * dx / (4 * D)
+    if dt > dt_max:
+        print(f"    WARNING: dt={dt} > CFL limit={dt_max:.4f}, using dt={dt_max*0.8:.4f}")
+        dt = dt_max * 0.8
+
+    alpha = D / (dx * dx)
+
+    # Stimulus mask
+    stim_mask = torch.zeros(nx, ny, dtype=torch.bool)
+    stim_mask[:stim_cols, :] = True
+
+    times = []
+    V_hist = []
+    t = 0.0
+    next_save = save_every
+    n_steps = int(t_end / dt + 0.5)
+
+    for step_i in range(n_steps):
+        # --- Ionic step (Rush-Larsen) ---
+        V_flat = V.reshape(-1)
+        S_flat = S.reshape(-1, S.shape[-1])
+
+        Iion = model.compute_Iion(V_flat, S_flat)
+
+        # Stimulus
+        Istim = torch.zeros_like(V_flat)
+        if stim_start <= t < stim_start + stim_dur:
+            Istim[stim_mask.reshape(-1)] = stim_amp
+
+        # Update V with ionic + stimulus
+        V_flat = V_flat + dt * (-(Iion + Istim))
+
+        # Rush-Larsen gate update
+        gate_inf = model.compute_gate_steady_states(V_flat, S_flat)
+        gate_tau = model.compute_gate_time_constants(V_flat, S_flat)
+        for k, gi in enumerate(model.gate_indices):
+            tau_k = gate_tau[:, k].clamp(min=1e-6)
+            inf_k = gate_inf[:, k]
+            S_flat[:, gi] = inf_k + (S_flat[:, gi] - inf_k) * torch.exp(-dt / tau_k)
+
+        # Forward Euler concentration update
+        conc_rates = model.compute_concentration_rates(V_flat, S_flat)
+        for k, ci in enumerate(model.concentration_indices):
+            S_flat[:, ci] = S_flat[:, ci] + dt * conc_rates[:, k]
+
+        V = V_flat.reshape(nx, ny)
+        S = S_flat.reshape(nx, ny, -1)
+
+        # --- Diffusion step (explicit Euler, 5-pt stencil, Neumann BCs) ---
+        V_pad = torch.nn.functional.pad(
+            V.unsqueeze(0).unsqueeze(0), (1, 1, 1, 1), mode='replicate'
+        ).squeeze()
+        lap = (V_pad[1:-1, 2:] + V_pad[1:-1, :-2] +
+               V_pad[2:, 1:-1] + V_pad[:-2, 1:-1] -
+               4 * V_pad[1:-1, 1:-1])
+        V = V + dt * alpha * lap
+
+        t += dt
+
+        if t >= next_save - 1e-12:
+            next_save += save_every
+            times.append(t)
+            V_hist.append(V.clone())
+
     return times, V_hist
 
 

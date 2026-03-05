@@ -7,7 +7,7 @@
 
 ## Current Status
 
-**Active Phase:** Phase 5 DONE → Phase 6 (postponed, requires long TTP06 runs)
+**Active Phase:** Phase 6 DONE
 **Last Updated:** 2026-03-05
 
 ---
@@ -204,7 +204,7 @@
 
 ---
 
-## Phase 6: Boundary CV Cross-Validation -- PLANNED
+## Phase 6: Boundary CV Cross-Validation -- DONE
 
 **Goal:** Systematically compare boundary CV effects across LBM and Bidomain FDM.
 Distinguish D2Q9 lattice artifact (~3% slowdown) from Kleber speedup (~13%).
@@ -255,6 +255,26 @@ Distinguish D2Q9 lattice artifact (~3% slowdown) from Kleber speedup (~13%).
 | 6D-T2 | Kleber convergence | Bidomain bath at 3 dx values | Converges to ~1.13 |
 | 6D-T3 | D2Q5 mesh independence | Ratio at 3 dx values | Stays ~1.00 |
 | 6D-T4 | Bidomain insulated independence | Ratio at 2+ dx values | Stays ~1.00 |
+
+### Phase 6 Results Summary
+
+**Critical bugs found and fixed during Phase 6:**
+1. **SpectralSolver DCT implementation**: Custom DCT-II was wrong (self-consistent but not matching scipy's orthonormal DCT-II). Replaced with `scipy.fft.dctn`/`idctn`. After fix: machine-precision accuracy.
+2. **Parabolic coupling term**: Had `theta * L_i * phi_e` (= 0.5 * coupling) instead of `L_i * phi_e`. Removed erroneous theta factor.
+3. **Elliptic solver selection**: `cv_shared.py` hardcoded `elliptic_solver='pcg'` instead of `'auto'`. PCG on ill-conditioned elliptic took 63+ minutes. Changed to `'auto'` → spectral solver, ~47s.
+4. **SpectralSolver bc_type mismatch**: `BoundarySpec.spectral_transform` returns 'dct'/'dst' but solver checked for 'neumann'/'dirichlet'. Added translation map.
+
+**Phase 6A:** 4/4 PASS — chi*Cm convention verified (chi=1, Cm=1, D values pre-scaled)
+**Phase 6B:** 3/3 PASS — Monodomain FDM and bidomain produce identical CV (54.3 cm/s, 0.0% diff)
+**Phase 6C:** 5/5 PASS — Kleber boundary speedup confirmed:
+- Insulated ratio = 1.0000 (no boundary effect)
+- Bath ratio = 1.0714 (7.1% speedup, theory predicts 13.1%)
+- 5.2% error vs theoretical Kleber ratio (within 20% threshold)
+**Phase 6D:** 4/4 PASS — Mesh convergence:
+- Kleber ratio converges: 1.0385 (dx=0.05) → 1.0714 (dx=0.025) → 1.131 (theory)
+- All null configs stable at 1.0000 across resolutions
+
+**Result: 16/16 tests PASSED (2026-03-05)**
 
 ---
 
@@ -382,3 +402,4 @@ CV_ratio should converge to ~1.13 with O(h²) convergence.
 | 2026-03-05 | 8 | Phase 2 FDM Discretization: BidomainFDMDiscretization with symmetric face-based stencil, Dirichlet enforcement in A_ellip, harmonic mean faces. 10/10 tests PASSED |
 | 2026-03-05 | 9 | Phases 3-5: SpectralSolver (DCT/DST/FFT), PCGSpectralSolver, GMG stubs, DecoupledBidomainDiffusionSolver, BidomainSimulation orchestrator. 38/38 tests PASSED |
 | 2026-03-05 | 10 | Phase 6 planning: discovered chi*Cm convention bug, wrote CROSS_VALIDATION_PLAN.md, created 4 phased test scripts (6A-6D) + cv_shared.py. Analyzed LBM_V1 and bidomain FDM operator forms. |
+| 2026-03-05 | 11 | Phase 6 execution: Fixed 4 critical bugs (DCT impl, parabolic coupling, elliptic solver selection, bc_type mismatch). Added monodomain FDM control. All 16/16 tests PASS. Kleber boundary speedup confirmed (ratio=1.0714, converging to 1.131). |

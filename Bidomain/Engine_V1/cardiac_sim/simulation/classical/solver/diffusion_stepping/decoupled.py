@@ -76,8 +76,12 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
         Step 2: Elliptic solve for phi_e
         """
         # --- Step 1: Parabolic (Vm) ---
+        # Coupling: L_i * phi_e^n (NOT theta * L_i * phi_e^n)
+        # From CN discretization of dVm/dt = L_i*(Vm + phi_e):
+        #   theta*L_i*phi_e^{n+1} + (1-theta)*L_i*phi_e^n
+        #   ≈ L_i*phi_e^n (since phi_e is lagged)
         rhs_para = sparse_mv(self.B_para, state.Vm) \
-                   + self.theta * self._spatial.apply_L_i(state.phi_e)
+                   + self._spatial.apply_L_i(state.phi_e)
         Vm_new = self.parabolic_solver.solve(self.A_para, rhs_para)
 
         # --- Step 2: Elliptic (phi_e) ---

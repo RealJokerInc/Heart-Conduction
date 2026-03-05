@@ -33,10 +33,11 @@ def test_spectral_neumann():
     u -= u.mean()
 
     # Forward operator: b = IDCT(eigenvalues * DCT(u))
-    u_hat = solver._dct2(u)
+    import torch_dct
+    u_hat = torch_dct.dct_2d(u, norm='ortho')
     b_hat = u_hat * solver._eigenvalues
     b_hat[0, 0] = 0.0  # Zero-mean RHS consistent with zero-mean solution
-    b = solver._idct2(b_hat)
+    b = torch_dct.idct_2d(b_hat, norm='ortho')
 
     # Solve
     u_solved = solver.solve(None, b.flatten()).reshape(nx, ny)
@@ -64,9 +65,12 @@ def test_spectral_dirichlet():
     u_int = torch.randn(mx, my, dtype=torch.float64)
 
     # Forward operator on interior: b_int = IDST(eigenvalues * DST(u_int))
-    u_hat = solver._dst1_2d_forward(u_int)
-    b_hat = u_hat * solver._eigenvalues
-    b_int = solver._dst1_2d_inverse(b_hat)
+    import scipy.fft
+    u_np = u_int.numpy()
+    u_hat_np = scipy.fft.dstn(u_np, type=1)
+    b_hat_np = u_hat_np * solver._eigenvalues.numpy()
+    b_int_np = scipy.fft.idstn(b_hat_np, type=1)
+    b_int = torch.from_numpy(b_int_np)
 
     # Pad to full grid for the solver
     b_full = torch.zeros(nx, ny, dtype=torch.float64)

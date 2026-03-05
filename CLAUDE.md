@@ -1,10 +1,11 @@
 # Project Instructions for Claude Code
 
-## Virtual Environment
+## Python Environment
 
-Use the project venv at `./venv/` for Python execution:
+Use the conda environment `heart-conduction` for Python execution:
 ```bash
-./venv/bin/python script.py
+conda activate heart-conduction
+python script.py
 ```
 
 ## Permission Handling
