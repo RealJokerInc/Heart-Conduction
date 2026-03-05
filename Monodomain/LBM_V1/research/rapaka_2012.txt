@@ -1,0 +1,485 @@
+LBM-EP: Lattice-Boltzmann Method
+for Fast Cardiac Electrophysiology Simulation
+from 3D Images
+S. Rapaka1 , T. Mansi1 , B. Georgescu1, M. Pop2 , G.A. Wright2 ,
+A. Kamen1 , and Dorin Comaniciu1
+1
+
+Siemens Corporation, Corporate Research and Technology,
+Imaging and Computer Vision, Princeton, NJ, USA
+2
+Department of Medical Biophysics, University of Toronto,
+Sunnybrook Health Sciences Centre, Imaging Research, Toronto, ON, Canada
+
+Abstract. Current treatments of heart rhythm troubles require careful
+planning and guidance for optimal outcomes. Computational models of
+cardiac electrophysiology are being proposed for therapy planning but
+current approaches are either too simpliﬁed or too computationally intensive for patient-speciﬁc simulations in clinical practice. This paper
+presents a novel approach, LBM-EP, to solve any type of mono-domain
+cardiac electrophysiology models at near real-time that is especially tailored for patient-speciﬁc simulations. The domain is discretized on a
+Cartesian grid with a level-set representation of patient’s heart geometry, previously estimated from images automatically. The cell model is
+calculated node-wise, while the transmembrane potential is diﬀused using Lattice-Boltzmann method within the domain deﬁned by the levelset. Experiments on synthetic cases, on a data set from CESC’10 and on
+one patient with myocardium scar showed that LBM-EP provides results
+comparable to an FEM implementation, while being 10 − 45 times faster.
+Fast, accurate, scalable and requiring no speciﬁc meshing, LBM-EP paves
+the way to eﬃcient and detailed models of cardiac electrophysiology for
+therapy planning.
+
+1
+
+Introduction
+
+Since the seminal work of Hodgkin and Huxley [5], a large variety of models have
+been proposed to simulate the propagation of the action potential (AP) across
+the heart muscle, with various degrees of complexity ([3]). Biophysical models
+aim to capture the ion interactions and protein mechanisms that regulate the AP.
+At a higher scale, phenomenological models have been developed to mimic the
+AP without directly considering the underlying molecular mechanisms. Finally,
+Eikonal models do not simulate the AP altogether but the propagation of the
+electrical front directly. Since these models are generative, they may constitute
+eﬃcient tools for therapy planning. Phenomenological models provide a good
+compromise between model details, being able to capture most of the pathological conditions, and complexity. Recent works demonstrated that those models
+N. Ayache et al. (Eds.): MICCAI 2012, Part II, LNCS 7511, pp. 33–40, 2012.
+c
+ Springer-Verlag Berlin Heidelberg 2012
+
+34
+
+S. Rapaka et al.
+
+can be personalised from clinical data [1]. However, because they solve stiﬀ partial diﬀerential equations (PDE), they are still too computationally demanding
+for day-to-day clinical setups and intervention guidance. Another limitation is
+the requirement of high-quality/high-resolution volume meshes, which can be
+diﬃcult to obtain from patient-speciﬁc anatomies.
+In recent years, the lattice-Boltzmann method (LBM) [2] has developed as a
+powerful technique for accurate simulation of a large class of partial-diﬀerential
+equations. In particular, it has been successfully applied to pattern-forming
+reaction-diﬀusion equations([4]). While originally developed from cellular automata models of ﬂuid ﬂows, the method has found a ﬁrm theoretical basis in
+kinetic theory of weakly-compressible ﬂuid ﬂows. Some of the key strengths of
+this method are, i) local nature of the computational algorithm, which provides
+very high scalability on modern parallel computing architectures, ii) secondorder accuracy in space, and iii) simplicity of implementation on a uniform
+Cartesian grid.
+Motivated by the recent breakthrough in LBM, we present a novel framework,
+henceforth called LBM-EP, for eﬃcient patient-speciﬁc simulations of cardiac
+electrophysiology models at near real-time. Although general, the method is
+illustrated in this study on the Mitchell-Schaeﬀer model [6]. Sec. 2 presents
+a description of the algorithms used to process the medical images, and the
+lattice-Boltzmann algorithm used for propagating the action-potential. Sec. 3
+compares the simulation results computed with the proposed LBM-EP with
+an FEM implementation of Mitchell-Schaeﬀer model in synthetic scenarios, a
+dataset of CESC’10 Grand Challenge and one patient with a myocardium scar,
+showing an accuracy in the range of the variability reported in the literature and
+a speed-up of about 10 − 45× with respect to FEM. Sec. 4 concludes the paper.
+
+2
+
+Methods
+
+2.1
+
+Computational Domain Preparation from Medical Images
+
+LBM-EP being solved on Cartesian grids (Sec. 2.3), its application to clinical
+images is relatively immediate. Starting from a cardiac image (e.g. cine MRI),
+the left endocardium, right endocardium and epicardium are automatically segmented using a machine learning approach [11] and fused in one surface representing the myocardium while preserving their anatomical label. A level-set
+representation of that surface is then computed on an isotropic Cartesian grid.
+Based on the labels, grid nodes lying at the heart endocardia are marked for
+electrophysiology stimulation and synthetic ﬁbers are computed by linearly interpolating the elevation angle from −70◦ at the epicardium to +70◦ at the endocardium [3]. Scars can be reported in the domain through level set (Sec. 3.3).
+2.2
+
+Mitchell-Schaeﬀer Model of Action Potential
+
+Mitchell-Schaeﬀer (M-S) model [6] is employed here although the method can
+be extended to other mono-domain models. The model (Eq. (1)) relates the
+
+Lattice-Boltzmann Method for Fast Cardiac Electrophysiology Simulation
+
+35
+
+normalized transmembrane AP v(t) ∈ [0, 1] to an inward gated current Jin =
+hv 2 (1 − v)/τin , which captures the fast acting currents using the gating variable h(t), and an outward un-gated current Jout = −v/τout , which accounts for
+transmembrane voltage decrease. A transient stimulus current Jstim is added to
+the model to simulate electrical pacing.
+∂v
+= Jint + Jout + Jstim + c∇ · D∇v
+∂t
+
+(1)
+
+1−h
+The gating variable h(t) evolves according to dh
+dt = τopen if v < vgate , otherwise
+dh
+−h
+dt = τclose
+
+where vgate is the change-over voltage, D = ρId + (1 − ρ)aa is the
+anisotropic diﬀusion tensor along the ﬁber direction a with anisotropy ratio ρ, c
+is the diﬀusion coeﬃcient along the ﬁbers. τin , τout , τopen and τclose are directly
+related to the shape and duration of the AP ([6]), which makes their calibration
+possible from clinical data.
+2.3
+
+Lattice-Boltzmann Model of Cardiac Electrophysiology
+
+Eq. (1) is solved on the Cartesian grid (Sec. 2.1) using Lattice-Boltzmann method
+with a 7-connectivity topology (6 connections + central position) and Neumann
+boundary conditions. The gating variable h(t) is updated at every node of the
+grid using a forward Euler scheme. The fundamental variable of LBM is the
+vector of distribution functions f (x) = {fi (x)}i=1...7 , where fi (x) represents the
+probability of ﬁnding a particle travelling along the edge ei of node x. The
+governing equation at x for the edge ei is composed of two successive steps:
+fi∗ = fi − Aij (fj − ωj v) + δtωi (Jin + Jout + Jstim ),
+
+(2)
+
+fi (x + ei , t + δt) = fi∗ (x, t)
+
+(3)
+
+where, the collision matrix A = (Aij )i,j∈1,7 relaxes the distribution function fi
+towards the local value of the potential, v, fi∗ is an intermediate, post-collision
+state of the distribution function, and ωi is a weighting factor that depends
+on lattice connectivity, here ωi = 1/8 for the edges to the six neighbors and
+position. The transmembrane AP is related to the fi ’s
+ωi = 1/4 for the central
+
+through v(x, t) = i fi (x, t). For each time step δt, a strictly local collision rule
+(Eq. (2)) is applied to the distribution functions at each node. Post-collision, the
+distribution functions stream along their corresponding edges to the neighboring
+nodes (Eq. (3)). In its simplest form, the collision matrix is diagonal with a
+characteristic relaxation time τ , A = (1/τ )I, where I is the 7 × 7 identity matrix.
+At the problem boundaries, the streaming step requires the speciﬁcation of additional incoming distribution functions to ensure proper boundary conditions. It
+can be shown thatthe potential gradient at a node is related to the fi ’s through
+c∇v = (1 − 1/2τ ) i fi
+ei [4]. The Neumann boundary condition for potential on
+a surface simpliﬁes to i fi ei · n = 0. If the boundary is normal to any edge of
+the lattice, the Neumann boundary condition is automatically recovered if the
+incoming distribution at the node is equal to the outgoing one. Complex geometries can be handled easily by means of a level set formulation. The incoming
+
+36
+
+S. Rapaka et al.
+
+distribution is calculated automatically from the distance to the wall at nodes
+close to the boundary as provided by the level-set [10], thus enabling simulations
+in complex domain without requiring advanced meshing algorithms.
+Remarkably, this simple model can be shown to reproduce the reaction-diﬀusion
+equation Eq. (1) with an isotropic diﬀusion coeﬃcient of c = (2τ − 1)/8 (see [4]
+for the proof). To extend the model for anisotropic diﬀusion, like in the heart, the
+matrix A is replaced by A = M−1 SM [9], where
+⎛1 1 1 1 1 1 1 ⎞
+⎛τ 0 0 0 0 0 0 ⎞
+1 −1
+
+⎜0 0
+M = ⎝ 01 01
+1
+1
+
+1
+1
+
+0
+0
+0
+0
+0
+1 −1 0
+0
+0
+0
+0
+1 −1 0
+1
+1
+1
+1 −6
+−1 −1 0
+0
+0
+1
+1 −2 −2 0
+
+1
+0 τ11 τ12 τ13
+
+0
+
+0
+0
+
+5
+0 τ6 0
+0 0 τ7
+
+0
+
+0
+
+⎟ −1 ⎜ 00 ττ21 ττ22 ττ23 00 00 00 ⎟
+32 33
+⎠ S = ⎝ 0 31
+⎠
+0
+0
+0 τ
+0 0
+0
+0
+
+0
+0
+
+0
+0
+
+
+The ﬁrst row of M corresponds to v = i fi , while rows 2 − 4 are the three
+components of the potential gradient. The relaxation times (τij )i,j∈1,3 are related to the components of the diﬀusion tensor through τij = δij /2+4Dij δt/δx2 .
+The relaxation times τ1 related to the potential and τ5 , τ6 and τ7 related to the
+higher order moments do not directly eﬀect the diﬀusion solution, but eﬀect the
+stability of the method. In this work, we use τ1 = 1 and τ5 = τ6 = τ7 = 1.33.
+Algo. 1 summarizes the main steps of the method.
+Algorithm 1. LBM-EP: Lattice-Boltzmann Model of Cardiac Electrophysiology
+Require: Cartesian grid, level-set domain boundaries, δt, nbIter, model parameters
+1: for iter = 1 → nbIter do
+2:
+t ← t + δt
+3:
+for every node x do
+4:
+∀i, compute post-collision distributions fi∗ (x) (Eq. 2)
+5:
+Update h(x)
+6:
+for every node x do
+7:
+∀i, stream
+ fi (x) and apply boundary conditions (Eq. 3)
+8: return v = i fi , h.
+
+3
+
+Experiments and Results
+
+All experiments were executed on a standard Windows XP desktop machine (Intel Xeon, 2.40GHz octo-core, 4GB RAM). LBM-EP was implemented in Fortran
+with no particular optimization. A semi-implicit, anisotropic ﬁnite element implementation of M-S model, called FEM-EP, was used for comparisons. FEM-EP
+was based on linear tetrahedra and parallel optimization (OpenMP).
+3.1
+
+Quantitative Evaluation on Synthetic Scenarios
+
+We ﬁrst compared the performance of LBM-EP with respect to FEM-EP in
+two diﬀerent scenarios representing the main pathological features. To that end,
+a 10 × 10 × 0.5 cm slab was discretized into 401 × 401 × 3 nodes (1,920,000
+tetrahedra for FEM-EP). For both LBM-EP and FEM-EP, we used δt = 0.1ms,
+τclose = 150 ms, τopen = 120 ms, τin = 0.3 ms, τout = 6 ms, vgate = 0.13,
+
+Lattice-Boltzmann Method for Fast Cardiac Electrophysiology Simulation
+
+37
+
+c = 0.0003 cm2/ms and ρ = 1 (isotropic diﬀusion) [6]. An electrical stimulation
+was applied at the nodes (x, y = 0, z) for 1 ms duration by setting v = 1 at
+these nodes. Grid resolution analysis (not reported here) showed that numerical
+convergence was reached for both models at that spatial and temporal resolution.
+We ﬁrst tested the ability of LBM-EP to capture front-bending around a
+scar. A scar region was simulated within the domain (Fig. 1, left panels) by:
+setting the diﬀusion coeﬃcient c = 0 for FEM-EP, deﬁning Neumann boundary
+conditions for LBM-EP. From the computed depolarization times (Fig. 1, left
+panels), one can see that both models yielded very similar behavior. The AP
+front calculated by LBM-EP correctly rotated around the scar. Where the front
+was not perturbed by the scar, both models yielded nearly identical results,
+as quantiﬁed by the AP at Point 2 (0.3 ms diﬀerence in depolarization time,
+Fig. 1, right panel). Near the scar, slight diﬀerences could be identiﬁed, which
+resulted in a diﬀerence of 9.7 ms in depolarization time at Point 1. However, this
+cannot be interpreted as a limitation of LBM-EP, which captured perfectly the
+Neumann boundary conditions around the scar, contrary to FEM-EP.
+FEM EP
+
+LBM EP
+
+Action Potentials
+
+Normalized Potential
+
+1
+
+0.8
+
+LBM−EP, Pt1
+FEM−EP, Pt1
+LBM−EP, Pt2
+FEM−EP, Pt2
+
+0.6
+
+0.4
+
+0.2
+
+0
+0.2
+
+0.4
+
+0.6
+
+Time (in s)
+
+0.8
+
+1
+
+Fig. 1. Left panels: Computed depolarization times (in ms) in a homogeneous medium
+with scar (in black ). LBM-EP captured front rotation around the scar. Right panel : action potential at points 1 and 2, showing consistent results between both models.
+
+We then tested the ability of LBM-EP to simulate vortex formation due to premature stimulation. For that, we set the diﬀusion coeﬃcient to 0.0012 cm2/ms,
+removed the scar and applied a second stimulation at the nodes (x ≤ 0.5, y =
+0.5, z) at t = 452 ms for both methods. As shown in Fig. 2, the patterns obtained
+with LBM-EP were similar to those obtained with FEM-EP. LBM-EP could be
+used to simulate complex pathologies like ﬁbrillation or tachycardia.
+Computation Time. For all experiments, FEM-EP required ≈ 700 ms per
+iteration whereas LBM-EP required only ≈ 80 ms, about 8.75× speed-up.
+3.2
+
+Comparison with Published Results on CESC’10 Data
+
+We evaluated LBM-EP performance in a dataset distributed during CESC’10
+MICCAI Grand Challenge with respect to FEM-EP and to a recently published
+benchmark [1]. Our purpose being evaluation and not personalization, we did
+not adjust the parameters locally. We thus compared our results with the generic
+benchmark of the ionic ten Tusscher-Panﬁlov model only [1]. CESC’10 dataset
+
+38
+
+S. Rapaka et al.
+LBM-EP
+
+610 ms
+
+FEM-EP
+
+1320 ms
+
+610 ms
+
+1320 ms
+
+Fig. 2. LBM-EP succesfully captured vortex formation due to premature stimulation
+
+consisted in an explanted porcine heart, and comprised optical ﬂuorescence images of transmembrane potential and high-resolution diﬀusion-weighted (DW)
+MRI images ([7]). The optical images contained the depolarization and repolarization phase of transmembrane potential under left endocardium and right
+epicardium pacings at 1.1 Hz. Finally, the mesh constructed from DW-MRI had
+the ﬁber directions integrated, providing a complete model of the heart anatomy.
+LBM-EP was computed on 0.5 mm grid while FEM-EP was computed on
+the provided tetrahedra mesh with 0.5 mm average edge-length. The time steps
+were set to δtLBM−EP = 0.1 ms and δtF EM−EP = 0.5 ms. Myocardium ﬁbers
+deﬁned on the tetrahedra mesh were rasterized on the LBM lattice for simulation. The generic M-S parameters were used for both models [6], with a diﬀusion
+coeﬃcient c = 0.0035 cm2/ms and anisotropy ratio ρ = 0.25. As it can be seen
+from Fig. 3, LBM-EP simulation was qualitatively similar to FEM-EP for both
+pacing conditions in terms of depolarization isochrone patterns. The diﬀerence
+in absolute depolarization time was mostly due to the diﬀerent computational
+domain, in particular regarding the precise location of the excitation nodes and
+the ﬁber orientation, which was locally altered by the rasterization. Compared
+to the CESC’10 benchmark, LBM-EP provided similar depolarization patterns,
+suggesting promising reproducibility and validity. Finally, while FEM-EP required ≈ 16 s per iteration, LBM-EP took only ≈ 0.35 s per iteration, which
+corresponds to a speed-up of 45×. It should be noted that the computational
+eﬃciency of our FEM implementation was similar to those reported in the literature, ≈ 1 s/iteration on the 1.5 mm mesh provided by the challengers as in [8].
+3.3
+
+Real Case Example
+
+We ﬁnally illustrate how LBM-EP can be used in a real clinical scenario on a
+patient with myocardium scar due to previous surgery. Parameters were kept
+generic as no electrophysiology data were available. Fast conductivity was modeled on the endocardium to mimic the Purkinje ﬁbers. The scar was represented
+as a level-set to ensure Neumann boundary conditions. Fig. 4 shows the depolarization time isochrones, illustrating some delays at the apex due to the scar.
+Elsewhere in the myocardium the isochrones presented with patterns similar to
+what has been reported in the literature [3]. For this patient, one time step was
+calculated in 0.2 s for a grid size of 1 mm.
+
+Lattice-Boltzmann Method for Fast Cardiac Electrophysiology Simulation
+
+LBM-EP
+
+CESC’10
+
+Right Epicardium
+Pacing
+
+Left Endocardium
+Pacing
+
+FEM-EP
+
+39
+
+Fig. 3. FEM-EP and LBM-EP simulations using Mitchell-Schaeﬀer model and
+CESC’10 data using ten Tusscher-Panﬁlov model (see text for details)
+
+Fig. 4. LBM-EP simulation on one patient with myocardium scar
+
+4
+
+Conclusion and Future Work
+
+We have presented in this paper, to the best of our knowledge, the ﬁrst application of a near-real time lattice-Boltzmann model for general monodomain
+models of cardiac electrophysiology. Node-based by construction, our framework
+does not require advanced meshing and can be applied directly from images
+by means of level-sets. Through comparisons with the traditional ﬁnite-element
+method, we have empirically shown the applicability of LBM-EP to cardiac electrophysiology. A comprehensive description of the theory along with detailed
+studies of convergence and accuracy are being prepared as a larger contribution.
+LBM-EP provides second order accuracy in space, can be easily extended to any
+type of mono-domain cellular model, and, above all, oﬀers between 10 − 45×
+speed-up with respect to traditional FEM. Preliminary experiments on graphi-
+
+40
+
+S. Rapaka et al.
+
+cal processing units (GPUs) showed the potential for another order-of-magnitude
+improvement in computational speed. This is the ﬁrst time, to the best of our
+knowledge, that very fast simulations of cardiac electrophysiology is achieved
+with a detailed model. Our method may thus constitute an ideal framework for
+patient-speciﬁc simulations for therapy planning and real-time guidance.
+Acknowledgement. We would like to thank Prof. Oscar Camara of PhySense
+group at Information and Communication Technologies Department (DTIC) at
+Universitat Pompeu Fabra, Barcelona, Spain for providing the CESC’10 benchmark results.
+
+References
+1. Camara, O., Sermesant, M., Lamata, P., Wang, L., Pop, M., Relan, J., De Craene,
+M., Delingette, H., Liu, H., Niederer, S., Pashaei, A., Plank, G., Romero, D.,
+Sebastian, R., Wong, K.C., Zhang, H., Ayache, N., Frangi, A., Shi, P., Smith,
+N., Wright, G.: Inter-Model Consistency and Complementarity: Learning from exvivo Imaging and Electrophysiological Data towards an Integrated Understanding
+of Cardiac Physiology. Prog. Biophys. Mol. Biol. 107, 122–133 (2011)
+2. Chen, S., Doolen, G.D.: Lattice Boltzmann method for ﬂuid ﬂows. Annu. Rev.
+Fluid Mech. 30(1), 329–364 (1998)
+3. Clayton, R.H., Bernus, O., Cherry, E.M., Dierckx, H., Fenton, F.H., Mirabella, L.,
+Panﬁlov, A.V., Sachse, F.B., Seemann, G., Zhang, H.: Models of cardiac tissue
+electrophysiology: Progress, challenges and open questions. Prog. Biophys. Mol.
+Biol. 104(1-3), 22 (2011)
+4. Dawson, S.P., Chen, S., Doolen, G.D.: Lattice Boltzmann computations for
+reaction-diﬀusion equations. J. Chem. Phys. 98(2), 1514–1523 (1993)
+5. Hodgkin, A.L., Huxley, A.F.: A quantitative description of ion currents and its
+applications to conduction and excitation in nerve membranes. J. Physiol. 117(4),
+500–544 (1952)
+6. Mitchell, C.C., Schaeﬀer, D.G.: A two-current model for the dynamics of cardiac
+membrane. Bull. Math. Biol. 65(5), 767–793 (2003)
+7. Pop, M., Sermesant, M., Lepiller, D., Truong, M.V., McVeigh, E.R., Crystal, E.,
+Dick, A., Delingette, H., Ayache, N., Wright, G.A.: Fusion of optical imaging and
+mri for the evaluation and adjustment of macroscopic models of cardiac electrophysiology: A feasibility study. Med. Image Anal. 13(2), 370–380 (2009)
+8. Relan, J., Sermesant, M., Pop, M., Delingette, H., Sorine, M., Wright, G., Ayache,
+N.: Volumetric Prediction of Cardiac Electrophysiology using a Heart Model Personalised to Surface Data. In: CI2BM 2009 - MICCAI Workshop on Cardiovascular
+Interventional Imaging and Biophysical Modelling (2009)
+9. Yoshida, H., Nagaoka, M.: Multiple-relaxation-time lattice Boltzmann model for
+the convection and anisotropic diﬀusion equation. J. Comp. Phys. 229, 7774–7795
+(2010)
+10. Yu, D., Mei, R., Luo, L., Shyy, W.: Viscous ﬂow computations with the method of
+lattice Boltzmann equation. Prog. Aero. Sci. 39(5), 329–367 (2003)
+11. Zheng, Y., Barbu, A., Georgescu, B., Scheuering, M., Comaniciu, D.: Four-chamber
+heart modeling and automatic segmentation for 3-D cardiac CT volumes using
+marginal space learning and steerable features. IEEE Trans. Med. Imaging 27(11),
+1668–1681 (2008)
+
+
