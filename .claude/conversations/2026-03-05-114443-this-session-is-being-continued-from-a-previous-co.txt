@@ -1,0 +1,1189 @@
+
+ ▐▛███▜▌   Claude Code v2.1.69
+▝▜█████▛▘  Opus 4.6 · Claude Max
+  ▘▘ ▝▝    ~/Documents/Heart Conduction
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read Monodomain/LBM_V1/PROGRESS.md (129 lines)
+  ⎿  Read Monodomain/LBM_V1/tests/test_phase8.py (142 lines)
+  ⎿  Read Monodomain/LBM_V1/src/simulation.py (210 lines)
+  ⎿  Read Monodomain/LBM_V1/src/step.py (59 lines)
+  ⎿  Read Monodomain/LBM_V1/src/diffusion.py (78 lines)
+
+⏺ Searched for 4 patterns, read 12 files (ctrl+o to expand)
+
+⏺ Good. Now I have everything I need. Let me create the phase plan and the test
+  script. Let me first check the existing BOUNDARY_SPEEDUP_ANALYSIS.md for exact
+   theoretical predictions.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Now let me create both files. First, the phase plan document, then the test
+  script.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Write(Bidomain/Engine_V1/CROSS_VALIDATION_PLAN.md)
+  ⎿  Wrote 136 lines to Bidomain/Engine_V1/CROSS_VALIDATION_PLAN.md
+       1 # Part 2: Cross-Validation Phase Plan
+       2 
+       3 ## Objective
+       4 
+       5 Systematically compare boundary conduction velocity effects acro
+         ss three numerical
+       6 methods (LBM D2Q5, LBM D2Q9, Bidomain FDM) using identical geome
+         try, tissue
+       7 parameters, and measurement protocols. Distinguish the D2Q9 latt
+         ice artifact
+       8 (numerical, ~3% slowdown) from the Kleber boundary speedup (phys
+         ical, ~13% speedup).
+       9 
+      10 ---
+     … +126 lines (ctrl+o to expand)
+
+⏺ Now let me write the test script.
+
+⏺ Write(Bidomain/Engine_V1/tests/test_cross_validation.py)
+  ⎿  Wrote 375 lines to Bidomain/Engine_V1/tests/test_cross_validation.py
+       1 """Cross-Validation: Boundary CV Effects Across LBM and Bidomain
+          FDM.
+       2 
+       3 Compares boundary conduction velocity effects across four config
+         urations:
+       4   A: LBM D2Q5 + Neumann  (null hypothesis, CV_ratio = 1.00)
+       5   B: LBM D2Q9 + Neumann  (lattice artifact, CV_ratio ~ 0.97)
+       6   C: Bidomain FDM insulated  (bidomain null, CV_ratio = 1.00)
+       7   D: Bidomain FDM bath-coupled  (Kleber effect, CV_ratio ~ 1.13)
+       8 
+       9 All configs use identical geometry, ionic model, and measurement
+          protocol.
+      10 Run: ./venv/bin/python Bidomain/Engine_V1/tests/test_cross_valid
+         ation.py
+     … +365 lines (ctrl+o to expand)
+
+⏺ Let me do a quick smoke test on configs A and B (LBM) to verify they run,
+  since those are the simpler ones.
+
+⏺ Bash(cd "/Users/catecholamines/Documents/Heart Conduction" &&
+      ./venv/bin/python -c "
+      import sys…)
+  ⎿  LBM D2Q5 smoke test: V range [-85.2, -85.2]
+     LBM imports OK
+
+⏺ Bash(cd "/Users/catecholamines/Documents/Heart Conduction" &&
+      ./venv/bin/python -c "
+      import sys…)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ just plan out the phase document and create the test script for each      
+  phase. you are not doing testing for this round as this computer can't    
+  handle it. ultrathink                                                     
+
+⏺ Let me rewrite the plan document properly with phased structure, then create
+  the individual test scripts.
+
+⏺ Read 2 files (ctrl+o to expand)
+
+⏺ Now I'll rewrite the plan document properly with sub-phases, create a shared
+  config module, and create the 4 individual phase test scripts. Let me replace
+  the existing files.
+
+⏺ Write(Bidomain/Engine_V1/CROSS_VALIDATION_PLAN.md)
+  ⎿  Added 274 lines, removed 94 lines
+        1 -# Part 2: Cross-Validation Phase Plan                         
+        1 +# Phase 6: Boundary CV Cross-Validation Plan                  
+        2  
+        3 -## Objective                                                  
+        3 +> **Part 2 of the Bidomain Engine V1 implementation.**        
+        4 +> Systematically compares boundary conduction velocity effects
+          + across three                                                 
+        5 +> numerical methods using identical parameters and measurement
+          + protocols.                                                   
+        6  
+        5 -Systematically compare boundary conduction velocity effects ac
+          -ross three numerical                                          
+        6 -methods (LBM D2Q5, LBM D2Q9, Bidomain FDM) using identical geo
+          -metry, tissue                                                 
+        7 -parameters, and measurement protocols. Distinguish the D2Q9 la
+          -ttice artifact                                                
+        8 -(numerical, ~3% slowdown) from the Kleber boundary speedup (ph
+          -ysical, ~13% speedup).                                        
+        7 +---                                                           
+        8  
+        9 +## 1. Objective                                               
+       10 +                                                              
+       11 +Distinguish two fundamentally different boundary CV phenomena:
+       12 +                                                              
+       13 +1. **D2Q9 lattice artifact** — O(dx^2) numerical error from di
+          +agonal bounce-back                                            
+       14 +   in the LBM D2Q9 stencil. Causes ~3% CV *slowdown* at edges.
+          + Vanishes with                                                
+       15 +   mesh refinement. Not physical.                             
+       16 +                                                              
+       17 +2. **Kleber boundary speedup** — Physical effect from intracel
+          +lular/extracellular                                           
+       18 +   boundary condition asymmetry at tissue-bath interfaces. The
+          + bath shorts the                                              
+       19 +   extracellular resistance, boosting effective diffusivity fr
+          +om D_eff to D_i.                                              
+       20 +   Causes ~13% CV *speedup* at edges. Requires bidomain equati
+          +ons.                                                          
+       21 +                                                              
+       22 +These effects act in **opposite directions** (slowdown vs spee
+          +dup), providing a                                             
+       23 +clean experimental separation.                                
+       24 +                                                              
+       25  ---
+       26  
+       12 -## Chi*Cm Convention Fix (CRITICAL)                           
+       27 +## 2. Critical Prerequisite: Chi*Cm Convention                
+       28  
+       14 -The bidomain engine uses `chi_Cm = chi * Cm` in the parabolic 
+          -operator:                                                     
+       29 +### The Bug                                                   
+       30 +                                                              
+       31 +The bidomain engine's parabolic operator is:                  
+       32  ```
+       33  A_para = chi_Cm/dt * I - theta * L_i
+       34  ```
+       18 -where `L_i` contains diffusion coefficients `D_i = sigma_i / (
+          -chi*Cm)`.                                                     
+       35 +where `L_i` is built with diffusion coefficients `D_i = sigma_
+          +i / (chi_real * Cm)`.                                         
+       36  
+       20 -This gives: `dVm/dt = L_i * Vm / chi_Cm = D_i * Lap(Vm) / chi_
+          -Cm`                                                           
+       37 +This discretizes: `chi_Cm * dVm/dt = L_i * (Vm + phi_e)`      
+       38  
+       22 -If `chi=1400`, diffusion is 1400x too weak. **Fix: use chi=1.0
+          -, Cm=1.0.**                                                   
+       23 -With chi=1, Cm=1: `dVm/dt = D_i * Lap(Vm)` which is correct si
+          -nce D_i already                                               
+       24 -contains the physical chi*Cm scaling.                         
+       39 +Dividing by chi_Cm: `dVm/dt = D_i / chi_Cm * Lap(Vm + phi_e)` 
+       40  
+       26 -The LBM engine already uses D directly with R = -(I_ion + I_st
+          -im)/Cm.                                                       
+       41 +With the default `chi=1400, Cm=1.0`:                          
+       42 +- Effective diffusion rate = D_i / 1400 = 8.86e-7 cm^2/ms     
+       43 +- Correct physical rate = D_i = 0.00124 cm^2/ms               
+       44 +- **1400x too weak — no wave will propagate**                 
+       45  
+       46 +### The Fix                                                   
+       47 +                                                              
+       48 +Pass `chi=1.0, Cm=1.0` to `BidomainFDMDiscretization`. Then `c
+          +hi_Cm = 1.0` and:                                             
+       49 +```                                                           
+       50 +dVm/dt = D_i * Lap(Vm + phi_e)    (correct)                   
+       51 +```                                                           
+       52 +                                                              
+       53 +This works because `D_i = sigma_i / (chi_real * Cm_real)` alre
+          +ady contains the                                              
+       54 +physical chi*Cm scaling. The `chi_Cm` parameter in the discret
+          +e operator is a                                               
+       55 +*numerical* scaling factor, not the physical chi. Setting it t
+          +o 1.0 means "D values                                         
+       56 +are already physical diffusion coefficients," which they are. 
+       57 +                                                              
+       58 +### Consistency Check                                         
+       59 +                                                              
+       60 +| Engine | D used | chi_Cm in operator | Effective diffusion r
+          +ate |                                                         
+       61 +|--------|--------|-------------------|-----------------------
+          +-|                                                            
+       62 +| LBM V1 | D_eff directly | N/A (in tau) | D_eff |            
+       63 +| V5.4 FDM | D | chi*Cm (default 1400) | D / chi_Cm |         
+       64 +| Bidomain V1 (WRONG) | D_i, D_e | 1400 | D / 1400 |          
+       65 +| Bidomain V1 (FIXED) | D_i, D_e | 1.0 | D |                  
+       66 +                                                              
+       67 +For the ionic source term: `dVm/dt = -(I_ion + I_stim) / Cm`. 
+       68 +With `Cm = 1.0`, both engines give `dVm/dt = -(I_ion + I_stim)
+          +`.                                                            
+       69 +LBM uses `R = -(I_ion + I_stim) / Cm` with `Cm = 1.0` — identi
+          +cal.                                                          
+       70 +                                                              
+       71  ---
+       72  
+       30 -## Standardized Parameters                                    
+       73 +## 3. Standardized Parameters                                 
+       74  
+       32 -| Parameter | Value | Notes |                                 
+       33 -|-----------|-------|-------|                                 
+       34 -| Nx | 150 | Propagation direction |                          
+       35 -| Ny | 40 | Transverse direction |                            
+       36 -| dx = dy | 0.025 cm | 250 um resolution |                    
+       37 -| Lx | 3.725 cm | (Nx-1)*dx |                                 
+       38 -| Ly | 0.975 cm | (Ny-1)*dx |                                 
+       39 -| dt | 0.01 ms | Time step |                                  
+       40 -| Ionic model | TTP06 endocardial | Same model, same parameter
+          -s |                                                           
+       41 -| D_i | 0.00124 cm^2/ms | sigma_i/(chi*Cm) = 1.74/1400 |      
+       42 -| D_e | 0.00446 cm^2/ms | sigma_e/(chi*Cm) = 6.25/1400 |      
+       43 -| D_eff | 0.000970 cm^2/ms | D_i*D_e/(D_i+D_e) |              
+       44 -| Stimulus | Left 5 columns, 2ms, -80 uA/uF | Start at t=1ms |
+       45 -| Duration | 40 ms | Enough for wave to cross measurement regi
+          -on |                                                          
+       75 +All phases share these parameters to enable direct comparison.
+       76  
+       77 +| Parameter | Symbol | Value | Units | Notes |                
+       78 +|-----------|--------|-------|-------|-------|                
+       79 +| Grid x-nodes | Nx | 150 | — | Propagation direction |       
+       80 +| Grid y-nodes | Ny | 40 | — | Transverse direction |         
+       81 +| Spacing | dx = dy | 0.025 | cm | 250 um resolution |        
+       82 +| Domain length | Lx | 3.725 | cm | (Nx-1)*dx |               
+       83 +| Domain width | Ly | 0.975 | cm | (Ny-1)*dx |                
+       84 +| Time step | dt | 0.01 | ms | |                              
+       85 +| Intra diffusion | D_i | 0.00124 | cm^2/ms | sigma_i/(chi*Cm)
+          + = 1.74/1400 |                                                
+       86 +| Extra diffusion | D_e | 0.00446 | cm^2/ms | sigma_e/(chi*Cm)
+          + = 6.25/1400 |                                                
+       87 +| Effective D | D_eff | 0.000970 | cm^2/ms | D_i*D_e/(D_i+D_e)
+          + |                                                            
+       88 +| Ionic model | — | TTP06 endo | — | Human ventricular endocar
+          +dial |                                                        
+       89 +| Stimulus region | — | Left 5 columns | — | x < 5*dx = 0.125 
+          +cm |                                                          
+       90 +| Stimulus start | — | 1.0 | ms | |                           
+       91 +| Stimulus duration | — | 2.0 | ms | |                        
+       92 +| Stimulus amplitude | — | -80.0 | uA/uF | Strong depolarizing
+          + |                                                            
+       93 +                                                              
+       94  ### CV Measurement Protocol
+       95  
+       49 -1. Record activation time: first time Vm > -30 mV at each node
+       50 -2. Measure CV between x-positions x1=30 and x2=80 (avoiding st
+          -imulus and edge)                                              
+       51 -3. Two y-locations:                                           
+       52 -   - **Center:** y = Ny/2 (interior, far from boundaries)     
+       53 -   - **Edge:** y = 1 (first interior row, adjacent to boundary
+          -)                                                             
+       54 -4. CV = (x2 - x1) * dx / (t_act(x2) - t_act(x1))              
+       55 -5. Report: CV_ratio = CV_edge / CV_center                     
+       96 +1. Record voltage history at `save_every = 0.5 ms` intervals  
+       97 +2. Activation time = first snapshot where `Vm > -30 mV` at a n
+          +ode                                                           
+       98 +3. Measure CV between x-indices `x1=30` and `x2=80` (nodes 0.7
+          +5 cm to 2.0 cm)                                               
+       99 +   - Avoids stimulus region (x < 0.125 cm) and right-edge effe
+          +cts                                                           
+      100 +4. Two y-locations per config:                                
+      101 +   - **Center:** `y = Ny/2 = 20` (far from transverse boundari
+          +es)                                                           
+      102 +   - **Edge:** `y = 1` (first interior row, adjacent to bottom
+          + boundary)                                                    
+      103 +5. `CV = (x2 - x1) * dx / (t_act(x2) - t_act(x1))` in cm/ms   
+      104 +6. `CV_ratio = CV_edge / CV_center`                           
+      105  
+      106 +### Predicted CV_ratio by Configuration                       
+      107 +                                                              
+      108 +| Config | Engine | BCs | Expected CV_ratio | Physical basis |
+      109 +|--------|--------|-----|-------------------|----------------|
+      110 +| A | LBM D2Q5 | Neumann | 1.00 +/- 0.02 | No artifact, no phy
+          +sics |                                                        
+      111 +| B | LBM D2Q9 | Neumann | ~0.97 | Diagonal bounce-back artifa
+          +ct |                                                          
+      112 +| C | Bidomain FDM | Insulated | 1.00 +/- 0.02 | No bath coupl
+          +ing |                                                         
+      113 +| D | Bidomain FDM | Bath-coupled | ~1.13 | Kleber speedup |  
+      114 +                                                              
+      115  ---
+      116  
+       59 -## Experimental Configurations                                
+      117 +## 4. Phase Structure                                         
+      118  
+       61 -### Config A: LBM D2Q5 + Neumann (Null Hypothesis)            
+       62 -- **Model:** Monodomain via LBM D2Q5                          
+       63 -- **D:** D_eff = 0.000970 cm^2/ms (uniform)                   
+       64 -- **BCs:** Neumann (bounce-back) all walls                    
+       65 -- **Expected:** CV_ratio = 1.00 +/- 0.02 (no boundary effect) 
+       66 -- **Rationale:** D2Q5 has no diagonal distributions; bounce-ba
+          -ck is exact for Neumann                                       
+      119 +### Phase 6A: Convention Fix Verification                     
+      120  
+       68 -### Config B: LBM D2Q9 + Neumann (Lattice Artifact)           
+       69 -- **Model:** Monodomain via LBM D2Q9                          
+       70 -- **D:** D_eff = 0.000970 cm^2/ms (uniform)                   
+       71 -- **BCs:** Neumann (bounce-back) all walls                    
+       72 -- **Expected:** CV_ratio = 0.97 +/- 0.03 (~3% edge slowdown)  
+       73 -- **Rationale:** D2Q9 diagonal bounce-back introduces O(dx^2) 
+          -error at boundaries                                           
+       74 -- **Key test:** This is NOT the Kleber effect; it's a numerica
+          -l artifact                                                    
+      121 +**Goal:** Confirm chi=1.0 gives correct operator scaling and d
+          +iffusion rate.                                                
+      122 +Lightweight tests (seconds, no ionic model needed).           
+      123  
+       76 -### Config C: Bidomain FDM + Insulated (Bidomain Null)        
+       77 -- **Model:** Bidomain (decoupled splitting)                   
+       78 -- **D_i, D_e:** 0.00124, 0.00446 cm^2/ms                      
+       79 -- **BCs:** Neumann on both Vm and phi_e (insulated, all walls)
+       80 -- **chi=1.0, Cm=1.0** (corrected convention)                  
+       81 -- **Expected:** CV_ratio = 1.00 +/- 0.02                      
+       82 -- **Rationale:** No bath coupling -> no Kleber effect         
+      124 +**Test script:** `tests/test_phase6a_convention.py`           
+      125  
+       84 -### Config D: Bidomain FDM + Bath-Coupled (Kleber Effect)     
+       85 -- **Model:** Bidomain (decoupled splitting)                   
+       86 -- **D_i, D_e:** 0.00124, 0.00446 cm^2/ms                      
+       87 -- **BCs:** Vm: Neumann (all), phi_e: Dirichlet = 0 (all edges 
+          -= bath)                                                       
+       88 -- **chi=1.0, Cm=1.0** (corrected convention)                  
+       89 -- **Expected:** CV_ratio = 1.13 +/- 0.05 (Kleber speedup)     
+       90 -- **Rationale:** Bath shorts extracellular resistance at bound
+          -ary                                                           
+      126 +| # | Test | What It Checks | Pass Criteria |                 
+      127 +|---|------|---------------|---------------|                  
+      128 +| 6A-T1 | Operator diagonal scaling | A_para diagonal at inter
+          +ior node with chi=1.0 vs chi=1400 | chi=1.0: diag ~ 1/dt = 100
+          +; chi=1400: diag ~ 140000 |                                   
+      129 +| 6A-T2 | L_i applied to quadratic | L_i * x^2 = 2*D_i at inte
+          +rior nodes | Relative error < 1% |                            
+      130 +| 6A-T3 | Bidomain Gaussian diffusion | 100 diffusion-only ste
+          +ps, variance growth rate | sigma^2 grows as 2*D_eff*t, error <
+          + 5% |                                                         
+      131 +| 6A-T4 | LBM Gaussian diffusion | Same Gaussian, same D_eff, 
+          +LBM D2Q5 | Variance matches bidomain within 5% |              
+      132  
+      133 +**Implementation notes:**                                     
+      134 +- 6A-T3 constructs DecoupledBidomainDiffusionSolver directly, 
+          +bypasses ionic                                                
+      135 +- 6A-T3 uses a small grid (50x50) with the Gaussian centered, 
+          +runs 100 steps                                                
+      136 +- 6A-T4 uses the LBM pure diffusion path (no ionic model), sam
+          +e grid and D                                                  
+      137 +- Both use `sigma_0^2 = (5*dx)^2`, measure after t = 100*dt = 
+          +1.0 ms                                                        
+      138 +- Expected: `sigma_final^2 = sigma_0^2 + 2*D_eff*1.0`         
+      139 +                                                              
+      140  ---
+      141  
+       94 -## Preliminary CV Calibration                                 
+      142 +### Phase 6B: CV Calibration                                  
+      143  
+       96 -Before comparing ratios, verify all models give similar absolu
+          -te CV at center:                                              
+       97 -- Expected: ~65-80 cm/s for TTP06 with D_eff = 0.000970 cm^2/m
+          -s                                                             
+       98 -- LBM D2Q5 and D2Q9 should match within 5%                    
+       99 -- Bidomain insulated (Config C) should match LBM within 10%   
+      100 -  (D_eff = D_i*D_e/(D_i+D_e) = 0.000970 by construction)      
+      144 +**Goal:** Verify all three engines produce similar absolute in
+          +terior CV                                                     
+      145 +with D_eff before comparing boundary effects.                 
+      146  
+      102 -If CVs don't match, adjust D_eff for LBM configs to match bido
+          -main center CV.                                               
+      147 +**Test script:** `tests/test_phase6b_calibration.py`          
+      148  
+      149 +| # | Test | Engine + Config | Pass Criteria |                
+      150 +|---|------|----------------|---------------|                 
+      151 +| 6B-T1 | LBM D2Q5 center CV | D2Q5, D_eff, Neumann | CV in [0
+          +.03, 0.15] cm/ms |                                            
+      152 +| 6B-T2 | LBM D2Q9 center CV | D2Q9, D_eff, Neumann | Within 5
+          +% of 6B-T1 |                                                  
+      153 +| 6B-T3 | Bidomain insulated center CV | FDM, D_i+D_e, insulat
+          +ed, chi=1.0 | Within 15% of 6B-T1 |                           
+      154 +| 6B-T4 | Calibration summary | Compare all three | Print tabl
+          +e, flag outliers |                                            
+      155 +                                                              
+      156 +**Implementation notes:**                                     
+      157 +- Each config runs a full TTP06 wave simulation (Nx=150, Ny=40
+          +, t_end=40ms)                                                 
+      158 +- CV measured at y=Ny/2 only (center)                         
+      159 +- LBM configs use D_eff directly; bidomain uses D_i, D_e (harm
+          +onic mean = D_eff)                                            
+      160 +- If bidomain CV differs by >15%, the convention fix may be in
+          +complete                                                      
+      161 +                                                              
+      162 +**Expected runtime:** ~2-5 minutes per config (TTP06 with 4000
+          + time steps on 6000 nodes)                                    
+      163 +                                                              
+      164  ---
+      165  
+      106 -## Success Criteria                                           
+      166 +### Phase 6C: Boundary CV Cross-Validation (Main Experiment)  
+      167  
+      108 -| # | Criterion | Tolerance |                                 
+      109 -|---|-----------|-----------|                                 
+      110 -| 1 | Config A: CV_ratio = 1.00 | +/- 0.03 |                  
+      111 -| 2 | Config B: CV_ratio < 1.00 | Slowdown (not speedup) |    
+      112 -| 3 | Config C: CV_ratio = 1.00 | +/- 0.03 |                  
+      113 -| 4 | Config D: CV_ratio > 1.05 | Clear speedup |             
+      114 -| 5 | |CV_center(A) - CV_center(C)| / CV_avg < 15% | Monodomai
+          -n ~ bidomain interior |                                       
+      115 -| 6 | Config B != Config D | D2Q9 artifact != Kleber (opposite
+          - directions) |                                                
+      168 +**Goal:** Run all 4 configurations and measure boundary vs int
+          +erior CV.                                                     
+      169 +This is the core experiment that tests both the D2Q9 artifact 
+          +hypothesis                                                    
+      170 +and the Kleber speedup hypothesis.                            
+      171  
+      172 +**Test script:** `tests/test_phase6c_boundary_cv.py`          
+      173 +                                                              
+      174 +| # | Test | Config | Pass Criteria |                         
+      175 +|---|------|--------|---------------|                         
+      176 +| 6C-T1 | LBM D2Q5 boundary ratio | Config A: D2Q5 Neumann | 0
+          +.97 < ratio < 1.03 |                                          
+      177 +| 6C-T2 | LBM D2Q9 boundary ratio | Config B: D2Q9 Neumann | r
+          +atio < 1.00 (slowdown) |                                      
+      178 +| 6C-T3 | Bidomain insulated ratio | Config C: FDM insulated |
+          + 0.97 < ratio < 1.03 |                                        
+      179 +| 6C-T4 | Bidomain bath ratio | Config D: FDM bath-coupled | r
+          +atio > 1.05 (speedup) |                                       
+      180 +| 6C-T5 | Artifact vs Kleber direction | Compare B and D | B <
+          + 1.0 and D > 1.0 |                                            
+      181 +| 6C-T6 | Cross-engine calibration | A vs C center CV | Relati
+          +ve diff < 15% |                                               
+      182 +                                                              
+      183 +**Implementation notes:**                                     
+      184 +- Configs A/B reuse LBM_V1 `LBMSimulation` class              
+      185 +- Configs C/D use `BidomainSimulation` with chi=1.0, Cm=1.0   
+      186 +- All configs use identical Nx, Ny, dx, dt, TTP06, stimulus pr
+          +otocol                                                        
+      187 +- CV measured at y=Ny/2 (center) and y=1 (edge)               
+      188 +- Command-line interface: `python test_phase6c_boundary_cv.py 
+          +[a|b|c|d]`                                                    
+      189 +  to run individual configs (useful if machine can only handle
+          + one at a time)                                               
+      190 +                                                              
+      191 +**Expected runtime:** ~10-20 minutes total (4 configs x 2-5 mi
+          +n each)                                                       
+      192 +                                                              
+      193  ---
+      194  
+      119 -## Phased Execution                                           
+      195 +### Phase 6D: Mesh Convergence Study                          
+      196  
+      121 -### Step 1: Fix chi*Cm convention                             
+      122 -- Pass chi=1.0, Cm=1.0 to BidomainFDMDiscretization           
+      123 -- Verify that A_para diagonal = 1/dt (not 1400/dt)            
+      197 +**Goal:** Verify that the D2Q9 artifact vanishes with mesh ref
+          +inement                                                       
+      198 +(confirming it's O(dx^2) numerical) while the Kleber effect pe
+          +rsists                                                        
+      199 +(confirming it's physical).                                   
+      200  
+      125 -### Step 2: Run all 4 configs                                 
+      126 -- Execute test_cross_validation.py                            
+      127 -- Record CV_center, CV_edge, CV_ratio for each                
+      201 +**Test script:** `tests/test_phase6d_convergence.py`          
+      202  
+      129 -### Step 3: Analyze results                                   
+      130 -- Tabular comparison of all configs                           
+      131 -- Confirm D2Q9 artifact is opposite direction from Kleber     
+      132 -- Confirm bidomain bath-coupled shows clear speedup           
+      203 +Three resolutions:                                            
+      204  
+      134 -### Step 4: (Optional) Mesh convergence                       
+      135 -- Run Config D at dx = 0.05, 0.025, 0.0125                    
+      136 -- Verify CV_ratio converges with O(h^2)                       
+      205 +| Level | dx (cm) | Nx | Ny | t_end (ms) | Notes |            
+      206 +|-------|---------|----|----|------------|-------|            
+      207 +| Coarse | 0.050 | 75 | 20 | 40 | Fast |                      
+      208 +| Medium | 0.025 | 150 | 40 | 40 | Standard (= Phase 6C) |    
+      209 +| Fine | 0.0125 | 300 | 80 | 40 | Expensive |                 
+      210 +                                                              
+      211 +| # | Test | What It Checks | Pass Criteria |                 
+      212 +|---|------|---------------|---------------|                  
+      213 +| 6D-T1 | D2Q9 artifact convergence | Config B at 3 resolution
+          +s | |1-ratio| shrinks ~4x per halving |                       
+      214 +| 6D-T2 | Kleber convergence | Config D at 3 resolutions | rat
+          +io converges to ~1.13 |                                       
+      215 +| 6D-T3 | D2Q5 mesh independence | Config A at 3 resolutions |
+          + ratio stays ~1.00 |                                          
+      216 +| 6D-T4 | Bidomain insulated independence | Config C at coarse
+          + + medium | ratio stays ~1.00 |                               
+      217 +                                                              
+      218 +**Implementation notes:**                                     
+      219 +- Fine resolution (300x80 = 24,000 nodes) may be very slow for
+          + bidomain PCG                                                 
+      220 +- Fine bidomain is optional — skip if runtime exceeds 30 minut
+          +es                                                            
+      221 +- Command-line: `python test_phase6d_convergence.py [coarse|me
+          +dium|fine]`                                                   
+      222 +                                                              
+      223 +**Expected runtime:**                                         
+      224 +- Coarse: ~30s per config                                     
+      225 +- Medium: ~3 min per config                                   
+      226 +- Fine: ~15 min (LBM) / ~60 min (bidomain, optional)          
+      227 +                                                              
+      228 +---                                                           
+      229 +                                                              
+      230 +## 5. File Structure                                          
+      231 +                                                              
+      232 +```                                                           
+      233 +Bidomain/Engine_V1/tests/                                     
+      234 +  cv_shared.py                    # Shared parameters and util
+          +ities                                                         
+      235 +  test_phase6a_convention.py      # Chi*Cm fix verification (s
+          +econds)                                                       
+      236 +  test_phase6b_calibration.py     # CV calibration across engi
+          +nes (minutes)                                                 
+      237 +  test_phase6c_boundary_cv.py     # Main 4-config experiment (
+          +10-20 min)                                                    
+      238 +  test_phase6d_convergence.py     # Mesh refinement study (30+
+          + min)                                                         
+      239 +```                                                           
+      240 +                                                              
+      241 +---                                                           
+      242 +                                                              
+      243 +## 6. Success Criteria Summary                                
+      244 +                                                              
+      245 +### Primary Hypotheses                                        
+      246 +                                                              
+      247 +| ID | Hypothesis | Quantitative Criterion | Status |         
+      248 +|----|-----------|----------------------|--------|            
+      249 +| H1 | D2Q5 Neumann produces no boundary CV effect | CV_ratio 
+          += 1.00 +/- 0.03 | |                                           
+      250 +| H2 | D2Q9 Neumann produces edge *slowdown* (artifact) | CV_r
+          +atio < 1.00 | |                                               
+      251 +| H3 | Bidomain insulated produces no boundary CV effect | CV_
+          +ratio = 1.00 +/- 0.03 | |                                     
+      252 +| H4 | Bidomain bath-coupled produces edge *speedup* (Kleber) 
+          +| CV_ratio > 1.05 | |                                         
+      253 +| H5 | D2Q9 artifact and Kleber are in opposite directions | H
+          +2 < 1.0 AND H4 > 1.0 | |                                      
+      254 +| H6 | D2Q9 artifact vanishes with refinement | |1-ratio_B| ~ 
+          +O(dx^2) | |                                                   
+      255 +| H7 | Kleber effect persists with refinement | ratio_D -> ~1.
+          +13 | |                                                        
+      256 +                                                              
+      257 +### Prerequisite Checks                                       
+      258 +                                                              
+      259 +| ID | Check | Criterion |                                    
+      260 +|----|-------|-----------|                                    
+      261 +| P1 | Convention fix | A_para diagonal ~ 1/dt with chi=1.0 | 
+      262 +| P2 | Diffusion rate | Gaussian variance grows as 2*D_eff*t |
+      263 +| P3 | CV calibration | All engines within 15% at domain cente
+          +r |                                                           
+      264 +                                                              
+      265 +---                                                           
+      266 +                                                              
+      267 +## 7. Execution Order                                         
+      268 +                                                              
+      269 +```                                                           
+      270 +Phase 6A (seconds)   → Must pass before proceeding            
+      271 +Phase 6B (minutes)   → Must pass before proceeding            
+      272 +Phase 6C (10-20 min) → Main results                           
+      273 +Phase 6D (30+ min)   → Confirmation / publication-quality evid
+          +ence                                                          
+      274 +```                                                           
+      275 +                                                              
+      276 +Each phase is independently runnable. Phase 6C can be run one 
+          +config at a time                                              
+      277 +via command-line arguments if the machine is resource-constrai
+          +ned.                                                          
+      278 +                                                              
+      279 +---                                                           
+      280 +                                                              
+      281 +## 8. Theoretical Reference                                   
+      282 +                                                              
+      283 +### Kleber Speedup Derivation                                 
+      284 +                                                              
+      285 +Interior:                                                     
+      286 +```                                                           
+      287 +sigma_eff = sigma_i * sigma_e / (sigma_i + sigma_e)           
+      288 +D_eff = sigma_eff / (chi * Cm) = 0.000970 cm^2/ms             
+      289 +```                                                           
+      290 +                                                              
+      291 +Boundary (bath shorts extracellular):                         
+      292 +```                                                           
+      293 +sigma_boundary = sigma_i                                      
+      294 +D_boundary = sigma_i / (chi * Cm) = D_i = 0.00124 cm^2/ms     
+      295 +```                                                           
+      296 +                                                              
+      297 +CV ratio:                                                     
+      298 +```                                                           
+      299 +CV_boundary / CV_interior = sqrt(D_boundary / D_eff)          
+      300 +                          = sqrt(D_i / D_eff)                 
+      301 +                          = sqrt((D_i + D_e) / D_e)           
+      302 +                          = sqrt(0.00570 / 0.00446)           
+      303 +                          = sqrt(1.278) = 1.131               
+      304 +```                                                           
+      305 +                                                              
+      306 +### D2Q9 Bounce-Back Artifact                                 
+      307 +                                                              
+      308 +At a Neumann boundary in D2Q9, the 4 diagonal distributions (f
+          +_5, f_6, f_7, f_8)                                            
+      309 +undergo bounce-back when their target is outside the domain. T
+          +his bounce-back is                                            
+      310 +*exact* for the cardinal distributions but introduces O(dx^2) 
+          +error for diagonals                                           
+      311 +because the diagonal bounce-back path doesn't perfectly align 
+          +with the zero-flux                                            
+      312 +condition on a Cartesian boundary.                            
+      313 +                                                              
+      314 +The net effect is a slight reduction in effective diffusivity 
+          +at boundary rows,                                             
+      315 +causing ~3% CV slowdown. This error scales as dx^2 and vanishe
+          +s in the continuum                                            
+      316 +limit. D2Q5 has no diagonal distributions and thus no such art
+          +ifact.                                                        
+
+❯ continue 
+
+⏺ Write(Bidomain/Engine_V1/tests/cv_shared.py)
+  ⎿  Wrote 282 lines to Bidomain/Engine_V1/tests/cv_shared.py
+      1 """Shared parameters and utilities for cross-validation Phase 6 t
+        ests.
+      2 
+      3 All Phase 6 tests import from here to guarantee identical paramet
+        ers.
+      4 """
+      5 
+      6 import sys
+      7 import os
+      8 import time
+      9 import math
+     … +272 lines (ctrl+o to expand)
+
+⏺ Write(Bidomain/Engine_V1/tests/test_phase6a_convention.py)
+  ⎿  Wrote 359 lines to Bidomain/Engine_V1/tests/test_phase6a_convention.py
+       1 """Phase 6A: Chi*Cm Convention Fix Verification.
+       2 
+       3 Lightweight tests (seconds) that verify the chi=1.0 convention g
+         ives
+       4 correct operator scaling and diffusion rates. Must pass before r
+         unning
+       5 the expensive wave propagation tests in Phases 6B-6D.
+       6 
+       7 Tests:
+       8   6A-T1: Operator diagonal scaling (chi=1.0 vs chi=1400)
+       9   6A-T2: L_i applied to quadratic field (verify D_i in stencil)
+      10   6A-T3: Bidomain Gaussian diffusion (D_eff variance growth)
+     … +349 lines (ctrl+o to expand)
+
+⏺ Write(Bidomain/Engine_V1/tests/test_phase6b_calibration.py)
+  ⎿  Wrote 163 lines to
+     Bidomain/Engine_V1/tests/test_phase6b_calibration.py
+       1 """Phase 6B: CV Calibration Across Engines.
+       2 
+       3 Runs a full TTP06 wave propagation in each engine and measures a
+         bsolute
+       4 conduction velocity at the domain center. All engines should giv
+         e similar
+       5 CV since they use equivalent effective diffusion coefficients.
+       6 
+       7 Tests:
+       8   6B-T1: LBM D2Q5 center CV in physiological range
+       9   6B-T2: LBM D2Q9 center CV within 5% of D2Q5
+      10   6B-T3: Bidomain FDM insulated center CV within 15% of D2Q5
+     … +153 lines (ctrl+o to expand)
+
+⏺ Write(Bidomain/Engine_V1/tests/test_phase6c_boundary_cv.py)
+  ⎿  Wrote 267 lines to
+     Bidomain/Engine_V1/tests/test_phase6c_boundary_cv.py
+       1 """Phase 6C: Boundary CV Cross-Validation (Main Experiment).
+       2 
+       3 The core experiment: measures CV at domain center vs edge for fo
+         ur
+       4 configurations to distinguish numerical artifacts from physical 
+         effects.
+       5 
+       6 Configs:
+       7   A: LBM D2Q5 + Neumann       -> CV_ratio ~ 1.00 (null hypothesi
+         s)
+       8   B: LBM D2Q9 + Neumann       -> CV_ratio ~ 0.97 (lattice artifa
+         ct: slowdown)
+       9   C: Bidomain FDM insulated    -> CV_ratio ~ 1.00 (bidomain null
+         )
+      10   D: Bidomain FDM bath-coupled -> CV_ratio ~ 1.13 (Kleber speedu
+         p)
+     … +257 lines (ctrl+o to expand)
+
+⏺ Write(Bidomain/Engine_V1/tests/test_phase6d_convergence.py)
+  ⎿  Wrote 384 lines to
+     Bidomain/Engine_V1/tests/test_phase6d_convergence.py
+       1 """Phase 6D: Mesh Convergence Study.
+       2 
+       3 Runs selected configs at multiple resolutions to verify:
+       4   - D2Q9 artifact vanishes as O(dx^2) (numerical)
+       5   - Kleber effect persists and converges to ~1.13 (physical)
+       6   - D2Q5 and bidomain insulated remain at 1.00 (mesh-independent
+          null)
+       7 
+       8 Resolutions:
+       9   Coarse: dx=0.050 cm, Nx=75,  Ny=20
+      10   Medium: dx=0.025 cm, Nx=150, Ny=40  (= Phase 6C standard)
+     … +374 lines (ctrl+o to expand)
+
+⏺ Now let me clean up — remove the old monolithic test file and update
+  PROGRESS.md.
+
+⏺ Bash(rm "/Users/catecholamines/Documents/Heart
+      Conduction/Bidomain/Engine_V1/tests/test_cross_validation.py")
+  ⎿  Done
+
+⏺ Now update PROGRESS.md with the Phase 6 plan.
+
+⏺ Update(Bidomain/Engine_V1/PROGRESS.md)
+  ⎿  Added 44 lines, removed 9 lines
+      204  
+      205  ---
+      206  
+      207 -## Phase 6: Boundary Speedup Validation -- POSTPONED          
+      207 +## Phase 6: Boundary CV Cross-Validation -- PLANNED           
+      208  
+      209 -**Goal:** Validate ~13% CV increase at tissue-bath boundary (K
+          -leber effect).                                                
+      209 +**Goal:** Systematically compare boundary CV effects across LB
+          +M and Bidomain FDM.                                           
+      210 +Distinguish D2Q9 lattice artifact (~3% slowdown) from Kleber s
+          +peedup (~13%).                                                
+      211  
+      212 +**Plan document:** `CROSS_VALIDATION_PLAN.md`                 
+      213 +                                                              
+      214  **Key references:**
+      212 -- `research/BOUNDARY_SPEEDUP_ANALYSIS.md` (full derivation + 4
+          - configs)                                                     
+      213 -- `FDM_CODING_PLAN.md` Phase 6                                
+      215 +- `research/BOUNDARY_SPEEDUP_ANALYSIS.md` (Kleber derivation) 
+      216 +- `Monodomain/LBM_V1/PROGRESS.md` (D2Q9 artifact documented in
+          + Phase 8)                                                     
+      217  
+      215 -**Validation:** 4 tests (see Kleber Hypothesis Testing Plan be
+          -low)                                                          
+      218 +**CRITICAL FIX REQUIRED:** chi*Cm convention — use chi=1.0, Cm
+          +=1.0 in bidomain                                              
+      219 +(D_i, D_e already contain physical chi*Cm scaling). See CROSS_
+          +VALIDATION_PLAN.md §2.                                        
+      220  
+      221 +### Phase 6A: Convention Fix Verification (seconds)           
+      222 +                                                              
+      223  | # | Test | What It Checks | Pass Criteria |
+      224  |---|------|---------------|---------------|
+      219 -| 6-T1 | Config A: Mono/Neumann/uniform D | Baseline: CV unifo
+          -rm everywhere | CV_boundary/CV_interior = 1.00 ± 0.02 |       
+      220 -| 6-T2 | Config B: Mono/Neumann/enhanced D | Monodomain approx
+          -imation of Kleber | CV_ratio = 1.13 ± 0.05 |                  
+      221 -| 6-T3 | Config C: Mono/Dirichlet/uniform D | Wrong approach: 
+          -current drain | CV_ratio < 1.00 (slowdown) |                  
+      222 -| 6-T4 | Config D: Bidomain/bath BCs | Gold standard: exact bi
+          -domain | CV_ratio = 1.13 ± 0.05 |                             
+      225 +| 6A-T1 | Operator diagonal scaling | A_para diagonal with chi
+          +=1 vs chi=1400 | chi=1: diag~100, chi=1400: diag~140000 |     
+      226 +| 6A-T2 | L_i quadratic | L_i * x^2 = 2*D_i at interior | rel_
+          +err < 1% |                                                    
+      227 +| 6A-T3 | Bidomain Gaussian diffusion | Variance growth = 2*D_
+          +eff*t | rel_err < 10% |                                       
+      228 +| 6A-T4 | LBM Gaussian cross-check | Same D_eff, same Gaussian
+          + | rel_err < 5% |                                             
+      229  
+      230 +### Phase 6B: CV Calibration (minutes)                        
+      231 +                                                              
+      232 +| # | Test | What It Checks | Pass Criteria |                 
+      233 +|---|------|---------------|---------------|                  
+      234 +| 6B-T1 | LBM D2Q5 center CV | Physiological range | 30-150 cm
+          +/s |                                                          
+      235 +| 6B-T2 | LBM D2Q9 center CV | Match D2Q5 | Within 5% |       
+      236 +| 6B-T3 | Bidomain insulated center CV | Match LBM | Within 15
+          +% |                                                           
+      237 +| 6B-T4 | Calibration summary | All engines | Print table |   
+      238 +                                                              
+      239 +### Phase 6C: Boundary CV Cross-Validation (10-20 min)        
+      240 +                                                              
+      241 +| # | Test | Config | Pass Criteria |                         
+      242 +|---|------|--------|---------------|                         
+      243 +| 6C-T1 | D2Q5 Neumann ratio | A: null hypothesis | 0.97 < rat
+          +io < 1.03 |                                                   
+      244 +| 6C-T2 | D2Q9 Neumann ratio | B: lattice artifact | ratio < 1
+          +.00 (slowdown) |                                              
+      245 +| 6C-T3 | Bidomain insulated ratio | C: bidomain null | 0.97 <
+          + ratio < 1.03 |                                               
+      246 +| 6C-T4 | Bidomain bath ratio | D: Kleber effect | ratio > 1.0
+          +5 (speedup) |                                                 
+      247 +| 6C-T5 | Artifact vs Kleber | B vs D | Opposite directions | 
+      248 +| 6C-T6 | Cross-engine calibration | A vs C center | Diff < 15
+          +% |                                                           
+      249 +                                                              
+      250 +### Phase 6D: Mesh Convergence (30+ min)                      
+      251 +                                                              
+      252 +| # | Test | What It Checks | Pass Criteria |                 
+      253 +|---|------|---------------|---------------|                  
+      254 +| 6D-T1 | D2Q9 artifact convergence | |1-ratio| at 3 dx values
+          + | Shrinks ~O(dx^2) |                                         
+      255 +| 6D-T2 | Kleber convergence | Bidomain bath at 3 dx values | 
+          +Converges to ~1.13 |                                          
+      256 +| 6D-T3 | D2Q5 mesh independence | Ratio at 3 dx values | Stay
+          +s ~1.00 |                                                     
+      257 +| 6D-T4 | Bidomain insulated independence | Ratio at 2+ dx val
+          +ues | Stays ~1.00 |                                           
+      258 +                                                              
+      259  ---
+      260  
+      261  ## Kleber Hypothesis Testing Plan
+
+⏺ Now update the session log in PROGRESS.md.
+
+⏺ Update(Bidomain/Engine_V1/PROGRESS.md)
+  ⎿  Added 1 line
+      381  | 2026-03-05 | 7 | Phase 1 Foundation: created directory tree,
+            copied V5.4 (ionic, mesh, stimulus, backend, PCG, Chebyshev, 
+           FFT/DCT, ionic stepping, splitting), created BoundarySpec, Bid
+           omainConductivity, BidomainState, ABCs. 7/7 tests PASSED |
+      382  | 2026-03-05 | 8 | Phase 2 FDM Discretization: BidomainFDMDisc
+           retization with symmetric face-based stencil, Dirichlet enforc
+           ement in A_ellip, harmonic mean faces. 10/10 tests PASSED |
+      383  | 2026-03-05 | 9 | Phases 3-5: SpectralSolver (DCT/DST/FFT), P
+           CGSpectralSolver, GMG stubs, DecoupledBidomainDiffusionSolver,
+            BidomainSimulation orchestrator. 38/38 tests PASSED |
+      384 +| 2026-03-05 | 10 | Phase 6 planning: discovered chi*Cm conven
+          +tion bug, wrote CROSS_VALIDATION_PLAN.md, created 4 phased tes
+          +t scripts (6A-6D) + cv_shared.py. Analyzed LBM_V1 and bidomain
+          + FDM operator forms. |                                        
+
+⏺ Finally, update memory with the cross-validation status.
+
+⏺ Recalled 1 memory, wrote 1 memory (ctrl+o to expand)
+
+⏺ Here's a summary of everything created:
+
+  Files Created
+
+  Plan document:
+  - CROSS_VALIDATION_PLAN.md — Comprehensive 8-section plan covering the chi*Cm
+  bug analysis, standardized parameters, all 4 sub-phases, theoretical
+  reference, and success criteria matrix
+
+  Shared module:
+  - tests/cv_shared.py — All physical/domain/stimulus/measurement constants, CV
+  measurement utility, LBM and bidomain simulation builders, result formatting
+  helpers
+
+  Test scripts (4 phases, 18 total tests):
+
+  Script: test_phase6a_convention.py
+  Phase: 6A
+  Tests: 4
+  Runtime: Seconds
+  Purpose: Verifies chi=1.0 fix: operator scaling, L_i quadratic, Gaussian
+    diffusion (bidomain + LBM)
+  ────────────────────────────────────────
+  Script: test_phase6b_calibration.py
+  Phase: 6B
+  Tests: 4
+  Runtime: Minutes
+  Purpose: Absolute CV calibration across D2Q5, D2Q9, bidomain insulated
+  ────────────────────────────────────────
+  Script: test_phase6c_boundary_cv.py
+  Phase: 6C
+  Tests: 6
+  Runtime: 10-20 min
+  Purpose: Main 4-config experiment (A/B/C/D) with boundary vs center CV ratios
+  ────────────────────────────────────────
+  Script: test_phase6d_convergence.py
+  Phase: 6D
+  Tests: 4
+  Runtime: 30+ min
+  Purpose: Mesh refinement at 3 dx values; confirms artifact is O(dx²), Kleber
+  is
+    physical
+
+  Deleted:
+  - tests/test_cross_validation.py (replaced by the phased structure)
+
+  Key Design Decisions
+
+  1. Chi*Cm fix: Pass chi=1.0, Cm=1.0 to BidomainFDMDiscretization — D values
+  already contain physical scaling
+  2. All scripts support selective execution via command-line args (e.g., python
+   test_phase6c_boundary_cv.py a b runs only LBM configs)
+  3. Phase 6D supports --skip-bidomain and --skip-fine flags for
+  resource-constrained machines
+  4. Execution order: 6A → 6B → 6C → 6D (each prerequisite for the next)
+
+✻ Churned for 23m 35s
+
+❯ would it be benefitial to create a unifiing engine code structure just to 
+   combine monodomain, bidomain , and lbm together; the goal is to make     
+  things and conventions consistent; we need to think about what needs to   
+  be changed and combined for notation and unit consistency; and also for   
+  ease of omplementation from a user side; ultrathink                       
+
+⏺ This is a great question to think through carefully. Let me lay out the full
+  analysis.
+
+  Current State: Three Engines, Three Conventions
+
+  ┌─────────────┬─────────────────────┬────────────┬──────────────────────┐
+  │   Aspect    │      V5.4 FDM       │ Bidomain   │        LBM V1        │
+  │             │                     │     V1     │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Chi default │ 1400                │ 1400       │ 140 (cosmetic)       │
+  │             │                     │ (broken)   │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Chi in      │ A = χCm/dt·I -      │ Same       │ No (absorbed in τ)   │
+  │ operator    │ θ·L(D)              │            │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Primary     │ D (cm²/ms)          │ D_i, D_e   │ D (cm²/ms)           │
+  │ input       │                     │            │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Ionic       │ -(I_ion+I_stim)/Cm  │ Same       │ R =                  │
+  │ source      │                     │            │ -(I_ion+I_stim)/Cm   │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ State       │ (n_dof,) flat       │ (n_dof,)   │ (Nx, Ny) grid        │
+  │ voltage     │                     │ flat       │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Run API     │ Not finished        │ yield      │ Returns (times,      │
+  │             │                     │ state      │ V_hist)              │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Stimulus    │ StimulusProtocol    │ Same       │ Stimulus dataclass   │
+  │             │                     │ (copy)     │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Ionic       │ Own copy            │ Own copy   │ Own copy             │
+  │ models      │                     │            │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Grid        │ StructuredGrid      │ Same       │ Raw tensors          │
+  │             │                     │ (copy)     │                      │
+  ├─────────────┼─────────────────────┼────────────┼──────────────────────┤
+  │ Tests       │ In progress         │ 38/38      │ 24/24                │
+  └─────────────┴─────────────────────┴────────────┴──────────────────────┘
+
+  Three copies of ionic models. Three grid conventions. Three stimulus APIs. Two
+   different chi conventions (one of which is buggy). Two different voltage
+  shapes. Two different run() signatures.
+
+  The cross-validation script (cv_shared.py) already had to paper over these 
+  differences with wrapper functions that translate between the two APIs. That's
+   a code smell.
+
+  The Core Convention Problem
+
+  The deepest issue is the chi·Cm ambiguity. There are two valid ways to write
+  the monodomain equation:
+
+  Convention A — σ-based (physical units):
+  χ·Cm · ∂V/∂t = ∇·(σ·∇V) − χ·I_ion
+  Operator form: A = χCm/dt · M − θ · K(σ)
+
+  Convention B — D-based (normalized):
+  ∂V/∂t = ∇·(D·∇V) − I_ion/Cm
+  where D = σ/(χ·Cm). Operator form: A = 1/dt · I − θ · L(D)
+
+  Convention A stores σ in the stiffness matrix and χ·Cm in the mass matrix.
+  Convention B absorbs χ·Cm into D and uses identity mass. They're 
+  mathematically equivalent but operationally dangerous to mix. V5.4's FDM puts
+  D in L but χ·Cm in the mass — this works only if D = σ/(χ·Cm) and you
+  consistently divide the ionic source by Cm. The bidomain engine copies this
+  but the chi=1400 scaling makes the diffusion-to-mass ratio ~10⁻⁶, meaning
+  diffusion is negligible compared to the identity. The system becomes stiff in
+  the wrong direction.
+
+  LBM already uses Convention B: D goes into τ, source is R = 
+  -(I_ion+I_stim)/Cm, no chi anywhere. This is simpler and less error-prone.
+
+  Recommendation: Convention B universally. The user provides σ, χ, Cm as
+  physical parameters. The engine converts to D = σ/(χ·Cm) at construction time
+  and uses D everywhere internally with chi_num=1, Cm_num=1.
+
+  Would Unification Be Beneficial?
+
+  Yes, but with important caveats about scope and timing.
+
+  What should be unified (the "shared foundation"):
+
+  1. Ionic models — One copy. This is the strongest argument. Bug fixes, new
+  models, and LUT optimizations propagate everywhere.
+  2. Mesh — One StructuredGrid with BoundarySpec. Already essentially identical
+  between V5.4 and bidomain. LBM currently uses raw tensors but can trivially
+  wrap the grid.
+  3. Conductivity — One class that handles both monodomain and bidomain:
+  class Conductivity:
+      def __init__(self, sigma_i, sigma_e=None, chi=1400, Cm=1.0):
+          self.D_i = sigma_i / (chi * Cm)
+          self.D_e = sigma_e / (chi * Cm) if sigma_e else None
+          self.D_eff = self.D_i * self.D_e / (self.D_i + self.D_e) if self.D_e
+  else self.D_i
+  3. User thinks in σ (what they measure), engine works in D (what it needs).
+  4. Stimulus — One StimulusProtocol. LBM's mask-based approach can be a special
+   case.
+  5. Convention — D-based everywhere. chi_num=1, Cm_num=1 in all operators.
+  6. State interface — Common base with .V_flat, .V_grid, .ionic_states, .t.
+  Bidomain adds .phi_e. LBM adds .f (distribution functions).
+
+  What should stay separate (the "paradigm frontends"):
+
+  1. LBM internals — Lattice definitions, collision operators, streaming,
+  bounce-back are unique to LBM. No shared abstraction with FDM.
+  2. Classical FDM internals — Sparse Laplacian assembly, PCG, CN/BDF time
+  stepping.
+  3. Bidomain extensions — L_i/L_e operators, decoupled solver, null space
+  handling.
+
+  Trying to create a shared abstraction over "collision+streaming" and
+  "assemble+solve" would be a leaky abstraction that helps nobody.
+
+  Proposed Architecture
+
+  cardiac_sim/
+  ├── __init__.py                      # Top-level: MonodomainSim, BidomainSim,
+  LBMSim
+  ├── ionic/                           # ONE copy of ionic models
+  │   ├── base.py
+  │   ├── ttp06/
+  │   └── ord/
+  ├── mesh/
+  │   ├── structured.py                # StructuredGrid + BoundarySpec
+  │   └── boundary.py
+  ├── tissue/
+  │   ├── conductivity.py              # Unified σ→D conversion
+  │   └── stimulus.py                  # StimulusProtocol
+  ├── state/
+  │   ├── base.py                      # BaseState(V_flat, V_grid, ionic_states,
+   t)
+  │   ├── classical.py                 # ClassicalState (flat V)
+  │   ├── bidomain.py                  # BidomainState (Vm + phi_e)
+  │   └── lbm.py                       # LBMState (V grid + f distributions)
+  ├── classical/                       # FDM/FEM paradigm
+  │   ├── discretization/
+  │   │   ├── fdm.py                   # Monodomain FDM (L with D, no chi)
+  │   │   └── fdm_bidomain.py          # Bidomain FDM (L_i, L_e)
+  │   ├── solver/
+  │   │   ├── linear/                  # PCG, Chebyshev, Spectral
+  │   │   ├── ionic_stepping/          # Rush-Larsen, Forward Euler
+  │   │   ├── diffusion_stepping/      # CN, BDF, Decoupled bidomain
+  │   │   └── splitting/               # Strang, Godunov
+  │   └── simulation.py                # MonodomainSimulation,
+  BidomainSimulation
+  ├── lbm/                             # LBM paradigm
+  │   ├── lattice/                     # D2Q5, D2Q9 definitions
+  │   ├── collision/                   # BGK, MRT
+  │   ├── streaming/                   # Pull streaming
+  │   ├── boundary/                    # Neumann, Dirichlet, Absorbing
+  │   ├── diffusion.py                 # D→τ conversion
+  │   └── simulation.py                # LBMSimulation
+  └── utils/
+      └── backend.py                   # Device abstraction
+
+  Unified User API
+
+  The payoff is a clean, consistent user-facing API:
+
+  from cardiac_sim import StructuredGrid, Conductivity, StimulusProtocol
+  from cardiac_sim import MonodomainSimulation, BidomainSimulation,
+  LBMSimulation
+  from cardiac_sim.tissue.stimulus import left_edge
+
+  # Describe the problem ONCE
+  grid = StructuredGrid(Nx=150, Ny=40, Lx=3.725, Ly=0.975)
+  cond = Conductivity(sigma_i=1.74, sigma_e=6.25, chi=1400, Cm=1.0)
+  stim = StimulusProtocol()
+  stim.add_stimulus(left_edge(0.125), start=1.0, duration=2.0, amplitude=-80.0)
+
+  # Pick the method — everything else is consistent
+  sim_fdm  = MonodomainSimulation(grid, cond, stim, dt=0.01, method='fdm')
+  sim_lbm5 = LBMSimulation(grid, cond, stim, dt=0.01, lattice='d2q5')
+  sim_lbm9 = LBMSimulation(grid, cond, stim, dt=0.01, lattice='d2q9')
+  sim_bi   = BidomainSimulation(grid, cond, stim, dt=0.01, bc='bath_coupled')
+
+  # All return the same interface
+  for state in sim_fdm.run(t_end=40.0, save_every=0.5):
+      V = state.V_grid    # (Nx, Ny) — always available
+      t = state.t          # float (ms)
+
+  The cross-validation script shrinks from 200+ lines of path-hacking and
+  wrapper functions to:
+
+  configs = [
+      ("D2Q5 Neumann",       LBMSimulation(grid, cond, stim, lattice='d2q5')),
+      ("D2Q9 Neumann",       LBMSimulation(grid, cond, stim, lattice='d2q9')),
+      ("Bidomain insulated",  BidomainSimulation(grid, cond, stim,
+  bc='insulated')),
+      ("Bidomain bath",       BidomainSimulation(grid, cond, stim,
+  bc='bath_coupled')),
+  ]
+  for name, sim in configs:
+      for state in sim.run(t_end=40):
+          measure_cv(state.V_grid, state.t, ...)
+
+  What Specifically Changes
+
+  Notation/Unit Changes
+
+  ┌──────────────────┬────────────────────────┬────────────────────────────┐
+  │       Item       │        Current         │          Unified           │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ User input       │ D directly             │ σ_i, σ_e, χ, Cm (physical) │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ Internal         │ D with chi=1400 or     │ D = σ/(χ·Cm), chi_num=1    │
+  │                  │ chi=1                  │ always                     │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ FDM operator     │ A = χCm/dt·I − θ·L(D)  │ A = 1/dt·I − θ·L(D)        │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ LBM tau          │ τ = 0.5 +              │ Same (already correct)     │
+  │                  │ D·dt/(cs²·dx²)         │                            │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ Ionic source     │ -(I_ion+I_stim)/Cm     │ Same (Cm=1 numerically)    │
+  ├──────────────────┼────────────────────────┼────────────────────────────┤
+  │ Bidomain         │ χCm/dt·I − θ·L_i       │ 1/dt·I − θ·L_i             │
+  │ parabolic        │                        │                            │
+  └──────────────────┴────────────────────────┴────────────────────────────┘
+
+  Code Changes
+
+  ┌─────────────────────┬─────────────────────────────────────────┬─────────┐
+  │      Component      │                 Change                  │ Effort  │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ Ionic models        │ Move to shared location, single import  │ Low     │
+  │                     │ path                                    │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ StructuredGrid      │ Already identical; LBM wraps it instead │ Low     │
+  │                     │  of raw tensors                         │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ BoundarySpec        │ Already exists in bidomain; propagate   │ Low     │
+  │                     │ to monodomain and LBM                   │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ Conductivity        │ New unified class replacing             │ Medium  │
+  │                     │ BidomainConductivity + scalar D         │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ FDM discretization  │ Remove chi_Cm from operators            │ Medium  │
+  │                     │ (Convention B)                          │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ LBM simulation      │ Accept grid+conductivity instead of raw │ Medium  │
+  │                     │  D                                      │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ State classes       │ Add V_grid property to classical,       │ Low     │
+  │                     │ V_flat to LBM                           │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ Run API             │ Standardize on generator (yield state)  │ Low     │
+  │                     │ everywhere                              │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ Stimulus            │ Already shared design; LBM adopts       │ Low     │
+  │                     │ StimulusProtocol                        │         │
+  ├─────────────────────┼─────────────────────────────────────────┼─────────┤
+  │ Cross-validation    │ Dramatically simplified                 │ Huge    │
+  │ tests               │                                         │ win     │
+  └─────────────────────┴─────────────────────────────────────────┴─────────┘
+
+  Timing Recommendation
+
+  Don't do it now. Do it after Phase 6C results are in.
+
+  Here's why:
+
+  1. Phase 6 cross-validation will empirically reveal every friction point
+  between the engines. That data should inform the design rather than guessing.
+  2. The bidomain engine needs to produce correct waves first. If the chi=1.0
+  fix doesn't work, you'll need to debug the operator math — much easier in the
+  current simple structure than mid-refactor.
+  3. LBM V1 is done and stable. V5.4 is still in progress. Unifying engines at
+  different maturity levels risks breaking the stable one.
+
+  Proposed timeline:
+  Now:           Run Phase 6A-6C with current separate engines
+                 (cv_shared.py papers over the differences)
+
+  After Phase 6: Assess friction points from cross-validation experience
+                 Write unified architecture doc (like improvement.md)
+
+  Then:          Build cardiac_sim V2 as the unified engine
+                 Migrate validated code from all three engines
+                 Re-run all 60+ tests through unified API
+
+  The unified engine is clearly the right destination. The question is whether
+  to build the highway before or after you know where the traffic goes. Phase 6
+  tells you where the traffic goes.
+
+✻ Churned for 2m 16s

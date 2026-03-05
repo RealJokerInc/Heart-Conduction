@@ -9,4 +9,3 @@ dist/
 .pytest_cache/
 Grad Application/
 node_modules/
-.claude/conversations/
