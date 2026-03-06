@@ -184,11 +184,12 @@ def _build_linear_solver(name, spatial):
         dy = grid.Ly / (ny - 1)
         D = spatial._conductivity.D_i + spatial._conductivity.D_e
         bc = grid.boundary_spec
-        # spectral_transform returns 'dct'/'dst', but SpectralSolver expects
-        # physics names 'neumann'/'dirichlet'
-        transform_to_bc = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
-        bc_type = transform_to_bc[bc.spectral_transform]
-        return SpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type)
+        t_map = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
+        txy = bc.spectral_transform_xy
+        if txy is None:
+            raise ValueError("BCs not spectrally eligible")
+        bc_x, bc_y = t_map[txy[0]], t_map[txy[1]]
+        return SpectralSolver(nx, ny, dx, dy, D, bc_x=bc_x, bc_y=bc_y)
     elif name == 'pcg_spectral':
         from .solver.linear_solver.pcg_spectral import PCGSpectralSolver
         grid = spatial.grid
@@ -197,8 +198,11 @@ def _build_linear_solver(name, spatial):
         dy = grid.Ly / (ny - 1)
         D = spatial._conductivity.D_i + spatial._conductivity.D_e
         bc = grid.boundary_spec
-        transform_to_bc = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
-        bc_type = transform_to_bc[bc.spectral_transform]
+        # PCGSpectral uses spectral as preconditioner; pick uniform BC
+        # for the preconditioner (falls back to neumann if mixed)
+        uniform = bc.spectral_transform
+        bc_type = {'dct': 'neumann', 'dst': 'dirichlet',
+                   'fft': 'periodic'}.get(uniform, 'neumann')
         return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type)
     elif name == 'pcg_gmg':
         # Stub — falls back to PCG

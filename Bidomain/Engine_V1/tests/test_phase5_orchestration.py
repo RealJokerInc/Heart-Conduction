@@ -119,12 +119,13 @@ def test_auto_solver_aniso():
 # === 5-T5: Auto-solver: mixed BCs ===
 
 def test_auto_solver_mixed():
-    """5-T5: Mixed BCs -> 'pcg_gmg' (spectral ineligible)."""
+    """5-T5: Mixed per-axis BCs (Neumann-x, Dirichlet-y) -> 'spectral'."""
     from cardiac_sim.simulation.classical.bidomain import BidomainSimulation
 
     spatial = _make_spatial(nx=10, ny=10, bc='mixed')
     sim = BidomainSimulation(spatial=spatial, ionic_model='ttp06', dt=0.02)
-    assert sim._elliptic_solver_name == 'pcg_gmg'
+    # Per-axis uniform BCs are spectrally eligible (DCT-x, DST-y)
+    assert sim._elliptic_solver_name == 'spectral'
 
 
 # === 5-T6: Strang splitting call order ===

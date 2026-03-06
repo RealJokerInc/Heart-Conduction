@@ -67,20 +67,44 @@ class BoundarySpec:
         return types.pop() if len(types) == 1 else None
 
     @property
+    def phi_e_x_bc(self) -> Optional[BCType]:
+        """BC type along x-axis (LEFT/RIGHT). None if they differ."""
+        left = self.phi_e[Edge.LEFT].bc_type
+        right = self.phi_e[Edge.RIGHT].bc_type
+        return left if left == right else None
+
+    @property
+    def phi_e_y_bc(self) -> Optional[BCType]:
+        """BC type along y-axis (TOP/BOTTOM). None if they differ."""
+        top = self.phi_e[Edge.TOP].bc_type
+        bottom = self.phi_e[Edge.BOTTOM].bc_type
+        return top if top == bottom else None
+
+    @property
     def phi_e_spectral_eligible(self) -> bool:
-        """True if spectral solver (Tier 1/2) can be used for phi_e.
-        Requires all edges to have the same BC type."""
-        return self.phi_e_uniform_bc is not None
+        """True if spectral solver can be used for phi_e.
+        Requires per-axis uniform BCs (both edges on each axis same type)."""
+        return self.phi_e_x_bc is not None and self.phi_e_y_bc is not None
 
     @property
     def spectral_transform(self) -> Optional[str]:
-        """Which spectral transform to use, or None if mixed BCs."""
+        """Uniform spectral transform ('dct'/'dst'), or None if mixed/ineligible."""
         bc = self.phi_e_uniform_bc
         if bc == BCType.NEUMANN:
             return 'dct'
         elif bc == BCType.DIRICHLET:
             return 'dst'
         return None
+
+    @property
+    def spectral_transform_xy(self):
+        """Per-axis spectral transforms as (tx, ty), or None if ineligible."""
+        bc_x = self.phi_e_x_bc
+        bc_y = self.phi_e_y_bc
+        if bc_x is None or bc_y is None:
+            return None
+        bc_map = {BCType.NEUMANN: 'dct', BCType.DIRICHLET: 'dst'}
+        return (bc_map[bc_x], bc_map[bc_y])
 
     def get_bc(self, variable: str, edge: Edge) -> EdgeBC:
         """Get BC for a specific variable and edge."""
