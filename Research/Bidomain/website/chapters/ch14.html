@@ -2,13 +2,31 @@
   <div class="chapter-number">Chapter 14</div>
   <h2 class="chapter-title">Time Integration and Operator Splitting</h2>
   <div class="chapter-intro">
-    Chapter 8 introduced operator splitting for the monodomain equation — separating the local reaction (ionic ODEs) from the global diffusion (PDE). The same splitting framework applies to the bidomain model, but the diffusion sub-step is fundamentally different: instead of a single SPD system, it requires solving the 2×2 block system from Chapter 14.
+    Chapter 9 introduced operator splitting for the monodomain equation — separating the local reaction (ionic ODEs) from the global diffusion (PDE). The same splitting framework applies to the bidomain model, but the diffusion sub-step is fundamentally different: instead of a single SPD system, it requires solving the 2×2 block system from Chapter 14.
   </div>
 
   <h3>14.1 &ensp; Operator Splitting Applied to Bidomain</h3>
 
   <p>
-    The splitting strategy from Chapter 8 carries over directly. In Godunov (first-order) splitting, each time step has two stages: (1) advance the reaction locally using Rush–Larsen (Section 8.4), then (2) solve the diffusion sub-step. The difference is entirely in step 2. For the monodomain, the diffusion sub-step solves a single SPD linear system. For the bidomain, it solves the full 2×2 block system:
+    The splitting strategy from Chapter 8 carries over directly, but it is worth pausing to understand <em>why</em> it works for the bidomain's mixed parabolic–elliptic system.
+  </p>
+
+  <p>
+    Recall that the monodomain uses operator splitting to separate reaction from diffusion (Section 9.2). The splitting error arises because these two processes interact: the reaction changes $V_m$, which changes the diffusive flux, which changes $V_m$, and so on. By treating them separately within one time step, we make a small error that is $O(\Delta t)$ for Godunov splitting and $O(\Delta t^2)$ for Strang splitting.
+  </p>
+
+  <p>
+    For the bidomain, we split in exactly the same way — reaction first, then diffusion — but the diffusion sub-step now involves both the parabolic and elliptic equations. Crucially, the splitting error comes from separating reaction from diffusion, <em>not</em> from separating the parabolic equation from the elliptic one. The elliptic equation (12.5) has no time derivative and no memory (Section 12.6): its solution at any instant depends only on the current $V_m$. So when we solve the diffusion sub-step, we are free to solve the parabolic and elliptic equations <em>simultaneously</em> as a coupled block system — there is no additional splitting error from this coupling.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Monodomain splitting vs. bidomain splitting.</strong> In the monodomain, splitting separates reaction (local ODEs) from diffusion (global PDE). In the bidomain, splitting does the same thing — it separates reaction from diffusion. The fact that the diffusion sub-step involves <em>two</em> coupled equations (parabolic + elliptic) does not introduce extra splitting error, because both equations are solved together in the diffusion sub-step. The elliptic equation is a constraint that "comes along for the ride."
+    </p>
+  </div>
+
+  <p>
+    In Godunov (first-order) splitting, each time step has two stages: (1) advance the reaction locally using Rush–Larsen (Section 9.4), then (2) solve the diffusion sub-step. The difference from monodomain is entirely in step 2. For the monodomain, the diffusion sub-step solves a single SPD linear system. For the bidomain, it solves the full 2×2 block system:
   </p>
 
   <div class="equation-block">
@@ -16,7 +34,7 @@
   </div>
 
   <p>
-    where $V_m^*$ comes from the reaction sub-step. Strang (second-order) splitting uses the same symmetric sandwich — half-reaction, full-diffusion, half-reaction — as described in Section 8.3. Research has shown that Strang splitting has better <em>stability</em> properties than Godunov for bidomain, because the symmetric arrangement prevents splitting error from accumulating unidirectionally. The recommendation is to use Strang splitting for production bidomain simulations.
+    where $V_m^*$ comes from the reaction sub-step. Strang (second-order) splitting uses the same symmetric sandwich — half-reaction, full-diffusion, half-reaction — as described in Section 9.3. Research has shown that Strang splitting has better <em>stability</em> properties than Godunov for bidomain, because the symmetric arrangement prevents splitting error from accumulating unidirectionally. The recommendation is to use Strang splitting for production bidomain simulations.
   </p>
 
   <p>
@@ -92,7 +110,7 @@
   </div>
 
   <p>
-    Other second-order IMEX multistep variants include <strong>CN-FE</strong> (Crank–Nicolson for diffusion, forward Euler for reaction) and <strong>CN-AB</strong> (Crank–Nicolson with Adams–Bashforth extrapolation for ionic terms). Ethier &amp; Bourgault (2008) conducted a systematic stability analysis and found that <strong>SBDF2 provides the strongest damping</strong> of high-frequency error — making it preferred for cardiac applications where sharp wave fronts produce high-frequency error components. CN-FE should generally be avoided for bidomain because it can produce spurious oscillations near the action potential upstroke, similar to the Crank–Nicolson issue discussed in Section 15.2.
+    Other second-order IMEX multistep variants include <strong>CN-FE</strong> (Crank–Nicolson for diffusion, forward Euler for reaction) and <strong>CN-AB</strong> (Crank–Nicolson with Adams–Bashforth extrapolation for ionic terms). Ethier &amp; Bourgault (2008) conducted a systematic stability analysis and found that <strong>SBDF2 provides the strongest damping</strong> of high-frequency error — making it preferred for cardiac applications where sharp wave fronts produce high-frequency error components. CN-FE should generally be avoided for bidomain because it can produce spurious oscillations near the action potential upstroke, similar to the Crank–Nicolson issue discussed in Section 16.2.
   </p>
 
   <p>
@@ -172,8 +190,10 @@
       <strong>The spectrum of explicitness for bidomain:</strong> At one extreme, fully implicit methods (backward Euler, CBDF2) treat everything implicitly, requiring nonlinear Newton solves. At the other, "maximally explicit" methods treat the parabolic PDE with RKC and only solve the elliptic constraint implicitly. In between, IMEX methods (SBDF2, operator splitting) treat ionic currents explicitly and diffusion implicitly. For most production bidomain codes, IMEX/operator-splitting represents the best trade-off — but RKC-based approaches are an active area of research with potential GPU advantages.
     </p>
   </div>
-</div>
+
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 11 — LINEAR SOLVERS                                      -->
+</div>
+
+<!--  CHAPTER 15 — PARABOLIC SOLVERS (A₁₁ BLOCK)                      -->
 <!-- ══════════════════════════════════════════════════════════════════ -->

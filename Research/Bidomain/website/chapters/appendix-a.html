@@ -426,6 +426,437 @@
     The classification of PDEs into parabolic, elliptic, and hyperbolic is not merely academic taxonomy. It determines which initial/boundary conditions are needed, which numerical methods will work, what stability restrictions apply, and whether information flows forward only or in all directions simultaneously. For the bidomain model, this classification is the key to understanding why the computational challenge is fundamentally harder than monodomain — and why the solver strategies of Chapter 15 are not optional refinements but structural necessities.
   </p>
 
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>A.8 &ensp; From Physical Space to Transform Space</h3>
+
+  <p>
+    Imagine you are listening to an orchestra. You hear a rich, complex sound — violins, cellos, flutes, and timpani all playing at once. Your ear receives a single pressure wave, a wiggly curve that changes instant by instant. But your brain does something remarkable: it separates that single wave into individual pitches. You hear the violin's high note and the cello's low note <em>simultaneously</em>, even though they arrived as one signal. Your brain has performed a <strong>transform</strong> — it has taken data from the <em>time domain</em> (pressure versus time) and re-expressed it in the <em>frequency domain</em> (which pitches are present and how loud each one is).
+  </p>
+
+  <p>
+    A mathematical transform does exactly the same thing. It takes a function expressed in one "space" and re-writes it in another space where the problem becomes simpler. The key insight is this:
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>A transform is just looking at the same data through a different lens.</strong> The data does not change — only the way we describe it changes. And in the new description, operations that were hard (like differentiation) become easy (like multiplication).
+    </p>
+  </div>
+
+  <p>
+    To see why this matters for solving PDEs, consider the simplest diffusion problem: the 1D heat equation on a rod of length $L$,
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.7)</span>
+    $$\frac{\partial u}{\partial t} = D\,\frac{\partial^2 u}{\partial x^2}$$
+  </div>
+
+  <p>
+    In physical space, solving this equation requires computing $\partial^2 u/\partial x^2$ — the second spatial derivative. On a grid with $N$ points, this means assembling and solving a linear system involving an $N \times N$ matrix (the discrete Laplacian). For large $N$, this can be expensive.
+  </p>
+
+  <p>
+    Now suppose we expand $u(x,t)$ in terms of sinusoidal basis functions. That is, we write the solution as a sum of waves:
+  </p>
+
+  $$u(x,t) = \sum_k \hat{u}_k(t)\,\psi_k(x)$$
+
+  <p>
+    where each $\psi_k(x)$ is a sine or cosine function and $\hat{u}_k(t)$ is the coefficient (amplitude) of the $k$-th wave at time $t$. The magic happens when we take the second derivative. Each basis function satisfies:
+  </p>
+
+  $$\frac{d^2\,\psi_k}{dx^2} = -\lambda_k\,\psi_k$$
+
+  <p>
+    where $\lambda_k$ is a constant that depends on the wave number $k$. In other words, the second derivative of a sinusoid is just a <em>scaled copy of itself</em>. Substituting into the heat equation, each mode evolves independently:
+  </p>
+
+  $$\frac{d\hat{u}_k}{dt} = -D\,\lambda_k\,\hat{u}_k$$
+
+  <p>
+    This is just an ordinary differential equation! Differentiation in physical space has become <em>multiplication by $-D\lambda_k$</em> in transform space. Instead of one big coupled system, we have $N$ independent scalar equations — each trivially solvable. The entire procedure is:
+  </p>
+
+  <ol>
+    <li><strong>Forward transform</strong>: Decompose $u(x)$ into its frequency components $\hat{u}_k$.</li>
+    <li><strong>Operate in transform space</strong>: Multiply (or divide) each $\hat{u}_k$ by the appropriate eigenvalue $\lambda_k$.</li>
+    <li><strong>Inverse transform</strong>: Reassemble the solution from the modified coefficients.</li>
+  </ol>
+
+  <p>
+    This three-step process is the essence of every spectral solver in this textbook, including the DCT solver of Chapter 15.
+  </p>
+
+  <h4>The Discrete Version and the FFT</h4>
+
+  <p>
+    On a computer, we do not have a continuous function — we have $N$ sampled values on a grid. The <strong>Discrete Fourier Transform (DFT)</strong> takes these $N$ values and produces $N$ frequency coefficients $\hat{u}_k$. In matrix form, this is just a matrix-vector multiplication by an $N \times N$ matrix whose entries are complex exponentials. The inverse DFT is another matrix-vector multiplication that recovers the original values.
+  </p>
+
+  <p>
+    Naively, multiplying by an $N \times N$ matrix costs $O(N^2)$ operations. But the <strong>Fast Fourier Transform (FFT)</strong>, discovered by Cooley and Tukey in 1965, exploits the special structure of the DFT matrix to compute the same result in $O(N \log N)$ operations. For a grid with a million points, this is the difference between $10^{12}$ and $10^7$ operations — a factor of 100,000.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      <strong>Why $O(N \log N)$?</strong> The FFT works by recursively splitting the DFT of $N$ points into two DFTs of $N/2$ points, using the symmetry of complex exponentials ($e^{i\pi} = -1$). Each split halves the problem, and you need $\log_2 N$ levels of splitting, with $O(N)$ work at each level. The result: $O(N \log N)$ total.
+    </p>
+  </div>
+
+  <p>
+    For a 2D grid ($N_x \times N_y$ points), the transform can be applied along each dimension separately — first transform all rows, then transform all columns. The total cost is $O(N_x N_y (\log N_x + \log N_y))$, which is effectively $O(N \log N)$ where $N = N_x \times N_y$ is the total number of points.
+  </p>
+
+  <p>
+    But there is a catch. The standard Fourier transform (and its discrete cousin, the DFT/FFT) assumes the signal is <strong>periodic</strong>. It wraps the rod into a circle: the value at $x = L$ is the same as the value at $x = 0$. This is rarely what we want in cardiac simulation, where tissue has edges and boundaries. To handle boundaries properly, we need a different family of transforms — the cosine and sine transforms — which are the subject of the next section.
+  </p>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>A.9 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries</h3>
+
+  <p>
+    Think of a guitar string. If both ends are clamped (like a real guitar string), the string can only vibrate in shapes that are zero at both ends — these are sine waves. But if both ends are free to slide up and down (imagine the string passing through frictionless rings at each end), the string vibrates in shapes whose <em>slope</em> is zero at each end — these are cosine waves. The shape of the basis function encodes the boundary condition.
+  </p>
+
+  <p>
+    This is the central idea of this section: <strong>the choice of transform determines the boundary condition, and vice versa.</strong>
+  </p>
+
+  <h4>The Problem with the Standard Fourier Transform</h4>
+
+  <p>
+    As we noted in Section A.8, the DFT assumes periodicity. If your data has value 0 at the left edge and value 5 at the right edge, the DFT assumes the signal jumps from 5 back to 0, creating an artificial discontinuity. This discontinuity produces spurious high-frequency ringing in the frequency domain (known as <strong>Gibbs phenomenon</strong>) and ruins the accuracy of a spectral solve.
+  </p>
+
+  <p>
+    What we need are transforms whose basis functions naturally satisfy the boundary conditions of our problem. There are two fundamental types:
+  </p>
+
+  <h4>Cosine Basis → Neumann Boundary Conditions</h4>
+
+  <p>
+    Consider the family of cosine functions on the interval $[0, L]$:
+  </p>
+
+  $$\psi_k(x) = \cos\!\left(\frac{k\pi x}{L}\right), \qquad k = 0, 1, 2, \ldots$$
+
+  <p>
+    Let us check what happens at the boundaries. Take the derivative:
+  </p>
+
+  $$\frac{d\psi_k}{dx} = -\frac{k\pi}{L}\,\sin\!\left(\frac{k\pi x}{L}\right)$$
+
+  <p>
+    At $x = 0$: $\sin(0) = 0$, so $\frac{d\psi_k}{dx}\big|_{x=0} = 0$. At $x = L$: $\sin(k\pi) = 0$ (for every integer $k$), so $\frac{d\psi_k}{dx}\big|_{x=L} = 0$. The derivative vanishes at both endpoints — automatically! This is exactly the <strong>Neumann (zero-flux) boundary condition</strong>: $\partial u/\partial n = 0$.
+  </p>
+
+  <p>
+    If we expand our solution in cosine functions, any function we can represent will automatically satisfy Neumann BCs at both ends. We do not need to impose them separately — the basis enforces them for us. The <strong>Discrete Cosine Transform (DCT)</strong> is the discrete version of this expansion.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The basis function <em>is</em> the boundary condition.</strong> Choose the right shape and the BC enforces itself. Cosines have flat endpoints (zero slope) → Neumann. Sines pass through zero → Dirichlet. No ghost nodes, no modified stencils, no special treatment at boundaries. This is why spectral methods are so elegant for structured grids.
+    </p>
+  </div>
+
+  <h4>Sine Basis → Dirichlet Boundary Conditions</h4>
+
+  <p>
+    Now consider the family of sine functions:
+  </p>
+
+  $$\phi_k(x) = \sin\!\left(\frac{k\pi x}{L}\right), \qquad k = 1, 2, 3, \ldots$$
+
+  <p>
+    At $x = 0$: $\sin(0) = 0$. At $x = L$: $\sin(k\pi) = 0$. The function itself vanishes at both endpoints — this is the <strong>Dirichlet boundary condition</strong>: $u = 0$ on the boundary.
+  </p>
+
+  <p>
+    If we expand our solution in sine functions, the solution is automatically zero at both ends. The <strong>Discrete Sine Transform (DST)</strong> is the discrete version. Note that the index starts at $k = 1$ (not $k = 0$), because $\sin(0) = 0$ everywhere — a constant zero function carries no information.
+  </p>
+
+  <h4>Eigenvalues: What Each Transform Does to the Laplacian</h4>
+
+  <p>
+    For the spectral solver of Chapter 15, we need the eigenvalues of the discrete Laplacian — the constants $\lambda_k$ such that $\Delta \psi_k = -\lambda_k \psi_k$. These eigenvalues come directly from the basis functions.
+  </p>
+
+  <p>
+    <strong>1D eigenvalues, Neumann (DCT).</strong> On a grid with $N$ points and spacing $\Delta x = L/N$, the discrete Laplacian's eigenvalues for the cosine basis are:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.8)</span>
+    $$\lambda_k^{\text{DCT}} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi k}{N}\right) - 1\right), \qquad k = 0, 1, \ldots, N-1$$
+  </div>
+
+  <p>
+    All eigenvalues are $\leq 0$ (the Laplacian is negative semi-definite). The $k=0$ mode has $\lambda_0 = 0$, corresponding to the constant mode $\psi_0(x) = 1$ — a spatially uniform solution whose Laplacian is zero. This zero eigenvalue is the spectral fingerprint of the Neumann null space, and it will appear again in Chapter 15 when we discuss spectral solvers.
+  </p>
+
+  <p>
+    <strong>1D eigenvalues, Dirichlet (DST).</strong> For the sine basis:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.9)</span>
+    $$\lambda_k^{\text{DST}} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi k}{N+1}\right) - 1\right), \qquad k = 1, 2, \ldots, N$$
+  </div>
+
+  <p>
+    Notice the subtle difference: the denominator is $N+1$ instead of $N$, and the index starts at $k=1$. There is no zero eigenvalue — Dirichlet BCs pin the boundary values, removing the constant mode from the solution space. This means the Laplacian matrix is non-singular (invertible) under Dirichlet BCs, which simplifies the spectral solve: no special handling of a null space is needed.
+  </p>
+
+  <h4>The 2D Extension: Products of Basis Functions</h4>
+
+  <p>
+    On a 2D grid ($N_x \times N_y$), the basis functions are <em>products</em> of 1D basis functions, one for each spatial direction. Which product you use depends on the boundary condition <em>in that direction</em>:
+  </p>
+
+  <table>
+    <tr><th>BC on $x$-boundaries</th><th>BC on $y$-boundaries</th><th>Basis function</th><th>Transform</th></tr>
+    <tr><td>Neumann</td><td>Neumann</td><td>$\cos(i\pi x/L_x)\cdot\cos(j\pi y/L_y)$</td><td>DCT in $x$ and $y$</td></tr>
+    <tr><td>Dirichlet</td><td>Dirichlet</td><td>$\sin(i\pi x/L_x)\cdot\sin(j\pi y/L_y)$</td><td>DST in $x$ and $y$</td></tr>
+    <tr><td>Neumann</td><td>Dirichlet</td><td>$\cos(i\pi x/L_x)\cdot\sin(j\pi y/L_y)$</td><td>DCT in $x$, DST in $y$</td></tr>
+    <tr><td>Dirichlet</td><td>Neumann</td><td>$\sin(i\pi x/L_x)\cdot\cos(j\pi y/L_y)$</td><td>DST in $x$, DCT in $y$</td></tr>
+  </table>
+
+  <p>
+    The 2D eigenvalues are simply the sum of the 1D eigenvalues from each direction:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.10)</span>
+    $$\lambda_{i,j} = \lambda_i^{(x)} + \lambda_j^{(y)}$$
+  </div>
+
+  <p>
+    where $\lambda_i^{(x)}$ and $\lambda_j^{(y)}$ are the 1D eigenvalues from equation (A.8) or (A.9), depending on the boundary condition in that direction.
+  </p>
+
+  <h4>When Can DCT and DST Be Combined?</h4>
+
+  <p>
+    This is a question that often trips up newcomers. The answer is straightforward once you understand the basis function structure:
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>DCT and DST can be combined when different boundary conditions apply to different spatial axes.</strong> You use a cosine transform along any axis where Neumann BCs hold, and a sine transform along any axis where Dirichlet BCs hold. The transforms are applied independently, dimension by dimension.
+    </p>
+    <p>
+      What you <em>cannot</em> do is mix boundary conditions on the <em>same</em> axis with a pure spectral method. If one end of the $x$-axis has Neumann and the other has Dirichlet, neither pure cosines nor pure sines will satisfy both conditions simultaneously. In that case, you need a different approach — such as a "quarter-wave" transform (rarely used in practice) or simply falling back to an iterative solver like PCG (Chapter 15, Section 15.1).
+    </p>
+  </div>
+
+  <h4>Worked Example: 1D Neumann Heat Equation via DCT</h4>
+
+  <p>
+    To make all of this concrete, let us solve a simple 1D diffusion problem using the DCT. Consider a rod with $N = 4$ grid points, spacing $\Delta x = 1$, diffusion coefficient $D = 1$, and Neumann BCs at both ends. The initial temperature profile is $u = [4,\, 2,\, 1,\, 3]$.
+  </p>
+
+  <p>
+    <strong>Step 1: Compute the eigenvalues.</strong> Using equation (A.8) with $N = 4$ and $\Delta x = 1$:
+  </p>
+
+  <table>
+    <tr><th>$k$</th><th>$\cos(\pi k/4)$</th><th>$\lambda_k = 2(\cos(\pi k/4) - 1)$</th></tr>
+    <tr><td>0</td><td>1</td><td>$0$</td></tr>
+    <tr><td>1</td><td>$\cos(\pi/4) \approx 0.707$</td><td>$\approx -0.586$</td></tr>
+    <tr><td>2</td><td>$\cos(\pi/2) = 0$</td><td>$-2$</td></tr>
+    <tr><td>3</td><td>$\cos(3\pi/4) \approx -0.707$</td><td>$\approx -3.414$</td></tr>
+  </table>
+
+  <p>
+    <strong>Step 2: Forward DCT.</strong> Transform $u = [4, 2, 1, 3]$ into frequency space. The DCT (type II, orthonormal) gives: $\hat{u} = [5.0,\; 1.577,\; 0.5,\; -0.224]$ (values rounded).
+  </p>
+
+  <p>
+    <strong>Step 3: Solve in spectral space.</strong> Suppose we want to solve the implicit (BDF1) equation $u^{n+1} - \Delta t\,D\,\Delta u^{n+1} = u^n$ with $\Delta t = 0.1$. In spectral space, for each mode $k$:
+  </p>
+
+  $$\hat{u}_k^{n+1} = \frac{\hat{u}_k^n}{1 - \Delta t \cdot D \cdot \lambda_k}$$
+
+  <table>
+    <tr><th>$k$</th><th>Denominator $1 - 0.1\lambda_k$</th><th>$\hat{u}_k^{n+1}$</th></tr>
+    <tr><td>0</td><td>1.000</td><td>5.000</td></tr>
+    <tr><td>1</td><td>1.059</td><td>1.490</td></tr>
+    <tr><td>2</td><td>1.200</td><td>0.417</td></tr>
+    <tr><td>3</td><td>1.341</td><td>$-0.167$</td></tr>
+  </table>
+
+  <p>
+    <strong>Step 4: Inverse DCT.</strong> Transform $\hat{u}^{n+1}$ back to physical space to get $u^{n+1}$. The higher modes ($k = 2, 3$) have been damped more than the lower modes — exactly what diffusion should do. The mean ($k = 0$) is preserved, because Neumann BCs conserve total heat.
+  </p>
+
+  <p>
+    That is the entire algorithm. No matrix assembly, no iterative convergence loop. The cost per time step is dominated by two DCTs: $O(N \log N)$. For the 2D cardiac grids of this textbook, the same procedure applies dimension by dimension, as described in Chapter 15, Section 15.3.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V5.4 connection.</strong> The <code>DCTSolver</code> class in <code>linear_solver/fft.py</code> implements exactly this algorithm. It pre-computes the 2D eigenvalue grid $\lambda_{i,j}$ using equation (A.10), then uses <code>torch-dct</code> (or a fallback FFT-based DCT) for the forward and inverse transforms. The eigenvalues are cached after the first solve and reused at every subsequent time step — a single $O(N)$ setup cost for unlimited $O(N \log N)$ solves.
+    </p>
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>A.10 &ensp; Iterative Methods and the Conjugate Gradient</h3>
+
+  <p>
+    Imagine you are blindfolded in a hilly landscape, trying to find the lowest valley. You cannot see the terrain, but you can feel the slope beneath your feet. The obvious strategy: always step downhill. If the slope is steep, take a big step; if it is gentle, take a small step. Eventually, you will reach a valley. This is <strong>gradient descent</strong> — and it is the simplest iterative method for solving linear systems.
+  </p>
+
+  <p>
+    But gradient descent has a problem. In a long, narrow valley (imagine a bowling-lane-shaped landscape), it zigzags back and forth across the valley floor, making slow progress toward the minimum. Each step corrects for one direction but overshoots in another. For a system with $N$ unknowns, this can require $O(N)$ iterations — not much better than a direct solve.
+  </p>
+
+  <p>
+    The <strong>conjugate gradient (CG)</strong> method fixes this problem with a beautiful geometric idea: instead of always stepping in the steepest direction, choose search directions that are <em>conjugate</em> (orthogonal with respect to the matrix $A$). Each conjugate direction eliminates the error along one dimension of the problem, guaranteeing that the exact solution is reached in at most $N$ steps. In practice, for well-conditioned systems, far fewer than $N$ steps are needed.
+  </p>
+
+  <h4>Why Iterative?</h4>
+
+  <p>
+    To solve $A\mathbf{x} = \mathbf{b}$ where $A$ is an $N \times N$ matrix, the most straightforward approach is a direct method: Gaussian elimination (LU factorization). This always works, but it costs $O(N^3)$ operations and $O(N^2)$ memory. For the 2D cardiac grids in this textbook, $N$ can easily be $10^5$ to $10^6$ (a $300 \times 300$ grid has 90,000 nodes). A direct solve on 90,000 unknowns would require roughly $10^{15}$ floating-point operations — completely impractical.
+  </p>
+
+  <p>
+    Iterative methods take a different approach. Starting from an initial guess $\mathbf{x}_0$ (often zero, or the solution from the previous time step), they generate a sequence $\mathbf{x}_0, \mathbf{x}_1, \mathbf{x}_2, \ldots$ that converges to the true solution. Each iteration costs $O(N)$ operations (dominated by one sparse matrix-vector multiply), and convergence typically requires far fewer than $N$ iterations. The total cost is $O(k \cdot N)$ where $k$ is the number of iterations — and for cardiac simulation with warm starting, $k$ is often as small as 3–8.
+  </p>
+
+  <h4>The Energy Minimization Viewpoint</h4>
+
+  <p>
+    When $A$ is <strong>symmetric positive-definite (SPD)</strong> — meaning $A = A^T$ and $\mathbf{x}^T A \mathbf{x} > 0$ for all nonzero $\mathbf{x}$ — solving $A\mathbf{x} = \mathbf{b}$ is equivalent to minimizing the <em>energy functional</em>:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.11)</span>
+    $$E(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T A\,\mathbf{x} - \mathbf{b}^T\mathbf{x}$$
+  </div>
+
+  <p>
+    Taking the gradient (in the multivariable calculus sense) and setting it to zero gives $\nabla E = A\mathbf{x} - \mathbf{b} = 0$, which is exactly $A\mathbf{x} = \mathbf{b}$. The function $E(\mathbf{x})$ defines a paraboloid (a bowl shape) in $N$-dimensional space, and the solution $\mathbf{x}^*$ sits at the bottom.
+  </p>
+
+  <p>
+    The gradient at any point $\mathbf{x}$ is $\nabla E = A\mathbf{x} - \mathbf{b}$. But this is exactly the <strong>negative residual</strong>: $-\mathbf{r}$, where $\mathbf{r} = \mathbf{b} - A\mathbf{x}$ is the residual (how far we are from satisfying the equation). So the steepest-descent direction is the residual $\mathbf{r}$ — and the residual tells us both the direction and the magnitude of the error.
+  </p>
+
+  <h4>From Gradient Descent to Conjugate Gradient</h4>
+
+  <p>
+    <strong>Gradient descent</strong> takes each step in the direction of steepest descent (the residual $\mathbf{r}$), choosing the step size $\alpha$ that minimizes $E$ along that line. This works but zigzags.
+  </p>
+
+  <p>
+    <strong>Conjugate gradient</strong> builds a sequence of search directions $\mathbf{p}_0, \mathbf{p}_1, \mathbf{p}_2, \ldots$ that are <em>$A$-conjugate</em>: $\mathbf{p}_i^T A \mathbf{p}_j = 0$ for $i \neq j$. This means each direction is orthogonal to all previous directions <em>with respect to the geometry defined by $A$</em>. The key property is that once you minimize along direction $\mathbf{p}_i$, you never need to revisit it — the error along $\mathbf{p}_i$ stays zero in all subsequent iterations. This is why CG converges in at most $N$ steps (one per dimension of the problem).
+  </p>
+
+  <p>
+    The beautiful trick of CG is that these conjugate directions can be constructed cheaply. Each new direction needs only the current residual and the previous direction — no storage of the full history:
+  </p>
+
+  $$\mathbf{p}_{k+1} = \mathbf{r}_{k+1} + \beta_k\,\mathbf{p}_k$$
+
+  <p>
+    where $\beta_k$ is a scalar chosen to ensure $A$-conjugacy. The complete algorithm has remarkably few operations per iteration.
+  </p>
+
+  <h4>The PCG Algorithm</h4>
+
+  <p>
+    In practice, CG is almost always used with <strong>preconditioning</strong>. A preconditioner $M$ is an approximation to $A$ that is cheap to invert. Instead of solving $A\mathbf{x} = \mathbf{b}$, we effectively solve $M^{-1}A\mathbf{x} = M^{-1}\mathbf{b}$. If $M \approx A$, then $M^{-1}A \approx I$ (the identity), and the system is nearly trivial.
+  </p>
+
+  <p>
+    The simplest preconditioner is <strong>Jacobi (diagonal) preconditioning</strong>: $M = \text{diag}(A)$. This scales each equation by the inverse of its diagonal entry, making all diagonal entries equal to 1. It is nearly free to compute and often reduces the iteration count by a factor of 2–5.
+  </p>
+
+  <p>
+    The Preconditioned Conjugate Gradient (PCG) algorithm, written step by step:
+  </p>
+
+  <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
+    <strong>Algorithm: PCG with Jacobi preconditioning</strong><br><br>
+    <strong>Input</strong>: SPD matrix $A$, right-hand side $\mathbf{b}$, initial guess $\mathbf{x}_0$, tolerance $\varepsilon$<br>
+    <strong>Setup</strong>: $M^{-1} = 1/\text{diag}(A)$ &emsp;(Jacobi preconditioner)<br><br>
+    1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$ &emsp;(initial residual)<br>
+    2. &ensp; $\mathbf{z}_0 = M^{-1}\mathbf{r}_0$ &emsp;(preconditioned residual)<br>
+    3. &ensp; $\mathbf{p}_0 = \mathbf{z}_0$ &emsp;(initial search direction)<br>
+    4. &ensp; <strong>for</strong> $k = 0, 1, 2, \ldots$<br>
+    5. &emsp;&emsp; $\alpha_k = \dfrac{\mathbf{r}_k^T \mathbf{z}_k}{\mathbf{p}_k^T A\mathbf{p}_k}$ &emsp;(step size)<br><br>
+    6. &emsp;&emsp; $\mathbf{x}_{k+1} = \mathbf{x}_k + \alpha_k\,\mathbf{p}_k$ &emsp;(update solution)<br>
+    7. &emsp;&emsp; $\mathbf{r}_{k+1} = \mathbf{r}_k - \alpha_k\,A\mathbf{p}_k$ &emsp;(update residual)<br>
+    8. &emsp;&emsp; <strong>if</strong> $\|\mathbf{r}_{k+1}\|/\|\mathbf{b}\| < \varepsilon$: <strong>stop</strong> &emsp;(converged)<br>
+    9. &emsp;&emsp; $\mathbf{z}_{k+1} = M^{-1}\mathbf{r}_{k+1}$ &emsp;(precondition)<br>
+    10. &emsp;&ensp; $\beta_k = \dfrac{\mathbf{r}_{k+1}^T \mathbf{z}_{k+1}}{\mathbf{r}_k^T \mathbf{z}_k}$ &emsp;(conjugacy parameter)<br><br>
+    11. &emsp;&ensp; $\mathbf{p}_{k+1} = \mathbf{z}_{k+1} + \beta_k\,\mathbf{p}_k$ &emsp;(new search direction)<br>
+    12. &ensp; <strong>end for</strong>
+  </div>
+
+  <p>
+    Each iteration requires exactly one matrix-vector product ($A\mathbf{p}_k$ in line 5, reused in line 7), two inner products ($\mathbf{r}^T\mathbf{z}$ and $\mathbf{p}^T A\mathbf{p}$), and a few vector additions and scalings. On a GPU, the matrix-vector product dominates; the inner products require a global reduction (summing across all threads), which is the primary synchronization cost.
+  </p>
+
+  <h4>Convergence: How Many Iterations?</h4>
+
+  <p>
+    The convergence rate of CG depends on the <strong>condition number</strong> $\kappa = \lambda_{\max}/\lambda_{\min}$, where $\lambda_{\max}$ and $\lambda_{\min}$ are the largest and smallest eigenvalues of $A$. The error after $k$ iterations satisfies:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(A.12)</span>
+    $$\|\mathbf{x}_k - \mathbf{x}^*\|_A \leq 2\left(\frac{\sqrt{\kappa} - 1}{\sqrt{\kappa} + 1}\right)^k \|\mathbf{x}_0 - \mathbf{x}^*\|_A$$
+  </div>
+
+  <p>
+    where $\|\cdot\|_A$ denotes the $A$-norm. In practice, this means CG needs roughly $O(\sqrt{\kappa})$ iterations to reduce the error by a fixed factor. For the discrete Laplacian on an $N$-point grid, $\kappa \propto N$ (or $\propto 1/\Delta x^2$), so unpreconditioned CG requires $O(\sqrt{N})$ iterations. With Jacobi preconditioning, $\kappa$ is reduced modestly; with more powerful preconditioners (like AMG, mentioned in Chapter 15), $\kappa$ can be brought close to 1, making convergence nearly mesh-independent.
+  </p>
+
+  <h4>Worked Example: CG on a 5-Node 1D Laplacian</h4>
+
+  <p>
+    Let us solve a concrete system by hand. Consider the 1D discrete Laplacian on 5 interior nodes with Dirichlet BCs ($u_0 = u_6 = 0$), spacing $\Delta x = 1$:
+  </p>
+
+  $$A = \begin{pmatrix} 2 & -1 & & & \\ -1 & 2 & -1 & & \\ & -1 & 2 & -1 & \\ & & -1 & 2 & -1 \\ & & & -1 & 2\end{pmatrix}, \qquad \mathbf{b} = \begin{pmatrix}1\\0\\0\\0\\1\end{pmatrix}$$
+
+  <p>
+    <strong>Initial guess</strong>: $\mathbf{x}_0 = \mathbf{0}$ (no preconditioning for simplicity, so $M = I$).
+  </p>
+
+  <p>
+    <strong>Iteration 0</strong>: $\mathbf{r}_0 = \mathbf{b} - A\mathbf{0} = [1, 0, 0, 0, 1]^T$. Set $\mathbf{p}_0 = \mathbf{r}_0$. Compute $A\mathbf{p}_0 = [2, -1, 0, -1, 2]^T$. Then $\alpha_0 = \mathbf{r}_0^T\mathbf{r}_0 / (\mathbf{p}_0^T A\mathbf{p}_0) = 2/6 = 1/3$. Update: $\mathbf{x}_1 = [1/3, 0, 0, 0, 1/3]^T$. New residual: $\mathbf{r}_1 = [1/3, 1/3, 0, 1/3, 1/3]^T$. Compute $\beta_0 = \|\mathbf{r}_1\|^2/\|\mathbf{r}_0\|^2 = (4/9)/2 = 2/9$. New direction: $\mathbf{p}_1 = \mathbf{r}_1 + \frac{2}{9}\mathbf{p}_0$.
+  </p>
+
+  <p>
+    <strong>Iteration 1</strong>: Continuing the same procedure with $\mathbf{p}_1$, we compute $\alpha_1$, update $\mathbf{x}_2$, and so on. After 5 iterations (at most), the exact solution is $\mathbf{x}^* = [1, 1, 1, 1, 1]^T$. In practice, the residual norm drops below $10^{-10}$ after just 3 iterations for this small system.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Warm-starting is free lunch.</strong> In cardiac simulation, we solve a linear system at every time step, and the solution changes only slightly between time steps (the voltage field evolves smoothly). By using the previous time step's solution $\mathbf{x}^{n-1}$ as the initial guess $\mathbf{x}_0$ for the current step, we start very close to the answer. The residual is already small, and CG converges in just a few iterations — often 3–8 instead of 20–50. This is why <code>PCGSolver</code> in Engine V5.4 has <code>use_warm_start=True</code> as its default.
+    </p>
+  </div>
+
+  <h4>When CG Cannot Be Used</h4>
+
+  <p>
+    CG requires the matrix $A$ to be symmetric positive-definite. If $A$ is symmetric but indefinite (has both positive and negative eigenvalues), CG will break down — the step size $\alpha_k$ can become negative or infinite. This is relevant for the bidomain model: the full 2×2 block system of Chapter 13 (equation 13.2) is symmetric but <em>indefinite</em> (it has a saddle-point structure). For such systems, you need a different Krylov method — <strong>MINRES</strong> (for symmetric indefinite) or <strong>GMRES</strong> (for general non-symmetric). However, PCG <em>can</em> be used on individual blocks of the bidomain system (the Schur complement is SPD), and this is the dominant approach in practice (see Chapter 15).
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V5.4 connection.</strong> The <code>PCGSolver</code> class in <code>linear_solver/pcg.py</code> implements the algorithm above with Jacobi preconditioning, lazy workspace allocation (to avoid memory allocation at every time step), and warm starting. Key parameters: <code>max_iters=500</code>, <code>tol=1e-8</code>, <code>use_warm_start=True</code>. The preconditioner $M^{-1}$ is the inverse diagonal of $A$, cached and updated only when $A$ changes (detected by checking the tensor's identity).
+    </p>
+  </div>
+
+
+
   <div class="footnote" style="margin-top:3em;">
     <p>The treatment in this appendix follows the pedagogical philosophy of Grant Sanderson's <em>3Blue1Brown</em> series on differential equations. For animated visualizations of these concepts, the reader is encouraged to watch the "Differential Equations" playlist on the 3Blue1Brown YouTube channel.</p>
   </div>

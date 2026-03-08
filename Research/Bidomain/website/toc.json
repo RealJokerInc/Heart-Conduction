@@ -232,28 +232,8 @@
             "anchor": "7-3"
           },
           {
-            "title": "7.4 &ensp; Spatial Discretization: What It Means Physically",
+            "title": "7.4 &ensp; Boundary Conditions: What Happens at the Edge?",
             "anchor": "7-4"
-          },
-          {
-            "title": "7.5 &ensp; Finite Difference Method (FDM)",
-            "anchor": "7-5"
-          },
-          {
-            "title": "7.6 &ensp; Finite Element Method (FEM)",
-            "anchor": "7-6"
-          },
-          {
-            "title": "7.7 &ensp; Finite Volume Method (FVM)",
-            "anchor": "7-7"
-          },
-          {
-            "title": "7.8 &ensp; Choosing Your Method: A Practical Guide",
-            "anchor": "7-8"
-          },
-          {
-            "title": "7.9 &ensp; Connecting the Pieces: From PDE to Matrix System",
-            "anchor": "7-9"
           }
         ]
       },
@@ -261,23 +241,35 @@
         "type": "chapter",
         "id": "ch8",
         "num": "Chapter 8",
-        "title": "Operator Splitting: Divide and Conquer",
+        "title": "Spatial Discretization",
         "subsections": [
           {
-            "title": "8.1 &ensp; Why Split? The Stiffness Argument",
+            "title": "8.1 &ensp; Spatial Discretization: What It Means Physically",
             "anchor": "8-1"
           },
           {
-            "title": "8.2 &ensp; Godunov (First-Order) Splitting",
+            "title": "8.2 &ensp; Finite Difference Method (FDM)",
             "anchor": "8-2"
           },
           {
-            "title": "8.3 &ensp; Strang (Second-Order) Splitting",
+            "title": "8.3 &ensp; Finite Element Method (FEM)",
             "anchor": "8-3"
           },
           {
-            "title": "8.4 &ensp; The Rush\u2013Larsen Method for Ionic Variables",
+            "title": "8.4 &ensp; Finite Volume Method (FVM)",
             "anchor": "8-4"
+          },
+          {
+            "title": "8.5 &ensp; Choosing Your Method: A Practical Guide",
+            "anchor": "8-5"
+          },
+          {
+            "title": "8.6 &ensp; Connecting the Pieces: From PDE to Matrix System",
+            "anchor": "8-6"
+          },
+          {
+            "title": "8.7 &ensp; Boundary Conditions for the Monodomain",
+            "anchor": "8-7"
           }
         ]
       },
@@ -285,35 +277,23 @@
         "type": "chapter",
         "id": "ch9",
         "num": "Chapter 9",
-        "title": "Explicit Diffusion Solvers",
+        "title": "Operator Splitting: Divide and Conquer",
         "subsections": [
           {
-            "title": "9.1 &ensp; Forward Euler and the CFL Condition",
+            "title": "9.1 &ensp; Why Split? The Stiffness Argument",
             "anchor": "9-1"
           },
           {
-            "title": "9.2 &ensp; Why Go Beyond Forward Euler?",
+            "title": "9.2 &ensp; Godunov (First-Order) Splitting",
             "anchor": "9-2"
           },
           {
-            "title": "9.3 &ensp; RK2 \u2014 Heun's Method (The Two-Sample Correction)",
+            "title": "9.3 &ensp; Strang (Second-Order) Splitting",
             "anchor": "9-3"
           },
           {
-            "title": "9.4 &ensp; RK4 \u2014 The Classical Four-Stage Method",
+            "title": "9.4 &ensp; The Rush\u2013Larsen Method for Ionic Variables",
             "anchor": "9-4"
-          },
-          {
-            "title": "9.5 &ensp; Stability Regions: How Large Can $\\Delta t$ Be?",
-            "anchor": "9-5"
-          },
-          {
-            "title": "9.6 &ensp; Cost vs. Accuracy: Choosing Your Explicit Method",
-            "anchor": "9-6"
-          },
-          {
-            "title": "9.7 &ensp; When Explicit Methods Shine",
-            "anchor": "9-7"
           }
         ]
       },
@@ -321,31 +301,67 @@
         "type": "chapter",
         "id": "ch10",
         "num": "Chapter 10",
-        "title": "Implicit Diffusion Solvers",
+        "title": "Explicit Diffusion Solvers",
         "subsections": [
           {
-            "title": "10.1 &ensp; Why Implicit? The CFL Wall",
+            "title": "10.1 &ensp; Forward Euler and the CFL Condition",
             "anchor": "10-1"
           },
           {
-            "title": "10.2 &ensp; Backward Euler (BDF1): The Simplest Implicit Method",
+            "title": "10.2 &ensp; Why Go Beyond Forward Euler?",
             "anchor": "10-2"
           },
           {
-            "title": "10.3 &ensp; Crank\u2013Nicolson: Second-Order Implicit",
+            "title": "10.3 &ensp; RK2 \u2014 Heun's Method (The Two-Sample Correction)",
             "anchor": "10-3"
           },
           {
-            "title": "10.4 &ensp; BDF2: Second-Order with Strong Damping",
+            "title": "10.4 &ensp; RK4 \u2014 The Classical Four-Stage Method",
             "anchor": "10-4"
           },
           {
-            "title": "10.5 &ensp; Comparing the Three Methods",
+            "title": "10.5 &ensp; Stability Regions: How Large Can $\\Delta t$ Be?",
             "anchor": "10-5"
           },
           {
-            "title": "10.6 &ensp; Linear Solvers: PCG, Chebyshev, and FFT",
+            "title": "10.6 &ensp; Cost vs. Accuracy: Choosing Your Explicit Method",
             "anchor": "10-6"
+          },
+          {
+            "title": "10.7 &ensp; When Explicit Methods Shine",
+            "anchor": "10-7"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch11",
+        "num": "Chapter 11",
+        "title": "Implicit Diffusion Solvers",
+        "subsections": [
+          {
+            "title": "11.1 &ensp; Why Implicit? The CFL Wall",
+            "anchor": "11-1"
+          },
+          {
+            "title": "11.2 &ensp; Backward Euler (BDF1): The Simplest Implicit Method",
+            "anchor": "11-2"
+          },
+          {
+            "title": "11.3 &ensp; Crank\u2013Nicolson: Second-Order Implicit",
+            "anchor": "11-3"
+          },
+          {
+            "title": "11.4 &ensp; BDF2: Second-Order with Strong Damping",
+            "anchor": "11-4"
+          },
+          {
+            "title": "11.5 &ensp; Comparing the Three Methods",
+            "anchor": "11-5"
+          },
+          {
+            "title": "11.6 &ensp; Linear Solvers: PCG, Chebyshev, and FFT",
+            "anchor": "11-6"
           }
         ]
       }
@@ -359,49 +375,45 @@
     "chapters": [
       {
         "type": "chapter",
-        "id": "ch11",
-        "num": "Chapter 11",
-        "title": "Why Bidomain? \u2014 The Physical Picture",
-        "subsections": [
-          {
-            "title": "11.1 &ensp; Currents in a Living Heart",
-            "anchor": "11-1"
-          },
-          {
-            "title": "11.2 &ensp; Divergence and Conservation: The Language of Current Flow",
-            "anchor": "11-2"
-          },
-          {
-            "title": "11.3 &ensp; From One Domain to Two",
-            "anchor": "11-3"
-          }
-        ]
-      },
-      {
-        "type": "chapter",
         "id": "ch12",
         "num": "Chapter 12",
-        "title": "The Bidomain Equations",
+        "title": "The Bidomain Model",
         "subsections": [
           {
-            "title": "12.1 &ensp; The Monodomain Equation (Review)",
+            "title": "12.1 &ensp; Currents in a Living Heart",
             "anchor": "12-1"
           },
           {
-            "title": "12.2 &ensp; Building the Bidomain System",
+            "title": "12.2 &ensp; Divergence and Conservation: The Language of Current Flow",
             "anchor": "12-2"
           },
           {
-            "title": "12.3 &ensp; The Parabolic\u2013Elliptic Couple",
+            "title": "12.3 &ensp; From One Domain to Two",
             "anchor": "12-3"
           },
           {
-            "title": "12.4 &ensp; When Bidomain Reduces to Monodomain",
+            "title": "12.4 &ensp; The Monodomain Equation (Review)",
             "anchor": "12-4"
           },
           {
-            "title": "12.5 &ensp; Conductivity Tensors and Fiber Architecture",
+            "title": "12.5 &ensp; Building the Bidomain System",
             "anchor": "12-5"
+          },
+          {
+            "title": "12.6 &ensp; The Parabolic\u2013Elliptic Couple",
+            "anchor": "12-6"
+          },
+          {
+            "title": "12.7 &ensp; When Bidomain Reduces to Monodomain",
+            "anchor": "12-7"
+          },
+          {
+            "title": "12.8 &ensp; Conductivity Tensors and Fiber Architecture",
+            "anchor": "12-8"
+          },
+          {
+            "title": "12.9 &ensp; Boundary Conditions: Two Domains, Two Choices",
+            "anchor": "12-9"
           }
         ]
       },
@@ -422,6 +434,10 @@
           {
             "title": "13.3 &ensp; The 2\u00d72 Block System",
             "anchor": "13-3"
+          },
+          {
+            "title": "13.4 &ensp; Boundary Conditions: Formulation and Implementation",
+            "anchor": "13-4"
           }
         ]
       },
@@ -457,27 +473,19 @@
         "type": "chapter",
         "id": "ch15",
         "num": "Chapter 15",
-        "title": "Linear Solvers for the Block System",
+        "title": "Parabolic Solvers: The $A_{11}$ Block",
         "subsections": [
           {
-            "title": "15.1 &ensp; The Saddle-Point Structure",
+            "title": "15.1 &ensp; Preconditioned Conjugate Gradient (PCG)",
             "anchor": "15-1"
           },
           {
-            "title": "15.2 &ensp; Block Preconditioners",
+            "title": "15.2 &ensp; Chebyshev Polynomial Solver",
             "anchor": "15-2"
           },
           {
-            "title": "15.3 &ensp; Algebraic Multigrid (AMG)",
+            "title": "15.3 &ensp; Spectral Solvers: DCT, DST, and FFT",
             "anchor": "15-3"
-          },
-          {
-            "title": "15.4 &ensp; Krylov Methods: MINRES, GMRES, and Friends",
-            "anchor": "15-4"
-          },
-          {
-            "title": "15.5 &ensp; The Null-Space Problem",
-            "anchor": "15-5"
           }
         ]
       },
@@ -485,19 +493,47 @@
         "type": "chapter",
         "id": "ch16",
         "num": "Chapter 16",
-        "title": "Implementation Roadmap for Engine V5.4",
+        "title": "Elliptic Solvers: The Schur Complement",
         "subsections": [
           {
-            "title": "16.1 &ensp; Architecture Extensions",
+            "title": "16.1 &ensp; The Saddle-Point Structure",
             "anchor": "16-1"
           },
           {
-            "title": "16.2 &ensp; Recommended Solver Stack",
+            "title": "16.2 &ensp; Block Preconditioners",
             "anchor": "16-2"
           },
           {
-            "title": "16.3 &ensp; Performance Expectations",
+            "title": "16.3 &ensp; Algebraic Multigrid (AMG)",
             "anchor": "16-3"
+          },
+          {
+            "title": "16.4 &ensp; Krylov Methods: MINRES, GMRES, and Friends",
+            "anchor": "16-4"
+          },
+          {
+            "title": "16.5 &ensp; The Null-Space Problem",
+            "anchor": "16-5"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch17",
+        "num": "Chapter 17",
+        "title": "Implementation Roadmap for Engine V5.4",
+        "subsections": [
+          {
+            "title": "17.1 &ensp; Architecture Extensions",
+            "anchor": "17-1"
+          },
+          {
+            "title": "17.2 &ensp; Recommended Solver Stack",
+            "anchor": "17-2"
+          },
+          {
+            "title": "17.3 &ensp; Performance Expectations",
+            "anchor": "17-3"
           }
         ]
       }
@@ -511,69 +547,29 @@
     "chapters": [
       {
         "type": "chapter",
-        "id": "ch17",
-        "num": "Chapter 17",
+        "id": "ch18",
+        "num": "Chapter 18",
         "title": "The Lattice-Boltzmann Method: From Kinetic Theory to Computation",
         "subsections": [
           {
-            "title": "17.1 &ensp; The Thermodynamic Foundation: Phase Space and the Equilibrium State",
-            "anchor": "17-1"
-          },
-          {
-            "title": "17.2 &ensp; The Boltzmann Equation and Kinetic Theory",
-            "anchor": "17-2"
-          },
-          {
-            "title": "17.3 &ensp; The Lattice-Boltzmann Equation: Single Relaxation Time (SRT/BGK)",
-            "anchor": "17-3"
-          },
-          {
-            "title": "17.4 &ensp; From the Gaussian to the Lattice: Discretizing $f^{\\text{eq}}$, $w_i$, and $\\mathbf{c}_i$",
-            "anchor": "17-4"
-          },
-          {
-            "title": "17.5 &ensp; Moment Space: The Physical Decomposition of the Collision Operator",
-            "anchor": "17-5"
-          }
-        ]
-      },
-      {
-        "type": "chapter",
-        "id": "ch18",
-        "num": "Chapter 18",
-        "title": "Lattice-Boltzmann Methods for Monodomain",
-        "subsections": [
-          {
-            "title": "18.1 &ensp; The Monodomain Equation as a Target PDE",
+            "title": "18.1 &ensp; The Thermodynamic Foundation: Phase Space and the Equilibrium State",
             "anchor": "18-1"
           },
           {
-            "title": "18.2 &ensp; Operator Splitting: Reaction Then Diffusion",
+            "title": "18.2 &ensp; The Boltzmann Equation and Kinetic Theory",
             "anchor": "18-2"
           },
           {
-            "title": "18.3 &ensp; BGK Collision with Source Term",
+            "title": "18.3 &ensp; The Lattice-Boltzmann Equation: Single Relaxation Time (SRT/BGK)",
             "anchor": "18-3"
           },
           {
-            "title": "18.4 &ensp; MRT for Anisotropic Tissue",
+            "title": "18.4 &ensp; From the Gaussian to the Lattice: Discretizing $f^{\\text{eq}}$, $w_i$, and $\\mathbf{c}_i$",
             "anchor": "18-4"
           },
           {
-            "title": "18.5 &ensp; Boundary Conditions for LBM Electrophysiology",
+            "title": "18.5 &ensp; Moment Space: The Physical Decomposition of the Collision Operator",
             "anchor": "18-5"
-          },
-          {
-            "title": "18.6 &ensp; The Complete LBM-EP Algorithm",
-            "anchor": "18-6"
-          },
-          {
-            "title": "18.7 &ensp; Implementation: Memory Layout and GPU Acceleration",
-            "anchor": "18-7"
-          },
-          {
-            "title": "18.8 &ensp; LBM vs. Classical Methods: When to Choose What",
-            "anchor": "18-8"
           }
         ]
       },
@@ -581,27 +577,67 @@
         "type": "chapter",
         "id": "ch19",
         "num": "Chapter 19",
-        "title": "Lattice-Boltzmann Methods for Bidomain",
+        "title": "Lattice-Boltzmann Methods for Monodomain",
         "subsections": [
           {
-            "title": "19.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic",
+            "title": "19.1 &ensp; The Monodomain Equation as a Target PDE",
             "anchor": "19-1"
           },
           {
-            "title": "19.2 &ensp; Strategy 1: Pseudo-Time Relaxation",
+            "title": "19.2 &ensp; Operator Splitting: Reaction Then Diffusion",
             "anchor": "19-2"
           },
           {
-            "title": "19.3 &ensp; Strategy 2: Hybrid LBM\u2013Classical Solver",
+            "title": "19.3 &ensp; BGK Collision with Source Term",
             "anchor": "19-3"
           },
           {
-            "title": "19.4 &ensp; The Dual-Lattice Architecture",
+            "title": "19.4 &ensp; MRT for Anisotropic Tissue",
             "anchor": "19-4"
           },
           {
-            "title": "19.5 &ensp; Performance and Implementation Outlook",
+            "title": "19.5 &ensp; Boundary Conditions for LBM Electrophysiology",
             "anchor": "19-5"
+          },
+          {
+            "title": "19.6 &ensp; The Complete LBM-EP Algorithm",
+            "anchor": "19-6"
+          },
+          {
+            "title": "19.7 &ensp; Implementation: Memory Layout and GPU Acceleration",
+            "anchor": "19-7"
+          },
+          {
+            "title": "19.8 &ensp; LBM vs. Classical Methods: When to Choose What",
+            "anchor": "19-8"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "ch20",
+        "num": "Chapter 20",
+        "title": "Lattice-Boltzmann Methods for Bidomain",
+        "subsections": [
+          {
+            "title": "20.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic",
+            "anchor": "20-1"
+          },
+          {
+            "title": "20.2 &ensp; Strategy 1: Pseudo-Time Relaxation",
+            "anchor": "20-2"
+          },
+          {
+            "title": "20.3 &ensp; Strategy 2: Hybrid LBM\u2013Classical Solver",
+            "anchor": "20-3"
+          },
+          {
+            "title": "20.4 &ensp; The Dual-Lattice Architecture",
+            "anchor": "20-4"
+          },
+          {
+            "title": "20.5 &ensp; Performance and Implementation Outlook",
+            "anchor": "20-5"
           }
         ]
       }
@@ -670,6 +706,18 @@
           {
             "title": "A.7 &ensp; Why the Bidomain Model Has Two Types",
             "anchor": "A-7"
+          },
+          {
+            "title": "A.8 &ensp; From Physical Space to Transform Space",
+            "anchor": "A-8"
+          },
+          {
+            "title": "A.9 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries",
+            "anchor": "A-9"
+          },
+          {
+            "title": "A.10 &ensp; Iterative Methods and the Conjugate Gradient",
+            "anchor": "A-10"
           }
         ]
       },

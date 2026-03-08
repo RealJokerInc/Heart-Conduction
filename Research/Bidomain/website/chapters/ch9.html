@@ -1,635 +1,149 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 9</div>
-  <h2 class="chapter-title">Explicit Diffusion Solvers</h2>
+  <h2 class="chapter-title">Operator Splitting: Divide and Conquer</h2>
   <div class="chapter-intro">
-    After the reaction substep updates the ionic variables, the diffusion substep must advance
-    $V_m$ under pure diffusion. Explicit time-stepping methods — from the workhorse Forward Euler
-    to the high-accuracy RK4 — form a family of increasing sophistication. This chapter walks
-    through each one, starting from intuition and building to implementation-ready equations.
+    The monodomain equation couples a stiff, nonlinear ODE system (ion channels) with a linear
+    diffusion PDE. Trying to solve them simultaneously would be nightmarish. Operator splitting
+    breaks the problem into two simpler subproblems — and it works remarkably well.
   </div>
 
-  <h3>9.1 &ensp; Forward Euler and the CFL Condition</h3>
+  <h3>9.1 &ensp; Why Split? The Stiffness Argument</h3>
 
-  <!-- Layer 1: ELI5 -->
   <p>
-    The simplest idea for advancing the diffusion equation is also the most intuitive: look at the
-    current state, compute how fast things are changing, and take a step forward. This is
-    <em>Forward Euler</em> — the computational equivalent of "if I'm heading north at 60 mph, in one
-    hour I'll be 60 miles north." It works beautifully as long as you don't take steps that are too
-    large. Take too big a step, and the solution oscillates wildly and blows up — this limit is called
-    the <em>CFL condition</em>, and it is the fundamental price of simplicity.
+    Imagine you are cooking a stir-fry. The vegetables need to sizzle at high heat for 30 seconds (fast
+    process), while the rice simmers gently for 20 minutes (slow process). Trying to cook both in the
+    same pot at the same temperature is hopeless — you either burn the rice or undercook the vegetables.
+    The smart approach: cook them in separate pots, each at the right temperature, then combine at the end.
+    Operator splitting does exactly this for the monodomain equation: the ionic channels (fast, local,
+    nonlinear) get their own "pot," and the diffusion (slow, global, linear) gets another.
   </p>
 
-  <!-- Layer 2: Conceptual -->
   <p>
-    Here is the core idea: at each timestep, we evaluate the right-hand side of the diffusion
-    equation (the spatial Laplacian acting on $V_m$), multiply by $\Delta t$, and add the result
-    to the current state. We never look ahead — only at where we <em>are</em>. That is what makes it
-    "explicit": the new state is computed entirely from the old state, with no system of equations to solve.
+    The fundamental problem is <em>timescale separation</em>. During the upstroke (Phase 0), the
+    sodium gate $m$ changes with a time constant of $\sim 0.1$ ms, while the diffusion length
+    scale requires timesteps of $\sim 0.01$ ms for stability. But during the plateau (Phase 2),
+    everything moves slowly — $\tau \sim 50{-}200$ ms. Any method that tries to handle both regimes
+    in a single system must either use tiny timesteps everywhere (wasting computation during the
+    plateau) or use implicit methods for the full coupled system (requiring the solution of a
+    massive nonlinear system at each step).
   </p>
 
-  <!-- Layer 3: Math -->
   <p>
-    In the semi-discrete form from equation (7.5), the diffusion substep is the ODE system
-    $\mathbf{M}\,d\mathbf{V}/dt = -\mathbf{K}\,\mathbf{V}$. Forward Euler approximates the time
-    derivative by a forward difference:
+    Operator splitting exploits the structure of the problem. Write equation (7.1) as:
+  </p>
+
+  <div class="equation-block">
+    $$\frac{\partial V_m}{\partial t} = \underbrace{\frac{1}{\chi C_m}\nabla \cdot (\mathbf{D}\nabla V_m)}_{\mathcal{D}(V_m)} + \underbrace{\frac{-I_{\text{ion}}(V_m, \mathbf{w})}{ C_m}}_{\mathcal{R}(V_m, \mathbf{w})}$$
+  </div>
+
+  <p>
+    Instead of solving $\partial V_m/\partial t = \mathcal{D} + \mathcal{R}$ as one equation,
+    we solve them sequentially: first advance the reaction $\mathcal{R}$ (purely local ODE at each
+    point), then advance the diffusion $\mathcal{D}$ (linear PDE, no ionic coupling).
+  </p>
+
+  <h3>9.2 &ensp; Godunov (First-Order) Splitting</h3>
+
+  <p>
+    The simplest splitting method advances from $t^n$ to $t^{n+1} = t^n + \Delta t$ in two stages:
+  </p>
+
+  <p>
+    <strong>Stage 1 — Reaction:</strong> At every spatial point, solve the ODE system
+    $dV_m/dt = \mathcal{R}(V_m, \mathbf{w})$ and $d\mathbf{w}/dt = \mathbf{g}(V_m, \mathbf{w})$
+    from $t^n$ to $t^{n+1}$, using $V_m^n$ as the initial condition.
+  </p>
+
+  <p>
+    <strong>Stage 2 — Diffusion:</strong> Starting from the updated $V_m^*$ (output of Stage 1),
+    solve $\partial V_m/\partial t = \mathcal{D}(V_m)$ from $t^n$ to $t^{n+1}$.
+  </p>
+
+  <p>
+    Godunov splitting is first-order accurate in time: the splitting error is $O(\Delta t)$. For
+    cardiac simulations with $\Delta t = 0.01{-}0.05$ ms, this error is generally acceptable
+    because the spatial and temporal discretization errors are of similar magnitude.
+  </p>
+
+  <h3>9.3 &ensp; Strang (Second-Order) Splitting</h3>
+
+  <p>
+    For higher accuracy, Strang splitting uses a symmetric sequence:
+  </p>
+
+  <p>
+    <strong>Half-step reaction</strong> ($\Delta t/2$) → <strong>Full-step diffusion</strong> ($\Delta t$) →
+    <strong>Half-step reaction</strong> ($\Delta t/2$).
+  </p>
+
+  <p>
+    The symmetry cancels the leading-order splitting error, yielding $O(\Delta t^2)$ accuracy. The cost
+    is modestly higher (two reaction solves instead of one, though each is half as long), but the
+    improved accuracy can allow larger timesteps for the same error tolerance.
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      Strang splitting is second-order because of a <em>symmetry argument</em>. If the error of
+      $\mathcal{R}\to\mathcal{D}$ is $+c\,\Delta t^2$ for some constant $c$, then the error of
+      $\mathcal{D}\to\mathcal{R}$ is $-c\,\Delta t^2$ (the error changes sign when you swap the order).
+      By sandwiching — $\mathcal{R}(\Delta t/2)\to\mathcal{D}(\Delta t)\to\mathcal{R}(\Delta t/2)$ — the
+      first-order errors cancel, leaving $O(\Delta t^3)$ local error and $O(\Delta t^2)$ global error.
+    </p>
+  </div>
+
+  <h3>9.4 &ensp; The Rush–Larsen Method for Ionic Variables</h3>
+
+  <p>
+    During the reaction substep, we must integrate the gating ODEs $dx/dt = (x_\infty - x)/\tau_x$.
+    Forward Euler would require very small substeps for gates with fast kinetics (small $\tau_x$).
+    The Rush–Larsen method sidesteps this entirely by noting that for <em>fixed voltage</em>, the
+    gating ODE has an exact exponential solution:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(9.1)</span>
-    $$\mathbf{V}^{n+1} = \mathbf{V}^n + \Delta t\;\mathbf{M}^{-1}\bigl(-\mathbf{K}\,\mathbf{V}^n\bigr)$$
+    $$x^{n+1} = x_\infty(V_m^n) + \bigl(x^n - x_\infty(V_m^n)\bigr)\,e^{-\Delta t / \tau_x(V_m^n)}$$
   </div>
 
   <p>
-    When using FDM with lumped mass ($\mathbf{M} = \mathbf{I}$), this simplifies to
-    $\mathbf{V}^{n+1} = \mathbf{V}^n - \Delta t\,\mathbf{K}\,\mathbf{V}^n$.
-    Each grid point's update depends only on its neighbors at time level $n$ — no global
-    communication, no matrix solve. This is why Forward Euler is trivially parallelizable and ideal
-    for GPU computation.
+    This is unconditionally stable for any $\Delta t > 0$: even if $\tau_x = 0.01$ ms (the fastest
+    Na$^+$ gate during the upstroke), the exponential simply drives $x$ to $x_\infty$ without
+    oscillation. For slow gates ($\tau_x \gg \Delta t$), the exponential reduces to Forward Euler,
+    so no accuracy is lost.
   </p>
 
-  <!-- Layer 3 continued: CFL -->
-  <p>
-    The price is the <em>CFL stability condition</em>. For a regular grid with spacing $h$ and
-    diffusivity $d$, Forward Euler is stable only when:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.2)</span>
-    $$\Delta t \leq \frac{h^2}{2\,n_{\text{dim}}\,d_{\max}}$$
-  </div>
-
-  <p>
-    where $n_{\text{dim}}$ is the spatial dimension and $d_{\max}$ is the largest eigenvalue of the
-    conductivity tensor. For typical cardiac parameters ($h = 0.2$ mm, $d_{\max} = 0.174$ mm$^2$/ms,
-    2D), this gives $\Delta t \leq 0.057$ ms — tight, but workable for the $\Delta t = 0.01{-}0.05$ ms
-    range that the ionic model already requires.
-  </p>
-
-  <!-- Layer 4: Worked example -->
   <div class="insight insight-intuition">
     <p>
-      <strong>Worked CFL example.</strong> Suppose we want to simulate a 2D cardiac sheet with
-      $h = 0.1$ mm (a fine mesh) and longitudinal conductivity $d_L = 0.174$ mm$^2$/ms. Then
-      $\Delta t_{\max} = (0.1)^2 / (2 \times 2 \times 0.174) = 0.01 / 0.696 = 0.0144$ ms.
-      That is below the typical ionic timestep of 0.02 ms — so for fine meshes, the diffusion
-      stability constraint becomes the bottleneck, not the ionic kinetics. This is exactly why
-      Chapter 10's implicit methods exist.
+      Rush–Larsen is like solving the "easy part" of the ODE exactly and only approximating the
+      "hard part" (the voltage dependence of $x_\infty$ and $\tau_x$). Since these parameters change
+      slowly compared to the gate dynamics during an upstroke, the approximation is excellent.
+      It transforms the stiffest part of the problem — fast gating — from a numerical headache into
+      a single exponential evaluation per gate per timestep.
     </p>
   </div>
-
-  <div class="insight insight-warning">
-    <p>
-      The CFL condition scales as $h^2$. Halve the mesh spacing and the maximum timestep drops by a
-      factor of four. For fine 3D meshes ($h = 0.1$ mm), this can force $\Delta t$ below what the ionic
-      solver needs, making explicit methods the bottleneck. This is the primary motivation for implicit
-      methods (Chapter 10).
-    </p>
-  </div>
-
-  <h3>9.2 &ensp; Why Go Beyond Forward Euler?</h3>
-
-  <!-- Layer 1: ELI5 -->
-  <p>
-    Imagine driving from New York to Boston. Forward Euler checks your speedometer <em>once</em> at
-    the start and assumes that speed holds for the entire trip. If the road curves, you end up in
-    the ocean. A smarter driver checks the speedometer multiple times along the way — at the start,
-    at the midpoint, near the end — and uses all those readings to estimate where they actually end
-    up. That is what Runge–Kutta methods do: <em>sample the slope multiple times within each
-    timestep</em> and combine the samples into a much better estimate of the true solution.
-  </p>
-
-  <!-- Layer 2: Conceptual -->
-  <p>
-    The key insight is that Forward Euler's error comes from assuming the derivative is constant
-    across the entire step. In reality, the derivative changes as $V_m$ changes. By evaluating the
-    derivative at intermediate points within the step, we can capture this curvature.
-    More evaluations = better curvature tracking = higher-order accuracy. The family of methods
-    that does this systematically is called <strong>Runge–Kutta (RK) methods</strong>, named after
-    Carl Runge and Martin Kutta who developed them in the early 1900s.
-  </p>
-
-  <p>
-    Every explicit RK method follows the same recipe: (1) evaluate the right-hand side at several
-    carefully chosen points, (2) take a weighted average of those evaluations, (3) use that average
-    as the effective slope for the timestep. The differences between RK1 (Forward Euler), RK2, and
-    RK4 are simply <em>how many</em> sample points they use and <em>how</em> they weight them.
-  </p>
-
-  <h3>9.3 &ensp; RK2 — Heun's Method (The Two-Sample Correction)</h3>
-
-  <!-- Layer 1: ELI5 -->
-  <p>
-    RK2 is like a rough draft followed by a revision. You start by making the same guess Forward
-    Euler would (the "predictor") — but instead of stopping there, you evaluate the slope at that
-    predicted point too, and then average the two slopes. The result is far more accurate because
-    you have sampled the derivative at both ends of the interval instead of just one.
-  </p>
-
-  <!-- Layer 3: Diagram -->
-  <svg viewBox="0 0 520 280" xmlns="http://www.w3.org/2000/svg" style="max-width:520px; display:block; margin:1.5em auto;">
-    <defs>
-      <marker id="arr9a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#d32f2f" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#1565c0" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9c" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#2e7d32" stroke-width="1.4"/>
-      </marker>
-    </defs>
-    <!-- Axes -->
-    <line x1="50" y1="240" x2="490" y2="240" stroke="#333" stroke-width="1.5"/>
-    <line x1="50" y1="240" x2="50" y2="20" stroke="#333" stroke-width="1.5"/>
-    <text x="270" y="270" text-anchor="middle" font-size="13" fill="#333">$t$</text>
-    <text x="30" y="130" text-anchor="middle" font-size="13" fill="#333" transform="rotate(-90,30,130)">$V$</text>
-    <!-- True curve (gray dashed) -->
-    <path d="M80,200 Q200,120 400,80" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4"/>
-    <text x="410" y="75" font-size="11" fill="#999">true solution</text>
-    <!-- Point at t_n -->
-    <circle cx="80" cy="200" r="5" fill="#333"/>
-    <text x="75" y="258" font-size="12" fill="#333">$t^n$</text>
-    <text x="60" y="195" font-size="11" fill="#333">$V^n$</text>
-    <!-- k1 slope (red) from (t_n, V_n) -->
-    <line x1="80" y1="200" x2="310" y2="108" stroke="#d32f2f" stroke-width="2" marker-end="url(#arr9a)"/>
-    <text x="170" y="138" font-size="12" fill="#d32f2f" font-weight="bold">$k_1$ slope</text>
-    <!-- FE predictor point -->
-    <circle cx="310" cy="108" r="4" fill="#d32f2f" opacity="0.6"/>
-    <text x="318" y="102" font-size="11" fill="#d32f2f">$\tilde{V}$ (predictor)</text>
-    <!-- k2 slope (blue) from predicted point -->
-    <line x1="310" y1="108" x2="440" y2="75" stroke="#1565c0" stroke-width="2" marker-end="url(#arr9b)"/>
-    <text x="365" y="80" font-size="12" fill="#1565c0" font-weight="bold">$k_2$ slope</text>
-    <!-- t^{n+1} marker -->
-    <text x="300" y="258" font-size="12" fill="#333">$t^{n+1}$</text>
-    <line x1="310" y1="240" x2="310" y2="235" stroke="#333" stroke-width="1"/>
-    <!-- Average slope (green) from (t_n, V_n) -->
-    <line x1="80" y1="200" x2="310" y2="137" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arr9c)"/>
-    <text x="130" y="185" font-size="12" fill="#2e7d32" font-weight="bold">average slope → $V^{n+1}$</text>
-    <!-- Final RK2 point -->
-    <circle cx="310" cy="137" r="5" fill="#2e7d32"/>
-  </svg>
-
-  <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.1</strong> — RK2 (Heun's method) visualized. The red arrow is the Forward Euler predictor
-    ($k_1$ slope). The blue arrow is the slope evaluated at the predicted point ($k_2$). The green arrow
-    is the average of both slopes — which lands much closer to the true solution (dashed gray).
-  </p>
-
-  <!-- Layer 3: Math (the actual equations) -->
-  <p>
-    Formally, RK2 (Heun's method) advances from $V^n$ to $V^{n+1}$ in two stages. Let
-    $f(V) = \mathbf{M}^{-1}(-\mathbf{K}\,V)$ denote the right-hand side of the diffusion ODE:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.3)</span>
-    $$\boxed{\begin{aligned}
-    k_1 &= \Delta t \; f\!\left(V^n\right) & &\text{(slope at start)} \\[4pt]
-    k_2 &= \Delta t \; f\!\left(V^n + k_1\right) & &\text{(slope at FE predictor)} \\[4pt]
-    V^{n+1} &= V^n + \tfrac{1}{2}\left(k_1 + k_2\right) & &\text{(average both slopes)}
-    \end{aligned}}$$
-  </div>
-
-  <p>
-    That final line is the key: $V^{n+1}$ is <em>not</em> the Forward Euler predictor $V^n + k_1$.
-    Instead, we go back to $V^n$ and use the average of the two slopes, $\frac{1}{2}(k_1 + k_2)$.
-    This is where the name "predictor–corrector" comes from: $k_1$ predicts, and the averaging
-    with $k_2$ corrects.
-  </p>
-
-  <p>
-    Expanding $f(\mathbf{V}) = \mathcal{L}\,\mathbf{V}$ where $\mathcal{L}$ is the discrete diffusion
-    operator (i.e., <code>apply_diffusion(V)</code> from Chapter 7), the matrix form computed at each
-    timestep is:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.3b)</span>
-    $$\boxed{\begin{aligned}
-    \mathbf{k}_1 &= \mathcal{L}\,\mathbf{V}^n \\[4pt]
-    \mathbf{k}_2 &= \mathcal{L}\bigl(\mathbf{V}^n + \Delta t\,\mathbf{k}_1\bigr) \\[4pt]
-    \mathbf{V}^{n+1} &= \mathbf{V}^n + \tfrac{\Delta t}{2}\bigl(\mathbf{k}_1 + \mathbf{k}_2\bigr)
-    \end{aligned}}$$
-  </div>
-
-  <p>
-    Note that each $\mathbf{k}_i$ here is a <em>bare</em> rate vector (units of mV/ms) — the factor
-    $\Delta t$ is applied only at the final update. This is the convention used by the solver code
-    and is mathematically equivalent to the standard form (9.3) where $k_i = \Delta t \cdot f(V)$.
-  </p>
-
-  <div class="insight insight-math">
-    <p>
-      <strong>Why exactly $\frac{1}{2}$?</strong> Heun's method is designed so that the Taylor
-      expansion of $V^{n+1}$ matches the true solution through $O(\Delta t^2)$.
-      Forward Euler matches only through $O(\Delta t)$. By evaluating $f$ at the predicted point and
-      averaging, we capture the second-order term $\frac{1}{2}\Delta t^2 f'(V^n) f(V^n)$ that
-      Forward Euler misses. The coefficient $\frac{1}{2}$ is not arbitrary — it is the unique weight
-      that achieves this cancellation for the two-stage Heun form.
-    </p>
-  </div>
-
-  <!-- Layer 4: Worked example -->
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Worked example.</strong> Consider $dV/dt = -2V$ with $V^0 = 1.0$ and $\Delta t = 0.1$.
-      The exact solution at $t = 0.1$ is $e^{-0.2} = 0.81873$.
-    </p>
-    <p>
-      <strong>Forward Euler:</strong> $V^1 = 1.0 + 0.1 \times (-2 \times 1.0) = 0.800$. Error = $0.01873$.
-    </p>
-    <p>
-      <strong>RK2 (Heun):</strong><br/>
-      $k_1 = 0.1 \times (-2 \times 1.0) = -0.2$<br/>
-      $\tilde{V} = 1.0 + (-0.2) = 0.8$<br/>
-      $k_2 = 0.1 \times (-2 \times 0.8) = -0.16$<br/>
-      $V^1 = 1.0 + \frac{1}{2}(-0.2 + (-0.16)) = 1.0 - 0.18 = 0.820$. Error = $0.00127$.
-    </p>
-    <p>
-      RK2's error ($0.00127$) is <strong>15× smaller</strong> than Forward Euler's ($0.01873$) for the
-      same timestep — and it only cost one extra function evaluation.
-    </p>
-  </div>
-
-  <h3>9.4 &ensp; RK4 — The Classical Four-Stage Method</h3>
-
-  <!-- Layer 1: ELI5 -->
-  <p>
-    If RK2 is checking your speedometer twice, RK4 checks it <em>four times</em>: at the start,
-    twice at the midpoint (using two different estimates), and once at the end. It then combines
-    all four readings with a specific weighted average that is tuned to capture the curvature of
-    the solution remarkably well. RK4 is so accurate that it has been the default ODE integrator
-    in science and engineering since the 1900s — a century of trust.
-  </p>
-
-  <!-- Layer 2: Conceptual -->
-  <p>
-    The genius of RK4 is its <em>midpoint sampling</em>. Rather than just checking the endpoints
-    (like RK2), it takes two independent samples at $t^n + \Delta t/2$. Why the midpoint?
-    Because the midpoint rule for integration is second-order accurate all by itself, and by
-    doing it twice (with refined estimates), the errors cancel to fourth order. The final weighted
-    average — giving the midpoint samples twice the weight of the endpoints — is not a coincidence.
-    It mirrors Simpson's rule from numerical integration, which achieves fourth-order accuracy by
-    weighting the endpoints and midpoint as $\frac{1}{6}$, $\frac{4}{6}$, $\frac{1}{6}$.
-  </p>
-
-  <!-- Layer 3: Diagram -->
-  <svg viewBox="0 0 560 320" xmlns="http://www.w3.org/2000/svg" style="max-width:560px; display:block; margin:1.5em auto;">
-    <defs>
-      <marker id="arr9r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#d32f2f" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#e65100" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#6a1b9a" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9bl" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#1565c0" stroke-width="1.2"/>
-      </marker>
-      <marker id="arr9g2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#2e7d32" stroke-width="1.4"/>
-      </marker>
-    </defs>
-    <!-- Axes -->
-    <line x1="50" y1="280" x2="530" y2="280" stroke="#333" stroke-width="1.5"/>
-    <line x1="50" y1="280" x2="50" y2="20" stroke="#333" stroke-width="1.5"/>
-    <text x="290" y="308" text-anchor="middle" font-size="13" fill="#333">$t$</text>
-    <text x="30" y="150" text-anchor="middle" font-size="13" fill="#333" transform="rotate(-90,30,150)">$V$</text>
-    <!-- True curve (gray dashed) -->
-    <path d="M80,230 Q250,130 460,70" fill="none" stroke="#aaa" stroke-width="1.5" stroke-dasharray="6,4"/>
-    <text x="468" y="65" font-size="10" fill="#999">true</text>
-    <!-- Time markers -->
-    <text x="75" y="298" font-size="11" fill="#333">$t^n$</text>
-    <line x1="80" y1="280" x2="80" y2="275" stroke="#333"/>
-    <text x="250" y="298" font-size="11" fill="#333">$t^n\!+\!\tfrac{\Delta t}{2}$</text>
-    <line x1="270" y1="280" x2="270" y2="275" stroke="#333"/>
-    <text x="445" y="298" font-size="11" fill="#333">$t^{n+1}$</text>
-    <line x1="460" y1="280" x2="460" y2="275" stroke="#333"/>
-    <!-- Point at t_n -->
-    <circle cx="80" cy="230" r="5" fill="#333"/>
-    <!-- k1 (red) -->
-    <line x1="80" y1="230" x2="270" y2="160" stroke="#d32f2f" stroke-width="2" marker-end="url(#arr9r)" opacity="0.85"/>
-    <text x="120" y="182" font-size="12" fill="#d32f2f" font-weight="bold">$k_1$</text>
-    <circle cx="270" cy="160" r="3" fill="#d32f2f" opacity="0.5"/>
-    <!-- k2 (orange) - from (t_n, V_n) but using k1/2 -->
-    <line x1="80" y1="230" x2="270" y2="148" stroke="#e65100" stroke-width="2" marker-end="url(#arr9o)" opacity="0.85"/>
-    <text x="140" y="167" font-size="12" fill="#e65100" font-weight="bold">$k_2$</text>
-    <circle cx="270" cy="148" r="3" fill="#e65100" opacity="0.5"/>
-    <!-- k3 (purple) - from (t_n, V_n) using k2/2 -->
-    <line x1="80" y1="230" x2="270" y2="141" stroke="#6a1b9a" stroke-width="2" marker-end="url(#arr9p)" opacity="0.85"/>
-    <text x="160" y="155" font-size="12" fill="#6a1b9a" font-weight="bold">$k_3$</text>
-    <circle cx="270" cy="141" r="3" fill="#6a1b9a" opacity="0.5"/>
-    <!-- k4 (blue) - full step using k3 -->
-    <line x1="80" y1="230" x2="460" y2="83" stroke="#1565c0" stroke-width="2" marker-end="url(#arr9bl)" opacity="0.85"/>
-    <text x="310" y="130" font-size="12" fill="#1565c0" font-weight="bold">$k_4$</text>
-    <circle cx="460" cy="83" r="3" fill="#1565c0" opacity="0.5"/>
-    <!-- Final RK4 result (green) -->
-    <line x1="80" y1="230" x2="460" y2="93" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arr9g2)"/>
-    <text x="340" y="108" font-size="12" fill="#2e7d32" font-weight="bold">weighted average → $V^{n+1}$</text>
-    <circle cx="460" cy="93" r="5" fill="#2e7d32"/>
-    <!-- Legend -->
-    <rect x="350" y="195" width="180" height="80" rx="4" fill="white" stroke="#ddd" stroke-width="1"/>
-    <line x1="360" y1="212" x2="385" y2="212" stroke="#d32f2f" stroke-width="2"/>
-    <text x="392" y="216" font-size="10" fill="#333">$k_1$: slope at start (×1)</text>
-    <line x1="360" y1="230" x2="385" y2="230" stroke="#e65100" stroke-width="2"/>
-    <text x="392" y="234" font-size="10" fill="#333">$k_2$: 1st midpoint (×2)</text>
-    <line x1="360" y1="248" x2="385" y2="248" stroke="#6a1b9a" stroke-width="2"/>
-    <text x="392" y="252" font-size="10" fill="#333">$k_3$: 2nd midpoint (×2)</text>
-    <line x1="360" y1="266" x2="385" y2="266" stroke="#1565c0" stroke-width="2"/>
-    <text x="392" y="270" font-size="10" fill="#333">$k_4$: slope at end (×1)</text>
-  </svg>
-
-  <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.2</strong> — The four stages of RK4. Each colored line shows a slope evaluation;
-    the green result is the weighted average $\frac{1}{6}(k_1 + 2k_2 + 2k_3 + k_4)$.
-    The midpoint slopes ($k_2$, $k_3$) get double weight, mirroring Simpson's rule.
-  </p>
-
-  <!-- Layer 3: Math (the actual equations) -->
-  <p>
-    The classical RK4 method evaluates the right-hand side $f(V) = \mathbf{M}^{-1}(-\mathbf{K}\,V)$
-    at four carefully chosen points:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.4)</span>
-    $$\boxed{\begin{aligned}
-    k_1 &= \Delta t \; f\!\left(V^n\right) & &\text{(slope at } t^n\text{)} \\[4pt]
-    k_2 &= \Delta t \; f\!\left(V^n + \tfrac{1}{2}\,k_1\right) & &\text{(1st midpoint, using } k_1 \text{ to get there)} \\[4pt]
-    k_3 &= \Delta t \; f\!\left(V^n + \tfrac{1}{2}\,k_2\right) & &\text{(2nd midpoint, using } k_2 \text{ to get there)} \\[4pt]
-    k_4 &= \Delta t \; f\!\left(V^n + k_3\right) & &\text{(slope at } t^{n+1}\text{, using } k_3 \text{ to get there)} \\[6pt]
-    V^{n+1} &= V^n + \tfrac{1}{6}\bigl(k_1 + 2k_2 + 2k_3 + k_4\bigr) & &\text{(weighted average)}
-    \end{aligned}}$$
-  </div>
-
-  <p>
-    Read the stages as a conversation: $k_1$ says "here's the slope at the start." $k_2$ says
-    "okay, I used your slope to walk to the midpoint — here's the slope <em>there</em>." $k_3$ says
-    "let me try the midpoint again using $k_2$'s improved estimate." $k_4$ says "and here's the slope
-    at the far end, using $k_3$." The final weighted average gives the midpoint samples ($k_2, k_3$)
-    double weight because the midpoint carries more information about the interval's curvature — exactly
-    as in Simpson's 1-4-1 quadrature rule.
-  </p>
-
-  <p>
-    In discrete matrix form with $\mathcal{L}$ as the spatial operator:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.4b)</span>
-    $$\boxed{\begin{aligned}
-    \mathbf{k}_1 &= \mathcal{L}\,\mathbf{V}^n \\[3pt]
-    \mathbf{k}_2 &= \mathcal{L}\bigl(\mathbf{V}^n + \tfrac{\Delta t}{2}\,\mathbf{k}_1\bigr) \\[3pt]
-    \mathbf{k}_3 &= \mathcal{L}\bigl(\mathbf{V}^n + \tfrac{\Delta t}{2}\,\mathbf{k}_2\bigr) \\[3pt]
-    \mathbf{k}_4 &= \mathcal{L}\bigl(\mathbf{V}^n + \Delta t\,\mathbf{k}_3\bigr) \\[5pt]
-    \mathbf{V}^{n+1} &= \mathbf{V}^n + \frac{\Delta t}{6}\bigl(\mathbf{k}_1 + 2\,\mathbf{k}_2 + 2\,\mathbf{k}_3 + \mathbf{k}_4\bigr)
-    \end{aligned}}$$
-  </div>
-
-  <p>
-    Again, each $\mathbf{k}_i$ is a bare rate (mV/ms), not pre-multiplied by $\Delta t$. The factor
-    $\Delta t$ appears only at the final update, which avoids four unnecessary multiplications per step.
-  </p>
-
-  <div class="insight insight-math">
-    <p>
-      <strong>Why these specific weights?</strong> The weights $\frac{1}{6}(1, 2, 2, 1)$ are not
-      chosen by trial and error. They come from matching the Taylor expansion of $V(t^n + \Delta t)$
-      through the $\Delta t^4$ term. There are 8 "order conditions" that a 4th-order method must satisfy
-      (corresponding to the 8 rooted trees with up to 4 vertices in Butcher's theory). The classical
-      RK4 tableau — with its midpoint-endpoint structure — is the simplest 4-stage method satisfying
-      all 8 conditions. No 3-stage explicit method can achieve 4th-order accuracy.
-    </p>
-  </div>
-
-  <!-- Layer 4: Worked example -->
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Worked example.</strong> Same test: $dV/dt = -2V$, $V^0 = 1.0$, $\Delta t = 0.1$.
-      Exact answer: $e^{-0.2} = 0.818731$.
-    </p>
-    <p>
-      $k_1 = 0.1 \times (-2 \times 1.0) = -0.200$<br/>
-      $k_2 = 0.1 \times (-2 \times (1.0 - 0.100)) = 0.1 \times (-1.800) = -0.180$<br/>
-      $k_3 = 0.1 \times (-2 \times (1.0 - 0.090)) = 0.1 \times (-1.820) = -0.182$<br/>
-      $k_4 = 0.1 \times (-2 \times (1.0 - 0.182)) = 0.1 \times (-1.636) = -0.1636$
-    </p>
-    <p>
-      $V^1 = 1.0 + \frac{1}{6}(-0.200 + 2(-0.180) + 2(-0.182) + (-0.1636))$<br/>
-      $\phantom{V^1} = 1.0 + \frac{1}{6}(-1.0876) = 1.0 - 0.18127 = 0.81873$
-    </p>
-    <p>
-      <strong>Error = $0.000001$</strong> — five orders of magnitude smaller than Forward Euler, for
-      just 4× the cost. This is the power of fourth-order convergence.
-    </p>
-  </div>
-
-  <h3>9.5 &ensp; Stability Regions: How Large Can $\Delta t$ Be?</h3>
-
-  <!-- Layer 1: ELI5 -->
-  <p>
-    Every explicit method has a "safe zone" — a region in the complex plane where the timestep is
-    small enough that the solution stays bounded. Step outside this zone, and the solution blows up
-    exponentially. The size and shape of this safe zone determines the practical maximum timestep.
-  </p>
-
-  <!-- Layer 2: Conceptual -->
-  <p>
-    For the test equation $dV/dt = \lambda V$ (where $\lambda$ is an eigenvalue of the diffusion
-    operator), one timestep gives $V^{n+1} = R(z)\,V^n$ where $z = \lambda\,\Delta t$ and $R(z)$
-    is the <em>stability function</em>. The method is stable when $|R(z)| \leq 1$. For diffusion,
-    $\lambda$ is real and negative (eigenvalues of $-\mathbf{K}$), so we only need the intersection
-    of the stability region with the negative real axis.
-  </p>
-
-  <!-- Layer 3: Math -->
-  <p>
-    The stability functions for each method are:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.5)</span>
-    $$\begin{aligned}
-    \text{Forward Euler:} \quad R(z) &= 1 + z & &\text{stable for } z \in [-2, 0] \\[4pt]
-    \text{RK2 (Heun):} \quad R(z) &= 1 + z + \tfrac{1}{2}z^2 & &\text{stable for } z \in [-2, 0] \\[4pt]
-    \text{RK4:} \quad R(z) &= 1 + z + \tfrac{1}{2}z^2 + \tfrac{1}{6}z^3 + \tfrac{1}{24}z^4 & &\text{stable for } z \in [-2.785, 0]
-    \end{aligned}$$
-  </div>
-
-  <!-- Layer 3: Stability region diagram -->
-  <svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg" style="max-width:500px; display:block; margin:1.5em auto;">
-    <!-- Background -->
-    <rect x="40" y="10" width="440" height="270" fill="#f8f9fa" rx="4"/>
-    <!-- Grid lines -->
-    <line x1="280" y1="20" x2="280" y2="270" stroke="#ddd" stroke-width="1"/>
-    <line x1="50" y1="145" x2="470" y2="145" stroke="#ddd" stroke-width="1"/>
-    <!-- Real axis label -->
-    <text x="460" y="162" font-size="11" fill="#666">Re($z$)</text>
-    <text x="285" y="28" font-size="11" fill="#666">Im($z$)</text>
-    <!-- Scale marks on real axis -->
-    <text x="58" y="162" font-size="10" fill="#888">$-3$</text>
-    <line x1="60" y1="145" x2="60" y2="150" stroke="#888"/>
-    <text x="130" y="162" font-size="10" fill="#888">$-2$</text>
-    <line x1="133" y1="145" x2="133" y2="150" stroke="#888"/>
-    <text x="203" y="162" font-size="10" fill="#888">$-1$</text>
-    <line x1="207" y1="145" x2="207" y2="150" stroke="#888"/>
-    <text x="350" y="162" font-size="10" fill="#888">$1$</text>
-    <line x1="353" y1="145" x2="353" y2="150" stroke="#888"/>
-    <!-- FE stability region (circle centered at -1, radius 1) -->
-    <circle cx="207" cy="145" r="73" fill="none" stroke="#d32f2f" stroke-width="2" stroke-dasharray="6,3"/>
-    <!-- RK2 stability region (roughly elliptical, same real axis but taller) -->
-    <ellipse cx="207" cy="145" rx="73" ry="88" fill="none" stroke="#e65100" stroke-width="2" stroke-dasharray="8,3"/>
-    <!-- RK4 stability region (larger, characteristic shape) -->
-    <path d="M280,145
-             C280,90 260,50 207,35
-             C140,15 75,50 60,90
-             C45,130 50,145 53,150
-             C50,160 45,180 60,200
-             C75,240 140,275 207,255
-             C260,240 280,200 280,145 Z"
-          fill="rgba(21,101,192,0.08)" stroke="#1565c0" stroke-width="2.5"/>
-    <!-- Real axis stability intervals -->
-    <!-- FE/RK2: [-2, 0] -->
-    <line x1="133" y1="140" x2="280" y2="140" stroke="#d32f2f" stroke-width="4" opacity="0.5"/>
-    <!-- RK4: [-2.785, 0] -->
-    <line x1="75" y1="150" x2="280" y2="150" stroke="#1565c0" stroke-width="4" opacity="0.5"/>
-    <!-- Legend -->
-    <rect x="310" y="30" width="160" height="74" rx="4" fill="white" stroke="#ddd"/>
-    <line x1="320" y1="48" x2="348" y2="48" stroke="#d32f2f" stroke-width="2" stroke-dasharray="6,3"/>
-    <text x="355" y="52" font-size="11" fill="#333">FE: $|z| \leq 2$</text>
-    <line x1="320" y1="68" x2="348" y2="68" stroke="#e65100" stroke-width="2" stroke-dasharray="8,3"/>
-    <text x="355" y="72" font-size="11" fill="#333">RK2: $|z| \leq 2$</text>
-    <line x1="320" y1="88" x2="348" y2="88" stroke="#1565c0" stroke-width="2.5"/>
-    <text x="355" y="92" font-size="11" fill="#333">RK4: $|z| \leq 2.785$</text>
-  </svg>
-
-  <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.3</strong> — Stability regions in the complex $z = \lambda\,\Delta t$ plane.
-    The method is stable when $z$ lies inside the boundary. Along the negative real axis (which is
-    what matters for diffusion), RK4 allows $\sim$39% larger timesteps than FE/RK2.
-  </p>
-
-  <p>
-    A critical observation: <strong>RK2 and Forward Euler have the same stability limit along the
-    real axis</strong> ($|z| \leq 2$). So RK2 cannot take larger timesteps than Forward Euler for
-    pure diffusion — its advantage is purely in <em>accuracy per step</em>, not stability.
-    RK4, however, extends the real-axis limit to $|z| \leq 2.785$, allowing about 39% larger steps.
-    In terms of the CFL condition:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(9.6)</span>
-    $$\Delta t_{\text{RK4}} \leq \frac{2.785\; h^2}{2\,n_{\text{dim}}\,d_{\max}} \approx 1.39\;\Delta t_{\text{FE}}$$
-  </div>
-
-  <h3>9.6 &ensp; Cost vs. Accuracy: Choosing Your Explicit Method</h3>
-
-  <!-- Layer 2: Comparative analysis -->
-  <p>
-    Each RK method trades cost for accuracy. The question is: for a given error tolerance, which
-    method minimizes total work? The answer depends on whether you are
-    <em>stability-limited</em> (the CFL condition forces small $\Delta t$) or
-    <em>accuracy-limited</em> (you could take larger $\Delta t$ but the error would be too large).
-  </p>
-
-  <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
-    <thead>
-      <tr style="background:#f0f0f0;">
-        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Method</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$f$ evals/step</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Order</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Real-axis stability</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\Delta t_{\max}$ (relative)</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Best when...</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td style="padding:8px; border:1px solid #ddd;">Forward Euler</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$[-2, 0]$</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1.0×</td>
-        <td style="padding:8px; border:1px solid #ddd;">CFL-limited (fine mesh, ionic $\Delta t$ ≫ CFL)</td>
-      </tr>
-      <tr style="background:#fafafa;">
-        <td style="padding:8px; border:1px solid #ddd;">RK2 (Heun)</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">2</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">2</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$[-2, 0]$</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1.0×</td>
-        <td style="padding:8px; border:1px solid #ddd;">Accuracy matters, not quite CFL-limited</td>
-      </tr>
-      <tr>
-        <td style="padding:8px; border:1px solid #ddd;">RK4</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">4</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">4</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">$[-2.785, 0]$</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">1.39×</td>
-        <td style="padding:8px; border:1px solid #ddd;">Smooth solution, accuracy-limited regime</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <p>
-    <strong>The practical verdict for cardiac simulation:</strong> Most cardiac simulations are
-    CFL-limited — the sharp wavefront during depolarization demands small $\Delta t$ regardless of
-    accuracy concerns. In this regime, Forward Euler is usually the best choice: the CFL condition
-    forces a small enough $\Delta t$ that first-order accuracy is adequate, and the cost per step is
-    minimal. RK4 shines in accuracy-limited regimes (coarse mesh, smooth solutions) or when coupled
-    with adaptive timestepping, which Chapter 10 does not cover but is an active research direction.
-  </p>
-
-  <h3>9.7 &ensp; When Explicit Methods Shine</h3>
-
-  <p>
-    Despite the CFL constraint, explicit methods remain competitive in several important scenarios:
-  </p>
-
-  <p>
-    <strong>The mesh is coarse enough</strong> that the CFL limit does not bite. For $h = 0.2{-}0.5$ mm
-    (common in 2D studies), the allowed $\Delta t$ is comparable to or larger than what the ionic
-    solver needs anyway.
-  </p>
-
-  <p>
-    <strong>GPU parallelism is critical.</strong> Explicit methods are embarrassingly parallel — each
-    cell's update is independent. No linear system needs to be solved, no global communication is
-    required. On modern GPUs with thousands of cores, this parallelism translates directly to speed.
-  </p>
-
-  <p>
-    <strong>Memory is limited.</strong> Explicit methods store only the current state and the Laplacian
-    evaluation — no preconditioner, no Krylov vectors, no mass matrix factorization.
-  </p>
 
   <div class="insight insight-engine">
     <p>
-      In Engine V5.4, all three explicit methods inherit from a <code>DiffusionSolver</code> ABC
-      (<code>solver/diffusion_time_stepping/base.py</code>). Each calls <code>self._spatial.apply_diffusion(V)</code>
-      — the $\mathcal{L}$ operator — which encapsulates FDM, FEM, or FVM (Chapter 7). Swapping
-      between spatial methods is a one-line configuration change; the time integrator only sees the
-      operator $\mathcal{L}$. Explicit solvers need no pre-built matrices; only the implicit solvers
-      (Chapter 10) build <code>DiffusionOperators</code>.
+      In Engine V5.4, the splitting and ionic integration are cleanly separated. The
+      <code>SplittingStrategy</code> ABC (<code>solver/splitting/base.py</code>) owns an
+      <code>IonicSolver</code> and a <code>DiffusionSolver</code> and calls them in the appropriate
+      order. <code>GodunovSplitting</code> calls <code>ionic_solver.step(state, dt)</code> then
+      <code>diffusion_solver.step(state, dt)</code>. <code>StrangSplitting</code> calls ionic at
+      <code>dt/2</code>, diffusion at <code>dt</code>, ionic at <code>dt/2</code>.
     </p>
-  </div>
-
-  <div class="insight insight-warning">
     <p>
-      <strong>Memory consideration for RK4.</strong> Each $\mathbf{k}_i$ is a full-length voltage vector (one
-      float per mesh node). RK4 stores 4 of these simultaneously, plus the original $\mathbf{V}^n$.
-      For a 3D mesh with $10^6$ nodes at 8 bytes/float, that is $5 \times 8$ MB $= 40$ MB — trivial
-      on a CPU, but meaningful on a GPU where shared memory is limited. Forward Euler needs only one
-      extra vector ($2 \times 8$ MB). This is another reason why Forward Euler dominates GPU cardiac
-      codes.
+      The <code>RushLarsenSolver</code> (<code>solver/ionic_time_stepping/rush_larsen.py</code>) is
+      a subclass of the <code>IonicSolver</code> ABC. Its <code>step()</code> method follows a
+      specific order: (1) compute $I_{\text{ion}}$ from the current state, (2) compute
+      $x_\infty$ and $\tau_x$ from the <em>old</em> voltage, (3) Forward Euler on voltage,
+      (4) Rush–Larsen exponential update on gates, (5) Forward Euler on concentrations.
+      A separate <code>ForwardEulerIonicSolver</code> is available for debugging. Concentration
+      variables always use Forward Euler because they do not follow relaxation kinetics.
     </p>
   </div>
 </div>
 
-
 <!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 10 — IMPLICIT DIFFUSION SOLVERS                          -->
+<!--  CHAPTER 10 — EXPLICIT DIFFUSION SOLVERS                           -->
 <!-- ══════════════════════════════════════════════════════════════════ -->

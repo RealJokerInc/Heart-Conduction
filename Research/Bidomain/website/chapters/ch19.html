@@ -1,296 +1,1018 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 19</div>
-  <h2 class="chapter-title">Lattice-Boltzmann Methods for Bidomain</h2>
+  <h2 class="chapter-title">Lattice-Boltzmann Methods for Monodomain</h2>
   <div class="chapter-intro">
-    Engine V5.4's LBM solver achieves 10–45× speedups over FEM for the monodomain equation. Can this advantage be preserved for bidomain? Yes — but the elliptic equation requires creative treatment. This chapter develops the core strategies: pseudo-time relaxation, hybrid LBM–classical solvers, and the dual-lattice architecture that couples two independent distribution systems. We show how to extend the computational fiction of particle distributions to solve problems with fundamentally different mathematical structure.
+    Chapter 17 built the LBM machinery from first principles: distribution functions, lattice geometry,
+    collision and streaming, the equilibrium distribution born from Gauss-Hermite quadrature, and the
+    moment-space decomposition that reveals the physical content of the collision operator. Now we put
+    that machinery to work on the cardiac monodomain equation. The key additions are surprisingly
+    mechanical: an ionic source term injected into the collision step, operator splitting to separate
+    reaction from diffusion, and bounce-back boundary conditions to handle tissue edges. For anisotropic
+    tissue, we unlock the moment-space relaxation rates derived in Section 18.5 &mdash; but now we must
+    connect them quantitatively to the cardiac conductivity tensor. This chapter derives that connection,
+    presents the complete algorithm, and discusses the implementation choices that make LBM fast on GPUs.
   </div>
 
-  <h3>19.1 &ensp; The Bidomain Challenge: One Parabolic + One Elliptic</h3>
+  <h3>19.1 &ensp; The Monodomain Equation as a Target PDE</h3>
 
-  <!-- Layer 1: ELI5 -->
   <p>
-    Imagine two fish tanks connected by pipes: an intracellular tank (inside the cells) and an extracellular tank (outside the cells). Water flows from one tank to the other through countless tiny pipes — the ion channels. The voltage across the cell membrane is the water-level difference. Now here is the key: the intracellular voltage evolves over time (it changes as currents flow), so it satisfies a time-dependent equation. But the extracellular voltage is constrained to always satisfy a balance — at every instant, whatever current flows out of the intracellular space must flow through the external medium. This constraint is instantaneous, with no time dependence. One tank's level evolves; the other's is a slave variable determined by the constraint.
+    Our target is equation (7.1), the monodomain PDE that governs wave propagation in cardiac tissue:
   </p>
 
-  <!-- Layer 2: Conceptual -->
-  <p>
-    The bidomain equations (from Chapter 12) are:
-  </p>
-
-  <div class="equation-block">
-    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} + I_{\text{ion}} = \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla\phi_e)$$
-  </div>
-
-  <div class="equation-block">
-    $$0 = \nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
-  </div>
-
-  <p>
-    The first equation is <em>parabolic</em> — it has a time derivative, so it describes an evolution. The second is <em>elliptic</em> — no time derivative at all. It is a constraint that must be satisfied at every instant. LBM, by its nature, is a time-marching method: it evolves distributions forward in time. This is perfect for the parabolic equation but fundamentally at odds with the elliptic constraint.
+  <p style="text-align:center;">
+    $$\chi C_m \frac{\partial V_m}{\partial t} = \nabla \cdot (\mathbf{D}\,\nabla V_m) \;-\; \chi\,I_{\text{ion}}(V_m, \mathbf{w}) \;+\; I_{\text{stim}}$$
   </p>
 
   <p>
-    The core mismatch is this: LBM asks "How do the distributions evolve?" But the elliptic equation says "The distributions must be such that this constraint is satisfied right now." These are two different questions. Resolving the tension between them — evolution versus constraint — is the central challenge of bidomain LBM.
+    The left-hand side is the rate of change of the transmembrane potential $V_m$, scaled by the
+    surface-to-volume ratio $\chi$ and membrane capacitance $C_m$. On the right, three terms compete:
+    diffusion ($\nabla\cdot(\mathbf{D}\nabla V_m)$) spreads the voltage through tissue, ionic currents
+    ($I_{\text{ion}}$) from the cell membrane shape the action potential, and stimulus current
+    ($I_{\text{stim}}$) initiates activation. Chapters 5 and 6 detailed the ionic models (TTP06 and ORd)
+    that compute $I_{\text{ion}}$ from $V_m$ and the gating variables $\mathbf{w}$. Chapters 9 and 10
+    solved the diffusion side with explicit and implicit finite-difference methods. Now we solve it with
+    LBM.
   </p>
 
-  <div class="insight insight-intuition">
-    <p>
-      Think of the monodomain equation (Chapter 18) as a single fish tank with a changing water level. LBM marches the level forward in time with each step. The bidomain is two tanks. The intracellular tank (Vm) still evolves. But the extracellular tank (φe) is not free to evolve — its level is pinned down by the requirement that water conservation is always satisfied. This is why φe is an elliptic equation: it is an instantaneous constraint, not a time-evolution equation.
-    </p>
-  </div>
-
-  <h3>19.2 &ensp; Strategy 1: Pseudo-Time Relaxation</h3>
-
-  <!-- Layer 1: ELI5 -->
   <p>
-    If you heat a cold metal plate in a furnace with a fixed pattern of heat sources, the temperature rises over time. Eventually it reaches a steady state where the heat input exactly balances the heat loss through the edges. The temperature at that steady state is determined by the heat sources alone — it is independent of the initial condition or the "time" you waited. In mathematics, finding this steady state is the same as solving the elliptic equation that governs heat diffusion in equilibrium.
-  </p>
-
-  <!-- Layer 2: Conceptual -->
-  <p>
-    Pseudo-time relaxation exploits this observation. We cannot use LBM directly on an elliptic equation because there is no time-derivative to march. But we can invent a fictitious time — call it $\tau$ (not to be confused with the relaxation time parameter) — and add an artificial time derivative to the elliptic equation:
+    The diffusion tensor $\mathbf{D}$ encodes the anisotropy of cardiac tissue. In a 2D slab with fiber
+    direction $\mathbf{a}_l = (\cos\theta, \sin\theta)$, the tensor takes the form:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(19.1)</span>
-    $$\frac{\partial\phi_e}{\partial\tau} = \nabla\!\cdot\!\bigl[(\mathbf{D}_i\!+\!\mathbf{D}_e)\,\nabla\phi_e\bigr] + \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$$
+    $$\mathbf{D} = D_l \,\mathbf{a}_l \mathbf{a}_l^T + D_t\,(\mathbf{I} - \mathbf{a}_l \mathbf{a}_l^T)$$
   </div>
 
   <p>
-    This is now a parabolic equation in the pseudo-time $\tau$. We march it with LBM in pseudo-time for many sub-iterations until the solution settles to a steady state, meaning $\partial\phi_e/\partial\tau$ becomes negligibly small. At that point, the solution is the same as what the elliptic equation demands — the constraint is satisfied.
+    where $D_l$ is the along-fiber diffusivity and $D_t$ is the cross-fiber diffusivity. Typical values
+    are $D_l \approx 0.001$ cm$^2$/ms and $D_t \approx 0.00025$ cm$^2$/ms (a 4:1 ratio). In component
+    form:
+  </p>
+
+  <p style="text-align:center;">
+    $D_{xx} = D_l\cos^2\theta + D_t\sin^2\theta$, &ensp;
+    $D_{yy} = D_l\sin^2\theta + D_t\cos^2\theta$, &ensp;
+    $D_{xy} = (D_l - D_t)\sin\theta\cos\theta$
   </p>
 
   <p>
-    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.26):
+    For isotropic tissue ($D_l = D_t = D$), the tensor reduces to $D\,\mathbf{I}$ and the off-diagonal
+    term vanishes. For aligned fibers ($\theta = 0$), we get $D_{xx} = D_l$, $D_{yy} = D_t$, $D_{xy} = 0$.
+    The general case ($\theta \neq 0$, $D_l \neq D_t$) produces a full tensor with off-diagonal coupling.
+  </p>
+
+  <div class="insight insight-intuition">
+    <strong>The two-part structure.</strong> The monodomain PDE has a clear two-part structure:
+    <em>diffusion</em> (the divergence term, which spreads voltage through tissue) and <em>reaction</em>
+    (the ionic and stimulus terms, which generate and shape the action potential locally). These two parts
+    operate on vastly different scales &mdash; diffusion is a spatial coupling between neighboring nodes,
+    while reaction is purely local (each node's ionic currents depend only on that node's voltage and
+    gating variables). This separation is exactly what operator splitting exploits, and it maps perfectly
+    onto the LBM framework: collision handles diffusion, and the ionic ODE handles reaction.
+  </div>
+
+  <h3>19.2 &ensp; Operator Splitting: Reaction Then Diffusion</h3>
+
+  <p>
+    Following the Godunov splitting framework of Chapter 8, we solve the monodomain equation in two
+    sequential substeps per timestep. The reaction substep is purely local &mdash; it updates $V_m$ and
+    $\mathbf{w}$ at each node independently. The diffusion substep couples neighbors through LBM collision
+    and streaming.
+  </p>
+
+  <p>
+    <strong>Substep 1 &mdash; Reaction (ionic ODE):</strong> At each node, hold the diffusion term
+    frozen and solve:
+  </p>
+
+  <p style="text-align:center;">
+    $$\chi\,C_m \frac{dV_m}{dt} = -\chi\,I_{\text{ion}}(V_m, \mathbf{w}) + I_{\text{stim}}, \qquad \frac{d\mathbf{w}}{dt} = \mathbf{g}(V_m, \mathbf{w})$$
+  </p>
+
+  <p>
+    This is an ODE system at each node &mdash; identical to what we solve in Chapters 5 and 6. The
+    Rush-Larsen method (equation 8.1) handles the gating variables $\mathbf{w}$, exploiting their
+    exponential relaxation structure for accuracy and stability. After this substep, we have updated
+    gating variables $\mathbf{w}^{n+1}$ and an intermediate voltage $V_m^*$ that includes the ionic
+    contribution but not yet the diffusion.
+  </p>
+
+  <p>
+    <strong>Substep 2 &mdash; Diffusion (LBM):</strong> Now solve the diffusion part
+    $\partial V_m / \partial t = \nabla\cdot(\mathbf{D}\nabla V_m)/(\chi C_m)$ using the LBM
+    collision-streaming cycle. The collision operator splits cleanly into two pieces that mirror
+    the two-part physics of the monodomain equation:
+  </p>
+
+  <ul style="margin-left:1.5em; margin-top:0.8em; margin-bottom:0.8em;">
+    <li><strong>$\Omega^{NR}$ (non-reactive collision)</strong> &mdash; drives distributions toward
+    equilibrium, producing diffusive flux. This is the LBM mechanism for the divergence term
+    $\nabla\cdot(\mathbf{D}\nabla V_m)$.</li>
+    <li><strong>$\Omega^{R}$ (reactive collision)</strong> &mdash; injects the ionic source into the
+    distribution. This is how the reaction substep&rsquo;s output couples back into the
+    lattice populations.</li>
+  </ul>
+
+  <p>
+    The reactive collision needs a <strong>source term</strong> $S$ that encapsulates the net effect
+    of ionic currents and external stimulus:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(19.2)</span>
-    $$\tau_e = \frac{1}{2} + \frac{3\,(\mathbf{D}_i + \mathbf{D}_e)\,\Delta\tau}{\Delta x^2}$$
+    $$S = -\frac{I_{\text{ion}}(V_m^n, \mathbf{w}^n) + I_{\text{stim}}}{\chi\,C_m}$$
   </div>
 
   <p>
-    where $\Delta\tau$ is the pseudo-time step size and the conductivity is $\mathbf{D}_i + \mathbf{D}_e$ (the sum of intracellular and extracellular tensors, as required by the elliptic equation).
+    This source has units of voltage per unit time (mV/ms). The sign convention follows equation
+    (7.1): inward current (depolarizing) makes $S > 0$, outward current (repolarizing) makes
+    $S < 0$. The precise definitions of $\Omega^{NR}$ and $\Omega^{R}$ &mdash; and the physical
+    reasons they take the forms they do &mdash; are derived in Section 19.3 (BGK) and
+    Section 19.4 (MRT).
   </p>
 
-  <div class="insight insight-intuition">
-    <p>
-      The convergence speed depends on $\tau_e$ (which determines the collision rate) and on the geometry of the domain. A larger $\tau_e$ means gentler relaxation and slower convergence. Typical practice is to use a moderately large $\tau_e$ (around 0.8–1.5) to balance stability with speed. The number of pseudo-time sub-iterations per physical time step is usually 10–100, depending on the desired residual reduction. With multigrid acceleration (not detailed here), this can be reduced to 5–10 iterations.
-    </p>
+  <div class="insight insight-warning">
+    <strong>Splitting order matters.</strong> Godunov splitting (reaction first, then diffusion) is
+    first-order accurate in time. Strang splitting (half-reaction, full diffusion, half-reaction)
+    is second-order but requires two ionic evaluations per timestep. For cardiac LBM, first-order
+    Godunov splitting is standard because the timestep $\Delta t$ is already small (typically
+    0.005&ndash;0.02 ms) due to the lattice resolution requirements, and the splitting error is
+    dominated by the spatial discretization error. See Chapter 8 for the full analysis.
   </div>
 
-  <h3>19.3 &ensp; Strategy 2: Hybrid LBM–Classical Solver</h3>
+  <h3>19.3 &ensp; BGK Collision with Source Term</h3>
 
-  <!-- Layer 1: ELI5 -->
   <p>
-    You would not use a hammer to write on paper — you use a pen. And you would not use a pen to drive nails — you use a hammer. The principle is simple: use the right tool for the job. LBM is superb at time-marching parabolic equations on Cartesian grids with GPUs. Classical solvers (conjugate gradient with multigrid preconditioning) are superb at solving elliptic systems exactly (or nearly exactly) without iteration over a fictitious time.
+    The diffusion substep is where LBM does its work. Recall from Chapter 17 that each lattice node
+    carries $Q$ distribution functions $f_i$ (five for D2Q5, seven for D3Q7). The macroscopic voltage
+    is their sum: $V_m = \sum_i f_i$. The equilibrium distribution for a pure diffusion problem, derived
+    from Gauss-Hermite quadrature in Section 18.4, is:
   </p>
 
-  <!-- Layer 2: Conceptual -->
-  <p>
-    The hybrid approach splits the labor:
+  <p style="text-align:center;">
+    $$f_i^{\text{eq}} = w_i \, V_m$$
   </p>
 
-  <ul>
-    <li><strong>$V_m$ equation (parabolic)</strong>: Use LBM with MRT collision (as in monodomain). Advance it by one physical time step.</li>
-    <li><strong>$\phi_e$ equation (elliptic)</strong>: Use a classical solver — Conjugate Gradient (CG) preconditioned by Algebraic Multigrid (AMG). Solve it directly to a tight tolerance.</li>
-  </ul>
-
   <p>
-    At each physical time step:
+    This is equation (18.27) with the scalar field $\phi$ replaced by the transmembrane potential $V_m$,
+    and no advection ($\mathbf{u} = 0$). The weights $w_i$ are the Gauss-Hermite quadrature weights from
+    Section 18.4: for D2Q5, $w_0 = 1/3$ and $w_{1,2,3,4} = 1/6$.
   </p>
 
-  <ol>
-    <li>Compute ionic currents and update gates (Rush–Larsen).</li>
-    <li>March $V_m$ forward one LBM step using the $V_m$ distribution lattice.</li>
-    <li>Assemble the right-hand side for the elliptic $\phi_e$ equation, which includes the $V_m$ gradient (now known from step 2) and the stimulus term.</li>
-    <li>Solve the elliptic system $\nabla\!\cdot\!\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] = \cdots$ using CG+AMG, yielding $\phi_e$.</li>
-    <li>Feed $\phi_e$ back as a source term for the next step's $V_m$ equation.</li>
-  </ol>
-
   <p>
-    The key advantage: avoiding the pseudo-time convergence loop. The classical solver reaches machine precision in 10–30 iterations (typically much faster than 100 pseudo-time iterations). The tradeoff: data must be transferred between the LBM lattice (which lives on a Cartesian GPU grid) and the classical solver's matrix assembly (which may involve FEM or FDM operators).
+    The BGK collision with ionic source combines two physically distinct operations. We define each as a
+    <strong>rate</strong> (per unit time), consistent with the continuous collision operator $\Omega(f)$
+    from equation (18.11). The <strong>non-reactive collision rate</strong> $\Omega_i^{NR}$ is the BGK
+    relaxation toward equilibrium:
   </p>
 
-  <div class="insight insight-math">
-    <p>
-      The hybrid approach requires careful bookkeeping of the gradient $\nabla V_m$ on the LBM lattice and its transfer to the classical solver. One way to do this: compute $\nabla V_m$ on the Cartesian grid using finite differences (natural in LBM since we have nearest-neighbor data), then pass this to the classical solver's RHS assembly. The solver can run on the same grid (FDM) or on a finer/coarser grid (via interpolation operators) to trade memory for accuracy.
-    </p>
-  </div>
-
-  <h3>19.4 &ensp; The Dual-Lattice Architecture</h3>
-
-  <!-- Layer 1: ELI5 -->
-  <p>
-    Instead of mixing tools, use two of the same tool — but in different modes. Imagine having two bookkeepers, each tracking inventory for different tanks. Tank 1's bookkeeper (Lattice 1) evolves the intracellular voltage. Tank 2's bookkeeper (Lattice 2) repeatedly adjusts the extracellular potential until the water-balance constraint is met. They hand notes to each other at the end of each physical time step, telling each other what changed.
+  <p style="text-align:center;">
+    $$\Omega_i^{NR} = -\frac{1}{\tau}\bigl(f_i - w_i\,V_m\bigr)$$
   </p>
 
-  <!-- Layer 2: Conceptual -->
   <p>
-    The dual-lattice architecture maintains two independent LBM lattices, each solving its own equation:
+    This is a direct transcription of equation (18.11) with $f^{\text{eq}} = w_i V_m$. Physically,
+    $\Omega_i^{NR}$ drives each distribution toward the local equilibrium at rate $1/\tau$. When
+    $f_i > w_i V_m$ (more particles than equilibrium in direction $i$), the rate is negative &mdash;
+    particles are removed. When $f_i < w_i V_m$, particles are added. This redistribution of particles
+    among directions <em>is</em> diffusion: non-equilibrium structure in the distribution function
+    corresponds to flux, and relaxing that structure spreads voltage through tissue. The $\tau$&ndash;$D$
+    relationship (equation 17.26) quantifies exactly how the relaxation rate maps to the macroscopic
+    diffusion coefficient.
   </p>
 
-  <ul>
-    <li><strong>Lattice 1</strong>: Distribution functions $f_i^{(m)}(\mathbf{x}, t)$ solving the parabolic $V_m$ equation.
-    Relaxation time $\tau_m$ encodes the intracellular diffusivity $\mathbf{D}_i$.</li>
-    <li><strong>Lattice 2</strong>: Distribution functions $f_i^{(e)}(\mathbf{x}, t)$ solving the pseudo-time-augmented $\phi_e$ equation.
-    Relaxation time $\tau_e$ encodes the sum $\mathbf{D}_i + \mathbf{D}_e$.</li>
-  </ul>
+  <p>
+    The <strong>reactive collision rate</strong> $\Omega_i^{R}$ injects the ionic source into the
+    distribution:
+  </p>
+
+  <p style="text-align:center;">
+    $$\Omega_i^{R} = w_i\,S$$
+  </p>
 
   <p>
-    The two lattices are coupled through source terms. The source for Lattice 1 includes the gradient of $\phi_e$ (the extracellular potential) plus the ionic current. The source for Lattice 2 includes the gradient of $V_m$ plus the stimulus:
+    This is a pure source injection: the reaction term $S$ (equation 18.2) &mdash; which encapsulates
+    all ionic currents and external stimulus &mdash; is distributed among lattice directions with weights
+    $w_i$. Since $\sum_i w_i = 1$, the total injected rate is $\sum_i \Omega_i^R = S$, preserving the
+    correct total source. The weights ensure isotropy: the source does not preferentially inject particles
+    in any direction, because ionic currents have no spatial directionality &mdash; they flow across the
+    cell membrane, not along any lattice vector.
+  </p>
+
+  <p>
+    The full collision update discretizes these rates with timestep $\Delta t$:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(19.3)</span>
-    $$f_i^{(m)*} = f_i^{(m)} - \omega_m\,(f_i^{(m)} - f_i^{(m)\text{eq}}) + \Delta t\,w_i\,\bigl[\text{ionic term} + \text{coupling to } \phi_e\bigr]$$
-  </div>
-
-  <div class="equation-block">
-    <span class="equation-label">(19.4)</span>
-    $$f_i^{(e)*} = f_i^{(e)} - \omega_e\,(f_i^{(e)} - f_i^{(e)\text{eq}}) + \Delta\tau\,w_i\,\bigl[\text{coupling to } V_m + \text{stimulus}\bigr]$$
+    $$f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) = f_i - \frac{\Delta t}{\tau}\bigl(f_i - w_i\,V_m\bigr) + \Delta t\,w_i\,S$$
   </div>
 
   <p>
-    The algorithm at each physical time step is:
+    The separation is physically exact, not merely algebraic convenience. $\Omega^{NR}$ handles
+    <strong>transport</strong> &mdash; the spatial coupling between neighboring nodes that produces the
+    $\nabla\cdot(\mathbf{D}\nabla V_m)$ term in the monodomain PDE. $\Omega^R$ handles
+    <strong>reaction</strong> &mdash; the purely local ionic and stimulus currents that produce the
+    $-\chi\,I_{\text{ion}} + I_{\text{stim}}$ terms. This mirrors the operator-splitting structure of
+    Section 19.2, but now at the level of the collision operator itself. The decomposition carries
+    directly into the MRT formulation (Section 19.4), where $\Omega^{NR}$ gains direction-dependent
+    relaxation rates to model anisotropic diffusion, while $\Omega^R$ remains unchanged &mdash; because
+    the ionic physics is isotropic.
   </p>
 
-  <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
-    <p style="margin:0 0 10px 0; font-weight:bold;">Dual-Lattice Bidomain LBM Timestep:</p>
-    $$\begin{aligned}
-      &\textbf{1. Reaction:} &&\text{Ionic currents and state updates (Rush–Larsen)} \\[4pt]
-      &\textbf{2. Vm update:} &&\text{One LBM step on Lattice 1 (physical time step } \Delta t\text{)} \\[4pt]
-      &\textbf{3. φ}_e\textbf{ convergence:} &&\text{Iterate Lattice 2 until } \frac{\partial\phi_e}{\partial\tau} \text{ is negligible} \\[4pt]
-      &\textbf{4. Source exchange:} &&\text{Compute coupling terms for the next physical step}
-    \end{aligned}$$
-  </div>
+  <p>
+    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 17.26):
+  </p>
+
+  <p style="text-align:center;">
+    $$\tau = \frac{\Delta t}{2} + \frac{3D\,\Delta t}{\Delta x^2}$$
+  </p>
+
+  <p>
+    For isotropic tissue with $D = 0.001$ cm$^2$/ms, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms:
+    $\tau = 0.005 + 0.048 = 0.053$ ms. The collision rate is $\omega = \Delta t/\tau \approx 0.189$.
+    Stability requires $\tau > \Delta t/2$, which holds for any positive diffusivity.
+  </p>
+
+  <p>
+    After collision, streaming (equation 17.15) shifts each post-collision distribution one lattice
+    spacing in its designated direction:
+  </p>
+
+  <p style="text-align:center;">
+    $$f_i(\mathbf{x} + \mathbf{e}_i \Delta x, \; t + \Delta t) = f_i^*(\mathbf{x}, t)$$
+  </p>
+
+  <p>
+    No new mathematical machinery is required beyond what Chapter 17 established. The cardiac monodomain
+    is solved by the same collide-and-stream cycle that solves any diffusion equation &mdash; the ionic
+    model simply provides the source term.
+  </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Worked example outline.</strong> Suppose at the start of a timestep: $V_m$ is known (say, $-85$ mV at most nodes), and $\phi_e$ is at its previous steady state. We compute ionic currents (depends on $V_m$ and gates). Lattice 1 takes one LBM step, advancing $V_m$ to $-84$ mV (approximately). Now $V_m$ has changed, so the constraint for $\phi_e$ has changed (because the RHS includes $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$). Lattice 2 then iterates in pseudo-time, re-adjusting $\phi_e$ at every node until the new steady state is reached. This typically takes 10–50 pseudo-time iterations. Once converged, Lattice 1 knows the new $\phi_e$ value for the next physical step's source term.
+      <strong>Physical interpretation.</strong> Think of the source $S$ as a faucet (or drain) at each
+      lattice node. When a stimulus depolarizes a cell ($S > 0$), it adds voltage to the local particle
+      population &mdash; distributed equally among all directions via the weights $w_i$. The collision
+      then relaxes the distribution toward equilibrium (spreading the perturbation), and streaming carries
+      the information to neighboring nodes. This is how a depolarization wave propagates through the
+      lattice: source injection → collision → streaming → recovery, repeated every timestep.
     </p>
   </div>
 
-  <!-- Layer 3: Architecture comparison -->
+  <h3>19.4 &ensp; MRT for Anisotropic Tissue</h3>
+
+  <h4>Why BGK Fails for Anisotropy</h4>
+
   <p>
-    How do the three strategies compare?
+    Cardiac tissue conducts three to four times faster along fibers than across them. This anisotropy is
+    encoded in the diffusion tensor $\mathbf{D}$ (equation 18.1), which has different eigenvalues along
+    and perpendicular to the fiber direction. Can BGK handle this?
+  </p>
+
+  <p>
+    No. Recall from Section 18.5 that BGK uses a single relaxation rate $\omega = \Delta t/\tau$ for
+    <em>all</em> moments. When we decoded the collision into moment space, we saw that the $x$-flux and
+    $y$-flux moments both relax at the same rate $s_1 = s_2 = \omega$. Since the diffusion coefficient
+    in each direction is determined by the corresponding flux relaxation rate, BGK forces $D_x = D_y$.
+    It can only produce isotropic diffusion. For anisotropic cardiac tissue, we need to unlock those
+    rates &mdash; relax the $x$-flux and $y$-flux at different speeds. This is exactly what MRT
+    (Multiple Relaxation Time) does.
+  </p>
+
+  <h4>From the Conductivity Tensor to Relaxation Rates</h4>
+
+  <p>
+    Section 18.5 showed that MRT relaxes each moment independently: the conserved moment (density) at
+    rate $s_0 = 0$, the flux moments at rates $s_1, s_2$, and the ghost moments at freely chosen rates.
+    The question is: what values of $s_1$ and $s_2$ reproduce a given anisotropic diffusion tensor?
+  </p>
+
+  <p>
+    Start from the scalar $\tau$-$D$ relationship (equation 17.24), which Chapman-Enskog analysis
+    derives for the BGK operator:
+  </p>
+
+  <p style="text-align:center;">
+    $$D = c_s^2\left(\tau - \frac{\Delta t}{2}\right)$$
+  </p>
+
+  <p>
+    This relates a single diffusivity $D$ to a single relaxation time $\tau$. For anisotropic diffusion,
+    we need a <strong>tensor</strong> generalization. The Chapman-Enskog expansion applied to the MRT
+    collision operator (equation 17.40) shows that each component of the diffusion tensor maps to a
+    corresponding relaxation parameter:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.4)</span>
+    $$D_{\alpha\beta} = c_s^2\left(\tau_{\alpha\beta} - \frac{\Delta t}{2}\,\delta_{\alpha\beta}\right)$$
+  </div>
+
+  <p>
+    where $\alpha, \beta \in \{x, y\}$ (or $\{x, y, z\}$ in 3D). This is the tensor $\tau$-$D$
+    relationship &mdash; the natural extension of equation (18.24) from a scalar to a matrix. Rearranging
+    for the relaxation parameters:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.5)</span>
+    $$\tau_{\alpha\beta} = \frac{\Delta t}{2}\,\delta_{\alpha\beta} + \frac{D_{\alpha\beta}}{c_s^2}$$
+  </div>
+
+  <p>
+    Substituting $c_s^2 = \Delta x^2/(3\Delta t^2)$:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.6)</span>
+    $$\tau_{\alpha\beta} = \frac{\Delta t}{2}\,\delta_{\alpha\beta} + \frac{3\,D_{\alpha\beta}\,\Delta t}{\Delta x^2}$$
+  </div>
+
+  <p>
+    This is the tensor generalization of equation (18.26). Each entry of the $\tau$ matrix is determined
+    by the corresponding entry of the diffusion tensor. The Kronecker delta $\delta_{\alpha\beta}$
+    ensures that the $\Delta t/2$ offset only appears on the diagonal.
+  </p>
+
+  <p>
+    For D2Q5 with axis-aligned fibers ($\theta = 0$), the diffusion tensor is diagonal
+    ($D_{xx} = D_l$, $D_{yy} = D_t$, $D_{xy} = 0$), and the relaxation parameters simplify to:
+  </p>
+
+  <p style="text-align:center;">
+    $\tau_{xx} = \frac{\Delta t}{2} + \frac{3D_l\Delta t}{\Delta x^2}$, &ensp;
+    $\tau_{yy} = \frac{\Delta t}{2} + \frac{3D_t\Delta t}{\Delta x^2}$, &ensp;
+    $\tau_{xy} = 0$
+  </p>
+
+  <p>
+    These become the flux relaxation rates: $s_1 = \Delta t/\tau_{xx}$ controls the $x$-flux decay (and
+    hence $D_{xx}$), while $s_2 = \Delta t/\tau_{yy}$ controls the $y$-flux decay (and hence $D_{yy}$).
+    Since $D_l > D_t$, we have $\tau_{xx} > \tau_{yy}$, so the $x$-flux relaxes more slowly &mdash;
+    it takes longer to reach equilibrium, which means more information persists in the $x$-direction,
+    producing faster diffusion along the fiber.
+  </p>
+
+  <div class="insight insight-intuition">
+    <strong>Why slower relaxation means faster diffusion.</strong> This seems backwards at first.
+    A larger $\tau$ means <em>less</em> relaxation per timestep &mdash; the distribution retains more
+    of its non-equilibrium structure. But non-equilibrium structure <em>is</em> the flux. A large
+    departure from equilibrium means a large gradient, which drives faster diffusion. If $\tau$ were
+    very small (rapid relaxation), the distribution would snap to equilibrium immediately &mdash; zero
+    flux, zero diffusion. This is the lattice-Boltzmann version of "a stiff spring returns to rest
+    quickly but doesn't transmit waves far."
+  </div>
+
+  <h4>The Off-Diagonal Problem: Rotated Fibers</h4>
+
+  <p>
+    When fibers are not aligned with the lattice axes ($\theta \neq 0$), the diffusion tensor has
+    off-diagonal entries ($D_{xy} \neq 0$). Equation (19.6) then gives $\tau_{xy} \neq 0$, which means
+    the relaxation matrix $\mathbf{S}$ in equation (18.40) is no longer diagonal in the Cartesian moment
+    basis. There are two standard approaches:
+  </p>
+
+  <p>
+    <strong>Approach 1 &mdash; Rotate the moment basis.</strong> Construct $\mathbf{M}$ using the
+    fiber-aligned coordinate system instead of the lattice axes. The flux moments then align with the
+    fiber and cross-fiber directions, where $\mathbf{D}$ is diagonal, and $\mathbf{S}$ stays diagonal.
+    This requires a different $\mathbf{M}$ at each node (since fiber angles vary spatially), which adds
+    computational cost.
+  </p>
+
+  <p>
+    <strong>Approach 2 &mdash; Modify the equilibrium distribution.</strong> Keep the standard
+    $\mathbf{M}$ (equation 17.36) but replace the isotropic equilibrium $f_i^{\text{eq}} = w_i V_m$
+    with an anisotropic equilibrium that encodes the full diffusion tensor:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.7)</span>
+    $$f_i^{\text{eq}} = w_i \, V_m \left(1 + \frac{e_{i\alpha}\,e_{i\beta}\,D_{\alpha\beta}}{2\,c_s^2\,D_0} - \frac{1}{2}\frac{\text{tr}(\mathbf{D})}{D_0 \cdot d}\right)$$
+  </div>
+
+  <p>
+    where $D_0$ is a reference diffusivity and summation over $\alpha, \beta$ is implied. This approach
+    absorbs the anisotropy into the equilibrium target rather than the relaxation rates, allowing a single
+    scalar $\tau$ to be used. The implementation is simpler (no per-node $\mathbf{M}$ matrices) but the
+    equilibrium is more complex.
+  </p>
+
+  <p>
+    For the remainder of this chapter, we use <strong>Approach 1</strong> (the MRT formulation with
+    diagonal $\mathbf{S}$ in the principal-axis frame), which makes the connection to Chapter 17's
+    moment-space machinery most transparent.
+  </p>
+
+  <h4>The Full MRT Collision with Source</h4>
+
+  <p>
+    Assembling the pieces from Section 18.5 (equations 17.38&ndash;17.41), the MRT collision with ionic
+    source uses the same $\Omega^{NR} + \Omega^R$ decomposition from Section 19.3, but with the
+    non-reactive part now operating in moment space. Defining the rate-based collision operators:
+  </p>
+
+  <p style="text-align:center;">
+    $$\boldsymbol{\Omega}^{NR} = -\frac{1}{\Delta t}\,\mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr), \qquad \boldsymbol{\Omega}^{R} = \mathbf{w}\,S$$
+  </p>
+
+  <p>
+    where $\mathbf{S} = \Delta t \cdot \boldsymbol{\Lambda}$ is the dimensionless relaxation matrix
+    (with entries $s_k = \Delta t / \tau_k$), the factor $1/\Delta t$ converts the finite increment
+    back to a rate. The full MRT update is then:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.8)</span>
+    $$\boxed{\mathbf{f}^* = \mathbf{f} + \Delta t\bigl(\underbrace{\boldsymbol{\Omega}^{NR}}_{\text{diffusion}} + \underbrace{\boldsymbol{\Omega}^{R}}_{\text{reaction}}\bigr) = \mathbf{f} - \mathbf{M}^{-1}\,\mathbf{S}\,\bigl(\mathbf{M}\mathbf{f} - \mathbf{M}\mathbf{f}^{\text{eq}}\bigr) + \Delta t\,\mathbf{w}\,S}$$
+  </div>
+
+  <p>
+    The expanded right-hand side is identical to the standard MRT form &mdash; the $1/\Delta t$ in
+    $\boldsymbol{\Omega}^{NR}$ cancels with $\Delta t$ in the update. But the conceptual decomposition
+    is preserved: $\boldsymbol{\Omega}^{NR}$ is the rate at which moment-space relaxation produces
+    diffusive flux (anisotropic, direction-dependent), while $\boldsymbol{\Omega}^{R}$ is the rate at
+    which ionic source is injected (isotropic, identical to the BGK case).
+  </p>
+
+  <p>
+    Here $\mathbf{M}$ is the transformation matrix (equation 17.36 for D2Q5, equation 17.37 for D3Q7),
+    $\mathbf{S}$ is the diagonal relaxation matrix, $\mathbf{w} = (w_0, w_1, \ldots, w_{Q-1})^T$ is the
+    weight vector, and $S$ is the ionic source (equation 18.2). The relaxation matrix for D2Q5 is:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.9)</span>
+    $$\mathbf{S}_{\text{D2Q5}} = \text{diag}\!\left(0, \;\frac{\Delta t}{\tau_{xx}}, \;\frac{\Delta t}{\tau_{yy}}, \;s_3, \;s_4\right)$$
+  </div>
+
+  <p>
+    The first entry is zero (density is conserved &mdash; never relaxed). Entries 1 and 2 are the flux
+    relaxation rates that control $D_{xx}$ and $D_{yy}$ through equation (19.6). Entries 3 and 4 are the
+    <strong>ghost-moment rates</strong> &mdash; the free parameters discussed in Section 18.5.
+  </p>
+
+  <h4>Ghost-Moment Rates and the Gram-Schmidt Construction</h4>
+
+  <p>
+    Section 18.5 stated that the ghost rows of $\mathbf{M}$ "just need to be linearly independent" from
+    the physical rows to make the matrix invertible. But <em>how</em> do you construct them in practice?
+  </p>
+
+  <p>
+    The standard procedure is <strong>Gram-Schmidt orthogonalization</strong>. Start with the physical
+    rows &mdash; the density row $(1, 1, 1, 1, 1)$ and the flux rows $(0, 1, -1, 0, 0)$,
+    $(0, 0, 0, 1, -1)$ &mdash; which are dictated by conservation laws and Fick's law. Then construct
+    the remaining rows by taking higher-order velocity products ($|\mathbf{e}_i|^2$,
+    $e_{ix}^2 - e_{iy}^2$, etc.) and orthogonalizing them against the physical rows using the
+    Gram-Schmidt process. This yields a well-conditioned $\mathbf{M}$ whose inverse is numerically
+    stable.
+  </p>
+
+  <p>
+    For D2Q5, the two ghost rows in equation (18.36) correspond to the "energy" moment
+    $\sum_i |\mathbf{e}_i|^2 f_i$ and the "energy difference" moment
+    $\sum_i (e_{ix}^2 - e_{iy}^2) f_i$. These are second-order velocity products that are linearly
+    independent of the zeroth- and first-order physical rows. The Gram-Schmidt process ensures they are
+    also orthogonal, which makes $\mathbf{M}$ well-conditioned. For D3Q7 (equation 17.37), the same
+    procedure generates four ghost rows from second-order products in three dimensions.
+  </p>
+
+  <p>
+    What about the ghost relaxation rates $s_3$ and $s_4$? Since no macroscopic conservation law
+    constrains them, they are <strong>free parameters</strong>. The Chapman-Enskog analysis shows that
+    they do not appear in the recovered PDE at leading order &mdash; they affect only the truncation error
+    and numerical stability. In practice, the standard choice is:
+  </p>
+
+  <p style="text-align:center;">
+    $s_3 = s_4 = 1.0$ &ensp; (full relaxation to equilibrium each timestep)
+  </p>
+
+  <p>
+    Setting a ghost rate to 1.0 means the corresponding moment is driven entirely to its equilibrium
+    value in a single collision step &mdash; maximum damping of non-physical modes. This is the most
+    stable choice. Some authors optimize ghost rates for specific accuracy targets (for example, setting
+    $s_3 = s_4 = 8(2 - s_1)/(8 - s_1)$ to cancel certain third-order error terms), but for cardiac
+    simulations where stability matters more than squeezing out extra order of accuracy, $s_3 = s_4 = 1.0$
+    is the standard.
+  </p>
+
+  <div class="insight insight-math">
+    <strong>Why ghost rates affect stability but not the PDE.</strong> The Chapman-Enskog expansion
+    recovers the macroscopic PDE from the lattice-Boltzmann equation order by order in the Knudsen
+    number $\epsilon = \Delta x / L$ (where $L$ is a macroscopic length scale). The zeroth-order
+    recovery gives mass conservation. The first-order recovery gives the diffusion equation, with $D$
+    determined by the flux relaxation rates $s_1, s_2$. The ghost rates $s_3, s_4$ first appear at
+    <em>second</em> order, in the truncation error. They modify the coefficient of the $O(\Delta x^2)$
+    error term but leave the leading-order PDE untouched. This is why different textbooks use different
+    ghost rows and different ghost rates yet recover the same diffusion equation &mdash; they differ
+    only in their numerical error properties.
+  </div>
+
+  <h4>Worked Example: MRT Collision with Anisotropic Tissue</h4>
+
+  <p>
+    Consider D2Q5 with $D_l = 0.001$ cm$^2$/ms, $D_t = 0.00025$ cm$^2$/ms, fiber angle $\theta = 0$
+    (aligned with $x$), $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms.
+  </p>
+
+  <p>
+    From equation (19.6):
+  </p>
+
+  <p style="text-align:center;">
+    $\tau_{xx} = 0.005 + \frac{3 \times 0.001 \times 0.01}{0.000625} = 0.005 + 0.048 = 0.053$ ms
+    <br/>
+    $\tau_{yy} = 0.005 + \frac{3 \times 0.00025 \times 0.01}{0.000625} = 0.005 + 0.012 = 0.017$ ms
+  </p>
+
+  <p>
+    The relaxation rates:
+  </p>
+
+  <p style="text-align:center;">
+    $s_1 = \Delta t / \tau_{xx} = 0.01/0.053 = 0.189$, &ensp;
+    $s_2 = \Delta t / \tau_{yy} = 0.01/0.017 = 0.588$
+  </p>
+
+  <p>
+    As expected, the cross-fiber direction ($y$) relaxes faster ($s_2 > s_1$), producing slower diffusion.
+    The full relaxation matrix is:
+  </p>
+
+  <p style="text-align:center;">
+    $\mathbf{S} = \text{diag}(0, \; 0.189, \; 0.588, \; 1.0, \; 1.0)$
+  </p>
+
+  <p>
+    Now suppose $V_m = -85$ mV, with the same non-equilibrium distributions from the Chapter 17 worked
+    example: $\mathbf{f} = (0.340, \; 0.175, \; 0.155, \; 0.168, \; 0.162)^T \times (-85)$ (scaled to
+    voltage), and a stimulus source $S = 0.0371$ mV/ms. The MRT collision proceeds as:
+  </p>
+
+  <p>
+    1. Decode: $\mathbf{m} = \mathbf{M}\mathbf{f}$ &mdash; extract density, $x$-flux, $y$-flux, and
+    ghost moments. <br/>
+    2. Relax: $m_0^* = m_0$ (conserved), $m_1^* = m_1 - 0.189(m_1 - 0)$, $m_2^* = m_2 - 0.588(m_2 - 0)$,
+    $m_3^* = 0$ (full relaxation), $m_4^* = 0$ (full relaxation). <br/>
+    3. Re-encode: $\mathbf{f}^* = \mathbf{M}^{-1}\mathbf{m}^*$. <br/>
+    4. Add source: $f_i^* \leftarrow f_i^* + \Delta t \, w_i \, S$.
+  </p>
+
+  <p>
+    The $x$-flux decays by 18.9% (slow — high diffusivity along fibers), while the $y$-flux decays by
+    58.8% (fast — low diffusivity across fibers). The ghost moments snap entirely to equilibrium. This is
+    the same collision from the Chapter 17 worked example, but now with the $x$ and $y$ dials set to
+    different values.
+  </p>
+
+  <h3>19.5 &ensp; Boundary Conditions for LBM Electrophysiology</h3>
+
+  <p>
+    In classical methods (FEM, FDM), boundary conditions are applied by modifying
+    the global stiffness matrix or by constraining node values. In LBM, boundaries
+    are handled at the <em>distribution level</em> &mdash; you modify individual $f_i$
+    at boundary nodes, one direction at a time. This local, direction-by-direction
+    approach is one of LBM&rsquo;s most elegant features: no global matrix is ever
+    touched, and complex geometries require no special mesh generation.
+  </p>
+
+  <p>
+    For cardiac electrophysiology, the dominant boundary condition is <strong>no-flux
+    Neumann</strong>: no transmembrane current leaves the tissue domain. Physically,
+    the heart is electrically insulated &mdash; ionic currents flow within the
+    myocardium but cannot escape through the epicardial surface. Mathematically,
+    this is $\nabla V_m \cdot \hat{n} = 0$ at every tissue boundary, where $\hat{n}$
+    is the outward normal.
+  </p>
+
+  <h4>19.5.1 &ensp; Full-Way Bounce-Back</h4>
+
+  <p>
+    Imagine a ball thrown at a wall: it bounces straight back. <strong>Full-way
+    bounce-back</strong> works the same way. When a distribution $f_i$ at a boundary
+    node would stream into a solid (non-tissue) region, it reverses direction &mdash;
+    it becomes $f_{\bar{i}}$, where $\bar{i}$ denotes the opposite direction
+    ($\mathbf{e}_{\bar{i}} = -\mathbf{e}_i$).
+  </p>
+
+  <p>
+    Concretely, at a boundary node $\mathbf{x}_b$, after the collision step produces
+    $f_i^*(\mathbf{x}_b)$, instead of streaming $f_i^*$ to the neighbor
+    $\mathbf{x}_b + \mathbf{e}_i \Delta x$ (which lies outside the domain), we apply:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.10)</span>
+    $$f_{\bar{i}}(\mathbf{x}_b, \, t + \Delta t) = f_i^*(\mathbf{x}_b, \, t)$$
+  </div>
+
+  <p>
+    The post-collision distribution that <em>would have</em> left the domain in
+    direction $i$ is redirected to arrive at the same node in the opposite direction
+    $\bar{i}$. Every unit of &ldquo;flux&rdquo; heading outward is perfectly reflected
+    inward, so the net flux at the boundary is zero &mdash; exactly the no-flux
+    Neumann condition.
+  </p>
+
+  <p>
+    For the D2Q9 lattice used in this chapter, the opposite pairs are:
+  </p>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Direction $i$</th>
+        <th>Velocity $\mathbf{e}_i$</th>
+        <th>Opposite $\bar{i}$</th>
+        <th>Velocity $\mathbf{e}_{\bar{i}}$</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="2">Axial</td><td>1</td><td>$(+1, 0)$</td><td>3</td><td>$(-1, 0)$</td></tr>
+      <tr><td>2</td><td>$(0, +1)$</td><td>4</td><td>$(0, -1)$</td></tr>
+      <tr><td rowspan="2">Diagonal</td><td>5</td><td>$(+1, +1)$</td><td>7</td><td>$(-1, -1)$</td></tr>
+      <tr><td>6</td><td>$(-1, +1)$</td><td>8</td><td>$(+1, -1)$</td></tr>
+      <tr><td>Rest</td><td>0</td><td>$(0, 0)$</td><td colspan="2"><em>No partner &mdash; never streamed</em></td></tr>
+    </tbody>
+  </table>
+
+  <div class="insight insight-intuition">
+    <strong>Corner nodes.</strong> At a corner where two boundaries meet (say, the
+    bottom-left corner of a rectangular domain), bounce-back applies to <em>both</em>
+    boundary directions independently. If $\mathbf{e}_3 = (-1,0)$ and
+    $\mathbf{e}_4 = (0,-1)$ would stream out of the domain, both are reflected:
+    $f_1 \leftarrow f_3^*$ and $f_2 \leftarrow f_4^*$. The diagonal direction
+    $\mathbf{e}_7 = (-1,-1)$ is also reflected: $f_5 \leftarrow f_7^*$. No special
+    corner treatment is needed &mdash; bounce-back handles it automatically,
+    direction by direction.
+  </div>
+
+  <h4>19.5.2 &ensp; Half-Way Bounce-Back</h4>
+
+  <p>
+    Full-way bounce-back places the effective wall <em>at</em> the boundary node itself.
+    <strong>Half-way bounce-back</strong> places the wall halfway between the last fluid
+    node and the first solid node. This seemingly small shift has an important consequence:
+    the boundary condition becomes <strong>second-order accurate</strong> in space, matching
+    the second-order accuracy of the interior LBM scheme.
+  </p>
+
+  <p>
+    The rule is almost identical to full-way bounce-back, but the timing changes. Instead
+    of reflecting at the same timestep, the reflected distribution arrives one timestep
+    later:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(19.10b)</span>
+    $$f_{\bar{i}}(\mathbf{x}_b, \, t + \Delta t) = f_i^*(\mathbf{x}_b, \, t)$$
+  </div>
+
+  <p>
+    The formula <em>looks</em> the same as full-way bounce-back (eq. 18.10), but
+    the interpretation differs: the wall is now located at
+    $\mathbf{x}_b + \tfrac{1}{2}\mathbf{e}_i \Delta x$, not at $\mathbf{x}_b$.
+    On a uniform Cartesian grid, half-way bounce-back is the standard choice because
+    the wall sits exactly at the cell face &mdash; which is where finite-difference
+    methods also place the boundary.
+  </p>
+
+  <div class="insight insight-math">
+    <strong>Why second-order?</strong> The key insight is that the streaming step
+    in LBM is <em>exact</em> &mdash; distributions travel exactly one lattice spacing
+    per timestep. When the wall is at the half-way point, the round-trip distance
+    (fluid node → wall → fluid node) is exactly $\Delta x$, which takes exactly
+    $\Delta t$. This geometric coincidence eliminates the first-order error that
+    arises when the wall does not sit at a half-integer position. For regular
+    Cartesian grids (as used in cardiac LBM), this condition is automatically
+    satisfied.
+  </p>
+  </div>
+
+  <h4>19.5.3 &ensp; Identifying Boundary Nodes</h4>
+
+  <p>
+    Before applying bounce-back, we must know <em>which</em> nodes are boundary
+    nodes and <em>which directions</em> need reflection. In a cardiac simulation
+    on a regular grid, the tissue geometry is typically defined by a binary mask:
+    each grid point is either &ldquo;tissue&rdquo; (active) or &ldquo;non-tissue&rdquo;
+    (inactive).
+  </p>
+
+  <p>
+    A fluid node $\mathbf{x}$ is a <strong>boundary node</strong> if at least one
+    of its lattice neighbors $\mathbf{x} + \mathbf{e}_i \Delta x$ is non-tissue.
+    The specific directions $i$ that point into non-tissue are the
+    <strong>boundary links</strong> &mdash; these are the directions where bounce-back
+    must be applied. In practice, this is precomputed once at initialization:
+  </p>
+
+  <pre class="code-block"><code>for each fluid node x:
+    for each direction i = 1, ..., Q-1:
+        neighbor = x + e_i * dx
+        if neighbor is outside domain or non-tissue:
+            mark (x, i) as a boundary link</code></pre>
+
+  <p>
+    At runtime, the streaming step skips boundary links (no data is sent to
+    non-tissue nodes), and the bounce-back rule (eq. 18.10) is applied instead.
+    This keeps the boundary treatment local and branchless &mdash; ideal for GPU
+    execution.
+  </p>
+
+  <h4>19.5.4 &ensp; Handling Irregular Tissue Geometries</h4>
+
+  <p>
+    Real cardiac tissue is not rectangular. The left ventricle is roughly ellipsoidal,
+    the atria have complex curved surfaces, and scar tissue creates irregular internal
+    boundaries. On a regular Cartesian grid, these curved boundaries are approximated
+    by a <strong>staircase</strong> &mdash; the tissue mask follows the grid lines,
+    creating jagged edges where the true boundary is smooth.
+  </p>
+
+  <p>
+    For cardiac electrophysiology, staircase boundaries are generally acceptable
+    for two reasons:
+  </p>
+
+  <ol>
+    <li><strong>Diffusion dominates geometry.</strong> The monodomain equation is
+    a reaction-diffusion PDE, not a fluid-flow problem. Small geometric errors at
+    the boundary (on the order of $\Delta x$) produce errors in the diffusion flux
+    that are $O(\Delta x)$ &mdash; the same order as the spatial discretization error.
+    Refining the grid improves both simultaneously.</li>
+    <li><strong>No pressure or velocity fields.</strong> In fluid LBM, staircase
+    boundaries create spurious pressure oscillations and inaccurate drag forces.
+    These problems do not arise in diffusion-only LBM because there is no momentum
+    equation &mdash; only a scalar field $V_m$ that diffuses smoothly.</li>
+  </ol>
+
+  <div class="insight insight-warning">
+    <strong>When staircases fail.</strong> If you need sub-grid accuracy at the
+    boundary (e.g., modeling the exact endocardial surface for defibrillation
+    electrode placement), interpolated bounce-back methods exist. The simplest is
+    <strong>linear interpolation bounce-back</strong>, which uses the fractional
+    distance $q$ from the fluid node to the actual wall:
+    $f_{\bar{i}}(\mathbf{x}_b, t+\Delta t) = 2q\,f_i^*(\mathbf{x}_b, t)
+    + (1-2q)\,f_i^*(\mathbf{x}_b - \mathbf{e}_i \Delta x, t)$ for $q < 1/2$,
+    with a complementary formula for $q \geq 1/2$. This restores second-order
+    accuracy on curved boundaries but adds implementation complexity. For most
+    cardiac EP applications, standard bounce-back on a sufficiently fine grid
+    ($\Delta x \leq 0.2$ mm) is adequate.
+  </div>
+
+  <h4>19.5.5 &ensp; Comparison with Classical BC Methods</h4>
+
+  <table class="data-table" style="width:auto; margin:1em auto;">
+    <thead>
+      <tr>
+        <th>Aspect</th>
+        <th>LBM (Bounce-Back)</th>
+        <th>FDM (Ghost Nodes)</th>
+        <th>FEM (Natural BC)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>No-flux Neumann</td>
+        <td>Reflect $f_i^*$</td>
+        <td>Mirror $V_m$ across boundary</td>
+        <td>Omit boundary integral (automatic)</td>
+      </tr>
+      <tr>
+        <td>Implementation</td>
+        <td>Local, per-link</td>
+        <td>Ghost node layer</td>
+        <td>Modify stiffness matrix</td>
+      </tr>
+      <tr>
+        <td>Curved geometry</td>
+        <td>Staircase or interpolated BB</td>
+        <td>Immersed boundary</td>
+        <td>Unstructured mesh (exact)</td>
+      </tr>
+      <tr>
+        <td>Accuracy</td>
+        <td>1st order (full-way) / 2nd order (half-way)</td>
+        <td>2nd order</td>
+        <td>Arbitrary (mesh-dependent)</td>
+      </tr>
+      <tr>
+        <td>GPU friendliness</td>
+        <td>Excellent (local, branchless)</td>
+        <td>Good</td>
+        <td>Moderate (sparse matrix ops)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="insight insight-engine">
+    <strong>Engine V5.4 implementation.</strong> The LBM solver uses half-way
+    bounce-back on a Cartesian grid. Boundary links are precomputed during
+    initialization into a compressed list <code>[(node_idx, direction)]</code>.
+    During the streaming step, boundary links are processed separately: instead of
+    writing to the neighbor, the post-collision value is written back to the opposite
+    direction at the same node. The tissue mask is read from the geometry input
+    (same binary mask used by the FDM solver) and converted to boundary links
+    automatically.
+  </div>
+
+
+  <h3>19.6 &ensp; The Complete LBM-EP Algorithm</h3>
+
+  <p>
+    Assembling all the pieces &mdash; operator splitting (Section 19.2), BGK or MRT collision with source
+    (Sections 19.3&ndash;18.4), streaming (Chapter 17), and bounce-back boundaries (Section 19.5) &mdash;
+    the complete algorithm for one timestep is:
+  </p>
+
+  <div class="equation-block" style="background:#f8f8f0; border:2px solid #666; padding:15px; border-radius:4px;">
+    <span class="equation-label">(19.11)</span>
+    <p style="margin:0 0 10px 0; font-weight:bold;">Complete LBM-EP step (BGK or MRT):</p>
+    $$\begin{aligned}
+      &\textbf{1. Ionic:} &&I_{\text{ion}} = \text{IonicModel.compute\_Iion}(V_m, \mathbf{w}); \quad \text{update } \mathbf{w} \text{ via Rush-Larsen} \\[4pt]
+      &\textbf{2. Source:} &&S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m} \\[4pt]
+      &\textbf{3. Collide:} &&f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) \quad \text{(BGK eq. 18.3, or MRT eq. 18.8)} \\[4pt]
+      &\textbf{4. Stream:} &&f_i(\mathbf{x} + \mathbf{e}_i \Delta x) \leftarrow f_i^*(\mathbf{x}) \quad \forall\, i \\[4pt]
+      &\textbf{5. Bounce-back:} &&f_{\bar{i}}(\mathbf{x}_b) \leftarrow f_i^*(\mathbf{x}_b) \quad \text{at boundary nodes} \\[4pt]
+      &\textbf{6. Recover:} &&V_m^{n+1} = \textstyle\sum_i f_i
+    \end{aligned}$$
+  </div>
+
+  <p>
+    Steps 3&ndash;6 constitute the diffusion solver. Note the complete absence of matrix assembly,
+    matrix-vector products, or iterative convergence checks. Every operation is either purely local
+    (collision, source injection, recovery) or a nearest-neighbor shift (streaming). This is why LBM
+    achieves its speed advantage on GPUs.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example.</strong> For cardiac tissue with $D = 0.001$ cm$^2$/ms, $\Delta x = 0.025$ cm,
+      $\Delta t = 0.01$ ms: $\tau = 0.053$ ms, so $\omega = \Delta t/\tau = 0.189$.
+      Consider a node with $V_m = -85$ mV, all distributions at equilibrium, and a stimulus
+      $I_{\text{stim}} = -52\;\mu$A/$\mu$F (with $I_{\text{ion}} = 0$, $\chi = 1400$ cm$^{-1}$,
+      $C_m = 1\;\mu$F/cm$^2$).
+      <br/>
+      Then $S = 52 / 1400 = 0.0371$ mV/ms.
+      <br/>
+      After collision: $f_0^* = f_0 + 0.01 \times \frac{1}{3} \times 0.0371 \approx f_0 + 1.24 \times 10^{-4}$.
+      <br/>
+      After streaming and recovery: $V_m^{n+1} = \sum f_i \approx -85 + 0.01 \times 0.0371 = -84.9996$ mV.
+      The stimulus produces a tiny depolarization in one 0.01 ms step, as expected.
+    </p>
+  </div>
+
+  <h3>19.7 &ensp; Implementation: Memory Layout and GPU Acceleration</h3>
+
+  <p>
+    LBM is a textbook example of SIMD parallelism: every node performs the same collision and streaming
+    operations in lockstep. There are no global data dependencies, no reduce operations, no convergence
+    criteria &mdash; each GPU thread is completely independent. On modern GPUs, this translates to
+    near-peak memory bandwidth utilization and minimal synchronization overhead.
+  </p>
+
+  <h4>The Swap-Streaming Optimization</h4>
+
+  <p>
+    The naive implementation of Algorithm (19.11) uses two arrays: a pre-collision array $\mathbf{f}$ and
+    a post-collision array $\mathbf{f}^*$. After streaming populates $\mathbf{f}^*$, the arrays are
+    swapped. This doubles memory usage. The <strong>swap-streaming</strong> (or "AA-pattern") optimization
+    fuses collision and streaming into a single pass:
+  </p>
+
+  <p>
+    On even timesteps, read $f_i(\mathbf{x})$ from the source node and write $f_i^*$ directly to the
+    destination node $\mathbf{x} + \mathbf{e}_i\Delta x$ (scatter pattern). On odd timesteps, reverse:
+    read $f_i$ from the neighbor $\mathbf{x} - \mathbf{e}_i\Delta x$ and write the post-collision value
+    to $\mathbf{x}$ (gather pattern). By alternating read/write patterns every other timestep, a single
+    array suffices &mdash; halving memory and improving cache performance.
+  </p>
+
+  <h4>Memory Layout: Structure of Arrays</h4>
+
+  <p>
+    For GPU kernels, the distributions are stored in <strong>Structure of Arrays</strong> (SoA) format:
+    one contiguous array per direction $i$, each of size $N_x \times N_y$ (or $N_x \times N_y \times N_z$
+    in 3D). The node at position $(x, y)$ has its $f_i$ stored at index $i \times N_x N_y + y \times N_x + x$.
+    This layout ensures that when a GPU warp processes adjacent nodes, it accesses contiguous memory
+    locations within each direction &mdash; maximizing memory coalescing.
+  </p>
+
+  <h4>Sparse/Indirect Addressing for Irregular Geometries</h4>
+
+  <p>
+    Cardiac tissue is not rectangular. A ventricular slab, a cross-section of the septum, or a full
+    biventricular geometry all have irregular boundaries. Storing distributions on a full Cartesian grid
+    wastes memory on nodes outside the tissue. The solution is <strong>indirect addressing</strong>: an
+    adjacency array maps each active node to its neighbors. Instead of computing neighbor positions from
+    $(x \pm 1, y \pm 1)$, the streaming step looks up the neighbor index from a precomputed table. This
+    adds one integer load per direction per node but eliminates wasted storage on inactive nodes.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      In Engine V5.4, the LBM monodomain solver is in the <code>cardiac_sim.simulation.lbm</code> package.
+      The lattice definitions (<code>D2Q5</code>, <code>D3Q7</code>) are frozen dataclasses holding weights,
+      velocity vectors, and the $\tau$-$D$ conversion formula. Collision operators (<code>BGKCollision</code>,
+      <code>MRTCollision</code>) inherit from <code>CollisionOperator(ABC)</code> and implement the update step
+      (equation 18.3 or 18.8). The <code>LBMState</code> container holds the distribution tensor
+      $\mathbf{f}$ (shape $Q \times N_x \times N_y$ for 2D), voltage $V_m$, ionic states $\mathbf{w}$, and
+      the domain mask. The <code>LBMSimulation</code> class orchestrates the six-step loop (19.11): call
+      <code>collision.collide(f, V, source, dt)</code>, apply <code>state.stream()</code> (one
+      <code>torch.roll</code> per direction), <code>state.apply_bounce_back()</code>, and finally
+      <code>state.recover_voltage()</code> to compute $V_m = \sum f_i$. The ionic substep is identical
+      to the classical path &mdash; only the diffusion step changes. Factory functions
+      <code>create_isotropic_bgk(D, dx, dt)</code> and
+      <code>create_anisotropic_mrt(D_fiber, D_cross, fiber_angle, dx, dt)</code> handle initialization.
+    </p>
+  </div>
+
+  <h3>19.8 &ensp; LBM vs. Classical Methods: When to Choose What</h3>
+
+  <p>
+    LBM, explicit methods (Chapter 9), and implicit methods (Chapter 10) each have distinct trade-offs:
   </p>
 
   <table style="width:100%; border-collapse:collapse; margin:1em 0; font-size:0.95em;">
     <thead>
       <tr style="background:#f0f0f0;">
-        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Architecture</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$V_m$ Solver</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:center;">$\phi_e$ Solver</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Pros</th>
-        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Cons</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:left;">Aspect</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Explicit (Ch 9)</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">Implicit (Ch 10)</th>
+        <th style="padding:8px; border:1px solid #ddd; text-align:center;">LBM-BGK/MRT</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>A: Dual-Lattice</strong></td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM (pseudo-time)</td>
-        <td style="padding:6px; border:1px solid #ddd;">Pure LBM; maximal GPU parallelism; unified code path</td>
-        <td style="padding:6px; border:1px solid #ddd;">Pseudo-time convergence overhead (typically 20–100 sub-iterations)</td>
+        <td style="padding:6px; border:1px solid #ddd;">Linear solve?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (PCG/FFT)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No</td>
       </tr>
       <tr style="background:#fafafa;">
-        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>B: Hybrid</strong></td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">LBM</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">CG+AMG</td>
-        <td style="padding:6px; border:1px solid #ddd;">Optimal solver for each PDE type; fewer iterations for $\phi_e$</td>
-        <td style="padding:6px; border:1px solid #ddd;">Data transfer overhead between LBM and classical grids</td>
+        <td style="padding:6px; border:1px solid #ddd;">Stability limit?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes ($\Delta t \leq h^2/2dD$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No (unconditional)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">$\tau > \Delta t/2$ (always satisfied)</td>
       </tr>
       <tr>
-        <td style="padding:6px; border:1px solid #ddd; text-align:left;"><strong>C: Full Classical</strong></td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
-        <td style="padding:6px; border:1px solid #ddd; text-align:center;">FEM/FDM</td>
-        <td style="padding:6px; border:1px solid #ddd;">Mature solver ecosystem; handles unstructured meshes</td>
-        <td style="padding:6px; border:1px solid #ddd;">Slower than LBM for parabolic; matrix assembly overhead</td>
+        <td style="padding:6px; border:1px solid #ddd;">Anisotropy?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via diffusion tensor</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Via diffusion tensor</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">BGK = isotropic only; MRT = full tensor</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd;">Unstructured mesh?</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (FEM)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Yes (FEM)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">No (Cartesian only)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">GPU suitability</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Good (SpMV)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Fair (global reductions)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Excellent (zero global sync)</td>
+      </tr>
+      <tr style="background:#fafafa;">
+        <td style="padding:6px; border:1px solid #ddd;">Memory per node</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float ($V_m$)</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">1 float + sparse $\mathbf{A}$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">$Q$ floats ($f_i$): 5 (D2Q5) or 7 (D3Q7)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px; border:1px solid #ddd;">Typical use</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Small problems, rapid prototyping</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">Production FEM, large $\Delta t$</td>
+        <td style="padding:6px; border:1px solid #ddd; text-align:center;">GPU throughput, parameter sweeps</td>
       </tr>
     </tbody>
   </table>
 
   <p>
-    Architecture A (dual-lattice) is the most elegant and maximizes GPU utilization. It is the natural choice for research and exploration. Architecture B (hybrid) trades elegance for robustness: it leverages decades of optimization in multigrid solvers and avoids the pseudo-time convergence cost. In practice, Architecture A is recommended as the starting point for Engine V5.4, with Architecture B as a fallback.
+    <strong>When to use LBM:</strong> GPU hardware, Cartesian grids, and when throughput (simulations per
+    unit wall-clock time) matters more than memory. The total absence of global synchronization makes LBM
+    ideal for multi-GPU scaling and massive parameter sweeps. <strong>When to use classical methods:</strong>
+    unstructured meshes (patient-specific geometries from MRI), problems where memory is the bottleneck
+    (very large 3D domains), or when existing FEM infrastructure is already validated and optimized.
   </p>
 
-  <div class="insight insight-engine">
-    <p>
-      Engine V5.4 already has the infrastructure for Lattice 1: the D3Q7 lattice definitions, the MRT collision operator, and the torch-based streaming and recovery. For Lattice 2, you need: (1) a second set of distribution arrays $f_i^{(e)}$, (2) a pseudo-time loop that iterates until convergence (checking $\|\partial\phi_e/\partial\tau\|$ after each step), (3) source term construction that couples $V_m$ gradients from Lattice 1 into Lattice 2's collision. The factory functions can be extended: <code>create_dual_lattice_bidomain(D_i, D_e, dx, dt)</code> would initialize both lattices and return a <code>DualLatticeBidomainSolver</code> object with methods <code>step_reaction()</code>, <code>step_vm()</code>, <code>converge_phi_e(residual_tol)</code>.
-    </p>
-  </div>
-
-  <h3>19.5 &ensp; Performance and Implementation Outlook</h3>
-
-  <!-- Layer 1: ELI5 -->
   <p>
-    How much faster is bidomain LBM than classical bidomain solvers? That depends on how much time the classical solver spends on the elliptic solve. If the elliptic solve is fast (because the domain is simple or multigrid works well), then the speedup is modest. If the elliptic solve dominates, then LBM's advantage is large.
-  </p>
-
-  <!-- Layer 2: Conceptual -->
-  <p>
-    Based on the literature for monodomain LBM (which achieves 10–45× speedup over FEM) and accounting for the added cost of the elliptic $\phi_e$ equation, estimated performance ranges for bidomain LBM are:
-  </p>
-
-  <ul>
-    <li><strong>Dual-Lattice (Architecture A)</strong>: 5–20× speedup over classical FEM bidomain, depending on the pseudo-time convergence rate and domain geometry. The lower end occurs when pseudo-time takes many iterations; the upper end occurs on simple geometries or with multigrid acceleration of the pseudo-time loop.</li>
-    <li><strong>Hybrid (Architecture B)</strong>: 3–10× speedup. The elliptic solve using AMG is already near-optimal, so gains come mainly from the LBM parabolic solve and from avoiding the global reductions (inner products) required by iterative classical solvers.</li>
-  </ul>
-
-  <p>
-    Memory overhead: Each architecture stores two voltage fields ($V_m$ and $\phi_e$) plus either one or two lattices. The dual-lattice uses $2Q$ floats per node (two sets of $Q$ distributions); the hybrid uses $Q$ floats plus the classical solver's matrix storage. For a 3D grid with D3Q7 ($Q=7$), the dual-lattice costs 14 floats per node — manageable on modern GPUs with 24–80 GB.
-  </p>
-
-  <!-- Layer 3: Implementation path -->
-  <p>
-    The recommended implementation path for Engine V5.4:
-  </p>
-
-  <ol>
-    <li><strong>Phase 1:</strong> Extend the existing LBM infrastructure to support dual lattices. Test on a simple 2D domain with uniform conductivity.</li>
-    <li><strong>Phase 2:</strong> Implement pseudo-time convergence checks and convergence acceleration (e.g., line-by-line SOR, incomplete factorization).</li>
-    <li><strong>Phase 3:</strong> Add the hybrid solver as an alternative path: call external AMG libraries (AMGX on GPU, Hypre on CPU).</li>
-    <li><strong>Phase 4:</strong> Benchmark against classical FEM bidomain solvers on realistic geometries and compare accuracy and wall-clock time.</li>
-    <li><strong>Phase 5:</strong> Extend to anisotropic conductivity (different $D_f$ and $D_c$ for intracellular and extracellular spaces) using MRT on both lattices.</li>
-  </ol>
-
-  <div class="insight insight-engine">
-    <p>
-      <strong>Recommended starting point for Engine V5.4:</strong> Implement Architecture A (dual-lattice) first. The pseudocode:
-    </p>
-    <pre style="background:#f5f5f5; padding:10px; border-radius:4px; overflow-x:auto;"><code>
-class DualLatticeBidomainLBMSolver(ABC):
-    def __init__(self, D_i, D_e, dx, dt, ionic_model):
-        self.lattice_vm = LBMLattice(D_i, dx, dt)
-        self.lattice_phi_e = LBMLattice(D_i + D_e, dx, dt_pseudo)
-        self.ionic = ionic_model
-
-    def step(self, V_m, phi_e, I_stim, residual_tol=1e-6):
-        # Step 1: Ionic
-        I_ion, gates = self.ionic.step(V_m)
-
-        # Step 2: V_m LBM
-        source_vm = -(I_ion + I_stim) / (chi * Cm)
-        source_vm += gradient_phi_e  # coupling term
-        V_m = self.lattice_vm.step(source_vm)
-
-        # Step 3: phi_e convergence (pseudo-time loop)
-        source_phi_e = -gradient(D_i @ gradient(V_m)) + I_stim_e
-        phi_e = self.lattice_phi_e.converge(source_phi_e, tol=residual_tol)
-
-        return V_m, phi_e, gates
-    </code></pre>
-    <p>
-      Extend <code>LBMLattice</code> (already in the codebase for monodomain) to support pseudo-time iteration with convergence checks. Reuse the collision operator; only the time step size and convergence criterion change.
-    </p>
-  </div>
-
-  <p>
-    With the completion of Part IV (Chapters 17–19), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
+    With the monodomain LBM now complete, we turn to its greatest challenge: the bidomain system. The
+    parabolic intracellular equation can be solved by LBM, but the elliptic extracellular equation has no
+    time dependence &mdash; it is a constraint that must be satisfied at every instant. Chapter 19
+    develops three strategies to overcome this fundamental obstacle: pseudo-time relaxation, hybrid
+    LBM&ndash;classical solvers, and the dual-lattice architecture.
   </p>
 </div>
 
+
+
 <!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  APPENDICES PART PAGE                                              -->
+<!--  CHAPTER 20 — LATTICE-BOLTZMANN FOR BIDOMAIN                     -->
 <!-- ══════════════════════════════════════════════════════════════════ -->

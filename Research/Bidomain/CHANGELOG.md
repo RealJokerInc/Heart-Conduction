@@ -2,6 +2,89 @@
 
 All major edits to `bidomain_textbook.html`, newest first.
 
+## 2026-03-07 (session 12) — Major Structural Restructuring: Mirror Monodomain in Bidomain
+
+### Motivation
+The bidomain section (Part III) didn't mirror Part II's clean pedagogical flow: **Equation → Spatial Discretization → Splitting → Solvers**. This restructuring aligns both parts, splits solvers by type, and adds boundary condition introductions.
+
+### Structural changes
+
+**Part II — Monodomain (was Ch 7–10, now Ch 7–11)**
+- **Ch 7 split**: Sections 7.1–7.3 stay in Ch 7 (PDE intro + conductivity). New 7.4 "Boundary Conditions: What Happens at the Edge?" added with swimming pool analogy, Neumann/Dirichlet/Robin types, forward pointers.
+- **New Ch 8 "Spatial Discretization"**: Old sections 7.4–7.10 extracted and renumbered to 8.1–8.7 (incl. subsections 8.7.1–8.7.4).
+- **Ch 8→9**: "Operator Splitting: Divide and Conquer" renumbered.
+- **Ch 9→10**: "Explicit Diffusion Solvers" renumbered.
+- **Ch 10→11**: "Implicit Diffusion Solvers" renumbered.
+
+**Part III — Bidomain (was Ch 11–16, now Ch 12–17)**
+- **Ch 11+12 merged → Ch 12 "The Bidomain Model"**: Old Ch 11 (Why Bidomain) and Ch 12 (Bidomain Equations) merged into single chapter. Old 11.1–11.3 → 12.1–12.3, old 12.1–12.4 → 12.4–12.7, old 12.5 → 12.8. New 12.9 "Boundary Conditions: Two Domains, Two Choices" added with three canonical scenarios (isolated/grounded bath/current injection).
+- **BC formulation moved**: Old 12.6 (BC formulation detail) → new Section 13.4 in Ch 13 "Spatial Discretization", with subsections 13.4.1–13.4.4.
+- **Ch 15 split into two chapters**:
+  - **New Ch 15 "Parabolic Solvers: The A₁₁ Block"**: PCG (15.1), Chebyshev (15.2), Spectral (15.3) with subsections 15.3.1–15.3.4.
+  - **New Ch 16 "Elliptic Solvers: The Schur Complement"**: Saddle-point (16.1), Block preconditioners (16.2), AMG (16.3), Krylov (16.4), Null-space (16.5).
+- **Ch 16→17**: "Implementation Roadmap" renumbered.
+
+**Part IV — LBM (was Ch 17–19, now Ch 18–20)**
+- Ch 17→18, Ch 18→19, Ch 19→20. All equations and sections renumbered.
+
+### New content written
+- **Section 7.4** "Boundary Conditions: What Happens at the Edge?" (~48 lines): Swimming pool analogy, three BC types, why Neumann is default, forward pointers to Ch 8 and Ch 12.
+- **Ch 8 header + intro**: Spatial Discretization chapter with intro paragraph.
+- **Section 12.9** "Boundary Conditions: Two Domains, Two Choices" (~47 lines): Three canonical scenarios (isolated/grounded bath/current injection), null-space insight box, forward pointers to Ch 13 and Ch 16.
+- **Ch 15 header + intro**: Parabolic Solvers chapter with intro about SPD A₁₁ block.
+- **Ch 16 header + intro**: Elliptic Solvers chapter with intro about saddle-point systems.
+
+### Equation renumbering (143 equations, all unique)
+- (7.4)–(7.9) → (8.1)–(8.6), (8.1) → (9.1)
+- (9.x) → (10.x), (10.x) → (11.x)
+- (11.1)–(11.2) → (12.1)–(12.2), (12.1)–(12.4) → (12.3)–(12.6)
+- (12.5)–(12.7) → (13.3)–(13.5)
+- (17.x) → (18.x), (18.x) → (19.x), (19.x) → (20.x)
+
+### Cross-references updated
+- All "Section X.Y", "Chapter X", "equation (X.Y)" references updated throughout
+- Forward pointers in new BC sections verified
+- Figure 14.1 → Figure 13.1
+
+### Verification
+- Div balance: 491/491
+- Equation labels: 143 total, no duplicates
+- Chapters: 1–20 + A + B + References, no duplicates
+- Section continuity: verified for all 20 chapters (no gaps)
+- Website build: 29 fragments, 5 TOC entries
+- Standalone build: 812 KB, 29 chapters embedded
+- Total lines: ~12,262 (was ~12,124)
+
+### Implementation
+- `restructure.py`: Phase 2 structural surgery (split/merge/move operations)
+- `renumber_v3.py`: Phase 3 surgical renumbering with title-based chapter matching to avoid collisions
+
+---
+
+## 2026-03-07 (session 11) — Bidomain Section Restructuring
+
+### New sections added
+- **A.8 "From Physical Space to Transform Space"** (~60 lines): Orchestra analogy, heat equation in Fourier space, FFT. Equations (A.7).
+- **A.9 "Cosine and Sine Transforms"** (~130 lines): Guitar string analogy, DCT→Neumann, DST→Dirichlet, eigenvalue formulas (A.8)–(A.10), 2D extension table, when DCT/DST can combine, 4-point worked example.
+- **A.10 "Iterative Methods and the Conjugate Gradient"** (~140 lines): Energy minimization (A.11), PCG pseudocode, convergence bound (A.12), 5-node worked example, warm-starting.
+- **7.10 "Boundary Conditions for the Monodomain"** (~190 lines): Neumann/Dirichlet/Robin BC types with physical meaning, FDM/FEM/FVM implementation, ghost-node mirror (7.6), modified stiffness matrix (7.7), Dirichlet row elimination (7.8), mixed BC worked example (7.9).
+- **12.6 "Boundary Conditions for the Bidomain"** (~192 lines): Three canonical scenarios (isolated/grounded bath/current injection), equations (12.5)–(12.7), 10×10 block system worked example, null-space pinning.
+
+### Expanded sections
+- **15.3–15.8** (was 15.3–15.5, 77 lines → ~310 lines): New 15.3 PCG (warm-starting detail, convergence criterion), 15.4 Chebyshev (Gershgorin bounds, PCG vs Chebyshev table), 15.5 Spectral Solvers with 4 subsections (DCT/Neumann, DST/Dirichlet, mixed DCT+DST, FFT/periodic, comparison table), equation (15.1). Old 15.3→15.6 AMG, 15.4→15.7 Krylov, 15.5→15.8 Null-Space (expanded with DCT handling).
+- **12.3 "The Parabolic–Elliptic Couple"** (~40 lines added): Scaffolding for Part II→III transition, rubber sheet analogy for elliptic equations, insight box "Why the elliptic equation cannot be marched in time," forward pointer to splitting.
+- **14.1 "Operator Splitting Applied to Bidomain"** (~30 lines added): Clarification that splitting error is reaction↔diffusion (not parabolic↔elliptic), insight box contrasting monodomain vs bidomain splitting.
+
+### Verification
+- Div balance: 486/486
+- Equation labels: 143 total, no duplicates
+- New equations: (A.7)–(A.12), (7.6)–(7.9), (12.5)–(12.7), (15.1)
+- Website build: 28 fragments, 5 TOC entries
+- Standalone build: 803 KB, 28 chapters embedded
+- Total lines: ~12,124 (was ~11,043)
+
+---
+
 ## 2026-02-27 (session 10, continued — part 2)
 
 ### Appendix B — B.7 rewrite + new B.9, expanded to 13 sections (B.1–B.13)

@@ -2,7 +2,7 @@
   <div class="chapter-number">Chapter 13</div>
   <h2 class="chapter-title">Spatial Discretization</h2>
   <div class="chapter-intro">
-    Chapter 7 developed the spatial discretization toolkit — FDM, FEM, FVM — for a single diffusion operator. Here we apply those same methods to the bidomain system, where two coupled PDEs produce a fundamentally different algebraic structure: a 2×2 block matrix system with $2N$ unknowns.
+    Chapter 8 developed the spatial discretization toolkit — FDM, FEM, FVM — for a single diffusion operator. Here we apply those same methods to the bidomain system, where two coupled PDEs produce a fundamentally different algebraic structure: a 2×2 block matrix system with $2N$ unknowns.
   </div>
 
   <h3>13.1 &ensp; From One Stiffness Matrix to Two</h3>
@@ -137,10 +137,200 @@
       <!-- RHS right bracket -->
       <path d="M 517,22 L 530,22 L 530,208 L 517,208" fill="none" stroke="#16213e" stroke-width="1.8" stroke-linecap="square"/>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 14.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the intracellular stiffness $\mathbf{K}_i$. The full system is symmetric but indefinite.</div>
+    <div class="figure-caption"><span class="figure-label">Figure 13.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the intracellular stiffness $\mathbf{K}_i$. The full system is symmetric but indefinite.</div>  </div>
+
+  <h3>13.4 &ensp; Boundary Conditions: Formulation and Implementation</h3>
+
+  <p>
+    In the monodomain (Section 8.7), we needed one boundary condition for one unknown ($V_m$). The bidomain model has <em>two</em> unknowns — the intracellular potential $\phi_i$ and the extracellular potential $\phi_e$ — so we need <em>two</em> boundary conditions at every point on the tissue surface. This doubles the number of choices and creates new physical situations that have no monodomain analogue.
+  </p>
+
+  <p>
+    To build intuition, think of a piece of cardiac tissue sitting in a glass dish. The intracellular space (inside the cells) is sealed at the tissue surface — cell membranes continue right up to the edge, and no intracellular current can escape. But the extracellular space (between the cells) is open — it may be in contact with a conductive bath (saline solution), or it may be exposed to air. What happens at the boundary depends on what is <em>outside</em>.
+  </p>
+
+  <h4>13.4.1 &ensp; Two Domains, Two Sets of Boundary Conditions</h4>
+
+  <p>
+    There are three canonical scenarios, each with a different physical story and a different mathematical consequence:
+  </p>
+
+  <p>
+    <strong>(a) Isolated tissue (Neumann on both).</strong> The tissue sits in a non-conductive medium (air, or a poorly conducting pericardial sac). No current can leave through either the intracellular or extracellular space:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(13.3)</span>
+    $$\mathbf{D}_i\,\nabla\phi_i \cdot \hat{\mathbf{n}} = 0 \quad\text{and}\quad \mathbf{D}_e\,\nabla\phi_e \cdot \hat{\mathbf{n}} = 0 \quad\text{on } \partial\Omega$$
   </div>
+
+  <p>
+    This is the most physically realistic condition for an isolated heart. But it has a mathematical consequence: the elliptic equation (12.5) with pure Neumann BCs on $\phi_e$ has a <strong>null space</strong>. Adding a constant to $\phi_e$ everywhere does not change any gradient, so $\phi_e$ is determined only up to an additive constant. The linear system is singular.
+  </p>
+
+  <p>
+    <strong>(b) Grounded bath (Neumann on $\phi_i$, Dirichlet on $\phi_e$).</strong> The tissue is submerged in a conductive bath (saline), and the bath is connected to a reference electrode that fixes the extracellular potential. Intracellular current still cannot escape (cells are sealed at the surface), but the extracellular potential is clamped:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(13.4)</span>
+    $$\mathbf{D}_i\,\nabla\phi_i \cdot \hat{\mathbf{n}} = 0 \quad\text{and}\quad \phi_e = \phi_{\text{bath}} \quad\text{on } \partial\Omega$$
+  </div>
+
+  <p>
+    This is the standard experimental setup for Langendorff-perfused hearts and tissue wedge preparations. The Dirichlet condition on $\phi_e$ removes the null space: the extracellular potential is pinned to a reference, and the system matrix becomes non-singular. This makes the linear solve easier.
+  </p>
+
+  <p>
+    <strong>(c) Current injection (Dirichlet on $\phi_i$ at electrode, Neumann elsewhere).</strong> An electrode is inserted into the tissue, clamping the intracellular potential at the electrode site. Elsewhere, normal sealed-cell conditions apply. This represents an intracellular stimulation protocol.
+  </p>
+
+  <p>
+    The following table summarizes how each combination affects the mathematical structure:
+  </p>
+
+  <table>
+    <tr><th>Scenario</th><th>$\phi_i$ BC</th><th>$\phi_e$ BC</th><th>Null space?</th><th>Physical setting</th></tr>
+    <tr>
+      <td>Isolated tissue</td>
+      <td>Neumann</td>
+      <td>Neumann</td>
+      <td><strong>Yes</strong> (constant $\phi_e$)</td>
+      <td>Heart in air / pericardium</td>
+    </tr>
+    <tr>
+      <td>Grounded bath</td>
+      <td>Neumann</td>
+      <td>Dirichlet</td>
+      <td>No</td>
+      <td>Langendorff, tissue wedge</td>
+    </tr>
+    <tr>
+      <td>Current injection</td>
+      <td>Dirichlet (local)</td>
+      <td>Neumann</td>
+      <td>Yes (if $\phi_e$ has full Neumann)</td>
+      <td>Intracellular electrode stimulus</td>
+    </tr>
+    <tr>
+      <td>Full bath coupling</td>
+      <td>Neumann</td>
+      <td>Robin</td>
+      <td>No</td>
+      <td>Torso model, ECG simulation</td>
+    </tr>
+  </table>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The null space is not a bug — it is physics.</strong> When the entire tissue boundary has Neumann conditions on $\phi_e$, the extracellular potential is defined only relative to some reference point, just like altitude is defined relative to sea level. You can add any constant to $\phi_e$ everywhere without changing any current flow. In practice, we remove this ambiguity by pinning one node (setting $\phi_e = 0$ at a single point) or by projecting out the constant mode in the linear solver (Section 15.3).
+    </p>
+  </div>
+
+  <h4>13.4.2 &ensp; Mixed Boundary Conditions: What Do They Mean?</h4>
+
+  <p>
+    A natural question arises: what happens when the intracellular and extracellular domains have <em>different</em> boundary condition types? Let us think through the two most interesting combinations:
+  </p>
+
+  <p>
+    <strong>Neumann on $\phi_i$ + Dirichlet on $\phi_e$</strong> (the grounded-bath case). This is the most common experimental configuration. The physical picture: cell membranes seal the intracellular space at the surface (no intracellular current escapes), but the extracellular space opens into a conductive bath that is held at a reference potential. The transmembrane voltage $V_m = \phi_i - \phi_e$ is <em>not</em> clamped — it is free to evolve according to the bidomain equations. Only $\phi_e$ is fixed at the boundary.
+  </p>
+
+  <p>
+    <strong>Dirichlet on $\phi_i$ + Neumann on $\phi_e$.</strong> This represents an intracellular electrode that clamps $\phi_i$ to a specified voltage, while the extracellular space is sealed (no extracellular current leaves). This is rare experimentally — intracellular electrodes are typically small and affect only a few cells — but it is mathematically well-posed and occasionally used in theoretical studies to model localized stimulation.
+  </p>
+
+  <p>
+    <strong>Dirichlet on both.</strong> Both $\phi_i$ and $\phi_e$ are fixed at the boundary. Since $V_m = \phi_i - \phi_e$, this also fixes $V_m$ at the boundary — effectively voltage-clamping the transmembrane potential at the tissue surface. This is extremely rare in practice but might be used to model an idealized experimental chamber with both intracellular and extracellular potential control.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>Not all combinations are physically realistic.</strong> While the mathematics allows any combination of Dirichlet and Neumann on $\phi_i$ and $\phi_e$, the physics constrains the choices. The intracellular space is almost always Neumann (cells are sealed). The extracellular space depends on the experimental setup: Neumann for isolated tissue, Dirichlet for grounded bath, Robin for partial bath coupling. If you are unsure, start with Neumann on both — it is the most physically conservative choice.
+    </p>
+  </div>
+
+  <h4>13.4.3 &ensp; How BCs Modify the Block System</h4>
+
+  <p>
+    Recall the 2×2 block system from Chapter 13, equation (13.2):
+  </p>
+
+  $$\begin{pmatrix} A_{11} & A_{12} \\ A_{21} & A_{22} \end{pmatrix} \begin{pmatrix} \mathbf{V}_m \\ \boldsymbol{\phi}_e \end{pmatrix} = \begin{pmatrix} \mathbf{b}_1 \\ \mathbf{b}_2 \end{pmatrix}$$
+
+  <p>
+    where $A_{22}$ involves the sum $\mathbf{K}_i + \mathbf{K}_e$ (intracellular plus extracellular stiffness matrices). The boundary conditions affect this system as follows:
+  </p>
+
+  <p>
+    <strong>Pure Neumann on both (isolated tissue).</strong> The matrix $A_{22} = \mathbf{K}_i + \mathbf{K}_e$ inherits the Neumann null space from both stiffness matrices. The all-ones vector $\mathbf{1}$ satisfies $(\mathbf{K}_i + \mathbf{K}_e)\mathbf{1} = \mathbf{0}$, so $A_{22}$ is singular. The block system has a one-dimensional null space: any solution plus a constant shift in $\phi_e$ is also a solution.
+  </p>
+
+  <p>
+    <strong>Dirichlet on $\phi_e$ (grounded bath).</strong> The rows and columns of $A_{22}$ corresponding to Dirichlet boundary nodes are eliminated (as in Section 8.7.3), and their known values are moved to the right-hand side. The reduced $A_{22}$ is non-singular — the system can be solved directly without null-space handling.
+  </p>
+
+  <h4>Worked Example: 5-Node 1D Bidomain Cable, Isolated Tissue</h4>
+
+  <p>
+    Consider a 1D bidomain cable with 5 nodes, spacing $\Delta x = 0.025$ cm, intracellular conductivity $\sigma_i = 0.17$ S/m, and extracellular conductivity $\sigma_e = 0.62$ S/m. With Neumann BCs on both $\phi_i$ and $\phi_e$, the 10×10 block system has the structure:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(13.5)</span>
+    $$\begin{pmatrix} \mathbf{K}_i & \mathbf{K}_i \\ \mathbf{K}_i & \mathbf{K}_i + \mathbf{K}_e \end{pmatrix} \begin{pmatrix} \mathbf{V}_m \\ \boldsymbol{\phi}_e \end{pmatrix} = \begin{pmatrix} \mathbf{f} \\ \mathbf{0} \end{pmatrix}$$
+  </div>
+
+  <p>
+    Each $\mathbf{K}_d$ ($d = i$ or $e$) is a 5×5 tridiagonal matrix with the Neumann-modified boundary stencil from equation (8.4):
+  </p>
+
+  $$\mathbf{K}_d = \frac{\sigma_d}{\Delta x^2}\begin{pmatrix} -1 & 1 & & & \\ 1 & -2 & 1 & & \\ & 1 & -2 & 1 & \\ & & 1 & -2 & 1 \\ & & & 1 & -1\end{pmatrix}$$
+
+  <p>
+    The bottom-right block $\mathbf{K}_i + \mathbf{K}_e$ is singular (every row sums to zero). To solve the system, we must pin one node — for instance, set $\phi_{e,0} = 0$ by replacing the first equation of the lower block with $\phi_{e,0} = 0$. After pinning:
+  </p>
+
+  <p>
+    Row 5 of the 10×10 system becomes: $1 \cdot \phi_{e,0} = 0$. The corresponding column entries for $\phi_{e,0}$ in other rows are moved to the right-hand side. The modified $(\mathbf{K}_i + \mathbf{K}_e)$ block is now non-singular, and the system can be solved by any standard method (direct or iterative).
+  </p>
+
+  <div class="insight insight-math">
+    <p>
+      <strong>Why pinning works.</strong> Pinning one node removes the constant from the null space without changing the physics. If $\boldsymbol{\phi}_e$ is a solution, then $\boldsymbol{\phi}_e + c\,\mathbf{1}$ is also a solution for any constant $c$. Pinning $\phi_{e,0} = 0$ selects the unique member of this family with $\phi_{e,0} = 0$. All physical quantities ($V_m = \phi_i - \phi_e$, current densities, ion channel states) depend only on <em>differences</em> in $\phi_e$, so the choice of reference does not affect the simulation output.
+    </p>
+  </div>
+
+  <h4>13.4.4 &ensp; Summary and Forward Pointers</h4>
+
+  <p>
+    Boundary conditions in the bidomain are richer than in the monodomain because two unknowns require two BCs per boundary segment. The physically dominant case — Neumann on both $\phi_i$ and $\phi_e$ (isolated tissue) — introduces a null space that must be handled in the linear solver. The grounded-bath case (Neumann on $\phi_i$, Dirichlet on $\phi_e$) eliminates this null space.
+  </p>
+
+  <table>
+    <tr><th>Aspect</th><th>Monodomain (Ch 7.10)</th><th>Bidomain (this section)</th></tr>
+    <tr><td>Number of unknowns</td><td>1 ($V_m$)</td><td>2 ($\phi_i$, $\phi_e$) or equivalently ($V_m$, $\phi_e$)</td></tr>
+    <tr><td>BCs per boundary segment</td><td>1</td><td>2</td></tr>
+    <tr><td>Default BC</td><td>Neumann</td><td>Neumann on both</td></tr>
+    <tr><td>Null space</td><td>Present in $\mathbf{K}$, removed by mass matrix</td><td>Present in $A_{22}$, must be handled explicitly</td></tr>
+    <tr><td>Null-space removal</td><td>Not needed (mass matrix breaks degeneracy)</td><td>Pin one node, or deflation (Section 15.3)</td></tr>
+  </table>
+
+  <p>
+    The strategies for handling the null space in iterative solvers — pinning, deflation, and the DCT's natural treatment of the zero mode — are discussed in Chapter 15. The spectral solver (Section 15.3) handles the Neumann null space automatically by setting the $(0,0)$ DCT coefficient to zero, which is exactly pinning in spectral space.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V5.4 connection.</strong> The current monodomain implementation uses Neumann BCs by default, with the modified stiffness matrix from Section 8.7. For a future bidomain extension, the same boundary modification applies independently to $\mathbf{K}_i$ and $\mathbf{K}_e$. The null-space pinning strategy (setting one node of $\phi_e$ to zero) requires modifying only one row/column of the block system — the same row-elimination technique used for Dirichlet BCs in Section 8.7.3.
+    </p>
+  </div>
+
+
+
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 11 — TIME INTEGRATION & OPERATOR SPLITTING               -->
+<!--  CHAPTER 14 — TIME INTEGRATION & OPERATOR SPLITTING               -->
 <!-- ══════════════════════════════════════════════════════════════════ -->

@@ -1,153 +1,249 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 15</div>
-  <h2 class="chapter-title">Linear Solvers for the Block System</h2>
+  <h2 class="chapter-title">Parabolic Solvers: The $A_{11}$ Block</h2>
   <div class="chapter-intro">
-    The linear solve is the computational bottleneck of the bidomain model, consuming 70–85% of total compute time. Choosing the right solver and preconditioner is critical for practical performance.
+    After operator splitting separates the parabolic and elliptic halves of the bidomain system,
+    the $V_m$ update requires solving a linear system with the $A_{11}$ block — a symmetric positive
+    definite (SPD) matrix that looks exactly like the monodomain stiffness-plus-mass matrix. This
+    chapter covers the three main solver families for this sub-problem: preconditioned conjugate
+    gradient (PCG), Chebyshev iteration, and spectral (transform-based) methods.
   </div>
 
-  <h3>15.1 &ensp; The Saddle-Point Structure</h3>
+
+  <h3>15.1 &ensp; Preconditioned Conjugate Gradient (PCG)</h3>
 
   <p>
-    The 2×2 block system (15.2) is <strong>symmetric but indefinite</strong>. This means its eigenvalues include both positive and negative values — a hallmark of saddle-point problems that arise throughout computational physics (Stokes flow, constrained optimization, mixed FEM). The key implications are:
+    Before tackling the full bidomain block system, let us master the solver for a single SPD sub-block. The Preconditioned Conjugate Gradient method is the most widely used iterative solver for symmetric positive-definite systems — and in bidomain solvers, it is typically applied to the Schur complement block $\mathbf{S}$ (or to $A_{11}$ during the parabolic substep).
   </p>
+
+  <p>
+    Appendix A.10 developed the theory from first principles: minimizing the energy functional, the conjugate direction construction, and preconditioning. Here we focus on the practical details that make PCG effective for cardiac simulation.
+  </p>
+
+  <h4>The Algorithm</h4>
+
+  <p>
+    The full PCG algorithm with Jacobi preconditioning is given in Appendix A.10 (the boxed algorithm). Each iteration requires:
+  </p>
+
   <ul>
-    <li><strong>Conjugate Gradient (CG) cannot be used</strong> on the full system — CG requires positive definiteness.</li>
-    <li><strong>MINRES</strong> (Minimum Residual) is the natural Krylov solver for symmetric indefinite systems.</li>
-    <li><strong>GMRES</strong> works for any system but requires more memory (stores the full Krylov basis).</li>
-    <li>The <strong>condition number</strong> of the bidomain system ranges from $10^8$ to $10^{10}$ for realistic meshes — <em>preconditioning is absolutely essential</em>.</li>
-  </ul>
-
-  <h3>15.2 &ensp; Block Preconditioners</h3>
-
-  <p>
-    The 2×2 block structure suggests a natural family of preconditioners that exploit the block decomposition rather than treating the system as a monolithic matrix.
-  </p>
-
-  <h4>Block Diagonal Preconditioner</h4>
-
-  <div class="equation-block">
-    $$\mathbf{P}_{\text{diag}} = \begin{pmatrix}\mathbf{A}_{11} & \mathbf{0} \\ \mathbf{0} & \mathbf{A}_{22}\end{pmatrix}$$
-  </div>
-
-  <p>
-    Application: solve two independent SPD systems ($\mathbf{A}_{11}^{-1}\mathbf{x}_1$ and $\mathbf{A}_{22}^{-1}\mathbf{x}_2$) in each preconditioning step. Simple to implement but ignores the off-diagonal coupling, leading to 50–200 outer iterations.
-  </p>
-
-  <h4>Block LDU (Triangular) Preconditioner</h4>
-
-  <p>
-    A more sophisticated choice uses the <strong>Schur complement</strong>:
-  </p>
-
-  <div class="equation-block">
-    $$\mathbf{S} = \mathbf{A}_{22} - \mathbf{A}_{21}\,\mathbf{A}_{11}^{-1}\,\mathbf{A}_{12}$$
-  </div>
-
-  <p>
-    The lower-triangular preconditioner is:
-  </p>
-
-  <div class="equation-block">
-    $$\mathbf{P}_{\text{LDU}} = \begin{pmatrix}\mathbf{A}_{11} & \mathbf{0} \\ \mathbf{A}_{21} & \mathbf{S}\end{pmatrix}$$
-  </div>
-
-  <p>
-    With <em>exact</em> inverses of $\mathbf{A}_{11}$ and $\mathbf{S}$, the preconditioned system converges in at most 2–3 Krylov iterations. In practice, we approximate:
-  </p>
-  <ul>
-    <li>$\mathbf{A}_{11}^{-1}$ using one AMG V-cycle for the mass-shifted stiffness matrix.</li>
-    <li>$\mathbf{S}^{-1}$ using one AMG V-cycle for an approximation of the Schur complement (often $\tilde{\mathbf{S}} \approx \mathbf{K}_e$ or $\tilde{\mathbf{S}} \approx \mathbf{K}_i + \mathbf{K}_e$).</li>
+    <li>One sparse matrix-vector product ($A\mathbf{p}$) — the dominant cost</li>
+    <li>Two inner products ($\mathbf{r}^T\mathbf{z}$ and $\mathbf{p}^T A\mathbf{p}$) — the synchronization bottleneck on GPUs</li>
+    <li>Three vector updates (AXPY operations) — negligible cost</li>
   </ul>
 
   <p>
-    With these approximations, convergence typically requires <strong>10–30 outer iterations</strong> — a dramatic improvement over unpreconditioned solves.
+    For a 2D cardiac grid with $N$ nodes, the sparse matrix has $O(N)$ nonzero entries (5 per row for FDM, slightly more for FEM), so the matrix-vector product costs $O(N)$. Total cost per PCG solve: $O(k \cdot N)$ where $k$ is the iteration count.
   </p>
 
-  <div class="insight insight-math">
-    <p>
-      <strong>The Schur complement has a physical interpretation.</strong> It represents the "effective" equation for $\phi_e$ after eliminating $V_m$. Computing it exactly is as expensive as solving the original system, but good approximations are cheap: for instance, $\tilde{\mathbf{S}} \approx \mathbf{K}_e$ works well because the mass-matrix contribution in $\mathbf{A}_{11}$ makes $\mathbf{A}_{11}^{-1}\approx (\Delta t/\mathbf{M})$ for small $\Delta t$, and the correction term $\mathbf{K}_i\,(\Delta t/\mathbf{M})\,\mathbf{K}_i$ is small.
-    </p>
-  </div>
-
-  <h3>15.3 &ensp; Algebraic Multigrid (AMG)</h3>
+  <h4>Warm-Starting: The Key to Cardiac Performance</h4>
 
   <p>
-    AMG is the workhorse preconditioner for elliptic and elliptic-like systems in cardiac simulations. It constructs a hierarchy of progressively coarser "meshes" (algebraically, not geometrically) and uses smoothing + coarse-grid correction cycles to damp errors at all spatial frequencies simultaneously.
+    In cardiac simulation, we solve a linear system at <em>every</em> time step. The transmembrane voltage field $V_m$ changes only slightly between consecutive steps (the wavefront advances by roughly $\Delta t \times \text{conduction velocity} \approx 0.02\,\text{ms} \times 60\,\text{cm/s} = 0.0012\,\text{cm}$, which is a fraction of a grid spacing). This means the solution at time $t^{n+1}$ is very close to the solution at time $t^n$.
   </p>
 
   <p>
-    For the bidomain system, AMG is applied at the <strong>sub-block level</strong>:
-  </p>
-  <ul>
-    <li><strong>$\mathbf{A}_{11}$ block</strong>: AMG handles the mass-shifted intracellular stiffness efficiently. Convergence in 1–2 V-cycles.</li>
-    <li><strong>$\mathbf{A}_{22}$ or $\mathbf{S}$ block</strong>: AMG handles the combined stiffness (elliptic problem for $\phi_e$). This is the <em>bottleneck</em> — the elliptic solve typically consumes 60–80% of total linear solver time.</li>
-  </ul>
-
-  <p>
-    Available AMG implementations for GPU-accelerated bidomain:
+    <strong>Warm-starting</strong> exploits this by using the previous time step's solution as the initial guess for the current step. Instead of starting from $\mathbf{x}_0 = \mathbf{0}$ (cold start), we set $\mathbf{x}_0 = \mathbf{x}^{n-1}$. The initial residual is already small, and PCG converges in just a few iterations.
   </p>
 
   <table>
-    <tr><th>Library</th><th>GPU Support</th><th>Best For</th></tr>
-    <tr><td>AMGX (NVIDIA)</td><td>Native CUDA</td><td>GPU-only workloads; best performance on NVIDIA hardware</td></tr>
-    <tr><td>Hypre (LLNL)</td><td>CUDA, HIP, SYCL</td><td>Large-scale CPU/GPU clusters; mature and robust</td></tr>
-    <tr><td>PyAMG (Python)</td><td>CPU only</td><td>Prototyping; integrates well with PyTorch via scipy</td></tr>
-    <tr><td>Trilinos ML/MueLu</td><td>Partial (Kokkos)</td><td>Full solver ecosystem; advanced smoothers</td></tr>
+    <tr><th>Starting strategy</th><th>Typical iterations (monodomain, CN)</th><th>Typical iterations (bidomain, Schur)</th></tr>
+    <tr><td>Cold start ($\mathbf{x}_0 = \mathbf{0}$)</td><td>20–50</td><td>40–100</td></tr>
+    <tr><td>Warm start ($\mathbf{x}_0 = \mathbf{x}^{n-1}$)</td><td>3–8</td><td>8–20</td></tr>
   </table>
 
-  <h3>15.4 &ensp; Krylov Methods: MINRES, GMRES, and Friends</h3>
-
-  <p>
-    The outer Krylov solver iterates on the preconditioned system until the residual falls below a tolerance (typically $10^{-6}$ to $10^{-8}$).
-  </p>
-
-  <h4>MINRES</h4>
-  <p>
-    The mathematically optimal choice for symmetric indefinite systems. It minimizes the residual norm over the Krylov subspace at each iteration. Requires a <strong>symmetric</strong> preconditioner (block diagonal qualifies; block LDU does not, unless symmetrized). Memory-efficient: stores only 3 vectors.
-  </p>
-
-  <h4>GMRES</h4>
-  <p>
-    Works for any system (no symmetry requirement). Allows non-symmetric preconditioners like block LDU. However, memory grows linearly with iteration count (each iteration stores one vector). A restart parameter (typically 30–50) limits memory at the cost of slower convergence.
-  </p>
-
-  <h4>Flexible GMRES (FGMRES)</h4>
-  <p>
-    A variant that allows the preconditioner to <em>change</em> at each iteration — useful when AMG V-cycles produce slightly different results each time (as happens with some adaptive smoothers). Memory cost is 2× GMRES.
-  </p>
-
-  <div class="insight insight-warning">
+  <div class="insight insight-intuition">
     <p>
-      <strong>Recommended solver stack for bidomain:</strong><br>
-      <em>Outer solver:</em> FGMRES(30) or MINRES<br>
-      <em>Preconditioner:</em> Block LDU with AMG V-cycles for sub-blocks<br>
-      <em>Expected iterations:</em> 10–30 per time step<br>
-      <em>Expected speedup over unpreconditioned:</em> 50–100×
+      <strong>Warm-starting is the single biggest performance optimization for cardiac PCG.</strong> It is free (just keep the previous solution in memory), requires no mathematical sophistication, and typically reduces the iteration count by a factor of 5–10. Always use it.
     </p>
   </div>
 
-  <h3>15.5 &ensp; The Null-Space Problem</h3>
+  <h4>Convergence Criterion</h4>
 
   <p>
-    The elliptic equation for $\phi_e$ has homogeneous Neumann boundary conditions everywhere (no current leaves the tissue). This means $\phi_e$ is determined <em>only up to an additive constant</em> — the matrix $\mathbf{A}_{22}$ has a one-dimensional null space spanned by the constant vector $\mathbf{1}$.
+    The standard stopping criterion is a relative residual test: stop when $\|\mathbf{r}_k\|/\|\mathbf{b}\| < \varepsilon$, where $\varepsilon$ is a tolerance (typically $10^{-8}$ for cardiac simulations). This ensures the error is small relative to the forcing. If $\|\mathbf{b}\|$ is near zero (e.g., during a quiescent phase when no wavefront is active), an absolute tolerance fallback prevents unnecessary iterations.
   </p>
-
-  <p>
-    This must be handled explicitly. Common approaches:
-  </p>
-  <ol>
-    <li><strong>Pin one node</strong>: set $(\phi_e)_k = 0$ for some node $k$. Computationally simplest; physically reasonable (choose a "ground" reference).</li>
-    <li><strong>Integral constraint</strong>: enforce $\int_\Omega \phi_e\,dx = 0$ via a Lagrange multiplier. More elegant but adds one extra equation.</li>
-    <li><strong>Deflation</strong>: project the constant mode out of the Krylov subspace at each iteration. Algebraically clean; no modification to the matrix.</li>
-  </ol>
 
   <div class="insight insight-engine">
     <p>
-      For Engine V5.4 extension, we recommend the simplest approach: <strong>pin one node</strong> to zero. This is easy to implement (replace one row/column of $\mathbf{A}_{22}$ with the identity) and has negligible impact on solution accuracy for cardiac-sized domains.
+      <strong>Engine V5.4 connection.</strong> The <code>PCGSolver</code> class in <code>linear_solver/pcg.py</code> implements Jacobi-preconditioned CG with lazy workspace allocation and warm starting. Key design choices: (1) workspace tensors ($\mathbf{r}$, $\mathbf{z}$, $\mathbf{p}$, $A\mathbf{p}$) are allocated once and reused across time steps, avoiding GPU memory allocation overhead; (2) the diagonal preconditioner is cached and recomputed only when the matrix identity changes; (3) <code>use_warm_start=True</code> is the default.
     </p>
   </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>15.2 &ensp; Chebyshev Polynomial Solver</h3>
+
+  <p>
+    PCG is optimal in the mathematical sense (it minimizes the error in the $A$-norm over the Krylov subspace), but it has a practical weakness on GPUs: each iteration requires two <strong>inner products</strong> (global reductions), which force all GPU threads to synchronize. On modern hardware with thousands of cores, this synchronization is a significant bottleneck — the GPU must wait for every thread to finish before the reduction can complete.
+  </p>
+
+  <p>
+    The <strong>Chebyshev polynomial solver</strong> eliminates this bottleneck entirely. Instead of adaptively choosing step sizes (which require inner products), it uses a <em>predetermined</em> sequence of steps based on Chebyshev polynomials. The iteration count is fixed in advance, and no convergence checks occur during the solve. This makes it ideal for GPU execution: every iteration is a pure matrix-vector product plus vector updates — no synchronization.
+  </p>
+
+  <h4>The Key Idea</h4>
+
+  <p>
+    A Chebyshev polynomial $T_d(x)$ has the remarkable property that it grows as slowly as possible outside the interval $[-1, 1]$ while satisfying $|T_d(x)| \leq 1$ for $x \in [-1, 1]$. If we map the eigenvalue interval $[\lambda_{\min}, \lambda_{\max}]$ of $A$ onto $[-1, 1]$ and construct a polynomial $p_d(A)$ that approximates $A^{-1}$ (in the sense that $p_d(\lambda) \approx 1/\lambda$ for $\lambda \in [\lambda_{\min}, \lambda_{\max}]$), then $\mathbf{x} \approx p_d(A)\,\mathbf{b}$ is an approximate solution.
+  </p>
+
+  <p>
+    The Chebyshev iteration evaluates this polynomial via a <strong>3-term recurrence</strong>, which requires only the previous two iterates — no storage of the full iteration history (unlike GMRES).
+  </p>
+
+  <h4>Eigenvalue Estimation via Gershgorin</h4>
+
+  <p>
+    The Chebyshev solver needs bounds $[\lambda_{\min}, \lambda_{\max}]$ on the eigenvalues of $A$. Computing exact eigenvalues would be as expensive as solving the system, so we use the <strong>Gershgorin circle theorem</strong>: every eigenvalue of $A$ lies in at least one disc centered at a diagonal entry $a_{ii}$ with radius equal to the sum of absolute off-diagonal entries in that row. The bounds are:
+  </p>
+
+  $$\lambda_{\min} \geq \min_i\left(a_{ii} - \sum_{j \neq i} |a_{ij}|\right), \qquad \lambda_{\max} \leq \max_i\left(a_{ii} + \sum_{j \neq i} |a_{ij}|\right)$$
+
+  <p>
+    This requires a single pass over the sparse matrix — $O(N)$ work — and produces conservative (over-estimated) bounds. A safety margin of 10% is typically added to guard against underestimation.
+  </p>
+
+  <h4>Trade-Offs: PCG vs Chebyshev</h4>
+
+  <table>
+    <tr><th>Property</th><th>PCG</th><th>Chebyshev</th></tr>
+    <tr><td>Optimality</td><td>Minimizes $A$-norm error</td><td>Near-optimal for well-estimated eigenvalues</td></tr>
+    <tr><td>Convergence</td><td>Adaptive (stops when converged)</td><td>Fixed iteration count</td></tr>
+    <tr><td>Sync points per iteration</td><td>2 (inner products)</td><td>0 (no global reductions)</td></tr>
+    <tr><td>GPU efficiency</td><td>Good, limited by reductions</td><td>Excellent — fully asynchronous</td></tr>
+    <tr><td>Eigenvalue knowledge</td><td>Not needed</td><td>Required ($\lambda_{\min}$, $\lambda_{\max}$)</td></tr>
+    <tr><td>Best for</td><td>CPU, moderate GPU workloads</td><td>Large GPU workloads, latency-sensitive</td></tr>
+  </table>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V5.4 connection.</strong> The <code>ChebyshevSolver</code> class in <code>linear_solver/chebyshev.py</code> implements the 3-term recurrence with Jacobi preconditioning and Gershgorin eigenvalue estimation. The eigenvalue bounds are cached and recomputed only when the matrix changes. Key parameters: <code>max_iters=50</code> (typical for cardiac with warm starting), <code>safety_margin=0.1</code> (10% Gershgorin bound expansion). For the monodomain with Crank-Nicolson, 20–30 iterations suffice with warm starting.
+    </p>
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+  <h3>15.3 &ensp; Spectral Solvers: DCT, DST, and FFT</h3>
+
+  <p>
+    For structured Cartesian grids (the default in FDM and FVM), there is an entirely different approach to solving the linear system — one that avoids iteration altogether. Instead of gradually improving an approximate solution, a <strong>spectral solver</strong> transforms the problem into a space where the solution can be written down in closed form, then transforms back. The total cost is just two FFT-like transforms: $O(N \log N)$.
+  </p>
+
+  <p>
+    The mathematical foundation is in Appendix A.8–A.9. Here we focus on the three spectral solvers relevant to cardiac simulation and when to use each.
+  </p>
+
+  <h4>15.3.1 &ensp; DCT for Neumann Boundary Conditions</h4>
+
+  <p>
+    The most important case for cardiac EP. Neumann (zero-flux) BCs are the physically correct default for isolated tissue (Section 8.7, Section 12.6). As shown in Appendix A.9, the cosine basis automatically satisfies $\partial u/\partial n = 0$ at the boundaries, so the Discrete Cosine Transform diagonalizes the discrete Laplacian under Neumann BCs.
+  </p>
+
+  <p>
+    The algorithm for solving $A_{\text{lhs}}\,\mathbf{V}^{n+1} = \mathbf{b}_{\text{rhs}}$ (from the implicit diffusion step) is:
+  </p>
+
+  <ol>
+    <li><strong>Reshape</strong>: Convert the $N$-vector $\mathbf{b}$ into an $N_x \times N_y$ grid.</li>
+    <li><strong>Forward 2D DCT</strong>: $\hat{\mathbf{b}} = \text{DCT}_{2D}(\mathbf{b}_{\text{grid}})$. Cost: $O(N \log N)$.</li>
+    <li><strong>Spectral division</strong>: $\hat{\mathbf{V}}_{i,j} = \hat{\mathbf{b}}_{i,j}\,/\,d_{i,j}$ where $d_{i,j}$ is the $(i,j)$-th entry of the spectral denominator (see below).</li>
+    <li><strong>Null-space handling</strong>: Set $\hat{\mathbf{V}}_{0,0} = 0$ (the mean-zero convention for Neumann). This is equivalent to pinning in physical space (Section 12.6).</li>
+    <li><strong>Inverse 2D DCT</strong>: $\mathbf{V}_{\text{grid}} = \text{IDCT}_{2D}(\hat{\mathbf{V}})$. Cost: $O(N \log N)$.</li>
+    <li><strong>Flatten</strong>: Convert $N_x \times N_y$ grid back to $N$-vector.</li>
+  </ol>
+
+  <p>
+    The spectral denominator $d_{i,j}$ depends on the time-stepping scheme (from Chapters 9–10):
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(15.1)</span>
+    $$d_{i,j} = \begin{cases}
+      \chi C_m - \tfrac{1}{2}\Delta t\,D\,\lambda_{i,j} & \text{Crank-Nicolson (CN)} \\
+      \chi C_m - \Delta t\,D\,\lambda_{i,j} & \text{BDF1 (Backward Euler)} \\
+      3\chi C_m - 2\Delta t\,D\,\lambda_{i,j} & \text{BDF2}
+    \end{cases}$$
+  </div>
+
+  <p>
+    where $\lambda_{i,j}$ are the 2D DCT eigenvalues from equation (A.10):
+  </p>
+
+  $$\lambda_{i,j} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi i}{N_x}\right) - 1\right) + \frac{2}{\Delta y^2}\left(\cos\!\left(\frac{\pi j}{N_y}\right) - 1\right)$$
+
+  <p>
+    Since all $\lambda_{i,j} \leq 0$ and $D > 0$, the denominator $d_{i,j}$ is always positive (except at $(i,j) = (0,0)$, which is handled by the null-space step). The division is safe and numerically stable.
+  </p>
+
+  <h4>15.3.2 &ensp; DST for Dirichlet Boundary Conditions</h4>
+
+  <p>
+    When the voltage is clamped at the boundary (Dirichlet BCs), the sine basis is appropriate. As shown in Appendix A.9, $\sin(k\pi x/L)$ vanishes at both boundaries, so the Discrete Sine Transform diagonalizes the Laplacian under Dirichlet conditions.
+  </p>
+
+  <p>
+    The algorithm is identical to the DCT case, with two changes: (1) replace DCT with DST (and IDCT with IDST), and (2) use the DST eigenvalues from equation (A.9). There is no null-space issue — the DST eigenvalues are all strictly negative, so the denominator is always positive.
+  </p>
+
+  <p>
+    In cardiac simulation, pure Dirichlet BCs on the entire boundary are uncommon (they would mean voltage-clamping the entire tissue surface). The DST solver is more relevant for sub-problems where Dirichlet conditions arise — for instance, when solving the Schur complement with a grounded-bath setup (Section 12.6).
+  </p>
+
+  <h4>15.3.3 &ensp; Combining DCT and DST for Mixed BCs</h4>
+
+  <p>
+    When different axes have different boundary conditions — for example, Neumann on the $x$-boundaries and Dirichlet on the $y$-boundaries — we apply a cosine transform along $x$ and a sine transform along $y$. The 2D transform is:
+  </p>
+
+  $$\hat{\mathbf{b}}_{i,j} = \text{DCT}_x\bigl[\text{DST}_y\bigl[\mathbf{b}_{\text{grid}}\bigr]\bigr]$$
+
+  <p>
+    and the eigenvalues combine the DCT formula for $x$ with the DST formula for $y$:
+  </p>
+
+  $$\lambda_{i,j} = \underbrace{\frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi i}{N_x}\right) - 1\right)}_{\text{Neumann in }x} + \underbrace{\frac{2}{\Delta y^2}\left(\cos\!\left(\frac{\pi j}{N_y+1}\right) - 1\right)}_{\text{Dirichlet in }y}$$
+
+  <p>
+    Recall the key limitation from Appendix A.9: this works only when each axis has a single, uniform BC type. You cannot use spectral methods when one end of the $x$-axis has Neumann and the other has Dirichlet — in that case, fall back to PCG (Section 15.1) or Chebyshev (Section 15.2).
+  </p>
+
+  <h4>15.3.4 &ensp; FFT for Periodic Boundary Conditions</h4>
+
+  <p>
+    For completeness, the standard FFT solver handles periodic BCs. This is rarely used in cardiac simulation (tissue is not periodic), but it appears in benchmark problems and in simplified models of re-entrant spiral waves on a periodic domain. The eigenvalues are:
+  </p>
+
+  $$\lambda_{i,j} = -\left(\frac{2\pi\,\text{fftfreq}(i, N_x)}{\Delta x}\right)^2 - \left(\frac{2\pi\,\text{fftfreq}(j, N_y)}{\Delta y}\right)^2$$
+
+  <p>
+    where $\text{fftfreq}(k, N)$ returns the $k$-th frequency bin. The algorithm uses <code>torch.fft.fft2</code> / <code>ifft2</code>.
+  </p>
+
+  <h4>Comparison: When to Use Which Solver</h4>
+
+  <table>
+    <tr><th>Solver</th><th>BCs</th><th>Grid type</th><th>Complexity</th><th>Sync points</th><th>Best for</th></tr>
+    <tr><td>DCT</td><td>Neumann</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Standard cardiac monodomain</td></tr>
+    <tr><td>DST</td><td>Dirichlet</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Grounded-bath sub-problems</td></tr>
+    <tr><td>FFT</td><td>Periodic</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Benchmark problems, spiral waves</td></tr>
+    <tr><td>PCG</td><td>Any</td><td>Any (structured or unstructured)</td><td>$O(k \cdot N)$</td><td>$2k$</td><td>Unstructured meshes, general BCs</td></tr>
+    <tr><td>Chebyshev</td><td>Any (SPD)</td><td>Any</td><td>$O(d \cdot N)$</td><td>0</td><td>GPU, large-scale, fixed-iteration</td></tr>
+  </table>
+
+  <p>
+    For monodomain on a structured grid with Neumann BCs (the most common cardiac scenario), DCT is the fastest solver by a wide margin — it is exact (no iteration), $O(N \log N)$, and fully parallelizable with zero synchronization. The only limitation is that it cannot handle unstructured meshes or non-Cartesian geometries, where PCG or Chebyshev must be used instead.
+  </p>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V5.4 connection.</strong> The <code>DCTSolver</code> and <code>FFTSolver</code> classes in <code>linear_solver/fft.py</code> implement the spectral solvers described above. Both compute the eigenvalue grid lazily on the first call and cache it for all subsequent solves. The <code>DCTSolver</code> uses the <code>torch-dct</code> package for the forward and inverse transforms, with a fallback FFT-based DCT implementation if the package is not installed. The solver ignores the sparse matrix $A$ passed to it — it constructs the spectral denominator entirely from the grid parameters ($N_x$, $N_y$, $\Delta x$, $\Delta y$, $D$, $\Delta t$, $\chi$, $C_m$) and the time-stepping scheme.
+    </p>
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────── -->
+
 </div>
 
+
 <!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 11 — IMPLEMENTATION ROADMAP                              -->
+<!--  CHAPTER 16 — ELLIPTIC SOLVERS (SCHUR COMPLEMENT)                 -->
 <!-- ══════════════════════════════════════════════════════════════════ -->
