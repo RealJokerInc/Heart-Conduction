@@ -79,7 +79,7 @@ class BidomainSimulation:
     def _auto_select_elliptic_solver(spatial):
         """Read BoundarySpec from mesh and pick best solver tier."""
         bc = spatial.grid.boundary_spec
-        cond = spatial._conductivity
+        cond = spatial.conductivity
 
         if bc.phi_e_spectral_eligible and cond.is_isotropic:
             return 'spectral'
@@ -146,24 +146,8 @@ def _build_ionic_solver(name, ionic_model):
         from .solver.ionic_stepping.rush_larsen import RushLarsenSolver
         return RushLarsenSolver(ionic_model)
     elif name == 'forward_euler':
-        from .solver.ionic_stepping.base import IonicSolver
-        # ForwardEuler is the base class default behavior
-        # Create a concrete subclass
-        class ForwardEulerSolver(IonicSolver):
-            def step(self, state, dt):
-                model = self.ionic_model
-                V = state.V
-                S = state.ionic_states
-                Iion = model.compute_Iion(V, S)
-                Istim = self._evaluate_Istim(state)
-                state.V = V + dt * (-(Iion + Istim))
-                gate_inf = model.compute_gate_steady_states(V, S)
-                gate_tau = model.compute_gate_time_constants(V, S)
-                self._update_gates(S, gate_inf, gate_tau, dt)
-                conc_rates = model.compute_concentration_rates(V, S)
-                for i, idx in enumerate(model.concentration_indices):
-                    S[:, idx] = S[:, idx] + dt * conc_rates[:, i]
-        return ForwardEulerSolver(ionic_model)
+        from .solver.ionic_stepping.forward_euler import ForwardEulerIonicSolver
+        return ForwardEulerIonicSolver(ionic_model)
     else:
         raise ValueError(f"Unknown ionic solver: {name}")
 
@@ -182,7 +166,7 @@ def _build_linear_solver(name, spatial):
         nx, ny = grid.Nx, grid.Ny
         dx = grid.Lx / (nx - 1)
         dy = grid.Ly / (ny - 1)
-        D = spatial._conductivity.D_i + spatial._conductivity.D_e
+        D = spatial.conductivity.D_i + spatial.conductivity.D_e
         bc = grid.boundary_spec
         t_map = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}
         txy = bc.spectral_transform_xy
@@ -196,7 +180,7 @@ def _build_linear_solver(name, spatial):
         nx, ny = grid.Nx, grid.Ny
         dx = grid.Lx / (nx - 1)
         dy = grid.Ly / (ny - 1)
-        D = spatial._conductivity.D_i + spatial._conductivity.D_e
+        D = spatial.conductivity.D_i + spatial.conductivity.D_e
         bc = grid.boundary_spec
         # PCGSpectral uses spectral as preconditioner; pick uniform BC
         # for the preconditioner (falls back to neumann if mixed)
@@ -214,8 +198,8 @@ def _build_linear_solver(name, spatial):
 
 def _build_diffusion_solver(name, spatial, dt, para_ls, ellip_ls, theta):
     """Build BidomainDiffusionSolver from string."""
-    if name == 'decoupled':
-        from .solver.diffusion_stepping.decoupled import DecoupledBidomainDiffusionSolver
+    if name in ('decoupled', 'gauss_seidel'):
+        from .solver.diffusion_stepping.decoupled_gs import DecoupledBidomainDiffusionSolver
         return DecoupledBidomainDiffusionSolver(
             spatial, dt, para_ls, ellip_ls, theta=theta)
     else:
@@ -265,6 +249,9 @@ def _build_state(spatial, ionic_model, stimulus, device=None):
         if masks:
             stim_masks = torch.stack(masks)
 
+    # Get Cm from spatial discretization (defaults to 1.0)
+    Cm = getattr(spatial, 'Cm', 1.0)
+
     return BidomainState(
         spatial=spatial,
         n_dof=n_dof,
@@ -274,6 +261,7 @@ def _build_state(spatial, ionic_model, stimulus, device=None):
         ionic_states=ionic_states,
         gate_indices=ionic_model.gate_indices,
         concentration_indices=ionic_model.concentration_indices,
+        Cm=Cm,
         stim_masks=stim_masks,
         stim_starts=stim_starts,
         stim_durations=stim_durations,
