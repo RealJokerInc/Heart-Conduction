@@ -39,7 +39,7 @@ def _build_poisson_system(nx, ny, dx, D, boundary_spec):
     grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Ly,
                           boundary_spec=boundary_spec)
     cond = BidomainConductivity(D_i=D / 2, D_e=D / 2)
-    spatial = BidomainFDMDiscretization(grid, cond, chi=1.0, Cm=1.0)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     A_ellip = spatial.get_elliptic_operator()
 
@@ -224,5 +224,5 @@ if __name__ == '__main__':
     print()
     test_mixed_t4_dirichlet_x_neumann_y()
     print()
-    test_mixed_t5_analytical_convergence()
+    test_mixed_t5_self_consistency_and_convergence()
     print("\nALL 5 TESTS PASS")

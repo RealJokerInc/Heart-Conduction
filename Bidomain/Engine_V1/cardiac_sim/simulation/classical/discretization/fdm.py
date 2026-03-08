@@ -24,7 +24,11 @@ Trade-off: at boundary nodes, the stiffness form gives d²u/dx² / 2
 variational sense (half control volume at boundary), and cancels
 in the bidomain because both LHS and RHS use the same stiffness form.
 
-Interior accuracy: O(h²). Global PDE convergence: O(h²).
+Interior accuracy: O(h^2). Global PDE convergence: O(h^2).
+
+Formulation B (diffusivity-based): L contains D = sigma/(chi*Cm).
+Parabolic operator uses 1/dt (NOT chi*Cm/dt). Chi does not appear
+anywhere in this module. Cm is stored only for source term scaling.
 
 Dirichlet enforcement is NOT baked into L_i or L_e. It is applied
 only in get_elliptic_operator() via symmetric row+column elimination.
@@ -66,8 +70,9 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
     Builds two 9-pt stencil Laplacians L_i and L_e from BidomainConductivity.
     Supports scalar D, per-node D_field, and fiber-based anisotropy.
 
-    The Laplacian contains D but NOT chi*Cm. The chi*Cm scaling appears
-    in get_parabolic_operators().
+    The Laplacian contains D (diffusivity = sigma/(chi*Cm)). Chi and Cm do
+    NOT appear anywhere in the operators. The parabolic operator uses 1/dt
+    (Formulation B). Cm is stored for source term scaling (R = -I_ion/Cm).
 
     Parameters
     ----------
@@ -75,19 +80,29 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         Computational grid with boundary_spec
     conductivity : BidomainConductivity
         Paired intra/extracellular conductivity
-    chi : float
-        Surface-to-volume ratio (cm^-1). Default 1400.
     Cm : float
-        Membrane capacitance (uF/cm^2). Default 1.0.
+        Membrane capacitance (uF/cm^2). Default 1.0. Used only for
+        source term scaling. D values in conductivity already contain
+        chi*Cm scaling (D = sigma/(chi*Cm)).
+    chi : float
+        Deprecated. Ignored. Chi is already absorbed into D values.
+        Kept for backward compatibility — will be removed in V2.
     """
 
     def __init__(
         self,
         grid: StructuredGrid,
         conductivity: BidomainConductivity,
-        chi: float = 1400.0,
         Cm: float = 1.0,
+        chi: float = None,
     ):
+        if chi is not None and chi != 1.0:
+            import warnings
+            warnings.warn(
+                f"chi={chi} is ignored. D values already contain chi*Cm scaling. "
+                "Pass chi via ConductivityConfig (D = sigma/(chi*Cm)) instead.",
+                DeprecationWarning, stacklevel=2
+            )
         self._grid = grid
         self._conductivity = conductivity
         self._nx = grid.Nx
@@ -97,7 +112,7 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         self._device = grid.device
         self._dtype = grid.dtype
         self._n_dof = grid.n_dof
-        self._chi_Cm = chi * Cm
+        self._Cm = Cm
 
         # Coordinate arrays
         x, y = grid.coordinates
@@ -149,21 +164,34 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
             self._L_ie_mat = (self._L_i_mat + self._L_e_mat).coalesce()
         return _sparse_mv(self._L_ie_mat, V)
 
+    @property
+    def Cm(self) -> float:
+        """Membrane capacitance (uF/cm^2) for source term scaling."""
+        return self._Cm
+
+    @property
+    def conductivity(self) -> 'BidomainConductivity':
+        """Conductivity configuration."""
+        return self._conductivity
+
     def get_parabolic_operators(
         self, dt: float, theta: float = 0.5
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Build (A_para, B_para) for the decoupled parabolic Vm solve.
 
-        A_para * Vm^{n+1} = B_para * Vm* + theta * L_i * phi_e^n
+        Formulation B (diffusivity-based): L contains D = sigma/(chi*Cm).
+        The mass term uses 1/dt (NOT chi*Cm/dt).
 
-        A_para = chi*Cm/dt * I - theta * L_i
-        B_para = chi*Cm/dt * I + (1-theta) * L_i
+        A_para * Vm^{n+1} = B_para * Vm^n + L_i * phi_e^n
+
+        A_para = 1/dt * I - theta * L_i
+        B_para = 1/dt * I + (1-theta) * L_i
         """
         n = self._n_dof
         I = _speye(n, self._device, self._dtype)
-        A_para = (self._chi_Cm / dt * I - theta * self._L_i_mat).coalesce()
-        B_para = (self._chi_Cm / dt * I + (1 - theta) * self._L_i_mat).coalesce()
+        A_para = (1.0 / dt * I - theta * self._L_i_mat).coalesce()
+        B_para = (1.0 / dt * I + (1 - theta) * self._L_i_mat).coalesce()
         return A_para, B_para
 
     def get_elliptic_operator(self) -> torch.Tensor:

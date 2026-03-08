@@ -40,14 +40,14 @@ class LBMSimulation:
         dt: time step (ms)
         D: diffusion coefficient (cm^2/ms)
         ionic_model: IonicModel instance (e.g., TTP06Model)
-        chi: surface-to-volume ratio (1/cm), default 140
-        Cm: membrane capacitance (uF/cm^2), default 1.0
+        Cm: membrane capacitance (uF/cm^2), default 1.0. Used for source
+            term scaling: R = -(I_ion + I_stim) / Cm
         lattice: 'd2q5' or 'd2q9' (default 'd2q5')
         bounce_masks: dict of boundary masks (if None, uses full-grid rectangular)
     """
 
     def __init__(self, Nx: int, Ny: int, dx: float, dt: float,
-                 D: float, ionic_model, chi: float = 140.0, Cm: float = 1.0,
+                 D: float, ionic_model, Cm: float = 1.0,
                  lattice: str = 'd2q5', bounce_masks: dict = None):
         self.Nx = Nx
         self.Ny = Ny
@@ -55,7 +55,6 @@ class LBMSimulation:
         self.dt = dt
         self.D = D
         self.ionic_model = ionic_model
-        self.chi = chi
         self.Cm = Cm
         self.device = ionic_model.device
         self.dtype = ionic_model.dtype
@@ -126,22 +125,21 @@ class LBMSimulation:
         V_flat = self.V.reshape(-1)
         I_stim_flat = I_stim.reshape(-1)
 
-        # 1. Compute ionic source
+        # 1. Compute ionic source (I_ion computed once, reused below)
         I_ion = self.ionic_model.compute_Iion(V_flat, self.ionic_states)
         R_flat = compute_source_term(I_ion, I_stim_flat, self.Cm)
         R = R_flat.reshape(self.Nx, self.Ny)
 
-        # 2-6. LBM step (collide → stream → BC → recover V)
+        # 2-6. LBM step (collide -> stream -> BC -> recover V)
         self.f, self.V = self._step_fn(
             self.f, self.V, R, self.dt, self.omega, self.w,
             self.bounce_masks
         )
 
-        # 7. Update ionic states
+        # 7. Update ionic states only (V comes from distributions, not ionic ODE)
         V_flat = self.V.reshape(-1)
-        _, self.ionic_states = ionic_step(
-            self.ionic_model, V_flat, self.ionic_states,
-            self.dt, I_stim_flat
+        self.ionic_states = ionic_step(
+            self.ionic_model, V_flat, self.ionic_states, self.dt
         )
 
         # 8. Advance time

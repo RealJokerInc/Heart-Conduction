@@ -14,31 +14,31 @@ import torch
 from torch import Tensor
 
 
-def ionic_step(model, V: Tensor, ionic_states: Tensor, dt: float,
-               I_stim: Tensor = None) -> tuple:
-    """Compute I_ion and update ionic states (gates + concentrations).
+def ionic_step(model, V: Tensor, ionic_states: Tensor, dt: float) -> Tensor:
+    """Update ionic states (gates + concentrations) only.
 
     V is NOT modified — it's only used to compute currents and gating.
+    For LBM, V comes from distributions, not the ionic ODE.
+
+    Note: model.step() internally computes I_ion and V_new. We discard V_new.
+    To get I_ion for the LBM source term, call model.compute_Iion() separately
+    (done in LBMSimulation.step() before this function).
 
     Args:
         model: IonicModel instance (e.g., TTP06Model)
         V: (n_cells,) or (Nx*Ny,) membrane potential from distributions
         ionic_states: (n_cells, n_states) ionic state tensor
         dt: time step (ms)
-        I_stim: (n_cells,) stimulus current (pA/pF), or None
 
     Returns:
-        I_ion: (n_cells,) total ionic current
         ionic_states_new: (n_cells, n_states) updated ionic states
     """
-    # Compute I_ion before updating anything
-    I_ion = model.compute_Iion(V, ionic_states)
+    # model.step() updates gates (Rush-Larsen) and concentrations (Forward Euler).
+    # It also computes V_new internally, which we discard since LBM V comes from
+    # distributions. I_stim is not passed because it only affects V_new (discarded).
+    _, ionic_states_new = model.step(V, ionic_states, dt)
 
-    # Use model.step() to update both V and ionic states,
-    # then discard V_new (LBM V comes from distributions)
-    _, ionic_states_new = model.step(V, ionic_states, dt, I_stim)
-
-    return I_ion, ionic_states_new
+    return ionic_states_new
 
 
 def compute_source_term(I_ion: Tensor, I_stim: Tensor,

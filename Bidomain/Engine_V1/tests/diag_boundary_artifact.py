@@ -84,7 +84,7 @@ def run_bidomain(bc_name, bc_spec):
     grid = StructuredGrid(Nx=NX, Ny=NY, Lx=LX, Ly=LY,
                           boundary_spec=bc_spec)
     cond = BidomainConductivity(D_i=D_I, D_e=D_E)
-    spatial = BidomainFDMDiscretization(grid, cond, chi=1.0, Cm=1.0)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     sim = BidomainSimulation(
         spatial=spatial,

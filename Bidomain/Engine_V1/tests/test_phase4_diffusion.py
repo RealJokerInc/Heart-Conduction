@@ -20,7 +20,7 @@ def _make_system(nx=15, ny=15, lx=1.0, ly=1.0, D_i=0.00124, D_e=0.00446,
     from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
     from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
     from cardiac_sim.simulation.classical.discretization.fdm import BidomainFDMDiscretization
-    from cardiac_sim.simulation.classical.solver.diffusion_stepping.decoupled import DecoupledBidomainDiffusionSolver
+    from cardiac_sim.simulation.classical.solver.diffusion_stepping.decoupled_gs import DecoupledBidomainDiffusionSolver
     from cardiac_sim.simulation.classical.solver.linear_solver.pcg import PCGSolver
     from cardiac_sim.simulation.classical.state import BidomainState
 
@@ -30,7 +30,7 @@ def _make_system(nx=15, ny=15, lx=1.0, ly=1.0, D_i=0.00124, D_e=0.00446,
     elif bc == 'bath':
         grid.boundary_spec = BoundarySpec.bath_coupled()
     cond = BidomainConductivity(D_i=D_i, D_e=D_e)
-    fdm = BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
+    fdm = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     para_solver = PCGSolver(max_iters=500, tol=1e-10)
     ellip_solver = PCGSolver(max_iters=500, tol=1e-10)
@@ -221,8 +221,8 @@ def test_operator_rebuild():
 
     diag_new = extract_diagonal(diffusion.A_para)
 
-    # A_para = chi*Cm/dt * I - theta*L_i
-    # Changing dt changes chi*Cm/dt, so diagonal should change
+    # A_para = 1/dt * I - theta*L_i
+    # Changing dt changes 1/dt, so diagonal should change
     diff = torch.abs(diag_old - diag_new).max().item()
     assert diff > 1.0, f"A_para diagonal didn't change after rebuild: diff={diff}"
 

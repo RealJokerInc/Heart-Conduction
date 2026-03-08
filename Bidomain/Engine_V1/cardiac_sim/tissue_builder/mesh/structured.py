@@ -109,6 +109,7 @@ class StructuredGrid(Mesh):
         return StructuredGrid(
             Nx=self.Nx, Ny=self.Ny, Lx=self.Lx, Ly=self.Ly,
             domain_mask=mask, fiber_angles=fibers,
+            boundary_spec=self.boundary_spec,
             _device=device, _dtype=self._dtype
         )
 

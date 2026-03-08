@@ -30,7 +30,7 @@ def _make_spatial(nx=10, ny=10, lx=1.0, ly=1.0, D_i=0.00124, D_e=0.00446, bc='in
         from cardiac_sim.tissue_builder.mesh.boundary import Edge
         grid.boundary_spec = BoundarySpec.bath_coupled_edges([Edge.TOP, Edge.BOTTOM])
     cond = BidomainConductivity(D_i=D_i, D_e=D_e)
-    return BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
+    return BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
 
 # === 5-T1: Factory string configs ===
@@ -110,7 +110,7 @@ def test_auto_solver_aniso():
         D_e_fiber=0.002, D_e_cross=0.001,
         theta=torch.zeros(10, 10, dtype=torch.float64)  # uniform fiber angle
     )
-    spatial = BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     sim = BidomainSimulation(spatial=spatial, ionic_model='ttp06', dt=0.02)
     assert sim._elliptic_solver_name == 'pcg_spectral'

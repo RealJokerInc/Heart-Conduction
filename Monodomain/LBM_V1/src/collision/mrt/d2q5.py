@@ -28,8 +28,10 @@ _M_D2Q5 = torch.tensor([
 _M_inv_D2Q5 = torch.linalg.inv(_M_D2Q5)
 
 # Equilibrium moment coefficients: m_eq = coeff * V
-# rho_eq = V, j_x_eq = 0, j_y_eq = 0, e_eq = -4/3*V, p_xx_eq = 0
-_meq_coeff_D2Q5 = torch.tensor([1.0, 0.0, 0.0, -4.0/3.0, 0.0], dtype=torch.float64)
+# rho_eq = V, j_x_eq = 0, j_y_eq = 0, e_eq = -2/3*V, p_xx_eq = 0
+# Derivation: e = [-4,1,1,1,1] . [V/3, V/6, V/6, V/6, V/6]
+#            = -4V/3 + 4(V/6) = -4V/3 + 2V/3 = -2V/3
+_meq_coeff_D2Q5 = torch.tensor([1.0, 0.0, 0.0, -2.0/3.0, 0.0], dtype=torch.float64)
 
 
 def mrt_collide_d2q5(f: Tensor, V: Tensor, R: Tensor, dt: float,

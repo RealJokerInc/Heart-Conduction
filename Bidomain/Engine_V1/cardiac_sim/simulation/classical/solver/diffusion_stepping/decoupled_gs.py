@@ -4,9 +4,9 @@ Decoupled Bidomain Diffusion Solver
 Gauss-Seidel splitting: parabolic solve for Vm, then elliptic solve for phi_e.
 Two sequential N x N SPD solves per time step.
 
-Step 1 (Parabolic):
-    (chi*Cm/dt * I - theta*L_i) * Vm^{n+1} =
-        B_para * Vm^n + theta * L_i * phi_e^n
+Step 1 (Parabolic — Formulation B, D-based):
+    (1/dt * I - theta*L_i) * Vm^{n+1} =
+        B_para * Vm^n + L_i * phi_e^n
 
 Step 2 (Elliptic):
     -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
@@ -15,6 +15,7 @@ Ref: improvement.md L960-1044
 """
 
 from typing import TYPE_CHECKING
+import torch
 
 from .base import BidomainDiffusionSolver
 from ..linear_solver.pcg import sparse_mv
@@ -114,7 +115,6 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
             new_col = [indices[1, keep], indices[1].new_tensor([pin_node])]
             new_val = [values[keep], values.new_tensor([1.0])]
 
-            import torch
             new_indices = torch.stack([torch.cat(new_row), torch.cat(new_col)])
             new_values = torch.cat(new_val)
             pinned = torch.sparse_coo_tensor(new_indices, new_values, A.shape)
@@ -123,7 +123,6 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
             # Store as attribute.
             self.A_ellip = pinned.coalesce()
         else:
-            import torch
             A[pin_node, :] = 0
             A[:, pin_node] = 0
             A[pin_node, pin_node] = 1.0

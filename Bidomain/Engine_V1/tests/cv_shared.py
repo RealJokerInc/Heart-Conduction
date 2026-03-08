@@ -34,9 +34,8 @@ D_I = SIGMA_I / (CHI_REAL * CM_REAL)  # 0.00124 cm^2/ms
 D_E = SIGMA_E / (CHI_REAL * CM_REAL)  # 0.00446 cm^2/ms
 D_EFF = D_I * D_E / (D_I + D_E)      # 0.000970 cm^2/ms
 
-# Convention fix: chi=1.0, Cm=1.0 in numerical operators
-# (D values already contain physical chi*Cm scaling)
-CHI_NUM = 1.0
+# Formulation B: chi is absorbed into D = sigma/(chi*Cm).
+# Only Cm appears in the numerical operators (source term scaling).
 CM_NUM = 1.0
 
 
@@ -166,7 +165,7 @@ def run_lbm(nx=NX, ny=NY, dx=DX, dt=DT, D=D_EFF, lattice='d2q5',
 # Bidomain Simulation Builder
 # ============================================================
 def build_bidomain_sim(nx, ny, dx, dt, D_i, D_e, bc_type='insulated',
-                       chi=CHI_NUM, Cm=CM_NUM, stim_width=STIM_WIDTH,
+                       Cm=CM_NUM, stim_width=STIM_WIDTH,
                        stim_start=STIM_START, stim_dur=STIM_DUR,
                        stim_amp=STIM_AMP, theta=0.5):
     """Build a BidomainSimulation with standard parameters.
@@ -203,7 +202,7 @@ def build_bidomain_sim(nx, ny, dx, dt, D_i, D_e, bc_type='insulated',
     grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Ly,
                           boundary_spec=boundary_spec)
     cond = BidomainConductivity(D_i=D_i, D_e=D_e)
-    spatial = BidomainFDMDiscretization(grid, cond, chi=chi, Cm=Cm)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=Cm)
 
     stimulus = StimulusProtocol()
     stimulus.add_stimulus(

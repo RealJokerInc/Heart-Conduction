@@ -60,8 +60,9 @@ class ForwardEulerIonicSolver(IonicSolver):
         Istim = self._evaluate_Istim(state)
 
         # 3. Forward Euler on voltage
-        # V5.3 convention: dV = -(Iion + Istim)
-        state.V = V + dt * (-(Iion + Istim))
+        # Formulation B: dVm/dt = -(I_ion + I_stim) / Cm
+        Cm = getattr(state, 'Cm', 1.0)
+        state.V = V + dt * (-(Iion + Istim) / Cm)
 
         # 4. Forward Euler on gates
         # dx/dt = (x_inf - x) / tau

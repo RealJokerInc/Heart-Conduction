@@ -30,8 +30,8 @@ class BidomainConductivity:
     D_e: float = 0.00446       # cm^2/ms (sigma_e / chi*Cm)
 
     # Per-node fields (for heterogeneous tissue)
-    D_i_field: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None  # (Dxx_i, Dyy_i, Dxy_i)
-    D_e_field: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
+    D_i_field: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None  # (Dxx_i, Dxy_i, Dyy_i)
+    D_e_field: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None  # (Dxx_e, Dxy_e, Dyy_e)
 
     # Fiber-based (for anisotropic tissue)
     D_i_fiber: Optional[float] = None   # Along fibers

@@ -300,7 +300,7 @@ class TTP06Model(IonicModel):
         # Update gating variables (Rush-Larsen)
         if self.use_lut and self._lut is not None:
             # Use lookup tables for voltage-dependent gating
-            g = self._lut.get_all_gating(V, cell_type_is_endo=(self.cell_type == CellType.ENDO))
+            g = self._lut.get_all_gating(V, celltype_is_endo=(self.cell_type == CellType.ENDO))
 
             m_new = rush_larsen(m, g['m_inf'], g['m_tau'], dt)
             h_new = rush_larsen(h, g['h_inf'], g['h_tau'], dt)

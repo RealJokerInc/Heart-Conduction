@@ -1,11 +1,11 @@
-"""Phase 6A: Chi*Cm Convention Fix Verification.
+"""Phase 6A: Formulation B Convention Verification.
 
-Lightweight tests (seconds) that verify the chi=1.0 convention gives
-correct operator scaling and diffusion rates. Must pass before running
-the expensive wave propagation tests in Phases 6B-6D.
+Lightweight tests (seconds) that verify Formulation B (D-based, 1/dt mass term)
+gives correct operator scaling and diffusion rates. Chi is fully absorbed into
+D = sigma/(chi*Cm) and does NOT appear in any operators.
 
 Tests:
-  6A-T1: Operator diagonal scaling (chi=1.0 vs chi=1400)
+  6A-T1: Operator diagonal scaling (chi param is ignored, mass = 1/dt)
   6A-T2: L_i applied to quadratic field (verify D_i in stencil)
   6A-T3: Bidomain Gaussian diffusion (D_eff variance growth)
   6A-T4: LBM Gaussian diffusion (cross-check against bidomain)
@@ -22,25 +22,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..',
 import torch
 torch.set_default_dtype(torch.float64)
 
-from cv_shared import D_I, D_E, D_EFF, DX, DT, CHI_NUM, CM_NUM
+from cv_shared import D_I, D_E, D_EFF, DX, DT, CM_NUM
 
 
 # ============================================================
 # 6A-T1: Operator diagonal scaling
 # ============================================================
 def test_6a_t1_operator_scaling():
-    """Verify A_para diagonal scales correctly with chi*Cm.
+    """Verify A_para uses Formulation B: mass term = 1/dt (chi is ignored).
 
-    With chi=1.0: diagonal ~ 1/dt + theta*|L_i_center_weight|
-    With chi=1400: diagonal ~ 1400/dt + theta*|L_i_center_weight|
+    Formulation B: A_para = 1/dt * I - theta * L_i
+    Chi is fully absorbed into D = sigma/(chi*Cm). Passing chi to the
+    constructor triggers a deprecation warning but has no effect.
 
-    The mass term (chi_Cm/dt) must match the convention.
+    Diagonal at interior node = 1/dt + theta * |L_i center weight|
     """
     from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
     from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
     from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
     from cardiac_sim.simulation.classical.discretization.fdm import (
         BidomainFDMDiscretization)
+    import warnings
 
     nx, ny = 20, 10
     Lx, Ly = DX * (nx - 1), DX * (ny - 1)
@@ -51,60 +53,46 @@ def test_6a_t1_operator_scaling():
     dt = DT
     theta = 0.5
 
-    # Build with chi=1.0 (correct)
-    sp1 = BidomainFDMDiscretization(grid, cond, chi=1.0, Cm=1.0)
+    # Build without chi (Formulation B)
+    sp1 = BidomainFDMDiscretization(grid, cond, Cm=1.0)
     A1, _ = sp1.get_parabolic_operators(dt, theta)
     A1d = A1.to_dense()
 
-    # Build with chi=1400 (incorrect for cross-validation)
-    sp2 = BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
+    # Build with chi=1400 — should produce identical operators (chi ignored)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        sp2 = BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
     A2, _ = sp2.get_parabolic_operators(dt, theta)
     A2d = A2.to_dense()
 
     # Pick an interior node
     i_interior = (nx // 2) * ny + (ny // 2)
 
-    diag_chi1 = A1d[i_interior, i_interior].item()
+    diag_no_chi = A1d[i_interior, i_interior].item()
     diag_chi1400 = A2d[i_interior, i_interior].item()
 
-    # Expected mass term: chi_Cm / dt
-    mass_chi1 = 1.0 / dt       # = 100
-    mass_chi1400 = 1400.0 / dt  # = 140000
+    # Key check: chi parameter is ignored — both operators identical
+    assert abs(diag_no_chi - diag_chi1400) < 1e-12, \
+        f"chi should be ignored but diag differs: {diag_no_chi} vs {diag_chi1400}"
+    print(f"    chi=None and chi=1400 produce identical operators (diff < 1e-12)")
 
-    print(f"    chi=1.0:   A_para diagonal = {diag_chi1:.2f} "
-          f"(mass term = {mass_chi1:.0f})")
-    print(f"    chi=1400:  A_para diagonal = {diag_chi1400:.2f} "
-          f"(mass term = {mass_chi1400:.0f})")
+    # Verify mass term = 1/dt (Formulation B)
+    mass_term = 1.0 / dt  # = 100
+    ratio = diag_no_chi / mass_term
 
-    # Diagonal should be close to mass term (stencil correction is small)
-    ratio_1 = diag_chi1 / mass_chi1
-    ratio_1400 = diag_chi1400 / mass_chi1400
+    print(f"    A_para diagonal = {diag_no_chi:.2f} (mass term 1/dt = {mass_term:.0f})")
+    print(f"    Ratio diag/mass: {ratio:.4f}")
 
-    print(f"    Ratio diag/mass: chi=1: {ratio_1:.4f}, chi=1400: {ratio_1400:.4f}")
+    # Stencil adds D_i/dx^2 * theta ~ 0.00124/0.000625 * 0.5 ~ 1.0
+    # so ratio ~ (100 + 1) / 100 = 1.01
+    assert ratio > 1.0, f"Diagonal should exceed mass term, got {ratio}"
+    assert ratio < 1.1, f"Stencil correction unexpectedly large: {ratio}"
 
-    # Mass term dominates: ratio should be close to 1.0
-    # For chi=1.0: stencil adds D_i/dx^2 * theta ~ 0.00124/0.000625 * 0.5 ~ 1.0
-    #   so ratio ~ (100 + 1) / 100 = 1.01
-    # For chi=1400: stencil is same, but mass is 140000
-    #   so ratio ~ (140000 + 1) / 140000 ~ 1.0000
-    assert ratio_1 > 1.0, f"Diagonal should exceed mass term, got {ratio_1}"
-    assert ratio_1 < 1.1, f"Stencil correction unexpectedly large: {ratio_1}"
-    assert ratio_1400 > 1.0, f"chi=1400 diagonal should exceed mass"
-    assert ratio_1400 < 1.001, f"chi=1400 stencil should be negligible: {ratio_1400}"
+    stencil_contribution = diag_no_chi - mass_term
+    print(f"    Stencil contribution: {stencil_contribution:.4f}")
+    print(f"    Diffusion/mass ratio: {stencil_contribution/mass_term:.4f}")
 
-    # The key check: with chi=1.0, diffusion is O(1)% of mass.
-    # With chi=1400, diffusion is O(0.001)% of mass — effectively no diffusion.
-    stencil_contribution_1 = diag_chi1 - mass_chi1
-    stencil_contribution_1400 = diag_chi1400 - mass_chi1400
-
-    # Both should have the same stencil contribution (same L_i)
-    stencil_diff = abs(stencil_contribution_1 - stencil_contribution_1400)
-    assert stencil_diff < 1e-10, f"Stencil differs: {stencil_diff}"
-    print(f"    Stencil contribution (both): {stencil_contribution_1:.4f}")
-    print(f"    Diffusion/mass ratio: chi=1: {stencil_contribution_1/mass_chi1:.4f}, "
-          f"chi=1400: {stencil_contribution_1400/mass_chi1400:.6f}")
-
-    print("6A-T1 PASS: Operator diagonal scaling correct")
+    print("6A-T1 PASS: Formulation B operator scaling correct (chi ignored)")
 
 
 # ============================================================
@@ -127,7 +115,7 @@ def test_6a_t2_laplacian_quadratic():
     grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Ly,
                           boundary_spec=BoundarySpec.insulated())
     cond = BidomainConductivity(D_i=D_I, D_e=D_E)
-    spatial = BidomainFDMDiscretization(grid, cond, chi=1.0, Cm=1.0)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     # Create V = x^2 (flat vector)
     x, y = spatial.coordinates
@@ -159,7 +147,7 @@ def test_6a_t2_laplacian_quadratic():
 # 6A-T3: Bidomain Gaussian diffusion
 # ============================================================
 def test_6a_t3_bidomain_gaussian():
-    """Verify Gaussian spreads at rate D_eff in bidomain with chi=1.0.
+    """Verify Gaussian spreads at rate D_eff in bidomain (Formulation B).
 
     Pure diffusion (no ionic): initialize Vm as Gaussian, phi_e=0,
     run DecoupledBidomainDiffusionSolver for N steps, measure variance.
@@ -173,7 +161,7 @@ def test_6a_t3_bidomain_gaussian():
     from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
     from cardiac_sim.simulation.classical.discretization.fdm import (
         BidomainFDMDiscretization)
-    from cardiac_sim.simulation.classical.solver.diffusion_stepping.decoupled import (
+    from cardiac_sim.simulation.classical.solver.diffusion_stepping.decoupled_gs import (
         DecoupledBidomainDiffusionSolver)
     from cardiac_sim.simulation.classical.solver.linear_solver.pcg import PCGSolver
     from cardiac_sim.simulation.classical.state import BidomainState
@@ -186,7 +174,7 @@ def test_6a_t3_bidomain_gaussian():
     grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Ly,
                           boundary_spec=BoundarySpec.insulated())
     cond = BidomainConductivity(D_i=D_I, D_e=D_E)
-    spatial = BidomainFDMDiscretization(grid, cond, chi=1.0, Cm=1.0)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
     # Gaussian initial condition
     x, y = spatial.coordinates

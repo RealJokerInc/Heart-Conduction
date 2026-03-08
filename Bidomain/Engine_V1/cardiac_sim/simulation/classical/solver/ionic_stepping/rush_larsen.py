@@ -78,9 +78,10 @@ class RushLarsenSolver(IonicSolver):
         Istim = self._evaluate_Istim(state)  # (n_dof,)
 
         # 4. Forward Euler on voltage
-        # V5.3 convention: dV = -(Iion + Istim)
+        # Formulation B: dVm/dt = -I_ion/Cm (I_ion in pA/pF, Cm in uF/cm^2)
         # A negative Istim (e.g., -80 uA/uF) reduces total current, depolarizing V
-        state.V = V + dt * (-(Iion + Istim))
+        Cm = getattr(state, 'Cm', 1.0)
+        state.V = V + dt * (-(Iion + Istim) / Cm)
 
         # 5. Rush-Larsen exponential integration on gates
         # Uses gate_inf/tau computed from OLD state (step 2)

@@ -16,7 +16,7 @@ def bgk_collide(f: Tensor, V: Tensor, R: Tensor, dt: float,
     Args:
         f: (Q, Nx, Ny) distribution functions
         V: (Nx, Ny) macroscopic voltage = sum(f_i)
-        R: (Nx, Ny) source term = -(I_ion + I_stim) / (chi * Cm)
+        R: (Nx, Ny) source term = -(I_ion + I_stim) / Cm
         dt: time step
         omega: relaxation frequency = 1/tau
         w: (Q,) lattice weights

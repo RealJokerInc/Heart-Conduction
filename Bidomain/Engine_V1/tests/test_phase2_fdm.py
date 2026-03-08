@@ -26,7 +26,7 @@ def _make_fdm(nx=10, ny=10, lx=1.0, ly=1.0, D_i=0.00124, D_e=0.00446, bc='insula
     elif bc == 'bath':
         grid.boundary_spec = BoundarySpec.bath_coupled()
     cond = BidomainConductivity(D_i=D_i, D_e=D_e)
-    return BidomainFDMDiscretization(grid, cond, chi=1400.0, Cm=1.0)
+    return BidomainFDMDiscretization(grid, cond, Cm=1.0)
 
 
 def _to_dense(A):

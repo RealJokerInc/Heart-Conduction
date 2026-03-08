@@ -60,6 +60,9 @@ class BidomainState:
     gate_indices: List[int]
     concentration_indices: List[int]
 
+    # Membrane capacitance for source term scaling (uF/cm^2)
+    Cm: float = 1.0
+
     # Time
     t: float = 0.0
 
