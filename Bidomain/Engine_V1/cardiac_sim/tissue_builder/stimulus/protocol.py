@@ -180,7 +180,7 @@ class StimulusProtocol:
         for stim in self.stimuli:
             if stim.is_active(t):
                 mask = stim.get_mask(x, y)
-                Istim[mask] = stim.amplitude
+                Istim[mask] += stim.amplitude
 
         return Istim
 

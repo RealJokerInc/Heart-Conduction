@@ -40,7 +40,7 @@ class SplittingStrategy(ABC):
         self.diffusion_solver = diffusion_solver
 
     @abstractmethod
-    def step(self, state: 'SimulationState', dt: float) -> None:
+    def step(self, state: 'BidomainState', dt: float) -> None:
         """
         Advance state by dt using operator splitting.
 
@@ -48,7 +48,7 @@ class SplittingStrategy(ABC):
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Current simulation state (modified in-place)
         dt : float
             Time step (ms)

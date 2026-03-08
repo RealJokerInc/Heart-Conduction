@@ -36,7 +36,7 @@ class ForwardEulerIonicSolver(IonicSolver):
     def __init__(self, ionic_model: 'IonicModel'):
         super().__init__(ionic_model)
 
-    def step(self, state: 'SimulationState', dt: float) -> None:
+    def step(self, state: 'BidomainState', dt: float) -> None:
         """
         Advance ionic variables by dt using Forward Euler.
 
@@ -44,7 +44,7 @@ class ForwardEulerIonicSolver(IonicSolver):
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Simulation state (modified in-place)
         dt : float
             Time step (ms)
@@ -64,11 +64,13 @@ class ForwardEulerIonicSolver(IonicSolver):
         Cm = getattr(state, 'Cm', 1.0)
         state.V = V + dt * (-(Iion + Istim) / Cm)
 
-        # 4. Forward Euler on gates
-        # dx/dt = (x_inf - x) / tau
+        # 4. Compute ALL rates from OLD state BEFORE any in-place updates
         gate_inf = model.compute_gate_steady_states(V, S)
         gate_tau = model.compute_gate_time_constants(V, S)
+        conc_rates = model.compute_concentration_rates(V, S)
 
+        # 5. Forward Euler on gates
+        # dx/dt = (x_inf - x) / tau
         gate_indices = model.gate_indices
         for i, idx in enumerate(gate_indices):
             x = S[:, idx]
@@ -77,8 +79,7 @@ class ForwardEulerIonicSolver(IonicSolver):
             # Forward Euler: x_new = x + dt * dx/dt
             S[:, idx] = x + dt * (x_inf - x) / tau
 
-        # 5. Forward Euler on concentrations
-        conc_rates = model.compute_concentration_rates(V, S)
+        # 6. Forward Euler on concentrations (rates computed from OLD state above)
 
         conc_indices = model.concentration_indices
         for i, idx in enumerate(conc_indices):

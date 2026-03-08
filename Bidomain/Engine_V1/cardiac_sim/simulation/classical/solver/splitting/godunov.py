@@ -33,7 +33,7 @@ class GodunovSplitting(SplittingStrategy):
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Simulation state (modified in-place)
         dt : float
             Time step (ms)

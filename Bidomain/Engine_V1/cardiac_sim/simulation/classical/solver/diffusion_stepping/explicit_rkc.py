@@ -168,7 +168,7 @@ class ExplicitRKCSolver(BidomainDiffusionSolver):
         w0 = self._w0
         w1 = self._w1
         Ts_w0 = self._Ts_w0
-        phi_e_frozen = state.phi_e
+        phi_e_frozen = state.phi_e.clone()
 
         # F(Vm) = L_i * (Vm + phi_e^n)
         def F(Vm):

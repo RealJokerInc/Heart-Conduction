@@ -21,7 +21,7 @@ class IonicSolver(ABC):
     Abstract base class for ionic time integrators.
 
     Owns an IonicModel (computation provider). Advances ionic variables
-    in-place on SimulationState.
+    in-place on BidomainState.
 
     The solver is responsible for:
     - Evaluating stimulus current from state's stimulus data
@@ -41,7 +41,7 @@ class IonicSolver(ABC):
         self.ionic_model = ionic_model
 
     @abstractmethod
-    def step(self, state: 'SimulationState', dt: float) -> None:
+    def step(self, state: 'BidomainState', dt: float) -> None:
         """
         Advance ionic variables by dt.
 
@@ -49,20 +49,20 @@ class IonicSolver(ABC):
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Simulation state (modified in-place)
         dt : float
             Time step (ms)
         """
         pass
 
-    def _evaluate_Istim(self, state: 'SimulationState') -> torch.Tensor:
+    def _evaluate_Istim(self, state: 'BidomainState') -> torch.Tensor:
         """
         Compute stimulus current at current time from state's stimulus data.
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Contains t, stim_masks, stim_starts, stim_durations, stim_amplitudes
 
         Returns

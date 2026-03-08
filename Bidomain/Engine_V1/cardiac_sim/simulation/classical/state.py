@@ -108,3 +108,24 @@ class BidomainState:
     def phi_e_flat(self) -> torch.Tensor:
         """Return phi_e as 1D (n_dof,) — no-op for classical."""
         return self.phi_e
+
+    def clone(self) -> 'BidomainState':
+        """Create a deep copy of this state for snapshots or rollback."""
+        return BidomainState(
+            spatial=self.spatial,
+            n_dof=self.n_dof,
+            x=self.x,  # coordinates are shared (immutable)
+            y=self.y,
+            Vm=self.Vm.clone(),
+            phi_e=self.phi_e.clone(),
+            ionic_states=self.ionic_states.clone(),
+            gate_indices=self.gate_indices,
+            concentration_indices=self.concentration_indices,
+            Cm=self.Cm,
+            t=self.t,
+            stim_masks=self.stim_masks,  # shared (immutable)
+            stim_starts=self.stim_starts,
+            stim_durations=self.stim_durations,
+            stim_amplitudes=self.stim_amplitudes,
+            stim_amplitudes_e=self.stim_amplitudes_e,
+        )

@@ -53,10 +53,11 @@ class PCGSpectralSolver(LinearSolver):
         self._Ap = None
         self._x = None
         self._last_solution = None
+        self._has_warm_start = False
         self.last_iters = 0
 
     def _alloc(self, n, device, dtype):
-        if self._r is None or self._r.shape[0] != n:
+        if self._r is None or self._r.shape[0] != n or self._r.dtype != dtype:
             self._r = torch.zeros(n, device=device, dtype=dtype)
             self._z = torch.zeros(n, device=device, dtype=dtype)
             self._p = torch.zeros(n, device=device, dtype=dtype)
@@ -69,19 +70,23 @@ class PCGSpectralSolver(LinearSolver):
         self._alloc(n, b.device, b.dtype)
 
         x = self._x
-        if self._last_solution is not None:
+        has_warm_start = self._has_warm_start and self._last_solution is not None
+        if has_warm_start:
             x.copy_(self._last_solution)
         else:
             x.zero_()
 
         r = self._r
         r.copy_(b)
-        if x.abs().sum() > 0:
+        if has_warm_start:
             r.sub_(sparse_mv(A, x))
 
         b_norm = torch.norm(b)
         if b_norm < 1e-14:
+            # Ax = 0 with SPD A => x = 0
+            x.zero_()
             self._last_solution = x.clone()
+            self._has_warm_start = True
             self.last_iters = 0
             return x.clone()
 
@@ -93,12 +98,17 @@ class PCGSpectralSolver(LinearSolver):
         p.copy_(z)
         rz = torch.dot(r, z)
 
+        converged = False
+        iters = 0
+
         for k in range(self.max_iters):
             Ap = self._Ap
             Ap.copy_(sparse_mv(A, p))
 
             pAp = torch.dot(p, Ap)
-            if pAp.abs() < 1e-30:
+            # Scale-relative pAp threshold (matches PCG fix PCG-1)
+            if pAp.abs() < 1e-14 * b_norm * b_norm:
+                iters = k + 1
                 break
             alpha = rz / pAp
 
@@ -107,16 +117,22 @@ class PCGSpectralSolver(LinearSolver):
 
             r_norm = torch.norm(r)
             if r_norm / b_norm < self.tol:
-                self.last_iters = k + 1
+                converged = True
+                iters = k + 1
                 break
 
             z.copy_(self._precond.solve(A, r))
             rz_new = torch.dot(r, z)
+            if rz.abs() < 1e-30:
+                iters = k + 1
+                break
             beta = rz_new / rz
             p.mul_(beta).add_(z)
             rz = rz_new
         else:
-            self.last_iters = self.max_iters
+            iters = self.max_iters
 
+        self.last_iters = iters
         self._last_solution = x.clone()
+        self._has_warm_start = True
         return x.clone()

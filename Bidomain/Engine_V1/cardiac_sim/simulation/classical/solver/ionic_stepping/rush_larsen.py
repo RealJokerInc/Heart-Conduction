@@ -42,7 +42,7 @@ class RushLarsenSolver(IonicSolver):
     def __init__(self, ionic_model: 'IonicModel'):
         super().__init__(ionic_model)
 
-    def step(self, state: 'SimulationState', dt: float) -> None:
+    def step(self, state: 'BidomainState', dt: float) -> None:
         """
         Advance ionic variables by dt using Rush-Larsen integration.
 
@@ -57,7 +57,7 @@ class RushLarsenSolver(IonicSolver):
 
         Parameters
         ----------
-        state : SimulationState
+        state : BidomainState
             Simulation state (modified in-place)
         dt : float
             Time step (ms)
@@ -83,17 +83,15 @@ class RushLarsenSolver(IonicSolver):
         Cm = getattr(state, 'Cm', 1.0)
         state.V = V + dt * (-(Iion + Istim) / Cm)
 
-        # 5. Rush-Larsen exponential integration on gates
-        # Uses gate_inf/tau computed from OLD state (step 2)
-        gate_indices = model.gate_indices
-        for i, idx in enumerate(gate_indices):
-            x = S[:, idx]
-            x_inf = gate_inf[:, i]
-            tau = gate_tau[:, i]
-            S[:, idx] = x_inf - (x_inf - x) * torch.exp(-dt / tau)
-
-        # 6. Forward Euler on concentrations
+        # 5. Compute concentration rates from OLD state BEFORE gate update
+        # (gates are about to be modified in-place)
         conc_rates = model.compute_concentration_rates(V, S)  # (n_dof, n_conc)
+
+        # 6. Rush-Larsen exponential integration on gates
+        # Uses gate_inf/tau computed from OLD state (step 2)
+        self._update_gates(S, gate_inf, gate_tau, dt)
+
+        # 7. Forward Euler on concentrations (rates from OLD state, step 5)
 
         conc_indices = model.concentration_indices
         for i, idx in enumerate(conc_indices):
