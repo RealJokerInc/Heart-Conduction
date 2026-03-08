@@ -15,7 +15,6 @@ Ref: improvement.md L960-1044
 """
 
 from typing import TYPE_CHECKING
-import torch
 
 from .base import BidomainDiffusionSolver
 from ..linear_solver.pcg import sparse_mv
@@ -67,7 +66,8 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
 
         # Null space pinning for Neumann phi_e
         if self._needs_pinning:
-            self._apply_pinning(self.A_ellip, self._pin_node)
+            self.A_ellip = self.apply_elliptic_pinning(
+                self.A_ellip, self._pin_node)
 
     def step(self, state, dt):
         """
@@ -98,34 +98,6 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
         # --- Update state in-place ---
         state.Vm.copy_(Vm_new)
         state.phi_e.copy_(phi_e_new)
-
-    def _apply_pinning(self, A, pin_node):
-        """Enforce phi_e(pin_node) = 0 by modifying the elliptic matrix."""
-        if A.is_sparse:
-            A_coal = A.coalesce()
-            indices = A_coal.indices()
-            values = A_coal.values()
-
-            # Zero out row and column for pin_node
-            row_mask = indices[0] != pin_node
-            col_mask = indices[1] != pin_node
-            keep = row_mask & col_mask
-
-            new_row = [indices[0, keep], indices[0].new_tensor([pin_node])]
-            new_col = [indices[1, keep], indices[1].new_tensor([pin_node])]
-            new_val = [values[keep], values.new_tensor([1.0])]
-
-            new_indices = torch.stack([torch.cat(new_row), torch.cat(new_col)])
-            new_values = torch.cat(new_val)
-            pinned = torch.sparse_coo_tensor(new_indices, new_values, A.shape)
-
-            # In-place replacement via data_ptr isn't possible for sparse.
-            # Store as attribute.
-            self.A_ellip = pinned.coalesce()
-        else:
-            A[pin_node, :] = 0
-            A[:, pin_node] = 0
-            A[pin_node, pin_node] = 1.0
 
     def rebuild_operators(self, spatial, dt):
         """Rebuild operators when dt changes."""

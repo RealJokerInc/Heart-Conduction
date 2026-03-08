@@ -202,6 +202,9 @@ def _build_diffusion_solver(name, spatial, dt, para_ls, ellip_ls, theta):
         from .solver.diffusion_stepping.decoupled_gs import DecoupledBidomainDiffusionSolver
         return DecoupledBidomainDiffusionSolver(
             spatial, dt, para_ls, ellip_ls, theta=theta)
+    elif name == 'semi_implicit':
+        from .solver.diffusion_stepping.semi_implicit import SemiImplicitSolver
+        return SemiImplicitSolver(spatial, dt, ellip_ls)
     else:
         raise ValueError(f"Unknown diffusion solver: {name}")
 
