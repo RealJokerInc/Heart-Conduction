@@ -212,6 +212,9 @@ def _build_diffusion_solver(name, spatial, dt, para_ls, ellip_ls, theta):
     elif name == 'imex_sbdf2':
         from .solver.diffusion_stepping.imex_sbdf2 import IMEXSBDF2Solver
         return IMEXSBDF2Solver(spatial, dt, para_ls, ellip_ls)
+    elif name == 'explicit_rkc':
+        from .solver.diffusion_stepping.explicit_rkc import ExplicitRKCSolver
+        return ExplicitRKCSolver(spatial, dt, ellip_ls)
     else:
         raise ValueError(f"Unknown diffusion solver: {name}")
 
