@@ -150,7 +150,8 @@ class PCGSolver(LinearSolver):
 
         # Initial guess
         x = self._x
-        if self.use_warm_start and self._last_solution is not None:
+        has_warm_start = self.use_warm_start and self._last_solution is not None
+        if has_warm_start:
             x.copy_(self._last_solution)
         else:
             x.zero_()
@@ -158,7 +159,7 @@ class PCGSolver(LinearSolver):
         # r = b - A*x
         r = self._r
         r.copy_(b)
-        if x.abs().sum() > 0:  # Only subtract if x is nonzero
+        if has_warm_start:  # PCG-2 FIX: track warm start via flag, not O(n) check
             r.sub_(sparse_mv(A, x))
 
         # Check for convergence
@@ -194,8 +195,9 @@ class PCGSolver(LinearSolver):
             Ap.copy_(sparse_mv(A, p))
 
             # alpha = rz / (p^T * Ap)
+            # PCG-1 FIX: scale-relative pAp threshold
             pAp = torch.dot(p, Ap)
-            if pAp.abs() < 1e-30:
+            if pAp.abs() < 1e-14 * b_norm * b_norm:
                 break
             alpha = rz / pAp
 

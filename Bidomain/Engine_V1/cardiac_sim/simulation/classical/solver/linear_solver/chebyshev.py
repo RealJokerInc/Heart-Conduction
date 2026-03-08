@@ -8,6 +8,12 @@ making it ideal for GPU execution.
 Uses Gershgorin bounds for eigenvalue estimation.
 Requires SPD matrix (all diffusion operators are SPD).
 
+Bug fixes from LINEAR_SOLVER_IMPLEMENTATION.md:
+  CH-1: Preconditioned Gershgorin bounds for D^{-1}A (was using bounds for A)
+  CH-2: Guard theta > 0 (guaranteed for SPD but now asserted)
+  CH-3: Clamp rho_new to prevent overflow
+  CH-4: Warm start support (x0 parameter in solve())
+
 Ref: Research/03_GPU_Linear:L39-65 (algorithm)
 Ref: Research/03_GPU_Linear:L77-106 (Gershgorin bounds)
 """
@@ -22,13 +28,10 @@ def _gershgorin_bounds(A: torch.Tensor, safety_margin: float = 0.1) -> Tuple[flo
     """
     Estimate eigenvalue bounds of A via Gershgorin circle theorem.
 
-    For Jacobi-preconditioned system, discs are centered at ~1.
-    This implementation works directly on the sparse matrix.
-
     Parameters
     ----------
     A : torch.Tensor
-        Sparse COO matrix
+        Sparse COO matrix (SPD)
     safety_margin : float
         Fraction to expand bounds (default 10%)
 
@@ -44,31 +47,58 @@ def _gershgorin_bounds(A: torch.Tensor, safety_margin: float = 0.1) -> Tuple[flo
     device = A.device
     dtype = A.dtype
 
-    # Extract diagonal and compute off-diagonal row sums
     diag = torch.zeros(n, device=device, dtype=dtype)
     off_diag_sum = torch.zeros(n, device=device, dtype=dtype)
 
     rows = indices[0]
     cols = indices[1]
 
-    # Diagonal entries
     diag_mask = rows == cols
     diag.scatter_add_(0, rows[diag_mask], values[diag_mask])
 
-    # Off-diagonal absolute sums
     off_diag_mask = ~diag_mask
     off_diag_sum.scatter_add_(0, rows[off_diag_mask], values[off_diag_mask].abs())
 
-    # Gershgorin radii (relative to center = diag)
-    # Each eigenvalue lies in [diag_i - r_i, diag_i + r_i]
-    centers = diag
-    radii = off_diag_sum
+    lam_min_raw = (diag - off_diag_sum).min().item()
+    lam_max_raw = (diag + off_diag_sum).max().item()
 
-    # Conservative bounds
-    lam_min_raw = (centers - radii).min().item()
-    lam_max_raw = (centers + radii).max().item()
+    lam_min = max(lam_min_raw * (1 - safety_margin), 1e-10)
+    lam_max = lam_max_raw * (1 + safety_margin)
 
-    # Apply safety margin
+    return lam_min, lam_max
+
+
+def _gershgorin_bounds_preconditioned(
+    A: torch.Tensor, diag_inv: torch.Tensor, safety_margin: float = 0.1
+) -> Tuple[float, float]:
+    """
+    Gershgorin bounds for D^{-1}A where D = diag(A).
+
+    For the preconditioned system, each row of D^{-1}A has:
+      - Center = 1.0 (diagonal entry a_{ii}/a_{ii})
+      - Radius = sum(|a_{ij}/a_{ii}|, j != i)
+    """
+    A = A.coalesce()
+    indices = A.indices()
+    values = A.values()
+    n = A.size(0)
+    device = A.device
+    dtype = A.dtype
+
+    rows = indices[0]
+    cols = indices[1]
+
+    off_diag = rows != cols
+    # |a_{ij}| / a_{ii} for each off-diagonal entry
+    scaled_abs = values[off_diag].abs() * diag_inv[rows[off_diag]]
+
+    radii = torch.zeros(n, device=device, dtype=dtype)
+    radii.scatter_add_(0, rows[off_diag], scaled_abs)
+
+    # Centers are all 1.0 for D^{-1}A
+    lam_min_raw = (1.0 - radii).min().item()
+    lam_max_raw = (1.0 + radii).max().item()
+
     lam_min = max(lam_min_raw * (1 - safety_margin), 1e-10)
     lam_max = lam_max_raw * (1 + safety_margin)
 
@@ -82,7 +112,7 @@ class ChebyshevSolver(LinearSolver):
     Uses 3-term recurrence for polynomial acceleration without
     inner products. Ideal for GPU: no sync points during iteration.
 
-    The algorithm requires eigenvalue bounds [λ_min, λ_max].
+    The algorithm requires eigenvalue bounds [lam_min, lam_max].
     These are estimated via Gershgorin circles on first solve,
     then cached for subsequent solves with the same matrix.
 
@@ -91,7 +121,7 @@ class ChebyshevSolver(LinearSolver):
     max_iters : int
         Fixed number of iterations (no convergence check during iteration)
     tol : float
-        Not used during iteration (fixed count), but stored for API consistency
+        Not used during iteration (fixed count), but stored for API
     safety_margin : float
         Gershgorin bounds expansion factor (default 10%)
     use_jacobi_precond : bool
@@ -110,12 +140,10 @@ class ChebyshevSolver(LinearSolver):
         self.safety_margin = safety_margin
         self.use_jacobi_precond = use_jacobi_precond
 
-        # Cached eigenvalue bounds
         self._lam_min: Optional[float] = None
         self._lam_max: Optional[float] = None
-        self._A_id: Optional[int] = None  # For cache invalidation
+        self._A_id: Optional[int] = None
 
-        # Workspace (lazy allocation)
         self._x: Optional[torch.Tensor] = None
         self._r: Optional[torch.Tensor] = None
         self._z: Optional[torch.Tensor] = None
@@ -141,25 +169,29 @@ class ChebyshevSolver(LinearSolver):
         diag_mask = indices[0] == indices[1]
         diag.scatter_add_(0, indices[0][diag_mask], values[diag_mask])
 
+        # Guard against zero diagonal
+        diag = diag.clamp(min=1e-15)
         return 1.0 / diag
 
     def _estimate_eigenvalues(self, A: torch.Tensor) -> None:
         """Estimate eigenvalue bounds if not cached for this matrix."""
-        # Use data_ptr for cache invalidation (works for both sparse and dense)
         A_id = A.values().data_ptr() if A.is_sparse else A.data_ptr()
 
         if self._A_id != A_id:
-            if self.use_jacobi_precond:
-                # Estimate bounds for D^{-1}A (preconditioned system)
-                # For Jacobi-preconditioned SPD, eigenvalues cluster around 1
-                self._lam_min, self._lam_max = _gershgorin_bounds(A, self.safety_margin)
-            else:
-                self._lam_min, self._lam_max = _gershgorin_bounds(A, self.safety_margin)
-
-            self._A_id = A_id
             self._diag_inv = self._extract_diag_inv(A) if self.use_jacobi_precond else None
 
-    def solve(self, A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+            # CH-1 FIX: Use preconditioned bounds when Jacobi is enabled
+            if self.use_jacobi_precond:
+                self._lam_min, self._lam_max = _gershgorin_bounds_preconditioned(
+                    A, self._diag_inv, self.safety_margin)
+            else:
+                self._lam_min, self._lam_max = _gershgorin_bounds(
+                    A, self.safety_margin)
+
+            self._A_id = A_id
+
+    def solve(self, A: torch.Tensor, b: torch.Tensor,
+              x0: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Solve Ax = b using Chebyshev iteration.
 
@@ -169,6 +201,8 @@ class ChebyshevSolver(LinearSolver):
             Sparse SPD system matrix
         b : torch.Tensor
             Right-hand side vector
+        x0 : torch.Tensor, optional
+            Initial guess for warm start (CH-4 fix)
 
         Returns
         -------
@@ -188,43 +222,59 @@ class ChebyshevSolver(LinearSolver):
         # Chebyshev parameters
         theta = (lam_max + lam_min) / 2.0
         delta = (lam_max - lam_min) / 2.0
+
+        # CH-2 FIX: Guard theta and delta
+        assert theta > 0, f"Chebyshev theta={theta} <= 0 (not SPD?)"
+        assert delta > 0, f"Chebyshev delta={delta} <= 0 (single eigenvalue?)"
+
         sigma = theta / delta
 
-        # Initialize x = 0
         x = self._x
-        x.zero_()
-
-        # r = b - A*x = b (since x=0)
         r = self._r
-        r.copy_(b)
-
-        # z = precond(r)
         z = self._z
+        d = self._d
+
+        # CH-4 FIX: Warm start support
+        if x0 is not None:
+            x.copy_(x0)
+        else:
+            x.zero_()
+
+        # r = b - A*x
+        if x0 is not None:
+            Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
+            r.copy_(b - Ax)
+        else:
+            r.copy_(b)
+
+        # z = M^{-1} * r
         if self.use_jacobi_precond:
             z.copy_(r * self._diag_inv)
         else:
             z.copy_(r)
 
-        # First iteration (special case)
+        # First iteration
         rho = 1.0 / sigma
-        d = self._d
         d.copy_(z / theta)
         x.add_(d)
 
         # Main iteration loop
         for _ in range(1, self.max_iters):
-            # r = b - A*x
             Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
             r.copy_(b - Ax)
 
-            # z = precond(r)
             if self.use_jacobi_precond:
                 z.copy_(r * self._diag_inv)
             else:
                 z.copy_(r)
 
-            # Chebyshev update
-            rho_new = 1.0 / (2.0 * sigma - rho)
+            # CH-3 FIX: Guard against overflow
+            denom = 2.0 * sigma - rho
+            if abs(denom) < 1e-15:
+                break  # Degenerate — stop iterating
+            rho_new = 1.0 / denom
+            rho_new = max(min(rho_new, 1e15), -1e15)  # Clamp
+
             d.mul_(rho_new * rho).add_(z, alpha=2.0 * rho_new / delta)
             x.add_(d)
             rho = rho_new
@@ -237,11 +287,6 @@ class ChebyshevSolver(LinearSolver):
 
         Useful when bounds are known from problem structure or previous
         estimation (avoids Gershgorin cost).
-
-        Parameters
-        ----------
-        lam_min, lam_max : float
-            Eigenvalue bounds
         """
         self._lam_min = lam_min
         self._lam_max = lam_max

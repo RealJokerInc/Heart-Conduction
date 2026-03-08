@@ -1,14 +1,12 @@
 """
-FFT/DCT Spectral Linear Solver
+FFT/DCT Spectral Linear Solver [DEPRECATED]
+
+DEPRECATED: Use spectral.py instead. This module has chi/Cm baked into
+eigenvalues (incompatible with Formulation B) and a DCT fallback with
+wrong normalization. See LINEAR_SOLVER_IMPLEMENTATION.md § 2.4.
 
 Direct spectral solve for structured Cartesian grids.
 O(N log N) complexity via FFT/DCT.
-
-- FFT: Periodic boundary conditions
-- DCT: Neumann (zero-flux) boundary conditions
-
-For cardiac simulation, Neumann BCs are most appropriate
-(no current leaks at tissue boundaries).
 
 Ref: Research/03_GPU_Linear:L169-261
 """
