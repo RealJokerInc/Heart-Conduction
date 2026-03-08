@@ -3,7 +3,7 @@ Validation tests for ExplicitRKCSolver (Runge-Kutta-Chebyshev).
 
 Tests:
   RKC-T1: Stability enforcement (rejects dt above stability limit)
-  RKC-T2: Gaussian diffusion rate matches D_eff
+  RKC-T2: Cosine mode decay validates D_eff
   RKC-T3: Cross-check against Gauss-Seidel
   RKC-T4: RKC coefficient sanity (T_n recursion, known values)
   RKC-T5: Factory integration ('explicit_rkc' string in bidomain.py)
@@ -22,34 +22,7 @@ torch.set_default_dtype(torch.float64)
 import math
 
 from cv_shared import D_I, D_E, D_EFF, DX, DT
-
-
-def _make_spatial(nx, ny):
-    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
-    from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
-    from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
-    from cardiac_sim.simulation.classical.discretization.fdm import BidomainFDMDiscretization
-
-    Lx = DX * (nx - 1)
-    grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Lx,
-                          boundary_spec=BoundarySpec.insulated())
-    cond = BidomainConductivity(D_i=D_I, D_e=D_E)
-    return BidomainFDMDiscretization(grid, cond, Cm=1.0)
-
-
-def _make_gaussian_state(nx, ny, spatial):
-    from cardiac_sim.simulation.classical.state import BidomainState
-
-    Lx = DX * (nx - 1)
-    x, y = spatial.coordinates
-    sigma_0 = 5 * DX
-    Vm = torch.exp(-((x - Lx/2)**2 + (y - Lx/2)**2) / (2 * sigma_0**2))
-    return BidomainState(
-        spatial=spatial, n_dof=spatial.n_dof, x=x, y=y,
-        Vm=Vm.clone(), phi_e=torch.zeros_like(Vm),
-        ionic_states=torch.zeros(spatial.n_dof, 1),
-        gate_indices=[], concentration_indices=[],
-    )
+from test_helpers import _make_spatial, _make_cosine_state, validate_deff_cosine
 
 
 # ============================================================
@@ -60,8 +33,7 @@ def test_rkc_t1_stability_enforcement():
     from cardiac_sim.simulation.classical.solver.diffusion_stepping.explicit_rkc import ExplicitRKCSolver
     from cardiac_sim.simulation.classical.solver.linear_solver.pcg import PCGSolver
 
-    nx, ny = 10, 10
-    spatial = _make_spatial(nx, ny)
+    spatial = _make_spatial(10, 10)
     solver = PCGSolver(max_iters=100, tol=1e-8)
 
     # With s=20 stages, stability limit is huge: 0.65 * 20^2 * 0.126 ~ 32.7 ms
@@ -90,49 +62,23 @@ def test_rkc_t1_stability_enforcement():
 
 
 # ============================================================
-# RKC-T2: Gaussian diffusion rate
+# RKC-T2: Cosine mode D_eff validation
 # ============================================================
-def test_rkc_t2_gaussian_diffusion():
-    """Verify Gaussian spreads at D_eff rate under RKC solver."""
+def test_rkc_t2_cosine_deff():
+    """Verify cosine mode decays at D_eff rate under RKC solver."""
     from cardiac_sim.simulation.classical.solver.diffusion_stepping.explicit_rkc import ExplicitRKCSolver
     from cardiac_sim.simulation.classical.solver.linear_solver.pcg import PCGSolver
 
     nx, ny = 30, 30
     dt = DT
-    Lx = DX * (nx - 1)
     spatial = _make_spatial(nx, ny)
-    state = _make_gaussian_state(nx, ny, spatial)
 
-    pcg = PCGSolver(max_iters=500, tol=1e-10)
-    solver = ExplicitRKCSolver(spatial, dt, pcg, n_stages=10)
+    rkc = ExplicitRKCSolver(spatial, dt,
+                             PCGSolver(max_iters=500, tol=1e-10),
+                             n_stages=10)
 
-    def measure_variance_x(Vm_flat):
-        Vm_grid = spatial.grid.flat_to_grid(Vm_flat)
-        marginal = Vm_grid.sum(dim=1)
-        marginal = marginal / marginal.sum()
-        x_1d = torch.linspace(0, Lx, nx)
-        mean_x = (x_1d * marginal).sum()
-        return ((x_1d - mean_x)**2 * marginal).sum().item()
-
-    var_0 = measure_variance_x(state.Vm)
-
-    n_steps = 200
-    for _ in range(n_steps):
-        solver.step(state, dt)
-
-    var_final = measure_variance_x(state.Vm)
-    t_total = n_steps * dt
-
-    expected_growth = 2 * D_EFF * t_total
-    actual_growth = var_final - var_0
-    rel_err = abs(actual_growth - expected_growth) / expected_growth
-
-    print(f"    Actual growth:   {actual_growth:.6f} cm^2")
-    print(f"    Expected growth: {expected_growth:.6f} cm^2")
-    print(f"    Relative error:  {rel_err:.4f}")
-
-    assert rel_err < 0.15, f"Gaussian variance growth error: {rel_err:.4f}"
-    print("RKC-T2 PASS: RKC Gaussian diffuses at D_eff rate")
+    validate_deff_cosine(rkc, spatial, dt, nx, ny, n_steps=200, tol=0.05)
+    print("RKC-T2 PASS: RKC cosine mode decays at D_eff rate")
 
 
 # ============================================================
@@ -148,12 +94,18 @@ def test_rkc_t3_cross_check_gs():
     dt = DT
     spatial = _make_spatial(nx, ny)
 
-    state_rkc = _make_gaussian_state(nx, ny, spatial)
-    state_gs = _make_gaussian_state(nx, ny, spatial)
+    state_rkc = _make_cosine_state(nx, ny, spatial)
+    state_gs = _make_cosine_state(nx, ny, spatial)
 
-    pcg = PCGSolver(max_iters=500, tol=1e-10)
-    rkc = ExplicitRKCSolver(spatial, dt, pcg, n_stages=10)
-    gs = DecoupledBidomainDiffusionSolver(spatial, dt, pcg, pcg, theta=0.5)
+    # Separate PCG instances for each solver
+    rkc = ExplicitRKCSolver(spatial, dt,
+                             PCGSolver(max_iters=500, tol=1e-10),
+                             n_stages=10)
+    gs = DecoupledBidomainDiffusionSolver(
+        spatial, dt,
+        PCGSolver(max_iters=500, tol=1e-10),
+        PCGSolver(max_iters=500, tol=1e-10),
+        theta=0.5)
 
     n_steps = 100
     for _ in range(n_steps):
@@ -197,19 +149,20 @@ def test_rkc_t4_coefficient_sanity():
     # T''_3(x) = 24x
     assert abs(_chebyshev_Tpp(3, 3.0) - 72.0) < 1e-10
 
-    # w0, w1 should be finite for s=10
+    # Verify w1 consistency for unnormalized recurrence:
+    # P'(0) = w1 * T_s'(w0) / T_s(w0) should equal 1.0
     s, eps = 10, 0.05
     w0 = 1 + eps / s**2
+    Ts = _chebyshev_T(s, w0)
     Tps = _chebyshev_Tp(s, w0)
-    Tpps = _chebyshev_Tpp(s, w0)
-    w1 = Tps / Tpps
-    assert math.isfinite(w0) and math.isfinite(w1)
-    assert w1 > 0, f"w1 should be positive, got {w1}"
+    w1 = Ts / Tps  # unnormalized recurrence formula
+    slope = w1 * Tps / Ts
+    assert abs(slope - 1.0) < 1e-12, f"P'(0) should be 1.0, got {slope}"
 
     print(f"    T_3(3.0) = {_chebyshev_T(3, 3.0):.1f} (expected 99)")
     print(f"    T'_2(3.0) = {_chebyshev_Tp(2, 3.0):.1f} (expected 12)")
     print(f"    T''_3(3.0) = {_chebyshev_Tpp(3, 3.0):.1f} (expected 72)")
-    print(f"    s=10: w0={w0:.6f}, w1={w1:.6f}")
+    print(f"    s=10: w0={w0:.6f}, w1={w1:.6f}, P'(0)={slope:.12f}")
     print("RKC-T4 PASS: Chebyshev polynomials correct")
 
 
@@ -221,8 +174,7 @@ def test_rkc_t5_factory():
     from cardiac_sim.simulation.classical.bidomain import BidomainSimulation
     from cardiac_sim.tissue_builder.stimulus import StimulusProtocol
 
-    nx, ny = 10, 10
-    spatial = _make_spatial(nx, ny)
+    spatial = _make_spatial(10, 10)
 
     sim = BidomainSimulation(
         spatial=spatial, ionic_model='ttp06',
@@ -232,7 +184,9 @@ def test_rkc_t5_factory():
         elliptic_solver='auto', theta=0.5)
 
     assert sim.state is not None
-    print(f"    Created BidomainSimulation with diffusion_solver='explicit_rkc'")
+    for _ in sim.run(t_end=DT*2, save_every=DT):
+        break
+    print(f"    Created and stepped BidomainSimulation with diffusion_solver='explicit_rkc'")
     print("RKC-T5 PASS: Factory integration works")
 
 
@@ -246,7 +200,7 @@ if __name__ == '__main__':
     print()
     test_rkc_t1_stability_enforcement()
     print()
-    test_rkc_t2_gaussian_diffusion()
+    test_rkc_t2_cosine_deff()
     print()
     test_rkc_t3_cross_check_gs()
     print()
