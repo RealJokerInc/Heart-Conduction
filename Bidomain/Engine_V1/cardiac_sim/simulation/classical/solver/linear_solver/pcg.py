@@ -96,7 +96,7 @@ class PCGSolver(LinearSolver):
         dtype: torch.dtype
     ) -> None:
         """Allocate workspace buffers if needed."""
-        if self._r is None or self._r.shape[0] != n or self._r.device != device:
+        if self._r is None or self._r.shape[0] != n or self._r.device != device or self._r.dtype != dtype:
             self._r = torch.zeros(n, device=device, dtype=dtype)
             self._z = torch.zeros(n, device=device, dtype=dtype)
             self._p = torch.zeros(n, device=device, dtype=dtype)
@@ -167,10 +167,11 @@ class PCGSolver(LinearSolver):
         b_norm = torch.norm(b)
         r0_norm = r_norm.item()
 
-        # Handle zero RHS
+        # Handle zero RHS: Ax = 0 with SPD A => x = 0
         if b_norm < 1e-14:
+            x.zero_()
             self._last_solution = x.clone()
-            self.last_stats = SolverStats(True, 0, r_norm.item(), r0_norm)
+            self.last_stats = SolverStats(True, 0, 0.0, r0_norm)
             if return_stats:
                 return x.clone(), self.last_stats
             return x.clone()

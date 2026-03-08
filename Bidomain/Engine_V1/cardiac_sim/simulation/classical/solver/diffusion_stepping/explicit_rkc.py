@@ -17,7 +17,7 @@ Algorithm (direct Chebyshev 3-term recurrence):
     Then: -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
 
     w0 = 1 + eps/s^2 (damping shift, eps ~ 0.05)
-    w1 = T_s'(w0) / T_s''(w0)
+    w1 = T_s(w0) / T_s'(w0)  (for unnormalized recurrence; P'(0) = 1)
 
 The stability polynomial is P_s(z) = T_s(w0 + w1*z) / T_s(w0),
 which maps the stability region to [-2*s^2, 0] along the real axis.
@@ -126,7 +126,11 @@ class ExplicitRKCSolver(BidomainDiffusionSolver):
 
         # Precompute RKC parameters
         # w0 > 1 shifts the Chebyshev polynomial for damping
-        # w1 = T_s(w0)/T_s'(w0) ensures first-order consistency (dP/dz = 1)
+        # w1 = T_s(w0) / T_s'(w0) ensures first-order consistency P'(0) = 1
+        # for the UNNORMALIZED recurrence (W_j tracks T_j(w0)*Y_j, divided out
+        # at the end). This differs from the paper's Eq. 2.7 which uses
+        # w1 = T_s'(w0)/T_s''(w0) for the NORMALIZED coefficient form.
+        # Ref: Sommeijer et al. (1998), adapted for direct 3-term recurrence
         s = n_stages
         eps = damping
         self._w0 = 1.0 + eps / (s * s)

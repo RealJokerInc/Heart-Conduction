@@ -25,7 +25,6 @@ Ref: DIFFUSION_SPLITTING_DESIGN.md § Strategy 5
 from typing import TYPE_CHECKING
 
 from .base import BidomainDiffusionSolver
-from ..linear_solver.pcg import sparse_mv
 
 if TYPE_CHECKING:
     from ...discretization.base import BidomainSpatialDiscretization
@@ -89,7 +88,17 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
         Advance Vm and phi_e by one diffusion time step.
 
         Uses BDF1 for the first step, BDF2 thereafter.
+
+        Parameters
+        ----------
+        state : BidomainState
+        dt : float
+            Must match the dt used at construction (operators encode 1/dt).
         """
+        if abs(dt - self._dt) > 1e-14 * self._dt:
+            raise ValueError(
+                f"IMEX-SBDF2: step dt={dt} != constructor dt={self._dt}. "
+                f"Call rebuild_operators() first.")
         if self._step_count == 0:
             self._step_bdf1(state, dt)
         else:

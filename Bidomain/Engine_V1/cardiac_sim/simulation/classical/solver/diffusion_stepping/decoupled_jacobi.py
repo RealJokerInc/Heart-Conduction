@@ -78,7 +78,17 @@ class DecoupledJacobiSolver(BidomainDiffusionSolver):
         Advance Vm and phi_e by one diffusion time step.
 
         Both solves use old-timestep data only (Jacobi splitting).
+
+        Parameters
+        ----------
+        state : BidomainState
+        dt : float
+            Must match the dt used at construction (operators encode 1/dt).
         """
+        if abs(dt - self._dt) > 1e-14 * self._dt:
+            raise ValueError(
+                f"Jacobi: step dt={dt} != constructor dt={self._dt}. "
+                f"Call rebuild_operators() first.")
         # --- Build RHS for both using old state ---
         rhs_para = sparse_mv(self.B_para, state.Vm) \
                    + self._spatial.apply_L_i(state.phi_e)  # phi_e^n

@@ -173,8 +173,18 @@ class ChebyshevSolver(LinearSolver):
         diag = diag.clamp(min=1e-15)
         return 1.0 / diag
 
+    # Sentinel: if _A_id is this object, manual bounds are set — skip estimation
+    _MANUAL_BOUNDS = object()
+
     def _estimate_eigenvalues(self, A: torch.Tensor) -> None:
         """Estimate eigenvalue bounds if not cached for this matrix."""
+        if self._A_id is self._MANUAL_BOUNDS:
+            # Manual bounds set via set_eigenvalue_bounds(); skip auto-estimation
+            # but still update preconditioner if needed
+            if self.use_jacobi_precond and self._diag_inv is None:
+                self._diag_inv = self._extract_diag_inv(A)
+            return
+
         A_id = A.values().data_ptr() if A.is_sparse else A.data_ptr()
 
         if self._A_id != A_id:
@@ -290,4 +300,4 @@ class ChebyshevSolver(LinearSolver):
         """
         self._lam_min = lam_min
         self._lam_max = lam_max
-        self._A_id = None  # Don't auto-estimate anymore
+        self._A_id = self._MANUAL_BOUNDS  # Skip auto-estimation on next solve

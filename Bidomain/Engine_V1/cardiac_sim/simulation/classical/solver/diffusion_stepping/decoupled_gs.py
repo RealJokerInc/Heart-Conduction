@@ -75,7 +75,17 @@ class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
 
         Step 1: Parabolic solve for Vm
         Step 2: Elliptic solve for phi_e
+
+        Parameters
+        ----------
+        state : BidomainState
+        dt : float
+            Must match the dt used at construction (operators encode 1/dt).
         """
+        if abs(dt - self._dt) > 1e-14 * self._dt:
+            raise ValueError(
+                f"GS: step dt={dt} != constructor dt={self._dt}. "
+                f"Call rebuild_operators() first.")
         # --- Step 1: Parabolic (Vm) ---
         # Coupling: L_i * phi_e^n (NOT theta * L_i * phi_e^n)
         # From CN discretization of dVm/dt = L_i*(Vm + phi_e):

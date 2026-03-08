@@ -146,9 +146,12 @@ class SpectralSolver(LinearSolver):
             return (2.0 / dx**2) * (1.0 - torch.cos(
                 torch.pi * (k + 1) / (m + 1)))
         elif bc == 'periodic':
-            freq = torch.fft.fftfreq(n, d=dx, device=device,
-                                      dtype=dtype) * 2 * torch.pi
-            return freq ** 2
+            # Discrete Laplacian eigenvalues for periodic BCs:
+            # lambda_k = (2/dx^2)(1 - cos(2*pi*k/N))
+            # NOT the continuous formula k^2 = (2*pi*fftfreq)^2
+            k = torch.arange(n, device=device, dtype=dtype)
+            return (2.0 / dx**2) * (1.0 - torch.cos(
+                2.0 * torch.pi * k / n))
 
     def solve(self, A, b):
         """Solve -D*Lap*u = b. Matrix A is ignored."""
