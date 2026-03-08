@@ -205,6 +205,10 @@ def _build_diffusion_solver(name, spatial, dt, para_ls, ellip_ls, theta):
     elif name == 'semi_implicit':
         from .solver.diffusion_stepping.semi_implicit import SemiImplicitSolver
         return SemiImplicitSolver(spatial, dt, ellip_ls)
+    elif name == 'jacobi':
+        from .solver.diffusion_stepping.decoupled_jacobi import DecoupledJacobiSolver
+        return DecoupledJacobiSolver(
+            spatial, dt, para_ls, ellip_ls, theta=theta)
     else:
         raise ValueError(f"Unknown diffusion solver: {name}")
 
