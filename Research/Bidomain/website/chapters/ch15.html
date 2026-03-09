@@ -1,249 +1,232 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 15</div>
-  <h2 class="chapter-title">Parabolic Solvers: The $A_{11}$ Block</h2>
+  <h2 class="chapter-title">Linear Solvers and Implementation</h2>
   <div class="chapter-intro">
-    After operator splitting separates the parabolic and elliptic halves of the bidomain system,
-    the $V_m$ update requires solving a linear system with the $A_{11}$ block — a symmetric positive
-    definite (SPD) matrix that looks exactly like the monodomain stiffness-plus-mass matrix. This
-    chapter covers the three main solver families for this sub-problem: preconditioned conjugate
-    gradient (PCG), Chebyshev iteration, and spectral (transform-based) methods.
+    Every strategy from Chapter 14 ends with one or two linear solves. The parabolic solve is
+    identical to monodomain (Chapter 11). The elliptic solve is new — and it is the computational
+    bottleneck of the entire bidomain simulation. This chapter covers the solvers for both
+    sub-problems, the null-space handling required for isolated-tissue BCs, and the three-tier
+    automatic solver selection that Engine V1 uses to pick the fastest option.
   </div>
 
-
-  <h3>15.1 &ensp; Preconditioned Conjugate Gradient (PCG)</h3>
-
-  <p>
-    Before tackling the full bidomain block system, let us master the solver for a single SPD sub-block. The Preconditioned Conjugate Gradient method is the most widely used iterative solver for symmetric positive-definite systems — and in bidomain solvers, it is typically applied to the Schur complement block $\mathbf{S}$ (or to $A_{11}$ during the parabolic substep).
-  </p>
+  <h3>15.1 &ensp; The Parabolic Sub-Problem: Familiar Territory</h3>
 
   <p>
-    Appendix A.10 developed the theory from first principles: minimizing the energy functional, the conjugate direction construction, and preconditioning. Here we focus on the practical details that make PCG effective for cardiac simulation.
-  </p>
-
-  <h4>The Algorithm</h4>
-
-  <p>
-    The full PCG algorithm with Jacobi preconditioning is given in Appendix A.10 (the boxed algorithm). Each iteration requires:
+    The parabolic matrix $\mathbf{A}_{\text{para}} = \frac{1}{\Delta t}\,\mathbf{I} - \theta\,\mathbf{L}_i$
+    looks exactly like the monodomain implicit system from Chapter 11. It is N×N, symmetric, and
+    positive definite (the $1/\Delta t$ identity dominates). All three solver families from
+    Part II apply directly:
   </p>
 
   <ul>
-    <li>One sparse matrix-vector product ($A\mathbf{p}$) — the dominant cost</li>
-    <li>Two inner products ($\mathbf{r}^T\mathbf{z}$ and $\mathbf{p}^T A\mathbf{p}$) — the synchronization bottleneck on GPUs</li>
-    <li>Three vector updates (AXPY operations) — negligible cost</li>
+    <li><strong>PCG</strong> (Section 11.3): Preconditioned conjugate gradient. Works on any mesh.
+      With warm-starting (using $V_m^n$ as initial guess), converges in 3–8 iterations.</li>
+    <li><strong>Chebyshev</strong>: Fixed iteration count, zero synchronization points. Ideal for GPU.
+      Needs eigenvalue bounds (computed via Gershgorin, cached).</li>
+    <li><strong>Spectral (DCT/DST)</strong> (Section 15.3): Direct solve via transform. $O(N \log N)$,
+      exact, no iteration. Requires structured Cartesian grid with uniform BCs per axis.</li>
   </ul>
 
   <p>
-    For a 2D cardiac grid with $N$ nodes, the sparse matrix has $O(N)$ nonzero entries (5 per row for FDM, slightly more for FEM), so the matrix-vector product costs $O(N)$. Total cost per PCG solve: $O(k \cdot N)$ where $k$ is the iteration count.
+    Because this sub-problem is identical to monodomain, we do not repeat the solver details here.
+    See Chapter 11 for implicit methods, and Appendix C.9 for PCG theory.
   </p>
 
-  <h4>Warm-Starting: The Key to Cardiac Performance</h4>
+  <h3>15.2 &ensp; The Elliptic Sub-Problem: The New Challenge</h3>
 
   <p>
-    In cardiac simulation, we solve a linear system at <em>every</em> time step. The transmembrane voltage field $V_m$ changes only slightly between consecutive steps (the wavefront advances by roughly $\Delta t \times \text{conduction velocity} \approx 0.02\,\text{ms} \times 60\,\text{cm/s} = 0.0012\,\text{cm}$, which is a fraction of a grid spacing). This means the solution at time $t^{n+1}$ is very close to the solution at time $t^n$.
-  </p>
-
-  <p>
-    <strong>Warm-starting</strong> exploits this by using the previous time step's solution as the initial guess for the current step. Instead of starting from $\mathbf{x}_0 = \mathbf{0}$ (cold start), we set $\mathbf{x}_0 = \mathbf{x}^{n-1}$. The initial residual is already small, and PCG converges in just a few iterations.
+    The elliptic matrix $\mathbf{A}_{\text{ellip}} = -(\mathbf{L}_i + \mathbf{L}_e)$ is the
+    combined bulk Laplacian — a pure diffusion operator with no mass/identity term. It has different
+    properties from the parabolic matrix:
   </p>
 
   <table>
-    <tr><th>Starting strategy</th><th>Typical iterations (monodomain, CN)</th><th>Typical iterations (bidomain, Schur)</th></tr>
-    <tr><td>Cold start ($\mathbf{x}_0 = \mathbf{0}$)</td><td>20–50</td><td>40–100</td></tr>
-    <tr><td>Warm start ($\mathbf{x}_0 = \mathbf{x}^{n-1}$)</td><td>3–8</td><td>8–20</td></tr>
+    <tr><th>Property</th><th>Parabolic $\mathbf{A}_{\text{para}}$</th><th>Elliptic $\mathbf{A}_{\text{ellip}}$</th></tr>
+    <tr><td>Size</td><td>$N \times N$</td><td>$N \times N$</td></tr>
+    <tr><td>Symmetric?</td><td>Yes</td><td>Yes (with face-based stencil)</td></tr>
+    <tr><td>Positive definite?</td><td>Yes (always)</td><td><strong>Semi</strong>-definite with Neumann BCs</td></tr>
+    <tr><td>Null space</td><td>None</td><td>Constant vector $\mathbf{1}$ (Neumann case)</td></tr>
+    <tr><td>Condition number</td><td>$O(1/\Delta t)$</td><td>$O(N)$ (grid-dependent)</td></tr>
   </table>
 
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Warm-starting is the single biggest performance optimization for cardiac PCG.</strong> It is free (just keep the previous solution in memory), requires no mathematical sophistication, and typically reduces the iteration count by a factor of 5–10. Always use it.
-    </p>
-  </div>
-
-  <h4>Convergence Criterion</h4>
-
   <p>
-    The standard stopping criterion is a relative residual test: stop when $\|\mathbf{r}_k\|/\|\mathbf{b}\| < \varepsilon$, where $\varepsilon$ is a tolerance (typically $10^{-8}$ for cardiac simulations). This ensures the error is small relative to the forcing. If $\|\mathbf{b}\|$ is near zero (e.g., during a quiescent phase when no wavefront is active), an absolute tolerance fallback prevents unnecessary iterations.
+    The semi-definiteness means the matrix is singular when all boundaries are Neumann (the
+    isolated-tissue case from Section 12.7). We must handle this null space before solving.
   </p>
 
-  <div class="insight insight-engine">
-    <p>
-      <strong>Engine V5.4 connection.</strong> The <code>PCGSolver</code> class in <code>linear_solver/pcg.py</code> implements Jacobi-preconditioned CG with lazy workspace allocation and warm starting. Key design choices: (1) workspace tensors ($\mathbf{r}$, $\mathbf{z}$, $\mathbf{p}$, $A\mathbf{p}$) are allocated once and reused across time steps, avoiding GPU memory allocation overhead; (2) the diagonal preconditioner is cached and recomputed only when the matrix identity changes; (3) <code>use_warm_start=True</code> is the default.
-    </p>
-  </div>
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>15.2 &ensp; Chebyshev Polynomial Solver</h3>
+  <h4>Null-Space Handling</h4>
 
   <p>
-    PCG is optimal in the mathematical sense (it minimizes the error in the $A$-norm over the Krylov subspace), but it has a practical weakness on GPUs: each iteration requires two <strong>inner products</strong> (global reductions), which force all GPU threads to synchronize. On modern hardware with thousands of cores, this synchronization is a significant bottleneck — the GPU must wait for every thread to finish before the reduction can complete.
-  </p>
-
-  <p>
-    The <strong>Chebyshev polynomial solver</strong> eliminates this bottleneck entirely. Instead of adaptively choosing step sizes (which require inner products), it uses a <em>predetermined</em> sequence of steps based on Chebyshev polynomials. The iteration count is fixed in advance, and no convergence checks occur during the solve. This makes it ideal for GPU execution: every iteration is a pure matrix-vector product plus vector updates — no synchronization.
-  </p>
-
-  <h4>The Key Idea</h4>
-
-  <p>
-    A Chebyshev polynomial $T_d(x)$ has the remarkable property that it grows as slowly as possible outside the interval $[-1, 1]$ while satisfying $|T_d(x)| \leq 1$ for $x \in [-1, 1]$. If we map the eigenvalue interval $[\lambda_{\min}, \lambda_{\max}]$ of $A$ onto $[-1, 1]$ and construct a polynomial $p_d(A)$ that approximates $A^{-1}$ (in the sense that $p_d(\lambda) \approx 1/\lambda$ for $\lambda \in [\lambda_{\min}, \lambda_{\max}]$), then $\mathbf{x} \approx p_d(A)\,\mathbf{b}$ is an approximate solution.
-  </p>
-
-  <p>
-    The Chebyshev iteration evaluates this polynomial via a <strong>3-term recurrence</strong>, which requires only the previous two iterates — no storage of the full iteration history (unlike GMRES).
-  </p>
-
-  <h4>Eigenvalue Estimation via Gershgorin</h4>
-
-  <p>
-    The Chebyshev solver needs bounds $[\lambda_{\min}, \lambda_{\max}]$ on the eigenvalues of $A$. Computing exact eigenvalues would be as expensive as solving the system, so we use the <strong>Gershgorin circle theorem</strong>: every eigenvalue of $A$ lies in at least one disc centered at a diagonal entry $a_{ii}$ with radius equal to the sum of absolute off-diagonal entries in that row. The bounds are:
-  </p>
-
-  $$\lambda_{\min} \geq \min_i\left(a_{ii} - \sum_{j \neq i} |a_{ij}|\right), \qquad \lambda_{\max} \leq \max_i\left(a_{ii} + \sum_{j \neq i} |a_{ij}|\right)$$
-
-  <p>
-    This requires a single pass over the sparse matrix — $O(N)$ work — and produces conservative (over-estimated) bounds. A safety margin of 10% is typically added to guard against underestimation.
-  </p>
-
-  <h4>Trade-Offs: PCG vs Chebyshev</h4>
-
-  <table>
-    <tr><th>Property</th><th>PCG</th><th>Chebyshev</th></tr>
-    <tr><td>Optimality</td><td>Minimizes $A$-norm error</td><td>Near-optimal for well-estimated eigenvalues</td></tr>
-    <tr><td>Convergence</td><td>Adaptive (stops when converged)</td><td>Fixed iteration count</td></tr>
-    <tr><td>Sync points per iteration</td><td>2 (inner products)</td><td>0 (no global reductions)</td></tr>
-    <tr><td>GPU efficiency</td><td>Good, limited by reductions</td><td>Excellent — fully asynchronous</td></tr>
-    <tr><td>Eigenvalue knowledge</td><td>Not needed</td><td>Required ($\lambda_{\min}$, $\lambda_{\max}$)</td></tr>
-    <tr><td>Best for</td><td>CPU, moderate GPU workloads</td><td>Large GPU workloads, latency-sensitive</td></tr>
-  </table>
-
-  <div class="insight insight-engine">
-    <p>
-      <strong>Engine V5.4 connection.</strong> The <code>ChebyshevSolver</code> class in <code>linear_solver/chebyshev.py</code> implements the 3-term recurrence with Jacobi preconditioning and Gershgorin eigenvalue estimation. The eigenvalue bounds are cached and recomputed only when the matrix changes. Key parameters: <code>max_iters=50</code> (typical for cardiac with warm starting), <code>safety_margin=0.1</code> (10% Gershgorin bound expansion). For the monodomain with Crank-Nicolson, 20–30 iterations suffice with warm starting.
-    </p>
-  </div>
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>15.3 &ensp; Spectral Solvers: DCT, DST, and FFT</h3>
-
-  <p>
-    For structured Cartesian grids (the default in FDM and FVM), there is an entirely different approach to solving the linear system — one that avoids iteration altogether. Instead of gradually improving an approximate solution, a <strong>spectral solver</strong> transforms the problem into a space where the solution can be written down in closed form, then transforms back. The total cost is just two FFT-like transforms: $O(N \log N)$.
-  </p>
-
-  <p>
-    The mathematical foundation is in Appendix A.8–A.9. Here we focus on the three spectral solvers relevant to cardiac simulation and when to use each.
-  </p>
-
-  <h4>15.3.1 &ensp; DCT for Neumann Boundary Conditions</h4>
-
-  <p>
-    The most important case for cardiac EP. Neumann (zero-flux) BCs are the physically correct default for isolated tissue (Section 8.7, Section 12.6). As shown in Appendix A.9, the cosine basis automatically satisfies $\partial u/\partial n = 0$ at the boundaries, so the Discrete Cosine Transform diagonalizes the discrete Laplacian under Neumann BCs.
-  </p>
-
-  <p>
-    The algorithm for solving $A_{\text{lhs}}\,\mathbf{V}^{n+1} = \mathbf{b}_{\text{rhs}}$ (from the implicit diffusion step) is:
+    The null space exists because $\phi_e$ is defined only up to an additive constant — adding
+    the same voltage everywhere does not change any gradient or current flow. The engine uses two
+    strategies to remove this ambiguity:
   </p>
 
   <ol>
-    <li><strong>Reshape</strong>: Convert the $N$-vector $\mathbf{b}$ into an $N_x \times N_y$ grid.</li>
-    <li><strong>Forward 2D DCT</strong>: $\hat{\mathbf{b}} = \text{DCT}_{2D}(\mathbf{b}_{\text{grid}})$. Cost: $O(N \log N)$.</li>
-    <li><strong>Spectral division</strong>: $\hat{\mathbf{V}}_{i,j} = \hat{\mathbf{b}}_{i,j}\,/\,d_{i,j}$ where $d_{i,j}$ is the $(i,j)$-th entry of the spectral denominator (see below).</li>
-    <li><strong>Null-space handling</strong>: Set $\hat{\mathbf{V}}_{0,0} = 0$ (the mean-zero convention for Neumann). This is equivalent to pinning in physical space (Section 12.6).</li>
-    <li><strong>Inverse 2D DCT</strong>: $\mathbf{V}_{\text{grid}} = \text{IDCT}_{2D}(\hat{\mathbf{V}})$. Cost: $O(N \log N)$.</li>
-    <li><strong>Flatten</strong>: Convert $N_x \times N_y$ grid back to $N$-vector.</li>
+    <li><strong>Pin one node:</strong> Set $\phi_{e,k} = 0$ for some chosen node $k$. This replaces
+      row $k$ and column $k$ of $\mathbf{A}_{\text{ellip}}$ with the identity (1 on diagonal, 0
+      elsewhere), and sets $b_k = 0$. The matrix becomes non-singular and SPD. This is the default
+      in Engine V1.</li>
+    <li><strong>Spectral zero-mode removal:</strong> In the DCT solver (Section 15.3), the $(0,0)$
+      transform coefficient corresponds exactly to the constant mode. Setting
+      $\hat{u}_{0,0} = 0$ after spectral division pins the spatial mean to zero — no matrix
+      modification needed.</li>
   </ol>
 
   <p>
-    The spectral denominator $d_{i,j}$ depends on the time-stepping scheme (from Chapters 9–10):
+    Other approaches exist in the literature — Lagrange multipliers (enforce $\int \phi_e\,dx = 0$)
+    and Krylov deflation (project the constant mode out at each iteration) — but they add complexity
+    without practical benefit for the cardiac setting. Engine V1 uses pinning for iterative solvers
+    and zero-mode removal for spectral solvers.
   </p>
 
-  <div class="equation-block">
-    <span class="equation-label">(15.1)</span>
-    $$d_{i,j} = \begin{cases}
-      \chi C_m - \tfrac{1}{2}\Delta t\,D\,\lambda_{i,j} & \text{Crank-Nicolson (CN)} \\
-      \chi C_m - \Delta t\,D\,\lambda_{i,j} & \text{BDF1 (Backward Euler)} \\
-      3\chi C_m - 2\Delta t\,D\,\lambda_{i,j} & \text{BDF2}
-    \end{cases}$$
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Pinning = choosing sea level.</strong> Just as altitude is meaningless without a reference
+      point, $\phi_e$ is meaningless without a reference voltage. Pinning one node to zero is like
+      declaring "this is sea level." All other $\phi_e$ values are then measured relative to this
+      reference. The choice of which node to pin does not affect any physical quantity — only
+      $\phi_e$ differences matter, not absolute values.
+    </p>
   </div>
 
-  <p>
-    where $\lambda_{i,j}$ are the 2D DCT eigenvalues from equation (A.10):
-  </p>
-
-  $$\lambda_{i,j} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi i}{N_x}\right) - 1\right) + \frac{2}{\Delta y^2}\left(\cos\!\left(\frac{\pi j}{N_y}\right) - 1\right)$$
+  <h3>15.3 &ensp; Three-Tier Automatic Solver Selection</h3>
 
   <p>
-    Since all $\lambda_{i,j} \leq 0$ and $D > 0$, the denominator $d_{i,j}$ is always positive (except at $(i,j) = (0,0)$, which is handled by the null-space step). The division is safe and numerically stable.
+    Not all bidomain problems are equally hard. A simple isotropic simulation on a Cartesian grid
+    can be solved exactly with a spectral method in $O(N \log N)$. An anisotropic simulation with
+    mixed boundary conditions requires iterative solvers. Engine V1 automatically selects the fastest
+    solver based on the problem's properties:
   </p>
-
-  <h4>15.3.2 &ensp; DST for Dirichlet Boundary Conditions</h4>
-
-  <p>
-    When the voltage is clamped at the boundary (Dirichlet BCs), the sine basis is appropriate. As shown in Appendix A.9, $\sin(k\pi x/L)$ vanishes at both boundaries, so the Discrete Sine Transform diagonalizes the Laplacian under Dirichlet conditions.
-  </p>
-
-  <p>
-    The algorithm is identical to the DCT case, with two changes: (1) replace DCT with DST (and IDCT with IDST), and (2) use the DST eigenvalues from equation (A.9). There is no null-space issue — the DST eigenvalues are all strictly negative, so the denominator is always positive.
-  </p>
-
-  <p>
-    In cardiac simulation, pure Dirichlet BCs on the entire boundary are uncommon (they would mean voltage-clamping the entire tissue surface). The DST solver is more relevant for sub-problems where Dirichlet conditions arise — for instance, when solving the Schur complement with a grounded-bath setup (Section 12.6).
-  </p>
-
-  <h4>15.3.3 &ensp; Combining DCT and DST for Mixed BCs</h4>
-
-  <p>
-    When different axes have different boundary conditions — for example, Neumann on the $x$-boundaries and Dirichlet on the $y$-boundaries — we apply a cosine transform along $x$ and a sine transform along $y$. The 2D transform is:
-  </p>
-
-  $$\hat{\mathbf{b}}_{i,j} = \text{DCT}_x\bigl[\text{DST}_y\bigl[\mathbf{b}_{\text{grid}}\bigr]\bigr]$$
-
-  <p>
-    and the eigenvalues combine the DCT formula for $x$ with the DST formula for $y$:
-  </p>
-
-  $$\lambda_{i,j} = \underbrace{\frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi i}{N_x}\right) - 1\right)}_{\text{Neumann in }x} + \underbrace{\frac{2}{\Delta y^2}\left(\cos\!\left(\frac{\pi j}{N_y+1}\right) - 1\right)}_{\text{Dirichlet in }y}$$
-
-  <p>
-    Recall the key limitation from Appendix A.9: this works only when each axis has a single, uniform BC type. You cannot use spectral methods when one end of the $x$-axis has Neumann and the other has Dirichlet — in that case, fall back to PCG (Section 15.1) or Chebyshev (Section 15.2).
-  </p>
-
-  <h4>15.3.4 &ensp; FFT for Periodic Boundary Conditions</h4>
-
-  <p>
-    For completeness, the standard FFT solver handles periodic BCs. This is rarely used in cardiac simulation (tissue is not periodic), but it appears in benchmark problems and in simplified models of re-entrant spiral waves on a periodic domain. The eigenvalues are:
-  </p>
-
-  $$\lambda_{i,j} = -\left(\frac{2\pi\,\text{fftfreq}(i, N_x)}{\Delta x}\right)^2 - \left(\frac{2\pi\,\text{fftfreq}(j, N_y)}{\Delta y}\right)^2$$
-
-  <p>
-    where $\text{fftfreq}(k, N)$ returns the $k$-th frequency bin. The algorithm uses <code>torch.fft.fft2</code> / <code>ifft2</code>.
-  </p>
-
-  <h4>Comparison: When to Use Which Solver</h4>
 
   <table>
-    <tr><th>Solver</th><th>BCs</th><th>Grid type</th><th>Complexity</th><th>Sync points</th><th>Best for</th></tr>
-    <tr><td>DCT</td><td>Neumann</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Standard cardiac monodomain</td></tr>
-    <tr><td>DST</td><td>Dirichlet</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Grounded-bath sub-problems</td></tr>
-    <tr><td>FFT</td><td>Periodic</td><td>Structured Cartesian</td><td>$O(N \log N)$</td><td>0</td><td>Benchmark problems, spiral waves</td></tr>
-    <tr><td>PCG</td><td>Any</td><td>Any (structured or unstructured)</td><td>$O(k \cdot N)$</td><td>$2k$</td><td>Unstructured meshes, general BCs</td></tr>
-    <tr><td>Chebyshev</td><td>Any (SPD)</td><td>Any</td><td>$O(d \cdot N)$</td><td>0</td><td>GPU, large-scale, fixed-iteration</td></tr>
+    <tr><th>Tier</th><th>Solver</th><th>When used</th><th>Cost</th></tr>
+    <tr>
+      <td><strong>Tier 1</strong></td>
+      <td>Direct spectral (DCT/DST/FFT)</td>
+      <td>Isotropic + structured Cartesian + uniform BCs per axis</td>
+      <td>$O(N \log N)$, exact</td>
+    </tr>
+    <tr>
+      <td><strong>Tier 2</strong></td>
+      <td>PCG with spectral preconditioner</td>
+      <td>Anisotropic + structured Cartesian + uniform BCs per axis</td>
+      <td>$O(k \cdot N \log N)$, $k \approx 5\text{–}15$</td>
+    </tr>
+    <tr>
+      <td><strong>Tier 3</strong></td>
+      <td>PCG (Jacobi preconditioner)</td>
+      <td>Unstructured mesh, mixed BCs, or general geometry</td>
+      <td>$O(k \cdot N)$, $k \approx 20\text{–}50$</td>
+    </tr>
   </table>
 
   <p>
-    For monodomain on a structured grid with Neumann BCs (the most common cardiac scenario), DCT is the fastest solver by a wide margin — it is exact (no iteration), $O(N \log N)$, and fully parallelizable with zero synchronization. The only limitation is that it cannot handle unstructured meshes or non-Cartesian geometries, where PCG or Chebyshev must be used instead.
+    The selection logic inspects two properties of the problem:
+  </p>
+
+  <ol>
+    <li><strong>Is the grid Cartesian with uniform BCs per axis?</strong> If yes, spectral transforms
+      (DCT for Neumann, DST for Dirichlet, FFT for periodic) can diagonalize the Laplacian.
+      This enables Tier 1 or Tier 2.</li>
+    <li><strong>Is the conductivity isotropic?</strong> If yes, a single scalar $D = D_i + D_e$
+      characterizes the elliptic operator, and the spectral solver gives an exact answer (Tier 1).
+      If the conductivity is anisotropic (different in $x$ and $y$), the spectral solver can still
+      serve as a <em>preconditioner</em> for PCG (Tier 2) — it captures the dominant structure,
+      and PCG handles the anisotropic correction in a few iterations.</li>
+  </ol>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Think of it like choosing a tool for a job.</strong> If the problem is perfectly
+      regular (isotropic, Cartesian), use a precision instrument (spectral — exact, fast). If it
+      is slightly irregular (anisotropic but still Cartesian), use the precision instrument as a
+      starting point and refine with a general-purpose tool (spectral-preconditioned PCG). If it
+      is fully irregular (unstructured mesh, complex geometry), fall back to the general-purpose
+      tool alone (PCG).
+    </p>
+  </div>
+
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V1 connection.</strong> The auto-selection logic lives in
+      <code>BidomainSimulation._auto_select_elliptic_solver()</code> in <code>bidomain.py</code>.
+      It inspects the <code>BoundarySpec</code> protocol to determine if BCs are spectral-eligible,
+      and the conductivity to determine if the problem is isotropic. The spectral solver
+      (<code>SpectralSolver</code> in <code>linear_solver/spectral.py</code>) supports per-axis BC
+      selection: <code>bc_x='neumann'</code>, <code>bc_y='dirichlet'</code>, etc.
+    </p>
+  </div>
+
+  <h3>15.4 &ensp; Engine V1 Architecture</h3>
+
+  <p>
+    Let us map the mathematics to the actual code. Engine V1 lives in <code>Bidomain/Engine_V1/</code>
+    and follows the same architectural principles as the monodomain Engine V5.4:
+  </p>
+
+  <table>
+    <tr><th>Concept</th><th>Class / Module</th><th>Key Methods</th></tr>
+    <tr>
+      <td>Spatial discretization</td>
+      <td><code>discretization/fdm.py</code></td>
+      <td><code>get_L_i()</code>, <code>get_L_e()</code>, <code>get_parabolic_operators(dt, theta)</code>, <code>get_elliptic_operator()</code></td>
+    </tr>
+    <tr>
+      <td>Diffusion strategies</td>
+      <td><code>solver/diffusion_stepping/*.py</code></td>
+      <td><code>step(state, dt)</code> — updates $V_m$ and $\phi_e$ in-place</td>
+    </tr>
+    <tr>
+      <td>Linear solvers</td>
+      <td><code>solver/linear_solver/*.py</code></td>
+      <td><code>solve(A, b)</code> — returns solution vector</td>
+    </tr>
+    <tr>
+      <td>Operator splitting</td>
+      <td><code>solver/splitting/</code></td>
+      <td>Godunov or Strang (reused from monodomain)</td>
+    </tr>
+    <tr>
+      <td>Simulation orchestrator</td>
+      <td><code>bidomain.py</code></td>
+      <td><code>BidomainSimulation(diffusion_solver=..., ...)</code></td>
+    </tr>
+  </table>
+
+  <p>
+    The factory function in <code>bidomain.py</code> wires everything together:
+  </p>
+
+  <table>
+    <tr><th>Factory string</th><th>Strategy class</th></tr>
+    <tr><td><code>'decoupled'</code> or <code>'gauss_seidel'</code></td><td><code>DecoupledBidomainDiffusionSolver</code></td></tr>
+    <tr><td><code>'semi_implicit'</code></td><td><code>SemiImplicitSolver</code></td></tr>
+    <tr><td><code>'jacobi'</code></td><td><code>DecoupledJacobiSolver</code></td></tr>
+    <tr><td><code>'imex_sbdf2'</code></td><td><code>IMEXSBDF2Solver</code></td></tr>
+    <tr><td><code>'explicit_rkc'</code></td><td><code>ExplicitRKCSolver</code></td></tr>
+  </table>
+
+  <p>
+    Linear solver selection uses a separate factory:
+    <code>'pcg'</code>, <code>'chebyshev'</code>, <code>'spectral'</code> (Tier 1),
+    <code>'pcg_spectral'</code> (Tier 2), or the automatic three-tier selection described above.
   </p>
 
   <div class="insight insight-engine">
     <p>
-      <strong>Engine V5.4 connection.</strong> The <code>DCTSolver</code> and <code>FFTSolver</code> classes in <code>linear_solver/fft.py</code> implement the spectral solvers described above. Both compute the eigenvalue grid lazily on the first call and cache it for all subsequent solves. The <code>DCTSolver</code> uses the <code>torch-dct</code> package for the forward and inverse transforms, with a fallback FFT-based DCT implementation if the package is not installed. The solver ignores the sparse matrix $A$ passed to it — it constructs the spectral denominator entirely from the grid parameters ($N_x$, $N_y$, $\Delta x$, $\Delta y$, $D$, $\Delta t$, $\chi$, $C_m$) and the time-stepping scheme.
+      <strong>Key design principle: zero allocation per step.</strong> All diffusion solvers
+      pre-allocate workspace tensors ($\mathbf{A}_{\text{para}}$, $\mathbf{B}_{\text{para}}$,
+      temporary vectors) at construction time. The <code>step()</code> method performs only
+      matrix-vector products and linear solves — no memory allocation, no Python object creation.
+      This is critical for GPU performance.
     </p>
   </div>
 
-  <!-- ────────────────────────────────────────────────────────────── -->
+  <div class="separator"></div>
 
+  <p style="text-align:center; font-style:italic; color:var(--caption);">
+    End of Parts I–III. The full research documentation, including detailed code examples and implementation<br>
+    guides, is available in the <code>Research/Bidomain/</code> folder of the Engine V1 repository.
+  </p>
 </div>
-
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 16 — ELLIPTIC SOLVERS (SCHUR COMPLEMENT)                 -->
-<!-- ══════════════════════════════════════════════════════════════════ -->

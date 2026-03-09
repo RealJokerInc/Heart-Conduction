@@ -4,7 +4,28 @@
   <div class="chapter-intro">
     Before we write equations, we build a physical picture of why two "domains" are needed.
     Then we derive the bidomain equations step by step, from conservation laws to the coupled
-    parabolic–elliptic system that Engine V5.4 will solve.
+    parabolic–elliptic system that Engine V1 will solve.
+  </div>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>Two notations for the same physics.</strong> The bidomain literature uses two equivalent
+      formulations:
+    </p>
+    <ul style="margin-top:0.3em;">
+      <li><strong>Conductivity form ($\sigma$-form)</strong>: Uses conductivities $\sigma_i$, $\sigma_e$
+        with explicit $\chi\,C_m$ in the time derivative. Standard in journal papers and in the
+        derivations below.</li>
+      <li><strong>Diffusivity form ($D$-form)</strong>: Uses $D_i = \sigma_i / (\chi\,C_m)$,
+        $D_e = \sigma_e / (\chi\,C_m)$, absorbing $\chi\,C_m$ so the time derivative becomes
+        simply $\partial V_m / \partial t$. Used in the Engine V1 code.</li>
+    </ul>
+    <p style="margin-top:0.3em;">
+      This chapter derives equations in $\sigma$-form (matching the literature). All discrete
+      equations in Chapters 13–15 and the Engine connection boxes use $D$-form. To convert:
+      replace $\chi\,C_m\,\partial V_m/\partial t$ with $\partial V_m/\partial t$, and replace
+      $\sigma$ with $D \cdot \chi\,C_m$.
+    </p>
   </div>
 
   <h3>12.1 &ensp; Currents in a Living Heart</h3>
@@ -125,7 +146,7 @@
   <h3>12.4 &ensp; The Monodomain Equation (Review)</h3>
 
   <p>
-    The monodomain equation, which Engine V5.4 solves, describes how the transmembrane potential $V_m$ evolves in time:
+    The monodomain equation (Part II) describes how the transmembrane potential $V_m$ evolves in time:
   </p>
 
   <div class="equation-block">
@@ -150,7 +171,7 @@
   <h3>12.5 &ensp; Building the Bidomain System</h3>
 
   <p>
-    Let us now be more precise. In each domain, Ohm's law gives us the current density:
+    Let us now be precise. In each domain, Ohm's law gives us the current density:
   </p>
 
   <div class="equation-block">
@@ -158,10 +179,7 @@
   </div>
 
   <p>
-    where $\phi_i$ and $\phi_e$ are the intracellular and extracellular potentials, and $\mathbf{D}_i$, $\mathbf{D}_e$ are their respective conductivity tensors.
-  </p>
-  <p>
-    The transmembrane potential is defined as their difference:
+    where $\phi_i$ and $\phi_e$ are the intracellular and extracellular potentials, and $\mathbf{D}_i$, $\mathbf{D}_e$ are their respective conductivity tensors. The transmembrane potential is the difference:
   </p>
 
   <div class="equation-block">
@@ -169,15 +187,17 @@
   </div>
 
   <p>
-    The transmembrane current per unit volume is the sum of capacitive and ionic components:
+    The transmembrane current per unit volume has two components — capacitive charging and ionic flow:
   </p>
 
   <div class="equation-block">
     $$\chi\, I_m = \chi\,C_m\,\frac{\partial V_m}{\partial t} + \chi\, I_{\text{ion}}(V_m, \mathbf{w})$$
   </div>
 
+  <h4>The Parabolic Equation (Membrane Dynamics)</h4>
+
   <p>
-    Now substitute into the conservation laws from Chapter 12. From the intracellular conservation $\nabla\cdot\mathbf{J}_i = -\chi I_m$:
+    Start with the intracellular conservation law (12.1): $\nabla\cdot\mathbf{J}_i = -\chi I_m$. Substitute Ohm's law $\mathbf{J}_i = -\mathbf{D}_i\,\nabla\phi_i$:
   </p>
 
   <div class="equation-block">
@@ -185,49 +205,132 @@
   </div>
 
   <p>
-    Since $\phi_i = V_m + \phi_e$, we can rewrite $\nabla\phi_i = \nabla V_m + \nabla\phi_e$, giving us:
+    Now comes the key substitution. Since $\phi_i = V_m + \phi_e$, we have $\nabla\phi_i = \nabla V_m + \nabla\phi_e$. Substituting and using the linearity of divergence:
+  </p>
+
+  <div class="equation-block">
+    $$\nabla\cdot\bigl(\mathbf{D}_i\,(\nabla V_m + \nabla\phi_e)\bigr) = \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$$
+  </div>
+
+  <p>
+    This is where the monodomain's single diffusion term splits into <em>two</em> distinct physical processes. Rearranging to isolate $\partial V_m/\partial t$:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(12.4)</span>
-    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} = -\chi\,I_{\text{ion}}(V_m,\mathbf{w}) + \nabla\cdot(\mathbf{D}_i\,\nabla V_m) + \nabla\cdot(\mathbf{D}_i\,\nabla\phi_e) + I_{\text{stim}}^i$$
+    $$\chi\,C_m\,\frac{\partial V_m}{\partial t} = -\chi\,I_{\text{ion}}(V_m,\mathbf{w}) + \underbrace{\nabla\cdot(\mathbf{D}_i\,\nabla V_m)}_{\text{propagation}} + \underbrace{\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)}_{\text{coupling}} + I_{\text{stim}}^i$$
   </div>
 
   <p>
-    This is the <strong>parabolic equation</strong> of the bidomain system. Compare it to the monodomain equation (12.3): the key difference is the <em>extra coupling term</em> $\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$, which accounts for how the extracellular potential gradient drives intracellular current.
+    Let us read each term as a physical current — what is it actually doing?
   </p>
 
+  <ul>
+    <li>
+      <strong>$\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$ — the propagation term.</strong> This is intracellular current driven by transmembrane potential gradients. Where $V_m$ is high (depolarized tissue) and neighbors are low (resting tissue), intracellular current flows from depolarized to resting regions, spreading the action potential. This is exactly the same term as in the monodomain equation (7.1) — it is why the electrical wave propagates through the heart.
+    </li>
+    <li>
+      <strong>$\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$ — the coupling term.</strong> This is the <em>new</em> term that did not appear in the monodomain. It represents intracellular current driven by extracellular potential gradients. Why does extracellular potential affect intracellular current? Because $\phi_i = V_m + \phi_e$: if the extracellular potential varies in space (say, because of a defibrillation electrode), that shifts the intracellular potential everywhere, which changes the intracellular current flow. In the monodomain model, $\phi_e$ is assumed uniform, so $\nabla\phi_e = 0$ and this term vanishes. <strong>This coupling term is the entire reason the bidomain model exists.</strong>
+    </li>
+  </ul>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Comparing monodomain to bidomain.</strong> The monodomain equation (12.3) has a single diffusion term $\nabla\cdot(\mathbf{D}\,\nabla V_m)$ with an <em>effective</em> conductivity $\mathbf{D}$ that blends both domains. The bidomain parabolic equation (12.4) replaces this with two separate terms: propagation via $\mathbf{D}_i\,\nabla V_m$ and coupling via $\mathbf{D}_i\,\nabla\phi_e$. Both use the intracellular conductivity $\mathbf{D}_i$ — because this equation describes what happens inside the cells.
+    </p>
+  </div>
+
+  <h4>The Elliptic Equation (Current Conservation)</h4>
+
   <p>
-    For the second equation, add both conservation laws: $\nabla\cdot\mathbf{J}_i + \nabla\cdot\mathbf{J}_e = 0$. Expanding:
+    For the second equation, recall the conservation identity from Section 12.2: $\nabla\cdot\mathbf{J}_i + \nabla\cdot\mathbf{J}_e = 0$ — total current is conserved. Apply Ohm's law to both terms:
+  </p>
+
+  <div class="equation-block">
+    $$\nabla\cdot(\mathbf{D}_i\,\nabla\phi_i) + \nabla\cdot(\mathbf{D}_e\,\nabla\phi_e) = 0$$
+  </div>
+
+  <p>
+    Now substitute $\phi_i = V_m + \phi_e$ into the first term, using the same splitting as before:
+  </p>
+
+  <div class="equation-block">
+    $$\underbrace{\nabla\cdot(\mathbf{D}_i\,\nabla V_m)}_{\text{from } \phi_i = V_m + \phi_e} + \underbrace{\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)}_{\text{from } \phi_i = V_m + \phi_e} + \nabla\cdot(\mathbf{D}_e\,\nabla\phi_e) = 0$$
+  </div>
+
+  <p>
+    Collect the two terms involving $\nabla\phi_e$:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(12.5)</span>
-    $$0 = \nabla\cdot\bigl(\mathbf{D}_i\,\nabla V_m\bigr) + \nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr] + I_{\text{stim}}^e$$
+    $$0 = \underbrace{\nabla\cdot(\mathbf{D}_i\,\nabla V_m)}_{\text{source}} + \underbrace{\nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr]}_{\text{response}} + I_{\text{stim}}^e$$
   </div>
 
   <p>
-    This is the <strong>elliptic equation</strong>. It has <em>no time derivative</em> — it is a constraint that must hold at every instant. Think of it as saying: "at each moment, the total current flowing into and out of every point in the tissue must balance."
+    This is the <strong>elliptic equation</strong>. It has no time derivative — $\phi_e$ does not evolve; it adjusts instantaneously. Read the two terms as a source-response balance:
   </p>
+
+  <ul>
+    <li>
+      <strong>$\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$ — the source.</strong> The transmembrane potential $V_m$ varies in space (especially at the wavefront, where it changes from $-85$ mV to $+30$ mV over a few tenths of a millimeter). This gradient drives intracellular current, which crosses the membrane and enters the extracellular space. The divergence of this current tells you how much charge is being "dumped" into the extracellular space at each point. At the wavefront, this dump is massive.
+    </li>
+    <li>
+      <strong>$\nabla\cdot\bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e\bigr]$ — the response.</strong> The extracellular potential $\phi_e$ adjusts so that the combined current in both domains carries away all the charge that was dumped. The <em>combined</em> conductivity $(\mathbf{D}_i + \mathbf{D}_e)$ appears because current in both domains responds to extracellular potential gradients. This term acts like diffusion — it smooths $\phi_e$ across the tissue. The stronger the combined conductivity, the faster the smoothing, and the gentler the extracellular potential gradients.
+    </li>
+  </ul>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Why is the second equation elliptic?</strong> Because the extracellular space has no "memory" — it equilibrates instantaneously (on the timescale of cardiac propagation). There is no capacitor in the extracellular space storing charge over time. The extracellular potential adjusts immediately to satisfy current conservation. This makes $\phi_e$ a <em>slave variable</em>: it is completely determined by the current state of $V_m$ at each instant.
+      <strong>The steady-state heat analogy.</strong> If you have studied heat transfer, you know this structure: a steady-state temperature field adjusts so that heat production (source) equals heat diffusion (response) everywhere. The elliptic equation is exactly that — $V_m$ is the "heat source" and $\phi_e$ is the "temperature." There is no thermal mass, no transient — just an instant equilibrium. The extracellular potential $\phi_e$ is a <em>slave variable</em>: it is completely determined by the current $V_m$ at each instant, with no memory of the past.
     </p>
   </div>
 
-  <h3>12.6 &ensp; The Parabolic–Elliptic Couple</h3>
+  <div class="insight insight-warning">
+    <p>
+      <strong>Why is there no time derivative?</strong> The extracellular space has no capacitor — no mechanism to store charge over time. The intracellular space stores charge on the membrane capacitor (that is the $C_m\,\partial V_m/\partial t$ term). But the extracellular space simply conducts: charge enters at one point and leaves at another, with no accumulation. Mathematically, this means the extracellular conservation law produces an equation with spatial derivatives only — no $\partial\phi_e/\partial t$. This is what makes it elliptic rather than parabolic.
+    </p>
+  </div>
+
+  <h4>What the Numbers Look Like</h4>
 
   <p>
-    All of Part II (Chapters 7–10) dealt with a single parabolic PDE — the monodomain equation. "Parabolic" means the equation has a first-order time derivative, and its solutions spread out and smooth over time, like heat diffusing through a rod. We learned to discretize it in space (Chapter 7), split reaction from diffusion (Chapter 8), integrate the reaction ODEs (Chapter 9), and solve the implicit diffusion step (Chapter 10). The entire solution strategy was: march forward in time, one step at a time.
+    To make these terms concrete, let us estimate their magnitudes at a cardiac wavefront using typical human ventricular parameters:
+  </p>
+
+  <table>
+    <tr><th>Parameter</th><th>Value</th><th>Source</th></tr>
+    <tr><td>$D_{i,L}$ (intracellular, along fibers)</td><td>$0.0017$ cm$^2$/ms</td><td>Clerc 1976</td></tr>
+    <tr><td>$D_{i,T}$ (intracellular, across fibers)</td><td>$0.00019$ cm$^2$/ms</td><td>Clerc 1976</td></tr>
+    <tr><td>$D_{e,L}$ (extracellular, along fibers)</td><td>$0.0062$ cm$^2$/ms</td><td>Clerc 1976</td></tr>
+    <tr><td>$D_{e,T}$ (extracellular, across fibers)</td><td>$0.0024$ cm$^2$/ms</td><td>Clerc 1976</td></tr>
+  </table>
+
+  <p>
+    At the wavefront, the action potential rises from $-85$ to $+30$ mV over roughly $\Delta x \approx 0.3$ mm along fibers. A crude estimate of the spatial curvature gives $\partial^2 V_m/\partial x^2 \approx -4000$ V/cm$^2$ (negative because $V_m$ has a peak at the front). Along fibers:
+  </p>
+
+  <ul>
+    <li><strong>Propagation term</strong>: $D_{i,L} \cdot \partial^2 V_m / \partial x^2 \approx 0.0017 \times (-4000) = -6.8$ mV/ms</li>
+    <li><strong>Coupling term</strong>: $D_{i,L} \cdot \partial^2\phi_e / \partial x^2$. Extracellular potential gradients are smaller — typically $|\phi_e|$ varies by $\sim$1–5 mV at the wavefront, giving $\partial^2\phi_e/\partial x^2 \approx 200$ V/cm$^2$. So the coupling contributes $\approx 0.0017 \times 200 = 0.34$ mV/ms — roughly <strong>5% of the propagation term</strong>.</li>
+    <li><strong>Elliptic balance</strong>: The source term $\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$ dumps charge at $\sim$6.8 mV/ms, and the response $\nabla\cdot[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e]$ must absorb all of it: $(0.0017 + 0.0062) \times \partial^2\phi_e/\partial x^2 \approx 6.8$ mV/ms. This is why $\phi_e$ develops its characteristic spatial pattern — it <em>must</em> generate gradients large enough to carry away all the source current.</li>
+  </ul>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The coupling is small but essential.</strong> The coupling term ($\sim$5%) has a modest direct effect on propagation speed. But it is responsible for <em>all</em> of the phenomena that distinguish bidomain from monodomain: virtual electrode polarization during defibrillation, the body-surface ECG, and the response to extracellular stimulation. A 5% correction in the PDE creates qualitatively different physics.
+    </p>
+  </div>
+
+
+  <h3>12.6 &ensp; The Parabolic–Elliptic Couple: A New Kind of Problem</h3>
+
+  <p>
+    All of Part II dealt with a single parabolic PDE — the monodomain equation. "Parabolic" means the equation has a time derivative, and its solutions spread and smooth over time, like heat diffusing through a metal rod. We learned to discretize it (Chapter 8), split reaction from diffusion (Chapter 9), and march it forward in time one step at a time (Chapters 10–11).
   </p>
 
   <p>
-    Now we face something fundamentally different. The bidomain model has <em>two</em> equations, and they are not the same type. One is parabolic (it evolves in time), and the other is <strong>elliptic</strong> (it has no time derivative at all). An elliptic equation is like a rubber sheet stretched over a frame (Appendix A.5) — if you push on one part, the entire sheet adjusts <em>instantaneously</em> to find a new equilibrium. There is no "marching forward" for an elliptic equation; it must be solved as a global boundary-value problem at every instant in time.
-  </p>
-
-  <p>
-    This parabolic–elliptic pairing changes everything about how we solve the system. Let us examine the structure:
+    Now we face something fundamentally different: <em>two coupled equations of different types</em>.
   </p>
 
   <table>
@@ -236,37 +339,79 @@
       <th>Type</th>
       <th>Unknown</th>
       <th>Character</th>
+      <th>Analogy</th>
     </tr>
     <tr>
       <td>(12.4) — Membrane dynamics</td>
       <td>Parabolic</td>
-      <td>$V_m$ (primary)</td>
+      <td>$V_m$</td>
       <td>Evolves in time; has $\partial V_m/\partial t$</td>
+      <td>A pot of water heating up</td>
     </tr>
     <tr>
       <td>(12.5) — Current conservation</td>
       <td>Elliptic</td>
-      <td>$\phi_e$ (constraint)</td>
+      <td>$\phi_e$</td>
       <td>No time derivative; instantaneous balance</td>
+      <td>A rubber sheet finding its shape</td>
     </tr>
   </table>
 
   <p>
-    The two equations are <strong>bidirectionally coupled</strong>: the parabolic equation depends on $\phi_e$ (through $\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$), and the elliptic equation depends on $V_m$ (through $\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$). Neither can be solved independently.
+    If you have seen coupled differential equations before — say, $dx/dt = f(x,y)$ and $dy/dt = g(x,y)$ — the bidomain is <em>harder</em>. In a standard coupled system, both unknowns evolve in time and you can march them both forward. Here, only $V_m$ evolves. The equation for $\phi_e$ is not $d\phi_e/dt = \ldots$ but $0 = \ldots$ — a <em>constraint</em> that must be satisfied at every instant. You cannot "march" a constraint equation forward in time. You can only <em>solve</em> it.
+  </p>
+
+  <p>
+    The two equations are <strong>bidirectionally coupled</strong>: the parabolic equation (12.4) depends on $\phi_e$ through the coupling term $\nabla\cdot(\mathbf{D}_i\,\nabla\phi_e)$, and the elliptic equation (12.5) depends on $V_m$ through the source term $\nabla\cdot(\mathbf{D}_i\,\nabla V_m)$. Neither can be solved in isolation.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Why the elliptic equation cannot be marched in time.</strong> The parabolic equation (12.4) has $\partial V_m/\partial t$ on the left — it tells us the <em>rate of change</em> of $V_m$, so we can step forward. The elliptic equation (12.5) has <em>no</em> time derivative — it is a constraint that must be satisfied at every instant, like requiring that the forces on a bridge sum to zero at all times. You cannot "advance" a force-balance equation; you can only solve it. This is why the bidomain diffusion step requires solving a linear system (Chapter 15), not just evaluating a time derivative.
+      <strong>Picture the coupling.</strong> Imagine a room with a heater (the action potential wavefront) and an air conditioning system (the extracellular space). The heater warms the air locally — this is the parabolic equation evolving $V_m$ in time. The air conditioning system instantly adjusts the airflow pattern to maintain the right temperature everywhere else — this is the elliptic equation determining $\phi_e$. But the heater's output depends on the ambient air temperature (from the AC), and the AC's required output depends on the heater. They influence each other continuously.
     </p>
   </div>
 
   <p>
-    The good news is that the elliptic equation has no memory — its solution at time $t$ depends only on $V_m(t)$, not on $\phi_e$ at any earlier time. This means that if we know $V_m^{n+1}$ (or an approximation of it), we can solve the elliptic equation for $\phi_e^{n+1}$ without any information about $\phi_e^n$. This property is the key to operator splitting (Chapter 14): advance $V_m$ first, then solve for $\phi_e$.
+    This coupling creates the central computational challenge of the bidomain model: <strong>how do you advance a system where one variable evolves and the other is a constraint?</strong>
   </p>
 
   <p>
-    Additionally, the gating variables $\mathbf{w}$ evolve according to a system of ODEs:
+    There are three fundamental strategies, each with a different trade-off:
+  </p>
+
+  <table>
+    <tr>
+      <th>Strategy</th>
+      <th>Idea</th>
+      <th>Trade-off</th>
+    </tr>
+    <tr>
+      <td><strong>Solve together</strong> (monolithic)</td>
+      <td>Combine both equations into one big $2N \times 2N$ system and solve simultaneously</td>
+      <td>Exact coupling, but the system is indefinite (not SPD) — needs specialized, expensive solvers</td>
+    </tr>
+    <tr>
+      <td><strong>Advance then equilibrate</strong> (decoupled sequential)</td>
+      <td>Advance $V_m$ one step using the old $\phi_e$, then solve the elliptic equation for the new $\phi_e$ using the new $V_m$</td>
+      <td>Two smaller $N \times N$ SPD solves (cheap!), but the one-step lag in $\phi_e$ introduces a small error</td>
+    </tr>
+    <tr>
+      <td><strong>Advance explicitly, equilibrate implicitly</strong> (semi-implicit)</td>
+      <td>Advance $V_m$ with an explicit step (no linear solve), then solve the elliptic for $\phi_e$</td>
+      <td>Only one linear solve per step, but CFL-limited — must use small $\Delta t$</td>
+    </tr>
+  </table>
+
+  <p>
+    The key insight that makes decoupled strategies work is that <strong>the elliptic equation has no memory</strong>. Its solution at time $t$ depends only on $V_m(t)$, not on $\phi_e$ at any earlier time. So once we have $V_m^{n+1}$ (or an approximation of it), we can solve for $\phi_e^{n+1}$ as a standalone problem — a fresh boundary-value problem with no history to track.
+  </p>
+
+  <p>
+    Chapter 14 develops these strategies in detail, starting with the simplest (decoupled sequential) and building toward more sophisticated variants. But first, we must turn these continuous equations into matrix equations — the subject of Chapter 13.
+  </p>
+
+  <p>
+    Additionally, the gating variables $\mathbf{w}$ evolve according to a system of local ODEs:
   </p>
 
   <div class="equation-block">
@@ -275,76 +420,58 @@
   </div>
 
   <p>
-    These ODEs are <em>local</em> — they depend only on $V_m$ and $\mathbf{w}$ at each point, not on spatial derivatives. This is good news: the ionic solver from Engine V5.4 (e.g., Rush–Larsen exponential integrator) can be reused without modification.
+    These depend only on $V_m$ and $\mathbf{w}$ at each point — no spatial derivatives. The ionic solver from Part II (Rush–Larsen exponential integrator, Section 9.4) can be reused without modification. This is the same operator-splitting approach as in the monodomain: handle the local ionic kinetics first, then tackle the spatial diffusion problem.
   </p>
 
-  <h3>12.7 &ensp; When Bidomain Reduces to Monodomain</h3>
 
-  <p>
-    Under the <strong>equal anisotropy ratio</strong> assumption — meaning $\mathbf{D}_e = \lambda\,\mathbf{D}_i$ for some positive scalar $\lambda$ — the elliptic equation (12.5) degenerates. With this assumption, the combined conductivity $(\mathbf{D}_i + \mathbf{D}_e) = (1+\lambda)\,\mathbf{D}_i$, and the elliptic equation becomes $\nabla\cdot(\mathbf{D}_i\,\nabla[V_m + (1+\lambda)\phi_e]) = 0$, which implies $\phi_e$ is essentially constant (or zero with appropriate boundary conditions). The parabolic equation then reduces to the monodomain form with an effective conductivity:
-  </p>
+  <!-- ── §12.7 SIDEBAR: When Bidomain Reduces to Monodomain ─────────── -->
 
-  <div class="equation-block">
-    $$\mathbf{D}_{\text{eff}} = \frac{\mathbf{D}_i \, \mathbf{D}_e}{\mathbf{D}_i + \mathbf{D}_e}$$
-  </div>
-
-  <p>
-    In real cardiac tissue, however, the anisotropy ratios are markedly different:
-  </p>
-
-  <table>
-    <tr><th>Domain</th><th>$\sigma_L$ (S/cm)</th><th>$\sigma_T$ (S/cm)</th><th>Ratio $\sigma_L/\sigma_T$</th></tr>
-    <tr><td>Intracellular</td><td>0.3 – 0.5</td><td>0.03 – 0.05</td><td>$\approx$ 10:1</td></tr>
-    <tr><td>Extracellular</td><td>0.3 – 0.6</td><td>0.15 – 0.3</td><td>$\approx$ 2.5:1</td></tr>
-  </table>
-
-  <p>
-    Because 10:1 $\neq$ 2.5:1, the equal anisotropy assumption fails, and the full bidomain system is needed.
-  </p>
-
-  <h3>12.8 &ensp; Conductivity Tensors and Fiber Architecture</h3>
-
-  <p>
-    In each domain, the conductivity tensor is expressed in local fiber coordinates as a diagonal matrix:
-  </p>
-
-  <div class="equation-block">
-    $$\mathbf{D}_d^{\text{local}} = \begin{pmatrix}\sigma_d^L & 0 & 0 \\ 0 & \sigma_d^T & 0 \\ 0 & 0 & \sigma_d^T\end{pmatrix}, \quad d \in \{i, e\}$$
-  </div>
-
-  <p>
-    where $\sigma_d^L$ and $\sigma_d^T$ are the longitudinal (along-fiber) and transverse (cross-fiber) conductivities. In an anatomically realistic heart model, the fibers rotate transmurally (about 120° from epicardium to endocardium), so the local tensor must be rotated into global coordinates via:
-  </p>
-
-  <div class="equation-block">
-    $$\mathbf{D}_d^{\text{global}}(\mathbf{x}) = \mathbf{R}(\theta(\mathbf{x}))\;\mathbf{D}_d^{\text{local}}\;\mathbf{R}(\theta(\mathbf{x}))^T$$
-  </div>
-
-  <p>
-    This makes the conductivity a <em>spatially varying</em> tensor field — one of the major implementation challenges for any bidomain solver.
-  </p>
-
-  <div class="insight insight-engine">
+  <div class="insight insight-intuition">
     <p>
-      Engine V5.4 already handles fiber-aligned conductivity tensors for the monodomain model. For bidomain, the same rotation machinery can be reused — we simply need to maintain <em>two</em> tensor fields ($\mathbf{D}_i$ and $\mathbf{D}_e$) instead of one effective $\mathbf{D}$.
+      <strong>Sidebar: When does the bidomain collapse to monodomain?</strong>
+      If the two domains happen to have the same anisotropy ratio — meaning
+      $\mathbf{D}_e = \lambda\,\mathbf{D}_i$ for some scalar $\lambda$ — the
+      elliptic equation degenerates. The combined conductivity becomes
+      $(1+\lambda)\,\mathbf{D}_i$, and the elliptic equation forces $\phi_e$ to
+      be essentially constant. The parabolic equation then reduces to the
+      monodomain form with an effective diffusivity
+      $\mathbf{D}_{\text{eff}} = \mathbf{D}_i\,\mathbf{D}_e / (\mathbf{D}_i + \mathbf{D}_e)$.
+      In real cardiac tissue, however, the intracellular anisotropy ratio is
+      $\approx$10:1 while the extracellular ratio is $\approx$2.5:1 — so the
+      equal-anisotropy assumption fails, and the full bidomain system is needed.
+    </p>
+  </div>
+
+  <!-- ── §12.7 SIDEBAR: Conductivity Tensors and Fiber Architecture ──── -->
+
+  <div class="insight insight-math">
+    <p>
+      <strong>Sidebar: Fiber architecture and conductivity tensors.</strong>
+      In each domain, the conductivity tensor is diagonal in local fiber coordinates:
+      $\mathbf{D}_d^{\text{local}} = \text{diag}(\sigma_d^L,\;\sigma_d^T,\;\sigma_d^T)$
+      where $L$ = along-fiber and $T$ = cross-fiber. Because cardiac fibers rotate
+      transmurally ($\approx$120° from epicardium to endocardium), the local tensor
+      must be rotated into global coordinates:
+      $\mathbf{D}_d^{\text{global}}(\mathbf{x}) = \mathbf{R}(\theta)\,\mathbf{D}_d^{\text{local}}\,\mathbf{R}(\theta)^T$.
+      This makes the conductivity a spatially varying tensor field — the same
+      rotation machinery used for monodomain extends directly to bidomain by
+      maintaining two tensor fields ($\mathbf{D}_i$ and $\mathbf{D}_e$) instead
+      of one.
     </p>
   </div>
 
 
-  <!-- ────────────────────────────────────────────────────────────── -->
-
-  <h3>12.9 &ensp; Boundary Conditions: Two Domains, Two Choices</h3>
+  <h3>12.7 &ensp; Boundary Conditions: Two Domains, Two Choices</h3>
 
   <p>
     In the monodomain model (Section 7.4), we needed one boundary condition for one unknown.
     The bidomain model has <em>two</em> unknowns — the intracellular potential $\phi_i$ and the
     extracellular potential $\phi_e$ — so we need <em>two</em> boundary conditions at every
-    point on the tissue surface. This doubles the number of choices and creates physical situations
-    that have no monodomain analogue.
+    point on the tissue surface.
   </p>
 
   <p>
-    To build intuition, think of a piece of cardiac tissue sitting in a glass dish. The intracellular
+    Think of a piece of cardiac tissue sitting in a glass dish. The intracellular
     space (inside the cells) is sealed at the tissue surface — cell membranes continue right up to the
     edge, and no intracellular current can escape. This is always Neumann. But the extracellular space
     (between the cells) is open — it may be in contact with a conductive bath (saline solution) or
@@ -355,33 +482,42 @@
     There are three canonical physical scenarios:
   </p>
 
-  <ul>
-    <li><strong>Isolated tissue (Neumann on both):</strong> No current leaves through either domain. This is the most realistic for an intact heart — but it introduces a <em>null space</em> in the elliptic equation, because $\phi_e$ is determined only up to an additive constant.</li>
-    <li><strong>Grounded bath (Neumann on $\phi_i$, Dirichlet on $\phi_e$):</strong> Cells are sealed, but the extracellular space opens into a bath at a reference potential. This is the standard Langendorff preparation. The Dirichlet condition removes the null space.</li>
-    <li><strong>Current injection (Dirichlet on $\phi_i$ at electrode):</strong> An intracellular electrode clamps $\phi_i$ locally. Rare experimentally but important for theoretical stimulation studies.</li>
-  </ul>
+  <table>
+    <tr><th>Scenario</th><th>$\phi_i$ BC</th><th>$\phi_e$ BC</th><th>Null space?</th><th>Physical setting</th></tr>
+    <tr>
+      <td>Isolated tissue</td>
+      <td>Neumann</td>
+      <td>Neumann</td>
+      <td><strong>Yes</strong> (constant $\phi_e$)</td>
+      <td>Heart in air / pericardium</td>
+    </tr>
+    <tr>
+      <td>Grounded bath</td>
+      <td>Neumann</td>
+      <td>Dirichlet</td>
+      <td>No</td>
+      <td>Langendorff, tissue wedge</td>
+    </tr>
+    <tr>
+      <td>Current injection</td>
+      <td>Dirichlet (local)</td>
+      <td>Neumann</td>
+      <td>Yes (if $\phi_e$ has full Neumann)</td>
+      <td>Intracellular electrode stimulus</td>
+    </tr>
+  </table>
 
   <div class="insight insight-intuition">
     <p>
       <strong>The null space is physics, not a bug.</strong> When the entire boundary has Neumann
       conditions on $\phi_e$, the extracellular potential is defined only relative to some reference
       point — just like altitude is defined relative to sea level. You can add any constant to $\phi_e$
-      without changing any current flow. This is a real physical degeneracy: only <em>differences</em>
-      in extracellular potential matter, not absolute values.
+      without changing any current flow. In practice, we remove this ambiguity by <em>pinning</em>
+      one node ($\phi_e = 0$ at a single point) or by zeroing the constant mode in a spectral solver.
+      Both approaches are covered in Chapter 15 (Section 15.2).
     </p>
   </div>
-
-  <p>
-    The concrete mathematical formulations — how each BC type modifies the stiffness matrices
-    and the block system — are developed in Chapter 13 (Section 13.4). The strategies for handling
-    the null space in iterative solvers (pinning, deflation, DCT zero-mode removal) are covered in
-    Chapter 16 (Section 16.5).
-  </p>
 
 
 
 </div>
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 13 — SPATIAL DISCRETIZATION                              -->
-<!-- ══════════════════════════════════════════════════════════════════ -->

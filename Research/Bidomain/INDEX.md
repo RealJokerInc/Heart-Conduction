@@ -1,9 +1,9 @@
 # Cardiac Computational Modeling — Document Index
 
-**Source**: `bidomain_textbook.html` (~12,262 lines)
+**Source**: `bidomain_textbook.html` (~12,300 lines)
 **Output**: `Cardiac_Computational_Modeling.pdf`
 **Standalone LBM**: `LBM_Textbook_Part_IV.pdf`
-**Last updated**: 2026-03-07 (session 12, major restructuring: split Ch 7, merge Ch 11+12, split solvers, add BC sections)
+**Last updated**: 2026-03-08 (session 14, four-appendix restructure: A trimmed, B LA new, C NumAn new, D PyTorch renumbered)
 
 ## Part I — Single Cell Dynamics
 
@@ -26,16 +26,14 @@
 | 10 | Explicit Diffusion Solvers | 10.1–10.7 | **Verified** — RK2/RK4 with discrete matrix forms matching code |
 | 11 | Implicit Diffusion Solvers | 11.1–11.6 | **Verified** — BDF1/CN/BDF2 with boxed A_lhs/B_rhs matrix forms matching code |
 
-## Part III — Bidomain Modeling (Ch 12–17)
+## Part III — Bidomain Modeling (Ch 12–15)
 
 | Ch | Title | Sections | Style Status |
 |----|-------|----------|-------------|
-| 12 | The Bidomain Model | 12.1–12.9 | **Merged** from old Ch 11+12. 12.1–12.3 (physical picture), 12.4–12.8 (equations). **12.9 NEW**: Bidomain BC intro (three canonical scenarios, null-space insight) |
-| 13 | Spatial Discretization (Bidomain) | 13.1–13.4 | Good — block matrix diagram. **13.4 NEW**: BC formulation detail (subsections 13.4.1–13.4.4) |
-| 14 | Time Integration and Operator Splitting | 14.1–14.5 | Good — splitting error source clarification + monodomain vs bidomain splitting insight box |
-| 15 | Parabolic Solvers: The A₁₁ Block | 15.1–15.3 | **NEW chapter** from old 15.3–15.5. PCG (15.1), Chebyshev (15.2), Spectral (15.3 with subsections 15.3.1–15.3.4) |
-| 16 | Elliptic Solvers: The Schur Complement | 16.1–16.5 | **NEW chapter** from old 15.1–15.2, 15.6–15.8. Saddle-point (16.1), Block precon (16.2), AMG (16.3), Krylov (16.4), Null-space (16.5) |
-| 17 | Implementation Roadmap for Engine V5.4 | 17.1–17.3 | Good — cross-ref fixed |
+| 12 | The Bidomain Model | 12.1–12.7 | **Rewritten session 13**: 12.1–12.3 (physical picture), 12.4 (monodomain review), 12.5 (bidomain derivation with explicit algebra, physical dictionary, worked example), 12.6 (parabolic–elliptic couple with strategy preview), 12.7 (BCs). Convention translation box (σ vs D). Old 12.7–12.8 → sidebars. |
+| 13 | From Equations to Matrices | 13.1–13.5 | **Rewritten session 13b**: 13.1 (two stiffness matrices, road network analogy), 13.2 (block system with D-form definitions), 13.3 (**NEW** face-based stencil), 13.4 (FEM weak form brief note), 13.5 (**NEW** 5-node cable worked example with numerical values) |
+| 14 | Solving the Coupled System | 14.1–14.6 | **NEW chapter session 13b**: 14.1 (why explicit fails, puppet analogy), 14.2 (**Algorithm 14.1** — boxed GS procedure), 14.3 (4 more strategies: semi-implicit, Jacobi, SBDF2, RKC), 14.4 (comparison table), 14.5 (worked example), 14.6 (operator splitting). Monolithic approach as sidebar. |
+| 15 | Linear Solvers and Implementation | 15.1–15.4 | **NEW chapter session 13b** (merged old 15+16+17): 15.1 (parabolic = monodomain, cross-ref), 15.2 (elliptic + null-space handling), 15.3 (**NEW** three-tier auto-selection), 15.4 (**NEW** Engine V1 architecture with real classes/paths) |
 
 ## Part IV — Lattice-Boltzmann Methods (Ch 18–20)
 
@@ -49,9 +47,11 @@
 
 | Ch | Title | Sections | Style Status |
 |----|-------|----------|-------------|
-| Refs | Key References | 3 groups | Fine |
-| A | A Visual Guide to Differential Equations | A.1–A.10 | Good — 3B1B style. **A.8–A.10 NEW**: Transform space (A.8), DCT/DST with eigenvalues (A.9), CG/iterative methods with PCG pseudocode (A.10), eqs (A.7)–(A.12) |
-| B | Introduction to PyTorch | B.1–B.13 | **Rewritten v2.1** — v2 + B.7 rewritten (cleaner sparse ops catalogue), new B.9 "Advanced Operations for Scientific Computing" (torch.where, roll, einsum, scatter_add_, in-place workspaces, NumPy interop, meshgrid, FFT); old B.9–B.12 renumbered → B.10–B.13 (1,165 lines) |
+| Refs | Key References | 4 groups | Fine |
+| A | A Visual Guide to Differential Equations | A.1–A.7 | Good — 3B1B style. Trimmed: A.8–A.10 moved to Appendix C |
+| B | Linear Algebra for Cardiac Simulation | B.1–B.13 | **NEW session 14**: 3B1B style. B.1 (functions→vectors, discretization leap), B.2–B.3 (matrices as transformations, mat-vec), B.4 (special structures), B.5 (identity/inverse), B.6 (Ax=b), B.7 (eigenvalues), B.8 (SPD), B.9 (condition number), B.10 (null space), B.11 (block matrices/Schur), B.12 (orthogonality), B.13 (concept→chapter map). Eqs (B.1)–(B.9). |
+| C | Numerical Analysis: From Continuous to Computable | C.1–C.9 | **NEW session 14**: C.1–C.6 (truncation error, stability, Lax theorem, order of accuracy, stiffness, direct vs iterative). C.7–C.9 migrated from A.8–A.10 with new eq numbering (C.5)–(C.11) + Chebyshev iteration added to C.9. |
+| D | Introduction to PyTorch | D.1–D.13 | Renumbered from Appendix B. Content unchanged. |
 
 ## Equation Number Registry
 
@@ -67,12 +67,14 @@
 | 10 (Explicit) | (10.1)–(10.6) + (10.3b, 10.4b) | 10.1 = FE, 10.2 = CFL, 10.3 = RK2, 10.4 = RK4 |
 | 11 (Implicit) | (11.1)–(11.6) | 11.1 = BDF1, 11.2 = BDF1 matrix, 11.3 = CN, 11.4 = CN matrix, 11.5 = BDF2, 11.6 = BDF2 matrix |
 | 12 (Bidomain) | (12.1)–(12.6) | 12.1–12.2 = conservation laws, 12.3 = parabolic, 12.4 = elliptic, 12.5 = gating ODE, 12.6 = bidomain block system |
-| 13 (Bidomain FEM) | (13.1)–(13.5) | 13.1 = semi-discrete block, 13.2 = 2×2 block system, 13.3–13.5 = BC formulations |
-| 15 (Parabolic) | (15.1) | 15.1 = spectral denominator (CN/BDF1/BDF2) |
+| 13 (Matrices) | (13.1) | 13.1 = 2×2 block system (A11/A12/A21/A22 definitions) |
+| 14 (Solving) | (14.1)–(14.3) | 14.1 = elliptic constraint, 14.2 = CFL condition, 14.3 = SBDF2 formula |
 | 18 (LBM) | (18.1)–(18.41) + (18.7a) | Phase space, Boltzmann, LBE, quadrature, moment space |
 | 19 (LBM Mono) | (19.1)–(19.11) + (19.10b) | 19.1 = diffusion tensor, 19.3 = BGK with source, 19.8 = MRT, 19.11 = 6-stage step |
 | 20 (LBM Bi) | (20.1)–(20.4) | 20.1 = pseudo-time, 20.2 = phi_e relaxation, 20.3 = Vm lattice, 20.4 = phi_e lattice |
-| A (Appendix) | (A.1)–(A.12) | A.1 = heat equation, A.7–A.10 = transforms, A.11–A.12 = CG/PCG |
+| A (Appendix) | (A.1)–(A.7) | A.1 = heat equation, A.7 = bidomain PDE classification |
+| B (LA) | (B.1)–(B.9) | B.1 = discretization, B.3 = eigenvalue def, B.5 = SPD, B.6 = condition number, B.8 = block system |
+| C (NumAn) | (C.1)–(C.11) | C.1–C.2 = FD stencils, C.3 = CFL, C.5–C.8 = transforms/DCT/DST eigenvalues, C.9 = energy functional, C.10 = CG convergence, C.11 = Chebyshev |
 
 ## Engine V5.4 Verification Status
 

@@ -9,7 +9,7 @@
         "type": "chapter",
         "id": "ch1",
         "num": "Chapter 1",
-        "title": "The Hodgkin\u2013Huxley Revolution",
+        "title": "The Hodgkin–Huxley Revolution",
         "subsections": [
           {
             "title": "1.1 &ensp; The Membrane as a Circuit",
@@ -44,7 +44,7 @@
             "anchor": "2-2"
           },
           {
-            "title": "2.3 &ensp; Minimal Cardiac Models: FitzHugh\u2013Nagumo to Fenton\u2013Karma",
+            "title": "2.3 &ensp; Minimal Cardiac Models: FitzHugh–Nagumo to Fenton–Karma",
             "anchor": "2-3"
           }
         ]
@@ -64,11 +64,11 @@
             "anchor": "3-2"
           },
           {
-            "title": "3.3 &ensp; Phase 2: The Plateau \u2014 A Delicate Balance",
+            "title": "3.3 &ensp; Phase 2: The Plateau — A Delicate Balance",
             "anchor": "3-3"
           },
           {
-            "title": "3.4 &ensp; Phase 3: Repolarization \u2014 The Potassium Takeover",
+            "title": "3.4 &ensp; Phase 3: Repolarization — The Potassium Takeover",
             "anchor": "3-4"
           },
           {
@@ -84,31 +84,31 @@
         "title": "Intracellular Calcium: The Master Regulator",
         "subsections": [
           {
-            "title": "4.1 &ensp; The Dyadic Cleft \u2014 Where Electrical Meets Mechanical",
+            "title": "4.1 &ensp; The Dyadic Cleft — Where Electrical Meets Mechanical",
             "anchor": "4-1"
           },
           {
-            "title": "4.2 &ensp; Calcium-Induced Calcium Release \u2014 Local Control Theory",
+            "title": "4.2 &ensp; Calcium-Induced Calcium Release — Local Control Theory",
             "anchor": "4-2"
           },
           {
-            "title": "4.3 &ensp; The Ryanodine Receptor \u2014 Gatekeeper of the SR",
+            "title": "4.3 &ensp; The Ryanodine Receptor — Gatekeeper of the SR",
             "anchor": "4-3"
           },
           {
-            "title": "4.4 &ensp; SERCA2a and Phospholamban \u2014 The Pump and Its Brake",
+            "title": "4.4 &ensp; SERCA2a and Phospholamban — The Pump and Its Brake",
             "anchor": "4-4"
           },
           {
-            "title": "4.5 &ensp; The Sodium-Calcium Exchanger \u2014 Dual-Mode Transport",
+            "title": "4.5 &ensp; The Sodium-Calcium Exchanger — Dual-Mode Transport",
             "anchor": "4-5"
           },
           {
-            "title": "4.6 &ensp; Calcium Buffering \u2014 The 1% Rule",
+            "title": "4.6 &ensp; Calcium Buffering — The 1% Rule",
             "anchor": "4-6"
           },
           {
-            "title": "4.7 &ensp; T-Tubule Remodeling \u2014 When Structure Fails",
+            "title": "4.7 &ensp; T-Tubule Remodeling — When Structure Fails",
             "anchor": "4-7"
           },
           {
@@ -121,7 +121,7 @@
         "type": "chapter",
         "id": "ch5",
         "num": "Chapter 5",
-        "title": "The ten Tusscher\u2013Panfilov 2006 Model",
+        "title": "The ten Tusscher–Panfilov 2006 Model",
         "subsections": [
           {
             "title": "5.1 &ensp; 18 State Variables: What and Why",
@@ -144,7 +144,7 @@
             "anchor": "5-5"
           },
           {
-            "title": "5.6 &ensp; Currents During Each AP Phase \u2014 A Visual Map",
+            "title": "5.6 &ensp; Currents During Each AP Phase — A Visual Map",
             "anchor": "5-6"
           },
           {
@@ -161,7 +161,7 @@
         "type": "chapter",
         "id": "ch6",
         "num": "Chapter 6",
-        "title": "The O'Hara\u2013Rudy 2011 Model",
+        "title": "The O'Hara–Rudy 2011 Model",
         "subsections": [
           {
             "title": "6.1 &ensp; 41 State Variables: What and Why",
@@ -188,7 +188,7 @@
             "anchor": "6-6"
           },
           {
-            "title": "6.7 &ensp; Currents During Each AP Phase \u2014 A Visual Map",
+            "title": "6.7 &ensp; Currents During Each AP Phase — A Visual Map",
             "anchor": "6-7"
           },
           {
@@ -224,7 +224,7 @@
             "anchor": "7-1"
           },
           {
-            "title": "7.2 &ensp; The Reaction\u2013Diffusion Formulation",
+            "title": "7.2 &ensp; The Reaction–Diffusion Formulation",
             "anchor": "7-2"
           },
           {
@@ -292,7 +292,7 @@
             "anchor": "9-3"
           },
           {
-            "title": "9.4 &ensp; The Rush\u2013Larsen Method for Ionic Variables",
+            "title": "9.4 &ensp; The Rush–Larsen Method for Ionic Variables",
             "anchor": "9-4"
           }
         ]
@@ -312,11 +312,11 @@
             "anchor": "10-2"
           },
           {
-            "title": "10.3 &ensp; RK2 \u2014 Heun's Method (The Two-Sample Correction)",
+            "title": "10.3 &ensp; RK2 — Heun's Method (The Two-Sample Correction)",
             "anchor": "10-3"
           },
           {
-            "title": "10.4 &ensp; RK4 \u2014 The Classical Four-Stage Method",
+            "title": "10.4 &ensp; RK4 — The Classical Four-Stage Method",
             "anchor": "10-4"
           },
           {
@@ -348,7 +348,7 @@
             "anchor": "11-2"
           },
           {
-            "title": "11.3 &ensp; Crank\u2013Nicolson: Second-Order Implicit",
+            "title": "11.3 &ensp; Crank–Nicolson: Second-Order Implicit",
             "anchor": "11-3"
           },
           {
@@ -371,7 +371,7 @@
     "type": "part",
     "id": "part-iii",
     "num": "Part III",
-    "title": "The Bidomain Extension",
+    "title": "Bidomain Modeling",
     "chapters": [
       {
         "type": "chapter",
@@ -384,7 +384,7 @@
             "anchor": "12-1"
           },
           {
-            "title": "12.2 &ensp; Divergence and Conservation: The Language of Current Flow",
+            "title": "12.2 &ensp; Divergence and Conservation",
             "anchor": "12-2"
           },
           {
@@ -400,20 +400,12 @@
             "anchor": "12-5"
           },
           {
-            "title": "12.6 &ensp; The Parabolic\u2013Elliptic Couple",
+            "title": "12.6 &ensp; The Parabolic–Elliptic Couple",
             "anchor": "12-6"
           },
           {
-            "title": "12.7 &ensp; When Bidomain Reduces to Monodomain",
+            "title": "12.7 &ensp; Boundary Conditions",
             "anchor": "12-7"
-          },
-          {
-            "title": "12.8 &ensp; Conductivity Tensors and Fiber Architecture",
-            "anchor": "12-8"
-          },
-          {
-            "title": "12.9 &ensp; Boundary Conditions: Two Domains, Two Choices",
-            "anchor": "12-9"
           }
         ]
       },
@@ -421,23 +413,27 @@
         "type": "chapter",
         "id": "ch13",
         "num": "Chapter 13",
-        "title": "Spatial Discretization",
+        "title": "From Equations to Matrices",
         "subsections": [
           {
             "title": "13.1 &ensp; From One Stiffness Matrix to Two",
             "anchor": "13-1"
           },
           {
-            "title": "13.2 &ensp; The Bidomain Weak Form",
+            "title": "13.2 &ensp; The 2×2 Block System",
             "anchor": "13-2"
           },
           {
-            "title": "13.3 &ensp; The 2\u00d72 Block System",
+            "title": "13.3 &ensp; The FDM Face-Based Stencil",
             "anchor": "13-3"
           },
           {
-            "title": "13.4 &ensp; Boundary Conditions: Formulation and Implementation",
+            "title": "13.4 &ensp; A Note on the Weak Form (FEM)",
             "anchor": "13-4"
+          },
+          {
+            "title": "13.5 &ensp; Worked Example: 5-Node Bidomain Cable",
+            "anchor": "13-5"
           }
         ]
       },
@@ -445,27 +441,31 @@
         "type": "chapter",
         "id": "ch14",
         "num": "Chapter 14",
-        "title": "Time Integration and Operator Splitting",
+        "title": "Solving the Coupled System",
         "subsections": [
           {
-            "title": "14.1 &ensp; Operator Splitting Applied to Bidomain",
+            "title": "14.1 &ensp; Why Fully Explicit Methods Fail",
             "anchor": "14-1"
           },
           {
-            "title": "14.2 &ensp; Time Steppers: Crank\u2013Nicolson vs. SDIRK2",
+            "title": "14.2 &ensp; The Decoupled Approach: Divide and Conquer",
             "anchor": "14-2"
           },
           {
-            "title": "14.3 &ensp; IMEX Methods",
+            "title": "14.3 &ensp; Four More Strategies",
             "anchor": "14-3"
           },
           {
-            "title": "14.4 &ensp; Why Fully Explicit Methods Fail",
+            "title": "14.4 &ensp; Strategy Comparison",
             "anchor": "14-4"
           },
           {
-            "title": "14.5 &ensp; Explicit Stabilized Methods (RKC)",
+            "title": "14.5 &ensp; Worked Example: One Decoupled Step",
             "anchor": "14-5"
+          },
+          {
+            "title": "14.6 &ensp; Operator Splitting: The Outer Loop",
+            "anchor": "14-6"
           }
         ]
       },
@@ -473,67 +473,23 @@
         "type": "chapter",
         "id": "ch15",
         "num": "Chapter 15",
-        "title": "Parabolic Solvers: The $A_{11}$ Block",
+        "title": "Linear Solvers and Implementation",
         "subsections": [
           {
-            "title": "15.1 &ensp; Preconditioned Conjugate Gradient (PCG)",
+            "title": "15.1 &ensp; The Parabolic Sub-Problem",
             "anchor": "15-1"
           },
           {
-            "title": "15.2 &ensp; Chebyshev Polynomial Solver",
+            "title": "15.2 &ensp; The Elliptic Sub-Problem",
             "anchor": "15-2"
           },
           {
-            "title": "15.3 &ensp; Spectral Solvers: DCT, DST, and FFT",
+            "title": "15.3 &ensp; Three-Tier Automatic Solver Selection",
             "anchor": "15-3"
-          }
-        ]
-      },
-      {
-        "type": "chapter",
-        "id": "ch16",
-        "num": "Chapter 16",
-        "title": "Elliptic Solvers: The Schur Complement",
-        "subsections": [
-          {
-            "title": "16.1 &ensp; The Saddle-Point Structure",
-            "anchor": "16-1"
           },
           {
-            "title": "16.2 &ensp; Block Preconditioners",
-            "anchor": "16-2"
-          },
-          {
-            "title": "16.3 &ensp; Algebraic Multigrid (AMG)",
-            "anchor": "16-3"
-          },
-          {
-            "title": "16.4 &ensp; Krylov Methods: MINRES, GMRES, and Friends",
-            "anchor": "16-4"
-          },
-          {
-            "title": "16.5 &ensp; The Null-Space Problem",
-            "anchor": "16-5"
-          }
-        ]
-      },
-      {
-        "type": "chapter",
-        "id": "ch17",
-        "num": "Chapter 17",
-        "title": "Implementation Roadmap for Engine V5.4",
-        "subsections": [
-          {
-            "title": "17.1 &ensp; Architecture Extensions",
-            "anchor": "17-1"
-          },
-          {
-            "title": "17.2 &ensp; Recommended Solver Stack",
-            "anchor": "17-2"
-          },
-          {
-            "title": "17.3 &ensp; Performance Expectations",
-            "anchor": "17-3"
+            "title": "15.4 &ensp; Engine V1 Architecture",
+            "anchor": "15-4"
           }
         ]
       }
@@ -628,7 +584,7 @@
             "anchor": "20-2"
           },
           {
-            "title": "20.3 &ensp; Strategy 2: Hybrid LBM\u2013Classical Solver",
+            "title": "20.3 &ensp; Strategy 2: Hybrid LBM–Classical Solver",
             "anchor": "20-3"
           },
           {
@@ -706,18 +662,6 @@
           {
             "title": "A.7 &ensp; Why the Bidomain Model Has Two Types",
             "anchor": "A-7"
-          },
-          {
-            "title": "A.8 &ensp; From Physical Space to Transform Space",
-            "anchor": "A-8"
-          },
-          {
-            "title": "A.9 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries",
-            "anchor": "A-9"
-          },
-          {
-            "title": "A.10 &ensp; Iterative Methods and the Conjugate Gradient",
-            "anchor": "A-10"
           }
         ]
       },
@@ -725,59 +669,163 @@
         "type": "chapter",
         "id": "appendix-b",
         "num": "Appendix B",
-        "title": "Introduction to PyTorch",
+        "title": "Linear Algebra for Cardiac Simulation",
         "subsections": [
           {
-            "title": "B.1 &ensp; Installation and Your First Tensor",
+            "title": "B.1 &ensp; From Functions to Vectors: The Discretization Leap",
             "anchor": "B-1"
           },
           {
-            "title": "B.2 &ensp; Arithmetic: Scalars, Vectors, and Matrices",
+            "title": "B.2 &ensp; Matrices as Transformations",
             "anchor": "B-2"
           },
           {
-            "title": "B.3 &ensp; Tensors and Shapes",
+            "title": "B.3 &ensp; Matrix-Vector Multiplication: What It Actually Does",
             "anchor": "B-3"
           },
           {
-            "title": "B.4 &ensp; Data Types and Precision",
+            "title": "B.4 &ensp; Special Matrix Structures",
             "anchor": "B-4"
           },
           {
-            "title": "B.5 &ensp; Common Operations Cheat Sheet",
+            "title": "B.5 &ensp; The Identity Matrix and Matrix Inverses",
             "anchor": "B-5"
           },
           {
-            "title": "B.6 &ensp; Linear Algebra",
+            "title": "B.6 &ensp; Linear Systems: Ax = b",
             "anchor": "B-6"
           },
           {
-            "title": "B.7 &ensp; Sparse Matrices",
+            "title": "B.7 &ensp; Eigenvalues and Eigenvectors: The DNA of a Matrix",
             "anchor": "B-7"
           },
           {
-            "title": "B.8 &ensp; GPU Acceleration",
+            "title": "B.8 &ensp; Symmetric and Positive Definite Matrices",
             "anchor": "B-8"
           },
           {
-            "title": "B.9 &ensp; Advanced Operations for Scientific Computing",
+            "title": "B.9 &ensp; The Condition Number: When Matrices Go Bad",
             "anchor": "B-9"
           },
           {
-            "title": "B.10 &ensp; Automatic Differentiation (Autograd)",
+            "title": "B.10 &ensp; Null Spaces and Singular Systems",
             "anchor": "B-10"
           },
           {
-            "title": "B.11 &ensp; Building Neural Networks with nn.Module",
+            "title": "B.11 &ensp; Block Matrices and Coupled Systems",
             "anchor": "B-11"
           },
           {
-            "title": "B.12 &ensp; Connecting to Engine V5.4",
+            "title": "B.12 &ensp; Orthogonality and Projections",
             "anchor": "B-12"
           },
           {
-            "title": "B.13 &ensp; Where Machine Learning Meets Cardiac Modeling",
+            "title": "B.13 &ensp; From Linear Algebra to Cardiac Simulation",
             "anchor": "B-13"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "appendix-c",
+        "num": "Appendix C",
+        "title": "Numerical Analysis: From Continuous to Computable",
+        "subsections": [
+          {
+            "title": "C.1 &ensp; Truncation Error: The Price of Discretization",
+            "anchor": "C-1"
+          },
+          {
+            "title": "C.2 &ensp; Stability: When the Solution Blows Up",
+            "anchor": "C-2"
+          },
+          {
+            "title": "C.3 &ensp; Consistency, Stability, Convergence: The Lax Equivalence Theorem",
+            "anchor": "C-3"
+          },
+          {
+            "title": "C.4 &ensp; Order of Accuracy and Richardson Extrapolation",
+            "anchor": "C-4"
+          },
+          {
+            "title": "C.5 &ensp; Stiffness: When Time Scales Clash",
+            "anchor": "C-5"
+          },
+          {
+            "title": "C.6 &ensp; Direct vs. Iterative Solvers",
+            "anchor": "C-6"
+          },
+          {
+            "title": "C.7 &ensp; From Physical Space to Transform Space",
+            "anchor": "C-7"
+          },
+          {
+            "title": "C.8 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries",
+            "anchor": "C-8"
+          },
+          {
+            "title": "C.9 &ensp; Iterative Methods: Conjugate Gradient and Chebyshev",
+            "anchor": "C-9"
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "id": "appendix-d",
+        "num": "Appendix D",
+        "title": "Introduction to PyTorch",
+        "subsections": [
+          {
+            "title": "D.1 &ensp; Installation and Your First Tensor",
+            "anchor": "D-1"
+          },
+          {
+            "title": "D.2 &ensp; Arithmetic: Scalars, Vectors, and Matrices",
+            "anchor": "D-2"
+          },
+          {
+            "title": "D.3 &ensp; Tensors and Shapes",
+            "anchor": "D-3"
+          },
+          {
+            "title": "D.4 &ensp; Data Types and Precision",
+            "anchor": "D-4"
+          },
+          {
+            "title": "D.5 &ensp; Common Operations Cheat Sheet",
+            "anchor": "D-5"
+          },
+          {
+            "title": "D.6 &ensp; Linear Algebra",
+            "anchor": "D-6"
+          },
+          {
+            "title": "D.7 &ensp; Sparse Matrices",
+            "anchor": "D-7"
+          },
+          {
+            "title": "D.8 &ensp; GPU Acceleration",
+            "anchor": "D-8"
+          },
+          {
+            "title": "D.9 &ensp; Advanced Operations for Scientific Computing",
+            "anchor": "D-9"
+          },
+          {
+            "title": "D.10 &ensp; Automatic Differentiation (Autograd)",
+            "anchor": "D-10"
+          },
+          {
+            "title": "D.11 &ensp; Building Neural Networks with nn.Module",
+            "anchor": "D-11"
+          },
+          {
+            "title": "D.12 &ensp; Connecting to Engine V5.4",
+            "anchor": "D-12"
+          },
+          {
+            "title": "D.13 &ensp; Where Machine Learning Meets Cardiac Modeling",
+            "anchor": "D-13"
           }
         ]
       }

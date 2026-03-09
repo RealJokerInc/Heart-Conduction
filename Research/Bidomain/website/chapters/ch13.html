@@ -1,125 +1,122 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 13</div>
-  <h2 class="chapter-title">Spatial Discretization</h2>
+  <h2 class="chapter-title">From Equations to Matrices</h2>
   <div class="chapter-intro">
-    Chapter 8 developed the spatial discretization toolkit — FDM, FEM, FVM — for a single diffusion operator. Here we apply those same methods to the bidomain system, where two coupled PDEs produce a fundamentally different algebraic structure: a 2×2 block matrix system with $2N$ unknowns.
+    Chapter 8 turned the monodomain PDE into a single matrix equation. Here we do the same for the
+    bidomain — but because we have <em>two</em> coupled PDEs, we get a 2×2 block matrix system.
+    The good news: the assembly tools from Chapter 8 carry over directly. We just call them twice.
   </div>
 
   <h3>13.1 &ensp; From One Stiffness Matrix to Two</h3>
 
   <p>
-    In the monodomain model (Chapter 7), spatial discretization produces a single stiffness matrix $\mathbf{K}$ assembled from the effective conductivity tensor $\mathbf{D}$. The bidomain model has <em>two</em> conducting domains — intracellular and extracellular — each with its own conductivity tensor. Applying the same discretization machinery (whether FDM, FEM, or FVM) to each domain separately produces two stiffness matrices:
+    Recall from Chapter 8: spatial discretization converts a continuous PDE into a matrix equation.
+    The monodomain model has one conductivity tensor $\mathbf{D}$, which produces one stiffness matrix
+    (or Laplacian operator) $\mathbf{L}$. The bidomain model has <em>two</em> conducting domains,
+    each with its own conductivity tensor. Applying the same discretization machinery to each domain
+    separately produces two operators:
   </p>
+
+  <ul>
+    <li><strong>Intracellular Laplacian $\mathbf{L}_i$</strong>: discretizes $\nabla\cdot(\mathbf{D}_i\,\nabla\,\cdot\,)$
+      using exactly the same stencil or assembly procedure as the monodomain $\mathbf{L}$.</li>
+    <li><strong>Extracellular Laplacian $\mathbf{L}_e$</strong>: discretizes $\nabla\cdot(\mathbf{D}_e\,\nabla\,\cdot\,)$,
+      assembled identically but with $\mathbf{D}_e$.</li>
+  </ul>
 
   <p>
-    <strong>Intracellular stiffness</strong> $\mathbf{K}_i$: assembled from $\mathbf{D}_i$ using exactly the same procedure as the monodomain $\mathbf{K}$, with entries $(K_i)_{jk} = \int_\Omega \nabla\varphi_j \cdot (\mathbf{D}_i\,\nabla\varphi_k)\,dx$ for FEM, or the corresponding stencil matrix $\mathbf{L}_i$ for FDM.
+    The combined operator $\mathbf{L}_i + \mathbf{L}_e$ corresponds to the bulk conductivity
+    $\mathbf{D}_i + \mathbf{D}_e$.
   </p>
 
-  <p>
-    <strong>Extracellular stiffness</strong> $\mathbf{K}_e$: assembled identically but with $\mathbf{D}_e$. The combined stiffness $\mathbf{K}_i + \mathbf{K}_e$ corresponds to the bulk conductivity tensor $\mathbf{D}_i + \mathbf{D}_e$.
-  </p>
-
-  <div class="insight insight-engine">
+  <div class="insight insight-intuition">
     <p>
-      Engine V5.4's spatial discretization infrastructure already assembles a single stiffness matrix $\mathbf{K}$ (or Laplacian $\mathbf{L}$) from a conductivity tensor field. Extending to bidomain requires calling this same assembly routine <em>twice</em> — once with $\mathbf{D}_i$ and once with $\mathbf{D}_e$ — then combining the results into the 2×2 block format described below.
+      <strong>Think of it this way.</strong> In the monodomain world, you built one road network
+      (one $\mathbf{L}$) that carries all the traffic. In the bidomain world, there are two road
+      networks overlaid on the same city — one for intracellular current ($\mathbf{L}_i$) and one for
+      extracellular current ($\mathbf{L}_e$). Each network is built the same way, just with different
+      road widths (conductivities). The two networks are coupled at every intersection: current can
+      cross from one to the other through the cell membrane.
     </p>
   </div>
 
-  <h3>13.2 &ensp; The Bidomain Weak Form</h3>
-
-  <p>
-    For FEM specifically, the bidomain weak form involves both unknowns ($V_m$ and $\phi_e$) simultaneously. Multiplying the parabolic equation by test function $v \in H^1(\Omega)$ and integrating by parts:
-  </p>
-
-  <div class="equation-block">
-    $$\begin{aligned}
-    \int_\Omega \chi C_m \frac{\partial V_m}{\partial t}\,v\,dx
-      &+ \int_\Omega \nabla V_m \cdot (\mathbf{D}_i\,\nabla v)\,dx
-       + \int_\Omega \nabla\phi_e\cdot(\mathbf{D}_i\,\nabla v)\,dx \\[4pt]
-      &= -\int_\Omega \chi\,I_{\text{ion}}\,v\,dx
-       + \int_\Omega I_{\text{stim}}^i\,v\,dx
-    \end{aligned}$$
+  <div class="insight insight-engine">
+    <p>
+      <strong>Engine V1 connection.</strong> The <code>BidomainSpatialDiscretization</code> class
+      in <code>discretization/fdm.py</code> builds $\mathbf{L}_i$ and $\mathbf{L}_e$ by calling
+      the same stencil-assembly routine twice — once with $D_i$ and once with $D_e$. The matrices
+      are stored as sparse tensors and reused across all time steps.
+    </p>
   </div>
 
-  <p>
-    For the elliptic equation, multiply by $q \in H^1(\Omega)$:
-  </p>
-
-  <div class="equation-block">
-    $$\begin{aligned}
-    \int_\Omega \nabla\phi_e \cdot \bigl[(\mathbf{D}_i + \mathbf{D}_e)\,\nabla q\bigr]\,dx
-      &+ \int_\Omega \nabla V_m \cdot (\mathbf{D}_i\,\nabla q)\,dx \\[4pt]
-      &= -\int_\Omega I_{\text{stim}}^e\,q\,dx
-    \end{aligned}$$
-  </div>
+  <h3>13.2 &ensp; The 2×2 Block System</h3>
 
   <p>
-    Notice the critical structural feature: the intracellular conductivity $\mathbf{D}_i$ appears in <em>both</em> equations — it is the coupling agent between $V_m$ and $\phi_e$. The extracellular conductivity $\mathbf{D}_e$ appears only in the elliptic equation. Expanding in the finite element basis produces the semi-discrete system:
+    Now let us put these two operators together. After discretization and time-stepping (details in
+    Chapter 14), the bidomain system at each time step becomes a linear system with $2N$ unknowns —
+    $N$ values for $V_m$ and $N$ values for $\phi_e$:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(13.1)</span>
-    $$\begin{pmatrix}\mathbf{M} & \mathbf{0} \\ \mathbf{0} & \mathbf{0}\end{pmatrix}\!\begin{pmatrix}\dot{\mathbf{V}}_m \\ \dot{\boldsymbol{\phi}}_e\end{pmatrix} + \begin{pmatrix}\mathbf{K}_i & \mathbf{K}_i \\ \mathbf{K}_i & \mathbf{K}_i\!+\!\mathbf{K}_e\end{pmatrix}\!\begin{pmatrix}\mathbf{V}_m \\ \boldsymbol{\phi}_e\end{pmatrix} = \begin{pmatrix}\mathbf{F}_V \\ \mathbf{F}_\phi\end{pmatrix}$$
-  </div>
-
-  <div class="insight insight-math">
-    <p>
-      Notice the elegant structure: $\mathbf{K}_i$ appears in <em>every</em> block of the 2×2 stiffness matrix — it is the "glue" coupling $V_m$ and $\phi_e$. The extracellular stiffness $\mathbf{K}_e$ appears only in the (2,2) block, strengthening the elliptic equation. The mass matrix $\mathbf{M}$ (from Chapter 7) appears only in the (1,1) position because only $V_m$ has a time derivative.
-    </p>
-  </div>
-
-  <h3>13.3 &ensp; The 2×2 Block System</h3>
-
-  <p>
-    Regardless of the spatial discretization method (FDM, FEM, or FVM — all described in Chapter 7), the final algebraic system at each time step has the same form:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(13.2)</span>
     $$\underbrace{\begin{pmatrix}\mathbf{A}_{11} & \mathbf{A}_{12} \\ \mathbf{A}_{21} & \mathbf{A}_{22}\end{pmatrix}}_{\mathbf{A}}\begin{pmatrix}\mathbf{V}_m \\ \boldsymbol{\phi}_e\end{pmatrix} = \begin{pmatrix}\mathbf{b}_1 \\ \mathbf{b}_2\end{pmatrix}$$
   </div>
 
   <p>
-    With the typical identification (after applying a semi-implicit time stepper like Crank–Nicolson):
+    The blocks have a simple structure:
   </p>
 
   <table>
-    <tr><th>Block</th><th>Definition</th><th>Properties</th></tr>
-    <tr><td>$\mathbf{A}_{11}$</td><td>$\mathbf{M}/\Delta t + \mathbf{K}_i$</td><td>Symmetric positive definite (SPD)</td></tr>
-    <tr><td>$\mathbf{A}_{12}$</td><td>$\mathbf{K}_i$</td><td>Coupling: intracellular stiffness</td></tr>
-    <tr><td>$\mathbf{A}_{21}$</td><td>$\mathbf{K}_i$</td><td>$= \mathbf{A}_{12}^T$ (symmetric)</td></tr>
-    <tr><td>$\mathbf{A}_{22}$</td><td>$\mathbf{K}_i + \mathbf{K}_e$</td><td>SPD (combined stiffness)</td></tr>
+    <tr><th>Block</th><th>Definition</th><th>Role</th></tr>
+    <tr><td>$\mathbf{A}_{11}$</td><td>$\frac{1}{\Delta t}\mathbf{I} - \theta\,\mathbf{L}_i$</td><td>Parabolic: mass + intracellular diffusion</td></tr>
+    <tr><td>$\mathbf{A}_{12}$</td><td>$\mathbf{L}_i$</td><td>Coupling: how $\phi_e$ affects $V_m$</td></tr>
+    <tr><td>$\mathbf{A}_{21}$</td><td>$\mathbf{L}_i$</td><td>Coupling: how $V_m$ drives $\phi_e$</td></tr>
+    <tr><td>$\mathbf{A}_{22}$</td><td>$-(\mathbf{L}_i + \mathbf{L}_e)$</td><td>Elliptic: combined bulk conductivity</td></tr>
   </table>
 
   <p>
-    The total system has $2N$ unknowns (where $N$ is the number of spatial nodes) — <em>double</em> the monodomain system's $N$ unknowns. This is the fundamental object that all subsequent solver strategies (Chapter 16) must handle efficiently. The system is <strong>symmetric</strong> but <strong>indefinite</strong> — a saddle-point problem that requires specialized linear algebra. This is a qualitative departure from the monodomain, where the implicit system is SPD and solvable by conjugate gradient (Chapter 10).
+    Here $\theta$ is the implicitness parameter ($\theta = 0.5$ for Crank–Nicolson, $\theta = 1$ for
+    backward Euler), and $\mathbf{I}$ is the identity matrix (using lumped mass, standard for FDM/FVM).
+    Notice: $\mathbf{L}_i$ appears in <em>every</em> block — it is the glue coupling the two unknowns.
+    The extracellular operator $\mathbf{L}_e$ appears only in $\mathbf{A}_{22}$.
   </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Why does $\mathbf{L}_i$ appear everywhere?</strong> Go back to the physics.
+      The intracellular domain is the <em>only</em> path connecting $V_m$ and $\phi_e$.
+      Current crosses the membrane (changing $V_m$), flows through intracellular space
+      (governed by $\mathbf{D}_i$), and must be balanced by extracellular return current. So
+      $\mathbf{L}_i$ — the intracellular operator — naturally shows up in both the parabolic
+      equation (how $V_m$ evolves) and the elliptic equation (how $\phi_e$ responds).
+    </p>
+  </div>
 
   <!-- Block system diagram -->
   <div class="figure">
     <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" style="max-width:520px;">
-      <!-- Matrix left bracket (path-based for clean rendering) -->
+      <!-- Matrix left bracket -->
       <path d="M 55,22 L 42,22 L 42,208 L 55,208" fill="none" stroke="#16213e" stroke-width="1.8" stroke-linecap="square"/>
       <!-- A11 -->
       <rect x="60" y="30" width="110" height="80" rx="4" fill="#0f3460" opacity="0.15" stroke="#0f3460" stroke-width="1.5"/>
       <text x="115" y="65" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#0f3460" font-weight="600">A<tspan baseline-shift="sub" font-size="11">11</tspan></text>
-      <text x="115" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#0f3460">M/Δt + K<tspan baseline-shift="sub" font-size="8">i</tspan></text>
+      <text x="115" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#0f3460">1/Δt·I − θ·L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
       <text x="115" y="100" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#2d6a4f">(SPD)</text>
       <!-- A12 -->
       <rect x="180" y="30" width="110" height="80" rx="4" fill="#e94560" opacity="0.12" stroke="#e94560" stroke-width="1.5"/>
       <text x="235" y="65" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#e94560" font-weight="600">A<tspan baseline-shift="sub" font-size="11">12</tspan></text>
-      <text x="235" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">K<tspan baseline-shift="sub" font-size="8">i</tspan></text>
+      <text x="235" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
       <text x="235" y="100" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(coupling)</text>
       <!-- A21 -->
       <rect x="60" y="120" width="110" height="80" rx="4" fill="#e94560" opacity="0.12" stroke="#e94560" stroke-width="1.5"/>
       <text x="115" y="155" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#e94560" font-weight="600">A<tspan baseline-shift="sub" font-size="11">21</tspan></text>
-      <text x="115" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">K<tspan baseline-shift="sub" font-size="8">i</tspan></text>
+      <text x="115" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
       <text x="115" y="190" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(coupling)</text>
       <!-- A22 -->
       <rect x="180" y="120" width="110" height="80" rx="4" fill="#0f3460" opacity="0.15" stroke="#0f3460" stroke-width="1.5"/>
       <text x="235" y="155" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#0f3460" font-weight="600">A<tspan baseline-shift="sub" font-size="11">22</tspan></text>
-      <text x="235" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#0f3460">K<tspan baseline-shift="sub" font-size="8">i</tspan> + K<tspan baseline-shift="sub" font-size="8">e</tspan></text>
-      <text x="235" y="190" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#2d6a4f">(SPD)</text>
+      <text x="235" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#0f3460">−(L<tspan baseline-shift="sub" font-size="8">i</tspan> + L<tspan baseline-shift="sub" font-size="8">e</tspan>)</text>
+      <text x="235" y="190" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#2d6a4f">(SPD after pinning)</text>
       <!-- Matrix right bracket -->
       <path d="M 295,22 L 308,22 L 308,208 L 295,208" fill="none" stroke="#16213e" stroke-width="1.8" stroke-linecap="square"/>
       <!-- Vector left bracket -->
@@ -137,200 +134,119 @@
       <!-- RHS right bracket -->
       <path d="M 517,22 L 530,22 L 530,208 L 517,208" fill="none" stroke="#16213e" stroke-width="1.8" stroke-linecap="square"/>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 13.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the intracellular stiffness $\mathbf{K}_i$. The full system is symmetric but indefinite.</div>  </div>
-
-  <h3>13.4 &ensp; Boundary Conditions: Formulation and Implementation</h3>
-
-  <p>
-    In the monodomain (Section 8.7), we needed one boundary condition for one unknown ($V_m$). The bidomain model has <em>two</em> unknowns — the intracellular potential $\phi_i$ and the extracellular potential $\phi_e$ — so we need <em>two</em> boundary conditions at every point on the tissue surface. This doubles the number of choices and creates new physical situations that have no monodomain analogue.
-  </p>
-
-  <p>
-    To build intuition, think of a piece of cardiac tissue sitting in a glass dish. The intracellular space (inside the cells) is sealed at the tissue surface — cell membranes continue right up to the edge, and no intracellular current can escape. But the extracellular space (between the cells) is open — it may be in contact with a conductive bath (saline solution), or it may be exposed to air. What happens at the boundary depends on what is <em>outside</em>.
-  </p>
-
-  <h4>13.4.1 &ensp; Two Domains, Two Sets of Boundary Conditions</h4>
-
-  <p>
-    There are three canonical scenarios, each with a different physical story and a different mathematical consequence:
-  </p>
-
-  <p>
-    <strong>(a) Isolated tissue (Neumann on both).</strong> The tissue sits in a non-conductive medium (air, or a poorly conducting pericardial sac). No current can leave through either the intracellular or extracellular space:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(13.3)</span>
-    $$\mathbf{D}_i\,\nabla\phi_i \cdot \hat{\mathbf{n}} = 0 \quad\text{and}\quad \mathbf{D}_e\,\nabla\phi_e \cdot \hat{\mathbf{n}} = 0 \quad\text{on } \partial\Omega$$
+    <div class="figure-caption"><span class="figure-label">Figure 13.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the intracellular Laplacian $\mathbf{L}_i$.</div>
   </div>
 
+  <h3>13.3 &ensp; The FDM Face-Based Stencil</h3>
+
   <p>
-    This is the most physically realistic condition for an isolated heart. But it has a mathematical consequence: the elliptic equation (12.5) with pure Neumann BCs on $\phi_e$ has a <strong>null space</strong>. Adding a constant to $\phi_e$ everywhere does not change any gradient, so $\phi_e$ is determined only up to an additive constant. The linear system is singular.
+    In Chapter 8, we built the monodomain Laplacian using the standard 5-point (2D) or 7-point (3D)
+    FDM stencil. For Neumann boundary conditions, we used a <em>ghost-node mirror</em> approach
+    (Section 8.7.1). This works perfectly for the monodomain, but the bidomain requires a subtle change.
   </p>
 
   <p>
-    <strong>(b) Grounded bath (Neumann on $\phi_i$, Dirichlet on $\phi_e$).</strong> The tissue is submerged in a conductive bath (saline), and the bath is connected to a reference electrode that fixes the extracellular potential. Intracellular current still cannot escape (cells are sealed at the surface), but the extracellular potential is clamped:
+    The issue is with the <strong>elliptic equation</strong>. In the monodomain implicit system,
+    the matrix is $\frac{1}{\Delta t}\mathbf{I} + \theta\,\mathbf{L}$ — the identity term dominates
+    and guarantees symmetry and positive-definiteness regardless of how $\mathbf{L}$ handles boundaries.
+    But the elliptic operator $-(\mathbf{L}_i + \mathbf{L}_e)$ has <em>no identity term</em>. If the
+    ghost-node mirror produces an asymmetric boundary stencil (which it does — boundary rows have
+    halved coefficients), the elliptic matrix is non-symmetric, non-SPD, and iterative solvers like
+    PCG will fail.
   </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(13.4)</span>
-    $$\mathbf{D}_i\,\nabla\phi_i \cdot \hat{\mathbf{n}} = 0 \quad\text{and}\quad \phi_e = \phi_{\text{bath}} \quad\text{on } \partial\Omega$$
-  </div>
-
-  <p>
-    This is the standard experimental setup for Langendorff-perfused hearts and tissue wedge preparations. The Dirichlet condition on $\phi_e$ removes the null space: the extracellular potential is pinned to a reference, and the system matrix becomes non-singular. This makes the linear solve easier.
-  </p>
-
-  <p>
-    <strong>(c) Current injection (Dirichlet on $\phi_i$ at electrode, Neumann elsewhere).</strong> An electrode is inserted into the tissue, clamping the intracellular potential at the electrode site. Elsewhere, normal sealed-cell conditions apply. This represents an intracellular stimulation protocol.
-  </p>
-
-  <p>
-    The following table summarizes how each combination affects the mathematical structure:
-  </p>
-
-  <table>
-    <tr><th>Scenario</th><th>$\phi_i$ BC</th><th>$\phi_e$ BC</th><th>Null space?</th><th>Physical setting</th></tr>
-    <tr>
-      <td>Isolated tissue</td>
-      <td>Neumann</td>
-      <td>Neumann</td>
-      <td><strong>Yes</strong> (constant $\phi_e$)</td>
-      <td>Heart in air / pericardium</td>
-    </tr>
-    <tr>
-      <td>Grounded bath</td>
-      <td>Neumann</td>
-      <td>Dirichlet</td>
-      <td>No</td>
-      <td>Langendorff, tissue wedge</td>
-    </tr>
-    <tr>
-      <td>Current injection</td>
-      <td>Dirichlet (local)</td>
-      <td>Neumann</td>
-      <td>Yes (if $\phi_e$ has full Neumann)</td>
-      <td>Intracellular electrode stimulus</td>
-    </tr>
-    <tr>
-      <td>Full bath coupling</td>
-      <td>Neumann</td>
-      <td>Robin</td>
-      <td>No</td>
-      <td>Torso model, ECG simulation</td>
-    </tr>
-  </table>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>The null space is not a bug — it is physics.</strong> When the entire tissue boundary has Neumann conditions on $\phi_e$, the extracellular potential is defined only relative to some reference point, just like altitude is defined relative to sea level. You can add any constant to $\phi_e$ everywhere without changing any current flow. In practice, we remove this ambiguity by pinning one node (setting $\phi_e = 0$ at a single point) or by projecting out the constant mode in the linear solver (Section 15.3).
+      <strong>The fix: face-based stencils.</strong> Instead of mirroring ghost nodes, simply count
+      the <em>faces</em> around each node. Interior nodes have 4 faces (in 2D); boundary nodes have
+      3 faces; corner nodes have 2. Each face contributes one neighbor term to the stencil. If a
+      neighbor would be outside the domain, that face does not exist — skip it. The result is a
+      symmetric Laplacian by construction: if node $j$ contributes to node $i$'s stencil, then
+      node $i$ contributes equally to node $j$'s stencil.
     </p>
   </div>
 
-  <h4>13.4.2 &ensp; Mixed Boundary Conditions: What Do They Mean?</h4>
+  <p>
+    This is a hard-won practical lesson. The ghost-node approach and the face-based approach produce
+    the <em>same</em> results for the monodomain (the identity term papers over the asymmetry), but
+    only the face-based approach works for the bidomain elliptic equation. The Engine V1 FDM
+    discretization uses the face-based stencil for exactly this reason.
+  </p>
+
+  <h3>13.4 &ensp; A Note on the Weak Form (FEM)</h3>
 
   <p>
-    A natural question arises: what happens when the intracellular and extracellular domains have <em>different</em> boundary condition types? Let us think through the two most interesting combinations:
+    If you are using finite elements rather than finite differences, the bidomain weak form produces
+    the same block structure as equation (13.1), but with mass matrices $\mathbf{M}$ replacing the
+    identity $\mathbf{I}$ in the (1,1) block, and stiffness matrices $\mathbf{K}_i$, $\mathbf{K}_e$
+    replacing the Laplacians $\mathbf{L}_i$, $\mathbf{L}_e$. The FEM weak form and its derivation
+    follow the same pattern as the monodomain weak form in Section 8.4 — multiply by test functions,
+    integrate by parts, expand in the basis. The resulting 2×2 block structure is identical; only the
+    matrix entries differ.
   </p>
 
   <p>
-    <strong>Neumann on $\phi_i$ + Dirichlet on $\phi_e$</strong> (the grounded-bath case). This is the most common experimental configuration. The physical picture: cell membranes seal the intracellular space at the surface (no intracellular current escapes), but the extracellular space opens into a conductive bath that is held at a reference potential. The transmembrane voltage $V_m = \phi_i - \phi_e$ is <em>not</em> clamped — it is free to evolve according to the bidomain equations. Only $\phi_e$ is fixed at the boundary.
+    For the remainder of Part III, we work with the FDM operators $\mathbf{L}_i$, $\mathbf{L}_e$
+    and the identity mass matrix $\mathbf{I}$. Everything translates to FEM by replacing
+    $\mathbf{I} \to \mathbf{M}$ and $\mathbf{L} \to \mathbf{K}$.
+  </p>
+
+  <h3>13.5 &ensp; Worked Example: 5-Node Bidomain Cable</h3>
+
+  <p>
+    Let us build the complete bidomain system for a concrete case. Consider a 1D cable with 5 nodes,
+    spacing $\Delta x = 0.025$ cm, and Formulation B diffusivities
+    $D_i = 1.214 \times 10^{-3}$ cm$^2$/ms, $D_e = 4.429 \times 10^{-3}$ cm$^2$/ms
+    (corresponding to Clerc 1976 conductivities with $\chi = 1400$ cm$^{-1}$, $C_m = 1.0$ $\mu$F/cm$^2$).
+  </p>
+
+  <p><strong>Step 1: Build the Laplacians.</strong></p>
+
+  <p>
+    Using the face-based stencil, each $\mathbf{L}_d$ is a 5×5 tridiagonal matrix:
+  </p>
+
+  $$\mathbf{L}_d = \frac{D_d}{\Delta x^2}\begin{pmatrix} -1 & 1 & & & \\ 1 & -2 & 1 & & \\ & 1 & -2 & 1 & \\ & & 1 & -2 & 1 \\ & & & 1 & -1\end{pmatrix}$$
+
+  <p>
+    For $\mathbf{L}_i$: the scale factor is $D_i / \Delta x^2 = 1.214 \times 10^{-3} / (6.25 \times 10^{-4}) = 1.943$ ms$^{-1}$.
+    For $\mathbf{L}_e$: the scale factor is $D_e / \Delta x^2 = 4.429 \times 10^{-3} / (6.25 \times 10^{-4}) = 7.086$ ms$^{-1}$.
+  </p>
+
+  <p><strong>Step 2: Build the block system.</strong></p>
+
+  <p>
+    With $\Delta t = 0.02$ ms and $\theta = 0.5$ (Crank–Nicolson), the parabolic block is:
+  </p>
+
+  $$\mathbf{A}_{11} = \frac{1}{\Delta t}\mathbf{I} - \theta\,\mathbf{L}_i = 50\,\mathbf{I} - 0.5\,\mathbf{L}_i$$
+
+  <p>
+    The diagonal entries of $\mathbf{A}_{11}$ are $50 + 0.5 \times 1.943 \times 2 = 51.943$ for interior
+    nodes and $50 + 0.5 \times 1.943 = 50.971$ for boundary nodes. The off-diagonal entries are
+    $-0.5 \times 1.943 = -0.971$. This is clearly SPD (diagonally dominant with positive diagonal).
   </p>
 
   <p>
-    <strong>Dirichlet on $\phi_i$ + Neumann on $\phi_e$.</strong> This represents an intracellular electrode that clamps $\phi_i$ to a specified voltage, while the extracellular space is sealed (no extracellular current leaves). This is rare experimentally — intracellular electrodes are typically small and affect only a few cells — but it is mathematically well-posed and occasionally used in theoretical studies to model localized stimulation.
+    The elliptic block is:
   </p>
+
+  $$\mathbf{A}_{22} = -(\mathbf{L}_i + \mathbf{L}_e)$$
 
   <p>
-    <strong>Dirichlet on both.</strong> Both $\phi_i$ and $\phi_e$ are fixed at the boundary. Since $V_m = \phi_i - \phi_e$, this also fixes $V_m$ at the boundary — effectively voltage-clamping the transmembrane potential at the tissue surface. This is extremely rare in practice but might be used to model an idealized experimental chamber with both intracellular and extracellular potential control.
+    Combined scale factor: $(D_i + D_e)/\Delta x^2 = 9.029$ ms$^{-1}$.
+    Interior diagonal: $2 \times 9.029 = 18.058$. Off-diagonal: $-9.029$.
+    This matrix is symmetric positive <em>semi</em>-definite (every row sums to zero).
+    After pinning $\phi_{e,0} = 0$ (replacing row/column 0 with the identity), it becomes SPD.
   </p>
 
-  <div class="insight insight-warning">
-    <p>
-      <strong>Not all combinations are physically realistic.</strong> While the mathematics allows any combination of Dirichlet and Neumann on $\phi_i$ and $\phi_e$, the physics constrains the choices. The intracellular space is almost always Neumann (cells are sealed). The extracellular space depends on the experimental setup: Neumann for isolated tissue, Dirichlet for grounded bath, Robin for partial bath coupling. If you are unsure, start with Neumann on both — it is the most physically conservative choice.
-    </p>
-  </div>
-
-  <h4>13.4.3 &ensp; How BCs Modify the Block System</h4>
+  <p><strong>Step 3: Solve via decoupled Gauss-Seidel.</strong></p>
 
   <p>
-    Recall the 2×2 block system from Chapter 13, equation (13.2):
+    Rather than solving the full 10×10 system, the decoupled approach solves two separate 5×5 systems
+    sequentially. This is exactly what the code does — and it is the subject of the next chapter.
   </p>
-
-  $$\begin{pmatrix} A_{11} & A_{12} \\ A_{21} & A_{22} \end{pmatrix} \begin{pmatrix} \mathbf{V}_m \\ \boldsymbol{\phi}_e \end{pmatrix} = \begin{pmatrix} \mathbf{b}_1 \\ \mathbf{b}_2 \end{pmatrix}$$
-
-  <p>
-    where $A_{22}$ involves the sum $\mathbf{K}_i + \mathbf{K}_e$ (intracellular plus extracellular stiffness matrices). The boundary conditions affect this system as follows:
-  </p>
-
-  <p>
-    <strong>Pure Neumann on both (isolated tissue).</strong> The matrix $A_{22} = \mathbf{K}_i + \mathbf{K}_e$ inherits the Neumann null space from both stiffness matrices. The all-ones vector $\mathbf{1}$ satisfies $(\mathbf{K}_i + \mathbf{K}_e)\mathbf{1} = \mathbf{0}$, so $A_{22}$ is singular. The block system has a one-dimensional null space: any solution plus a constant shift in $\phi_e$ is also a solution.
-  </p>
-
-  <p>
-    <strong>Dirichlet on $\phi_e$ (grounded bath).</strong> The rows and columns of $A_{22}$ corresponding to Dirichlet boundary nodes are eliminated (as in Section 8.7.3), and their known values are moved to the right-hand side. The reduced $A_{22}$ is non-singular — the system can be solved directly without null-space handling.
-  </p>
-
-  <h4>Worked Example: 5-Node 1D Bidomain Cable, Isolated Tissue</h4>
-
-  <p>
-    Consider a 1D bidomain cable with 5 nodes, spacing $\Delta x = 0.025$ cm, intracellular conductivity $\sigma_i = 0.17$ S/m, and extracellular conductivity $\sigma_e = 0.62$ S/m. With Neumann BCs on both $\phi_i$ and $\phi_e$, the 10×10 block system has the structure:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(13.5)</span>
-    $$\begin{pmatrix} \mathbf{K}_i & \mathbf{K}_i \\ \mathbf{K}_i & \mathbf{K}_i + \mathbf{K}_e \end{pmatrix} \begin{pmatrix} \mathbf{V}_m \\ \boldsymbol{\phi}_e \end{pmatrix} = \begin{pmatrix} \mathbf{f} \\ \mathbf{0} \end{pmatrix}$$
-  </div>
-
-  <p>
-    Each $\mathbf{K}_d$ ($d = i$ or $e$) is a 5×5 tridiagonal matrix with the Neumann-modified boundary stencil from equation (8.4):
-  </p>
-
-  $$\mathbf{K}_d = \frac{\sigma_d}{\Delta x^2}\begin{pmatrix} -1 & 1 & & & \\ 1 & -2 & 1 & & \\ & 1 & -2 & 1 & \\ & & 1 & -2 & 1 \\ & & & 1 & -1\end{pmatrix}$$
-
-  <p>
-    The bottom-right block $\mathbf{K}_i + \mathbf{K}_e$ is singular (every row sums to zero). To solve the system, we must pin one node — for instance, set $\phi_{e,0} = 0$ by replacing the first equation of the lower block with $\phi_{e,0} = 0$. After pinning:
-  </p>
-
-  <p>
-    Row 5 of the 10×10 system becomes: $1 \cdot \phi_{e,0} = 0$. The corresponding column entries for $\phi_{e,0}$ in other rows are moved to the right-hand side. The modified $(\mathbf{K}_i + \mathbf{K}_e)$ block is now non-singular, and the system can be solved by any standard method (direct or iterative).
-  </p>
-
-  <div class="insight insight-math">
-    <p>
-      <strong>Why pinning works.</strong> Pinning one node removes the constant from the null space without changing the physics. If $\boldsymbol{\phi}_e$ is a solution, then $\boldsymbol{\phi}_e + c\,\mathbf{1}$ is also a solution for any constant $c$. Pinning $\phi_{e,0} = 0$ selects the unique member of this family with $\phi_{e,0} = 0$. All physical quantities ($V_m = \phi_i - \phi_e$, current densities, ion channel states) depend only on <em>differences</em> in $\phi_e$, so the choice of reference does not affect the simulation output.
-    </p>
-  </div>
-
-  <h4>13.4.4 &ensp; Summary and Forward Pointers</h4>
-
-  <p>
-    Boundary conditions in the bidomain are richer than in the monodomain because two unknowns require two BCs per boundary segment. The physically dominant case — Neumann on both $\phi_i$ and $\phi_e$ (isolated tissue) — introduces a null space that must be handled in the linear solver. The grounded-bath case (Neumann on $\phi_i$, Dirichlet on $\phi_e$) eliminates this null space.
-  </p>
-
-  <table>
-    <tr><th>Aspect</th><th>Monodomain (Ch 7.10)</th><th>Bidomain (this section)</th></tr>
-    <tr><td>Number of unknowns</td><td>1 ($V_m$)</td><td>2 ($\phi_i$, $\phi_e$) or equivalently ($V_m$, $\phi_e$)</td></tr>
-    <tr><td>BCs per boundary segment</td><td>1</td><td>2</td></tr>
-    <tr><td>Default BC</td><td>Neumann</td><td>Neumann on both</td></tr>
-    <tr><td>Null space</td><td>Present in $\mathbf{K}$, removed by mass matrix</td><td>Present in $A_{22}$, must be handled explicitly</td></tr>
-    <tr><td>Null-space removal</td><td>Not needed (mass matrix breaks degeneracy)</td><td>Pin one node, or deflation (Section 15.3)</td></tr>
-  </table>
-
-  <p>
-    The strategies for handling the null space in iterative solvers — pinning, deflation, and the DCT's natural treatment of the zero mode — are discussed in Chapter 15. The spectral solver (Section 15.3) handles the Neumann null space automatically by setting the $(0,0)$ DCT coefficient to zero, which is exactly pinning in spectral space.
-  </p>
-
-  <div class="insight insight-engine">
-    <p>
-      <strong>Engine V5.4 connection.</strong> The current monodomain implementation uses Neumann BCs by default, with the modified stiffness matrix from Section 8.7. For a future bidomain extension, the same boundary modification applies independently to $\mathbf{K}_i$ and $\mathbf{K}_e$. The null-space pinning strategy (setting one node of $\phi_e$ to zero) requires modifying only one row/column of the block system — the same row-elimination technique used for Dirichlet BCs in Section 8.7.3.
-    </p>
-  </div>
 
 
 
 </div>
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  CHAPTER 14 — TIME INTEGRATION & OPERATOR SPLITTING               -->
-<!-- ══════════════════════════════════════════════════════════════════ -->

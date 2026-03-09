@@ -1,199 +1,424 @@
 <div class="chapter">
   <div class="chapter-number">Chapter 14</div>
-  <h2 class="chapter-title">Time Integration and Operator Splitting</h2>
+  <h2 class="chapter-title">Solving the Coupled System</h2>
   <div class="chapter-intro">
-    Chapter 9 introduced operator splitting for the monodomain equation — separating the local reaction (ionic ODEs) from the global diffusion (PDE). The same splitting framework applies to the bidomain model, but the diffusion sub-step is fundamentally different: instead of a single SPD system, it requires solving the 2×2 block system from Chapter 14.
+    We now have two coupled PDEs and a 2×2 block matrix. How do we actually solve this at each time
+    step? This is the heart of the bidomain implementation. The key insight — which makes everything
+    tractable — is that we do <em>not</em> solve the full 2N×2N system. Instead, we split it into two
+    separate N×N solves. This chapter presents the complete algorithm and five concrete strategies
+    for executing it.
   </div>
 
-  <h3>14.1 &ensp; Operator Splitting Applied to Bidomain</h3>
+  <h3>14.1 &ensp; Why Fully Explicit Methods Fail</h3>
 
   <p>
-    The splitting strategy from Chapter 8 carries over directly, but it is worth pausing to understand <em>why</em> it works for the bidomain's mixed parabolic–elliptic system.
+    Before building the solution, let us understand the constraint we are working under.
+    A natural first instinct is: "Can we just march everything forward explicitly, like we did with
+    RK4 for the monodomain?" The answer is <strong>no</strong>, for a fundamental structural reason.
   </p>
 
   <p>
-    Recall that the monodomain uses operator splitting to separate reaction from diffusion (Section 9.2). The splitting error arises because these two processes interact: the reaction changes $V_m$, which changes the diffusive flux, which changes $V_m$, and so on. By treating them separately within one time step, we make a small error that is $O(\Delta t)$ for Godunov splitting and $O(\Delta t^2)$ for Strang splitting.
+    The parabolic equation (for $V_m$) has a $\partial V_m / \partial t$ term, so in principle it can
+    be marched forward in time. But the elliptic equation — $0 = \nabla\cdot((\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e) + \nabla\cdot(\mathbf{D}_i\,\nabla V_m)$ — is a <em>constraint</em>.
+    There is no time derivative to march. At every instant, $\phi_e$ must satisfy this equation exactly.
+    That means solving a linear system:
   </p>
 
+  <div class="equation-block">
+    <span class="equation-label">(14.1)</span>
+    $$-(\mathbf{L}_i + \mathbf{L}_e)\,\boldsymbol{\phi}_e = \mathbf{L}_i\,\mathbf{V}_m$$
+  </div>
+
   <p>
-    For the bidomain, we split in exactly the same way — reaction first, then diffusion — but the diffusion sub-step now involves both the parabolic and elliptic equations. Crucially, the splitting error comes from separating reaction from diffusion, <em>not</em> from separating the parabolic equation from the elliptic one. The elliptic equation (12.5) has no time derivative and no memory (Section 12.6): its solution at any instant depends only on the current $V_m$. So when we solve the diffusion sub-step, we are free to solve the parabolic and elliptic equations <em>simultaneously</em> as a coupled block system — there is no additional splitting error from this coupling.
+    This is the single most important distinction between bidomain and monodomain:
+    <strong>at least one implicit linear solve per time step is unavoidable</strong>.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Monodomain splitting vs. bidomain splitting.</strong> In the monodomain, splitting separates reaction (local ODEs) from diffusion (global PDE). In the bidomain, splitting does the same thing — it separates reaction from diffusion. The fact that the diffusion sub-step involves <em>two</em> coupled equations (parabolic + elliptic) does not introduce extra splitting error, because both equations are solved together in the diffusion sub-step. The elliptic equation is a constraint that "comes along for the ride."
+      <strong>Think of it like a puppet on strings.</strong> $V_m$ is the hand — it moves freely
+      (parabolic, has momentum). $\phi_e$ is the puppet — it has no momentum of its own, and must
+      instantly adjust to wherever the hand moves. You cannot "predict" where the puppet will be
+      next; you must <em>solve</em> for its position given the current hand position. This instant
+      adjustment is the elliptic solve.
     </p>
   </div>
 
   <p>
-    In Godunov (first-order) splitting, each time step has two stages: (1) advance the reaction locally using Rush–Larsen (Section 9.4), then (2) solve the diffusion sub-step. The difference from monodomain is entirely in step 2. For the monodomain, the diffusion sub-step solves a single SPD linear system. For the bidomain, it solves the full 2×2 block system:
+    Even if we accept the mandatory elliptic solve, can the <em>parabolic</em> part be treated
+    explicitly? Yes — but at a severe cost. The CFL condition for forward Euler on the bidomain
+    parabolic equation gives:
   </p>
 
   <div class="equation-block">
-    $$\begin{pmatrix}\mathbf{A}_{11} & \mathbf{A}_{12} \\ \mathbf{A}_{21} & \mathbf{A}_{22}\end{pmatrix}\begin{pmatrix}V_m^{n+1} \\ \phi_e^{n+1}\end{pmatrix} = \begin{pmatrix}\mathbf{b}_1(V_m^*) \\ \mathbf{b}_2\end{pmatrix}$$
+    <span class="equation-label">(14.2)</span>
+    $$\Delta t \leq \frac{\Delta x^2}{2\,d\,D_{\max}}$$
   </div>
 
   <p>
-    where $V_m^*$ comes from the reaction sub-step. Strang (second-order) splitting uses the same symmetric sandwich — half-reaction, full-diffusion, half-reaction — as described in Section 9.3. Research has shown that Strang splitting has better <em>stability</em> properties than Godunov for bidomain, because the symmetric arrangement prevents splitting error from accumulating unidirectionally. The recommendation is to use Strang splitting for production bidomain simulations.
+    For typical cardiac parameters with $\Delta x = 0.1$ mm in 2D, this gives
+    $\Delta t_{\text{explicit}} \lesssim 0.5$ $\mu$s. Semi-implicit methods allow
+    $\Delta t \approx 50$ $\mu$s — a factor of <strong>100× larger</strong>.
+  </p>
+
+  <h3>14.2 &ensp; The Decoupled Approach: Divide and Conquer</h3>
+
+  <p>
+    The 2×2 block system (13.1) has $2N$ unknowns. Solving it monolithically would require a
+    specialized solver for symmetric indefinite systems — MINRES, GMRES, or similar (see the sidebar
+    in Section 14.5). But there is a much simpler approach: <strong>solve the two equations
+    one at a time</strong>.
   </p>
 
   <p>
-    The critical new question for bidomain is: <em>what time stepper do we use for the diffusion sub-step?</em> The monodomain's implicit solvers (Crank–Nicolson, BDF — Chapter 10) are starting points, but the bidomain's saddle-point structure and sharp wavefronts demand more careful choices.
+    The idea is exactly like Gauss-Seidel iteration for a system of equations. First, update $V_m$
+    using the current (or previous) $\phi_e$. Then, update $\phi_e$ using the new $V_m$. Each
+    sub-problem is N×N and SPD — solvable by the familiar tools from Part II (PCG, Chebyshev,
+    spectral methods).
   </p>
 
-  <h3>14.2 &ensp; Time Steppers: Crank–Nicolson vs. SDIRK2</h3>
-
-  <p>
-    Within the diffusion sub-step, we need an implicit time integrator for the 2×2 block system. Two standard choices are:
-  </p>
-
-  <h4>Crank–Nicolson (CN)</h4>
-
-  <p>
-    The trapezoidal rule applied to the diffusion step:
-  </p>
-
-  <div class="equation-block">
-    $$\frac{\mathbf{M}}{\Delta t}\bigl(V_m^{n+1} - V_m^*\bigr) = \tfrac{1}{2}\Bigl[\mathcal{L}(V_m^{n+1},\phi_e^{n+1}) + \mathcal{L}(V_m^*,\phi_e^n)\Bigr]$$
-  </div>
-
-  <p>
-    where $\mathcal{L}$ represents the spatial diffusion operator. CN is second-order and A-stable, but it can produce <strong>spurious oscillations</strong> near sharp wave fronts — a serious concern in cardiac electrophysiology, where the action potential upstroke is extremely steep ($dV/dt \sim 300$ V/s).
-  </p>
-
-  <h4>SDIRK2 (Singly Diagonally Implicit Runge–Kutta, order 2)</h4>
-
-  <p>
-    The SDIRK2 method uses two implicit stages with the same diagonal coefficient $\gamma = 1 - \sqrt{2}/2 \approx 0.2929$:
-  </p>
-
-  <div class="equation-block">
-    $$\begin{aligned}
-    \text{Stage 1:}\quad \mathbf{k}_1 &= \mathcal{L}\bigl(V_m^n + \gamma\,\Delta t\,\mathbf{k}_1\bigr) & &\text{(implicit solve)} \\[6pt]
-    \text{Stage 2:}\quad \mathbf{k}_2 &= \mathcal{L}\bigl(V_m^n + (1{-}\gamma)\,\Delta t\,\mathbf{k}_1 + \gamma\,\Delta t\,\mathbf{k}_2\bigr) & &\text{(implicit solve)} \\[6pt]
-    V_m^{n+1} &= V_m^n + \Delta t\bigl[(1{-}\gamma)\,\mathbf{k}_1 + \gamma\,\mathbf{k}_2\bigr]
-    \end{aligned}$$
-  </div>
-
-  <p>
-    SDIRK2 is second-order, L-stable (meaning it <em>damps</em> spurious high-frequency oscillations rather than preserving them), and requires two linear solves per step — each of the same size and structure as the CN solve, but with a smaller effective time step ($\gamma\,\Delta t$ instead of $\Delta t$).
-  </p>
-
-  <div class="insight insight-warning">
+  <div class="insight insight-intuition">
     <p>
-      <strong>Recommendation:</strong> SDIRK2 is preferred over Crank–Nicolson for bidomain. The extra linear solve per step (two instead of one) is a modest cost increase ($\approx$1.5×), but L-stability eliminates the spurious oscillations that plague CN near sharp wave fronts. This is especially important for bidomain, where the coupling to $\phi_e$ can amplify such oscillations.
+      <strong>Imagine untangling two knotted ropes.</strong> Trying to straighten both simultaneously
+      (monolithic solve) is hard — you have to coordinate every move. But if you straighten one rope
+      first, then use the straightened rope as a guide to straighten the other, the problem becomes
+      two easy steps instead of one hard one. That is the decoupled approach.
     </p>
   </div>
 
-  <h3>14.3 &ensp; IMEX Methods</h3>
+  <p>
+    The complete bidomain time step, including the ionic update from operator splitting
+    (Chapter 9), is shown in Algorithm 14.1.
+  </p>
+
+  <!-- BOXED ALGORITHM -->
+  <div class="insight insight-engine" style="border: 2px solid #0f3460; background: #f8f9fa;">
+    <p style="text-align:center; font-weight:bold; font-size:1.1em; margin-bottom:0.8em;">
+      Algorithm 14.1 &mdash; Decoupled Gauss-Seidel Bidomain Step
+    </p>
+    <p><strong>Given:</strong> $\mathbf{V}_m^n$, $\boldsymbol{\phi}_e^n$, ionic states at time $t^n$</p>
+
+    <p><strong>Stage 1 — Ionic update</strong> (same as monodomain, Section 9.4):</p>
+    <p style="margin-left:2em;">
+      $\mathbf{V}_m^* \leftarrow \text{Rush–Larsen}(\mathbf{V}_m^n,\;\text{ionic\_states},\;\Delta t)$
+    </p>
+
+    <p><strong>Stage 2 — Parabolic solve</strong> (update $V_m$, using lagged $\phi_e^n$):</p>
+    <div class="equation-block" style="margin:0.5em 0;">
+      $$\underbrace{\left(\frac{1}{\Delta t}\,\mathbf{I} - \theta\,\mathbf{L}_i\right)}_{\mathbf{A}_{\text{para}}}\;\mathbf{V}_m^{n+1}
+      = \underbrace{\left(\frac{1}{\Delta t}\,\mathbf{I} - (1-\theta)\,\mathbf{L}_i\right)}_{\mathbf{B}_{\text{para}}}\;\mathbf{V}_m^*
+      + \mathbf{L}_i\,\boldsymbol{\phi}_e^n$$
+    </div>
+    <p style="margin-left:2em; font-size:0.92em;">
+      [$N \times N$, SPD — solve with PCG, Chebyshev, or spectral method]
+    </p>
+
+    <p><strong>Stage 3 — Elliptic solve</strong> (update $\phi_e$, using new $V_m^{n+1}$):</p>
+    <div class="equation-block" style="margin:0.5em 0;">
+      $$\underbrace{-(\mathbf{L}_i + \mathbf{L}_e)}_{\mathbf{A}_{\text{ellip}}}\;\boldsymbol{\phi}_e^{n+1}
+      = \mathbf{L}_i\,\mathbf{V}_m^{n+1}$$
+    </div>
+    <p style="margin-left:2em; font-size:0.92em;">
+      [$N \times N$, SPD after pinning — solve with spectral or PCG]
+    </p>
+  </div>
 
   <p>
-    An alternative to operator splitting is the Implicit-Explicit (IMEX) approach, which treats different terms with different discretizations within a single unified step:
+    Three key observations about this algorithm:
   </p>
+
+  <ol>
+    <li><strong>Stage 1 is identical to monodomain.</strong> The ionic model does not know or care
+      about $\phi_e$. It sees only $V_m$ and the gating/concentration states.</li>
+    <li><strong>Both linear systems are N×N and SPD.</strong> We never form or solve the full 2N×2N
+      system. Every solver tool from Part II (PCG, Chebyshev, DCT) applies directly.</li>
+    <li><strong>The coupling is sequential:</strong> $\phi_e^n$ feeds into the parabolic RHS, and
+      the resulting $V_m^{n+1}$ feeds into the elliptic RHS. This is why it is called "Gauss-Seidel" —
+      each unknown is updated using the most recent value of the other.</li>
+  </ol>
+
+  <p>
+    The parameter $\theta$ controls the time-stepping scheme. $\theta = 0.5$ gives Crank–Nicolson
+    (second-order, A-stable). $\theta = 1.0$ gives backward Euler (first-order, L-stable —
+    damps spurious oscillations near steep wavefronts). Both are unconditionally stable, meaning
+    there is no CFL restriction on $\Delta t$.
+  </p>
+
+  <h3>14.3 &ensp; Four More Strategies</h3>
+
+  <p>
+    Algorithm 14.1 is the baseline — simple, robust, and the most common choice in the literature.
+    But there are good reasons to consider alternatives: GPU parallelism, higher temporal accuracy,
+    or avoiding the parabolic linear solve entirely. The Engine V1 codebase implements five strategies,
+    all sharing the same structure — ionic step, then parabolic step, then elliptic step — but
+    differing in <em>how</em> each step is executed.
+  </p>
+
+  <h4>Strategy 2: Semi-Implicit (Forward Euler + Implicit Elliptic)</h4>
+
+  <p>
+    What if we skip the parabolic linear solve entirely? Replace Stage 2 with a single explicit
+    forward Euler step:
+  </p>
+
+  <div class="equation-block">
+    $$\mathbf{V}_m^{n+1} = \mathbf{V}_m^* + \Delta t\;\mathbf{L}_i\,(\mathbf{V}_m^* + \boldsymbol{\phi}_e^n)$$
+  </div>
+
+  <p>
+    This is just one sparse matrix-vector product — no linear solve. Stage 3 (elliptic) remains
+    implicit, because it must (Section 14.1). The cost drops from two linear solves to one SpMV +
+    one linear solve.
+  </p>
+
+  <p>
+    The catch: this is <strong>CFL-constrained</strong>. The stability condition is
+    $\Delta t < \Delta x^2 / (4\,D_i)$. For $\Delta x = 0.025$ cm and $D_i = 1.214 \times 10^{-3}$:
+    $\Delta t_{\max} \approx 0.126$ ms. This is workable — and on GPUs, the cheap per-step cost can
+    more than compensate for the smaller time step.
+  </p>
+
+  <h4>Strategy 3: Jacobi (Fully Parallel)</h4>
+
+  <p>
+    The Gauss-Seidel strategy has a sequential dependency: Stage 3 needs $V_m^{n+1}$ from Stage 2.
+    The <strong>Jacobi</strong> variant breaks this dependency by using <em>old</em> values for both:
+  </p>
+
   <ul>
-    <li><strong>Explicit</strong>: ionic current $I_{\text{ion}}$ (nonlinear, local, less stiff)</li>
-    <li><strong>Implicit</strong>: diffusion operator (linear, global, stiff)</li>
+    <li>Stage 2 (parabolic): same as GS — uses $\phi_e^n$</li>
+    <li>Stage 3 (elliptic): uses $V_m^{\mathbf{n}}$ instead of $V_m^{n+1}$</li>
   </ul>
 
   <p>
-    IMEX avoids the splitting error entirely. The general form writes the semi-discrete system as $d\mathbf{u}/dt = \mathbf{f}_E(\mathbf{u}) + \mathbf{f}_I(\mathbf{u})$, where $\mathbf{f}_E$ is treated explicitly (ionic currents) and $\mathbf{f}_I$ implicitly (diffusion + elliptic coupling). Because the diffusion operator is <em>linear</em>, the implicit part requires only a linear solve — no Newton iteration.
+    Now both solves depend only on time-$n$ data. They can run <strong>simultaneously on two GPU
+    streams</strong>. The price: slightly weaker coupling (the elliptic solve lags the parabolic by
+    one step). Fernandez &amp; Zemzemi (2010) proved this variant is still energy-stable.
   </p>
 
-  <p><strong>IMEX Euler (SBDF1)</strong> — first-order, L-stable, self-starting:</p>
-  <div class="equation-block">
-    $$\frac{\chi C_m}{\Delta t}\,\mathbf{M}\,(\mathbf{V}_m^{n+1} - \mathbf{V}_m^n) + \mathbf{K}_i\,\mathbf{V}_m^{n+1} + \mathbf{K}_i\,\boldsymbol{\phi}_e^{n+1} = -\chi\,\mathbf{M}\,I_{\text{ion}}^n$$
-  </div>
-
-  <p><strong>SBDF2</strong> — second-order, strong damping, recommended for production:</p>
-  <div class="equation-block">
-    $$\tfrac{\chi C_m}{\Delta t}\,\mathbf{M}\bigl(\tfrac{3}{2}\mathbf{V}_m^{n+1} - 2\mathbf{V}_m^n + \tfrac{1}{2}\mathbf{V}_m^{n-1}\bigr) + \mathbf{K}_i\,\mathbf{V}_m^{n+1} + \mathbf{K}_i\,\boldsymbol{\phi}_e^{n+1} = -\chi\,\mathbf{M}\bigl(2\,I_{\text{ion}}^n - I_{\text{ion}}^{n-1}\bigr)$$
-  </div>
+  <h4>Strategy 4: IMEX-SBDF2 (Second-Order, L-Stable)</h4>
 
   <p>
-    Other second-order IMEX multistep variants include <strong>CN-FE</strong> (Crank–Nicolson for diffusion, forward Euler for reaction) and <strong>CN-AB</strong> (Crank–Nicolson with Adams–Bashforth extrapolation for ionic terms). Ethier &amp; Bourgault (2008) conducted a systematic stability analysis and found that <strong>SBDF2 provides the strongest damping</strong> of high-frequency error — making it preferred for cardiac applications where sharp wave fronts produce high-frequency error components. CN-FE should generally be avoided for bidomain because it can produce spurious oscillations near the action potential upstroke, similar to the Crank–Nicolson issue discussed in Section 16.2.
+    Both GS and Jacobi with $\theta = 0.5$ (Crank–Nicolson) are second-order in time,
+    but CN can produce spurious oscillations near steep wavefronts. The <strong>SBDF2</strong>
+    (semi-implicit BDF2) method achieves second-order accuracy with <strong>L-stability</strong> —
+    it <em>damps</em> high-frequency errors rather than preserving them.
   </p>
 
   <p>
-    <strong>IMEX Runge–Kutta</strong> methods offer a single-step (self-starting) alternative. An $s$-stage IMEX-RK method uses an explicit tableau for ionic terms and a DIRK (diagonally implicit Runge–Kutta) tableau for diffusion, requiring $s$ linear solves per step. The stability regions are generally larger than IMEX multistep methods, but the extra linear solves per step make them more expensive for bidomain.
+    SBDF2 uses values from two previous time steps. The parabolic stage becomes:
   </p>
 
-  <div class="insight insight-warning">
+  <div class="equation-block">
+    <span class="equation-label">(14.3)</span>
+    $$\left(\frac{3}{2\,\Delta t}\,\mathbf{I} - \mathbf{L}_i\right)\mathbf{V}_m^{n+1}
+    = \frac{2}{\Delta t}\,\mathbf{V}_m^n - \frac{1}{2\,\Delta t}\,\mathbf{V}_m^{n-1} + \mathbf{L}_i\,\boldsymbol{\phi}_e^n$$
+  </div>
+
+  <p>
+    Because SBDF2 requires two previous solutions, it cannot self-start. The first step uses
+    backward Euler ($\theta = 1.0$), then all subsequent steps use the BDF2 formula.
+    The cost is identical to GS (two linear solves per step), but the temporal accuracy is higher
+    and the L-stability prevents oscillation artifacts.
+  </p>
+
+  <h4>Strategy 5: Explicit RKC (Chebyshev-Stabilized)</h4>
+
+  <p>
+    Runge–Kutta–Chebyshev (RKC) is the most creative approach. Like the semi-implicit strategy, it
+    avoids the parabolic linear solve. But instead of forward Euler (1 stage, tiny stability region),
+    it uses $s$ stages of a Chebyshev polynomial recurrence, extending the stability region
+    <strong>quadratically</strong>:
+  </p>
+
+  <div class="equation-block">
+    $$\text{Stability limit} \approx 0.65\,s^2 \times \Delta t_{\text{FE}}$$
+  </div>
+
+  <p>
+    With $s = 20$ stages, the stability limit is $\approx 260 \times$ that of forward Euler.
+    Each stage requires only a sparse matrix-vector product (cheap, parallelizable). The
+    total cost is $s$ SpMV + 1 elliptic solve.
+  </p>
+
+  <p>
+    The Chebyshev stages use a <strong>3-term recurrence</strong>:
+    $W_0 = V_m^*$, $W_1 = W_0 + \omega_1\,\Delta t\;\mathbf{L}_i(W_0 + \phi_e^n)$, and for
+    $j = 2, \ldots, s$:
+    $W_j = 2\,\omega_0\,W_{j-1} - W_{j-2} + 2\,\omega_1\,\Delta t\;\mathbf{L}_i(W_{j-1} + \phi_e^n)$,
+    where $\omega_0$, $\omega_1$ are derived from Chebyshev polynomial properties. The final
+    $V_m^{n+1} = W_s$ (after normalization). The elliptic solve is identical to all other strategies.
+  </p>
+
+  <div class="insight insight-intuition">
     <p>
-      <strong>IMEX vs. operator splitting</strong>: IMEX eliminates splitting error entirely, while operator splitting (Godunov/Strang) introduces $O(\Delta t)$/$O(\Delta t^2)$ splitting error. However, operator splitting is simpler to implement, allows specialized ionic solvers (Rush–Larsen), and permits different time steps for reaction and diffusion. For production codes, operator splitting with SDIRK2 remains the most common choice. IMEX (especially SBDF2) is a strong alternative when splitting error is a concern.
+      <strong>The spectrum of explicitness.</strong> These five strategies span a continuum.
+      At one end, GS with $\theta = 1.0$ treats everything implicitly (two linear solves, no CFL).
+      At the other end, semi-implicit uses forward Euler for the parabolic part (one SpMV, CFL-constrained).
+      RKC sits in between — explicit stages with an extended stability region. SBDF2 is fully implicit
+      but optimized for accuracy. Jacobi is identical to GS in cost, but parallel.
     </p>
   </div>
 
-  <h3>14.4 &ensp; Why Fully Explicit Methods Fail</h3>
+  <h3>14.4 &ensp; Strategy Comparison</h3>
 
-  <p>
-    A natural question arises: can we avoid implicit solves entirely and use fully explicit time integration for the bidomain model? The answer is <strong>no</strong>, for a fundamental structural reason: the elliptic equation for $\phi_e$ has no time derivative.
-  </p>
-
-  <p>
-    Recall the bidomain system. The parabolic equation (for $V_m$) has a $\partial V_m/\partial t$ term that can in principle be marched forward explicitly. But the elliptic equation — $0 = \nabla\cdot((\mathbf{D}_i + \mathbf{D}_e)\,\nabla\phi_e) + \nabla\cdot(\mathbf{D}_i\,\nabla V_m)$ — is a <em>constraint</em> that must be satisfied at every instant. There is no "marching forward" possible for a constraint equation. It always requires solving a linear system:
-  </p>
-
-  <div class="equation-block">
-    $$(\mathbf{K}_i + \mathbf{K}_e)\,\boldsymbol{\phi}_e = -\mathbf{K}_i\,\mathbf{V}_m \tag{15.1}$$
-  </div>
-
-  <p>
-    This is the single most important distinction between bidomain and monodomain. In the monodomain model, there is only a single parabolic PDE, and fully explicit methods (including LBM) can handle the entire system. In the bidomain model, <strong>at least one implicit linear solve per time step is unavoidable</strong>.
-  </p>
-
-  <p>
-    Even if we accept the mandatory elliptic solve, we can ask: can the <em>parabolic</em> part be treated explicitly? Yes — but at a severe cost. Puwal &amp; Roth (2007) derived the forward Euler stability condition for the bidomain parabolic equation. The CFL condition takes the standard parabolic form:
-  </p>
-
-  <div class="equation-block">
-    $$\Delta t \leq \frac{\chi\,C_m\,\Delta x^2}{2\,d\,D_{\max}} \tag{15.2}$$
-  </div>
-
-  <p>
-    where $d$ is the spatial dimension and $D_{\max}$ is the maximum effective diffusion coefficient derived from the bidomain conductivity tensors. For typical cardiac parameters with $\Delta x = 0.1$&nbsp;mm in 3D, this gives $\Delta t_{\text{explicit}} \lesssim 0.5$&nbsp;μs. By contrast, semi-implicit methods allow $\Delta t \approx 50$&nbsp;μs — a factor of <strong>100× larger</strong>. Weber dos Santos et al. (2004) numerically verified this: for $\Delta x = 3.3$&nbsp;μm, forward Euler required $\Delta t \leq 0.07$&nbsp;μs while a semi-implicit scheme permitted $\Delta t > 100\times$ larger.
-  </p>
-
-  <p>
-    Because $\Delta t \propto \Delta x^2$, refining the mesh makes the penalty worse quadratically. For production-quality meshes, the explicit CFL restriction is 25–100× more severe than what accuracy alone requires.
-  </p>
+  <table>
+    <tr>
+      <th>Strategy</th>
+      <th>Parabolic step</th>
+      <th>Elliptic step</th>
+      <th>Cost per step</th>
+      <th>Temporal order</th>
+      <th>Stability</th>
+      <th>Best for</th>
+    </tr>
+    <tr>
+      <td><strong>Gauss-Seidel</strong></td>
+      <td>CN or BDF1 solve</td>
+      <td>Uses $V_m^{n+1}$</td>
+      <td>2 linear solves</td>
+      <td>1st or 2nd</td>
+      <td>Unconditional</td>
+      <td>Default, robust</td>
+    </tr>
+    <tr>
+      <td><strong>Semi-implicit</strong></td>
+      <td>Forward Euler SpMV</td>
+      <td>Uses $V_m^{n+1}$</td>
+      <td>1 SpMV + 1 solve</td>
+      <td>1st</td>
+      <td>CFL: $\Delta t < \frac{\Delta x^2}{4\,D_i}$</td>
+      <td>GPU, cheap per step</td>
+    </tr>
+    <tr>
+      <td><strong>Jacobi</strong></td>
+      <td>CN or BDF1 solve</td>
+      <td>Uses $V_m^{\mathbf{n}}$</td>
+      <td>2 linear solves</td>
+      <td>1st or 2nd</td>
+      <td>Energy-stable</td>
+      <td>GPU parallel streams</td>
+    </tr>
+    <tr>
+      <td><strong>IMEX-SBDF2</strong></td>
+      <td>BDF2 solve</td>
+      <td>Uses $V_m^{n+1}$</td>
+      <td>2 linear solves</td>
+      <td><strong>2nd (L-stable)</strong></td>
+      <td>Unconditional</td>
+      <td>Accuracy-critical</td>
+    </tr>
+    <tr>
+      <td><strong>Explicit RKC</strong></td>
+      <td>$s$-stage Chebyshev</td>
+      <td>Uses $V_m^{n+1}$</td>
+      <td>$s$ SpMV + 1 solve</td>
+      <td>1st</td>
+      <td>$\Delta t < 0.65\,s^2\,\Delta t_{\text{FE}}$</td>
+      <td>No parabolic solve</td>
+    </tr>
+  </table>
 
   <div class="insight insight-engine">
     <p>
-      Engine V5.4's explicit diffusion solvers (RK2, RK4) work well for monodomain because the CFL restriction for a single parabolic PDE is manageable. For bidomain, these same explicit methods would require prohibitively small time steps for the parabolic equation, <em>and</em> they cannot handle the elliptic equation at all. The implicit diffusion solvers (CN, BDF1, BDF2) are the correct starting point for bidomain extension.
+      <strong>Engine V1 connection.</strong> All five strategies are implemented in the
+      <code>solver/diffusion_stepping/</code> directory. The factory function in
+      <code>bidomain.py</code> accepts a string to select the strategy:
+      <code>'decoupled'</code> (or <code>'gauss_seidel'</code>),
+      <code>'semi_implicit'</code>, <code>'jacobi'</code>, <code>'imex_sbdf2'</code>,
+      or <code>'explicit_rkc'</code>. The default is <code>'decoupled'</code> with $\theta = 0.5$.
     </p>
   </div>
 
-  <h3>14.5 &ensp; Explicit Stabilized Methods (RKC)</h3>
+  <h3>14.5 &ensp; Worked Example: One Decoupled Step on a 5-Node Cable</h3>
 
   <p>
-    Runge–Kutta–Chebyshev (RKC) methods offer a middle ground between fully explicit and implicit approaches. An RKC method with $s$ stages is fully explicit (no linear solves for the parabolic part), but its stability domain grows <em>quadratically</em> with $s$:
+    Let us continue the 5-node cable from Section 13.5 and advance one time step using the
+    decoupled GS strategy with $\theta = 0.5$, $\Delta t = 0.02$ ms.
   </p>
 
-  <div class="equation-block">
-    $$\beta_s \approx 0.65\,s^2$$
+  <p>
+    <strong>Initial conditions:</strong> $V_m^0 = [-85, -85, -20, -85, -85]^T$ mV
+    (a single node depolarized), $\phi_e^0 = [0, 0, 0, 0, 0]^T$ mV.
+  </p>
+
+  <p><strong>Stage 1 — Ionic update.</strong> Rush–Larsen produces $V_m^* \approx [-85, -85, -19.5, -85, -85]^T$
+    (the depolarized node changes slightly due to ionic currents; exact value depends on the model).
+  </p>
+
+  <p><strong>Stage 2 — Parabolic solve.</strong></p>
+
+  <p>
+    Build the RHS: $\mathbf{b}_{\text{para}} = \mathbf{B}_{\text{para}}\,V_m^* + \mathbf{L}_i\,\phi_e^0$.
+    Since $\phi_e^0 = \mathbf{0}$, the coupling term vanishes on the first step. The parabolic solve
+    produces $V_m^1$ — the depolarized region begins to spread to neighbors due to intracellular
+    diffusion: $V_m^1 \approx [-84.75, -83.74, -20.52, -83.74, -84.75]^T$ mV.
+  </p>
+
+  <p><strong>Stage 3 — Elliptic solve.</strong></p>
+
+  <p>
+    RHS: $\mathbf{b}_{\text{ellip}} = \mathbf{L}_i\,V_m^1$.
+    The Laplacian $\mathbf{L}_i$ applied to $V_m^1$ produces a vector that is nonzero primarily near
+    the depolarized region (where gradients are large). After solving
+    $-(\mathbf{L}_i + \mathbf{L}_e)\,\phi_e^1 = \mathbf{b}_{\text{ellip}}$ with pinning
+    ($\phi_{e,0} = 0$), we get $\phi_e^1 \approx [0, -0.18, 1.36, -0.18, 0]^T$ mV.
+    The extracellular potential peaks near the depolarized cell — current is leaving the intracellular
+    space and returning through the extracellular space, creating a dipole-like pattern.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The extracellular signal is the "shadow" of the wavefront.</strong> Wherever $V_m$
+      has a steep gradient, intracellular current is flowing out of cells and returning through the
+      extracellular space, creating the $\phi_e$ signal. This is exactly the signal picked up by an
+      ECG electrode. The elliptic solve computes this shadow at every time step.
+    </p>
   </div>
 
-  <p>
-    where $\beta_s$ is the stability interval length. Standard forward Euler has $\beta_1 = 2$; an RKC method with $s = 20$ stages achieves $\beta_{20} \approx 260$ — effectively relaxing the CFL restriction by a factor of 130×. Each stage requires only a matrix-vector product (cheap, parallelizable), and the total number of stages adapts automatically to the stiffness.
-  </p>
+  <h3>14.6 &ensp; Operator Splitting: The Outer Loop</h3>
 
   <p>
-    For the bidomain parabolic equation, RKC would work as follows: (1)&nbsp;solve the elliptic constraint for $\phi_e$ (implicit, unavoidable), (2)&nbsp;advance $V_m$ with $s$ RKC stages (explicit), (3)&nbsp;update ionic variables with Rush–Larsen. The elliptic solve is still required, but the parabolic part avoids any implicit linear solve.
+    The strategies above handle the diffusion sub-step of operator splitting. The full bidomain
+    simulation uses the same Godunov or Strang splitting from Chapter 9:
   </p>
+
+  <ul>
+    <li><strong>Godunov:</strong> ionic step (full $\Delta t$) → diffusion step (full $\Delta t$).
+      First-order splitting error.</li>
+    <li><strong>Strang:</strong> ionic step ($\Delta t/2$) → diffusion step ($\Delta t$) →
+      ionic step ($\Delta t/2$). Second-order splitting error.</li>
+  </ul>
 
   <p>
-    Rosilho de Souza et al. (2024) recently proposed the <strong>emRKC</strong> (explicit exponential multirate stabilized) method for cardiac electrophysiology, combining multirate RKC for diffusion with Rush–Larsen exponential integration for gating variables. This method <strong>outperforms the standard IMEX baseline</strong> for the monodomain model and is inherently more parallel. However, it has been demonstrated only for the monodomain model so far. Extending emRKC to the bidomain parabolic equation is conceptually straightforward, though the elliptic solve will still dominate the cost (82–90% of total runtime in typical bidomain simulations).
+    The splitting error comes from separating reaction from diffusion, <em>not</em> from the
+    parabolic–elliptic coupling. The elliptic equation has no time derivative and no memory
+    (Section 12.6): its solution depends only on the current $V_m$, so it "comes along for the ride"
+    within the diffusion sub-step without introducing additional splitting error.
   </p>
 
+  <div class="insight insight-math">
+    <p>
+      <strong>Monodomain splitting vs. bidomain splitting.</strong> In both cases, operator splitting
+      separates reaction (local ionic ODEs) from diffusion (global PDE). The fact that the bidomain
+      diffusion sub-step involves <em>two</em> coupled equations does not introduce extra splitting
+      error — both are solved together within the diffusion sub-step.
+    </p>
+  </div>
+
+  <!-- SIDEBAR: Monolithic Alternative -->
   <div class="insight insight-warning">
     <p>
-      <strong>The spectrum of explicitness for bidomain:</strong> At one extreme, fully implicit methods (backward Euler, CBDF2) treat everything implicitly, requiring nonlinear Newton solves. At the other, "maximally explicit" methods treat the parabolic PDE with RKC and only solve the elliptic constraint implicitly. In between, IMEX methods (SBDF2, operator splitting) treat ionic currents explicitly and diffusion implicitly. For most production bidomain codes, IMEX/operator-splitting represents the best trade-off — but RKC-based approaches are an active area of research with potential GPU advantages.
+      <strong>Sidebar: The monolithic alternative.</strong> In the research literature, you may
+      encounter solvers that assemble the full 2N×2N block system and solve it with GMRES or MINRES
+      using block preconditioners (block LDU, Schur complement approximations, AMG sub-solves). This
+      monolithic approach has theoretical advantages (tighter coupling, potential for fewer iterations)
+      but is much more complex to implement and requires specialized indefinite-system solvers. The
+      decoupled approach described above is simpler, produces N×N SPD sub-problems solvable by standard
+      tools, and is the dominant approach in modern production codes. Engine V1 uses decoupled
+      strategies exclusively.
     </p>
   </div>
 
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
 </div>
-
-<!--  CHAPTER 15 — PARABOLIC SOLVERS (A₁₁ BLOCK)                      -->
-<!-- ══════════════════════════════════════════════════════════════════ -->

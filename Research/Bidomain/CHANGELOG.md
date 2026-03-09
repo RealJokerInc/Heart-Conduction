@@ -2,6 +2,143 @@
 
 All major edits to `bidomain_textbook.html`, newest first.
 
+## 2026-03-08 (session 14) — Four-Appendix Restructure: A(trimmed), B(LA), C(NumAn), D(PyTorch)
+
+### Motivation
+Linear algebra and numerical analysis concepts (SPD, eigenvalues, condition number, null space, CFL, Chebyshev) were used throughout Parts II–IV without proper introduction. Appendix A had grown to A.1–A.10, mixing PDE types with solver methods. PyTorch (Appendix B) sat between them awkwardly.
+
+### Structural Changes
+- **Appendix A**: Trimmed to A.1–A.7 (PDE types only). A.8–A.10 (transforms, DCT/DST, CG) migrated to Appendix C.
+- **Appendix B** (NEW): Linear Algebra for Cardiac Simulation — 13 sections (B.1–B.13), 3B1B style. B.1 bridges calculus→discrete (functions→vectors, "film to frames" analogy). B.7 eigenvalues, B.8 SPD, B.9 condition number, B.10 null space, B.11 block matrices/Schur complement, B.12 orthogonality, B.13 concept→chapter cross-reference table. Equations (B.1)–(B.9).
+- **Appendix C** (NEW): Numerical Analysis — 9 sections (C.1–C.9). C.1–C.6 new content (truncation error, stability/CFL, Lax equivalence, order of accuracy, stiffness, direct vs iterative). C.7–C.9 migrated from A.8–A.10 with renumbered equations (C.5)–(C.11). C.9 expanded with Chebyshev iteration (three-term recurrence, CG vs Chebyshev comparison).
+- **Appendix D**: Old Appendix B (PyTorch) renumbered B.x→D.x. Content unchanged.
+
+### Cross-Reference Updates
+- Ch 8: A.8→C.6, A.9→C.7/C.8
+- Ch 15: A.10→C.9
+- Appendix B (new): references C.x for transforms/solvers, D.x for PyTorch sparse
+- toc.json: updated with 4-appendix structure
+- INDEX.md: updated appendix table and equation registry
+
+## 2026-03-08 (session 13b) — Complete Part III Rewrite: Ch 12–15 (formerly 12–17)
+
+### Motivation
+Bidomain chapter audit scored Part III at 1.9/5.0 (D+) with 30 issues. Two critical failures: (1) solver architecture described (FGMRES+AMG+SDIRK2) does not exist in the code — Engine V1 uses decoupled N×N SPD solves; (2) Feynman style abandoned after Ch 12 — no ELI5, no worked examples, no diagrams in Ch 13–17.
+
+### Structural Changes
+- **Restructured from 6 chapters to 4**: old Ch 12–17 → new Ch 12–15
+- **Deleted**: Ch 16 (Schur/AMG/FGMRES — nonexistent architecture), Ch 17 (vaporware roadmap)
+- **Merged**: old Ch 15 (parabolic solvers) + useful parts of Ch 16 (null-space) + Ch 17 (roadmap) → new Ch 15
+
+### Ch 12 Fixes
+- §12.7 (monodomain reduction) and §12.8 (fiber tensors) converted to **sidebars** (insight boxes) — stops momentum kill
+- §12.9 renamed §12.7, trimmed, forward ref fixed (Ch 16→Ch 15)
+- Added **convention translation box** at chapter start: σ-form (literature) vs D-form (code)
+- Fixed Engine V5.4 reference → Engine V1
+- Removed redundant BC content (was duplicated in §13.4)
+
+### Ch 13 "From Equations to Matrices" (rewritten)
+- §13.1 rewritten with **road network analogy** (two overlaid networks)
+- §13.2 block system: updated definitions to D-form ($1/\Delta t \cdot I - \theta \cdot L_i$), added **ELI5 for why L_i appears everywhere**
+- §13.3 **NEW**: face-based stencil explanation (why ghost-node mirror breaks elliptic, how face-based fixes it)
+- §13.4 FEM weak form moved to brief note (was full derivation blocking flow)
+- §13.5 **worked example**: 5-node cable with numerical L_i, L_e, A_para, A_ellip values
+- Removed 180-line §13.4 BC subsections (was near-verbatim repeat of §12.9)
+- Updated all engine boxes to Engine V1
+
+### Ch 14 "Solving the Coupled System" (NEW core chapter)
+- §14.1 **"Why Explicit Fails"** moved to opening (was §14.4) — puppet-on-strings analogy
+- §14.2 **Algorithm 14.1** — boxed Decoupled Gauss-Seidel Bidomain Step (the missing algorithm)
+- §14.3 **Four more strategies**: Semi-Implicit, Jacobi, IMEX-SBDF2, Explicit RKC — each as modification of Algorithm 14.1
+- §14.4 **Comparison table**: all 5 strategies with cost, stability, temporal order, best-for
+- §14.5 **Worked example**: advance 5-node cable one step with GS strategy
+- §14.6 Operator splitting (Godunov/Strang) with bidomain splitting error insight
+- Monolithic alternative moved to **sidebar** (brief, for literature context)
+- **Deleted**: SDIRK2 section (not in code), monolithic FGMRES content (not in code)
+
+### Ch 15 "Linear Solvers and Implementation" (merged from old 15+16+17)
+- §15.1 Parabolic sub-problem: brief cross-ref to Ch 11 (identical to monodomain)
+- §15.2 Elliptic sub-problem: **null-space handling** (pinning + spectral zero-mode), **pinning = choosing sea level** analogy
+- §15.3 **Three-tier automatic solver selection** (spectral → PCG+spectral → PCG) — **NEW**, matches Engine V1 auto-selection logic
+- §15.4 **Engine V1 architecture**: real class names, file paths, factory strings — replaces vaporware Ch 17
+- Deleted: Schur complement, AMG library table, FGMRES, block LDU, all nonexistent architecture
+
+### Cross-Cutting Fixes
+- Fixed 5+ cross-reference errors (Ch 14→13, Ch 16→15, nonexistent §7.10)
+- Updated Table of Contents for Part III (4 chapters, new titles)
+- Fixed Ch 18 intro reference (Ch 13–16 → Ch 8–15)
+- All equation numbers within new chapters follow Ch.N convention
+- Formulation B (D-form) used consistently in all discrete equations
+
+### Audit Issues Addressed
+- F1 (narrative arc): ✅ — clear 4-chapter story: equations → matrices → algorithm → solvers+code
+- F2 (missing algorithm): ✅ — Algorithm 14.1 boxed procedure
+- F3 (Feynman style): ✅ — ELI5 analogies in every section (puppet, road network, rope untangling, sea level, tool selection)
+- F4 (difficulty spike): ✅ — weak form moved to brief note, ELI5 bridge added
+- F5 (Ch 14 catalogue): ✅ — restructured as variations of one base algorithm
+- F6 (Ch 16 jargon wall): ✅ — deleted; useful null-space content moved to §15.2
+- F7 (no worked examples): ✅ — worked examples in §13.5 and §14.5
+- F8 (no diagrams): ✅ — SVG block diagram retained, face-based stencil described
+- F9 (BC repetition): ✅ — §13.4 BC section deleted, §12.7 is single source
+- F10 (repeated "no time derivative"): ✅ — done in session 13a
+- F11 (§12.7-12.8 momentum kill): ✅ — converted to sidebars
+- F12 (Ch 15 redundant): ✅ — parabolic section is now a brief cross-ref
+- C1 (monolithic vs decoupled mismatch): ✅ — decoupled approach is now the core
+- C2 (σ vs D notation mismatch): ✅ — convention translation box at Ch 12 start
+- C3 (nonexistent architecture): ✅ — Ch 17 deleted, replaced with real Engine V1 mapping
+- M1 (face-based stencil): ✅ — new §13.3
+- M2 (no boxed algorithm): ✅ — Algorithm 14.1
+- M3 (saddle-point unexplained): ✅ — monolithic approach moved to sidebar, not central
+- M4 (IMEX wrong scaling): ✅ — SBDF2 in D-form with correct coefficients
+- M5 (three-tier solver): ✅ — new §15.3
+- M6 (no full worked example): ✅ — §13.5 and §14.5
+- M7 (BoundarySpec logic): ✅ — described in §15.3
+- Mo1 (cross-ref errors): ✅ — all fixed
+- Mo2 (SDIRK2 dead content): ✅ — removed
+- Mo3 (wrong codebase): ✅ — all Engine V1
+- Mo4 (φ_i substitution skipped): ✅ — done in session 13a
+- Mo5 (conservation addition skipped): ✅ — done in session 13a
+- Mo6 (null-space equal weight): ✅ — only pinning and spectral zero-mode (used by code)
+- Mo7 (runtime claim): ✅ — removed unjustified claim
+- m1 (K_i vs L_i): ✅ — consistently L_i in Ch 13–15
+- m2 (equation numbering): ✅ — equations numbered within correct chapters
+- m3 (block table mixing): ✅ — clean separation in new table
+- m4 (Ch 10→11 ref): ✅ — fixed
+- m5 (D_eff scalar/tensor): ✅ — simplified in sidebar
+
+## 2026-03-08 (session 13a) — Rewrite §12.5–12.6: Foundation Fix for Bidomain Understanding
+
+### Motivation
+Audit identified two critical failures: (1) the bidomain equations were derived correctly but each term's physical meaning was never explained after the φ_i→Vm+φ_e substitution; (2) the "how to solve coupled parabolic+elliptic equations" question was never posed or answered.
+
+### Changes to §12.5 "Building the Bidomain System"
+- **Show all intermediate algebra explicitly**: the φ_i = Vm + φ_e substitution now shows ∇φ_i = ∇Vm + ∇φ_e and the linearity-of-divergence step (was skipped)
+- **Elliptic derivation**: conservation identity → Ohm's law → φ_i substitution → collect φ_e terms (was a single jump)
+- **Term-by-term physical dictionary**: each term in (12.4) and (12.5) labeled with underbrace and explained physically:
+  - ∇·(D_i∇Vm) = "propagation" / "source"
+  - ∇·(D_i∇φ_e) = "coupling"
+  - ∇·((D_i+D_e)∇φ_e) = "response"
+- **Steady-state heat analogy** (insight box): elliptic eq = steady-state temperature with Vm as heat source
+- **"Why no time derivative?"** (warning box): no extracellular capacitor → no charge storage → no ∂φ_e/∂t
+- **Numerical worked example**: Clerc 1976 parameters, wavefront estimates showing propagation ~6.8 mV/ms, coupling ~5%, elliptic balance
+- **"Coupling is small but essential"** insight box: 5% correction → qualitatively different physics
+
+### Changes to §12.6 "The Parabolic–Elliptic Couple" (retitled "A New Kind of Problem")
+- **Explicit coupled-ODE comparison**: "you know dx/dt=f, dy/dt=g — bidomain is harder because the second equation is 0=g, a constraint"
+- **Heater-and-AC analogy** for bidirectional coupling
+- **Three-strategy preview table**: solve together (monolithic), advance-then-equilibrate (decoupled), advance-explicitly (semi-implicit) — maps to actual Engine_V1 strategies
+- **"No memory" insight**: elliptic depends only on current Vm, enabling decoupled solvers
+- **Removed**: 4× repetition of "no time derivative" → consolidated into one clear warning box in §12.5
+- **Removed**: the redundant "why the elliptic equation cannot be marched in time" insight box (same content now in §12.5 warning box)
+- **Added**: forward pointer to Ch 14 for detailed strategy development
+
+### Net effect
+- §12.5: ~50 lines → ~150 lines (all intermediate steps + physical dictionary + worked example)
+- §12.6: ~60 lines → ~100 lines (coupled-system framing + strategy preview)
+- Total chapter grew by ~250 lines but delivers fundamentally deeper understanding
+
+---
+
 ## 2026-03-07 (session 12) — Major Structural Restructuring: Mirror Monodomain in Bidomain
 
 ### Motivation
