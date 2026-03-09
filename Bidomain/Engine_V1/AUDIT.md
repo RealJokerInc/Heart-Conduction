@@ -39,7 +39,7 @@
 
 ### HIGH (1 confirmed)
 
-#### R2-H1. FDM cross-derivative missing factor of 2 ★
+#### R2-H1. FDM cross-derivative missing factor of 2 + wrong sign ★
 **Severity:** HIGH — CONFIRMED by verification
 **Files:** ALL FDM implementations across the project:
 - `Bidomain/Engine_V1/cardiac_sim/simulation/classical/discretization/fdm.py:383`
@@ -48,25 +48,29 @@
 - `Monodomain/Engine_V3/diffusion.py:351`
 - `Research/openCARP_FDM_FVM/01_FDM_Stencils_and_Implementation.md:73-76`
 
-**Issue:** The anisotropic diffusion operator expands as:
-```
-div(D·∇V) = Dxx·V_xx + 2·Dxy·V_xy + Dyy·V_yy
-```
-The factor of 2 on the mixed derivative is required because both cross-terms
-`∂/∂x(Dxy·∂V/∂y)` and `∂/∂y(Dxy·∂V/∂x)` contribute. The code uses
-`cxy = 1/(4·dx·dy)` giving diagonal neighbor weight `Dxy/(4·dx·dy)`, but
-the correct weight is `2·Dxy/(4·dx·dy) = Dxy/(2·dx·dy)`.
+**Issue:** TWO errors in the 9-point anisotropic stencil cross-derivative:
 
-The research doc (line 61) correctly states `2·Dxy·V_xy` but its stencil
-table (lines 73-76) omits the factor. All implementations copied this error.
+1. **Missing factor of 2:** `cxy = 1/(4·dx·dy)` should be `1/(2·dx·dy)`.
+   The expansion `div(D·∇V) = Dxx·V_xx + 2·Dxy·V_xy + Dyy·V_yy` has a
+   factor of 2 on the mixed derivative. Off-axis coupling was 50% too weak.
 
-**Impact:** Off-axis diffusion coupling is 50% too weak when fibers are
-rotated (Dxy ≠ 0). Harmless for isotropic or axis-aligned anisotropy
-(Dxy = 0). No tests exercise non-zero Dxy.
+2. **Wrong sign pattern:** The diagonal neighbor signs were all negated.
+   Correct: NE=+Dxy·cxy, NW=-Dxy·cxy, SE=-Dxy·cxy, SW=+Dxy·cxy.
+   The code had NE=-Dxy·cxy etc, making diffusion faster cross-fiber
+   than along-fiber (physically backwards).
 
-**Fix:** Change `cxy = 1.0 / (4.0 * dx * dy)` → `cxy = 1.0 / (2.0 * dx * dy)`.
-Also fix the research doc stencil table.
-**Status:** [ ]
+The research doc (lines 73-76) had both errors; all implementations copied them.
+
+**Impact:** Anisotropic diffusion with rotated fibers (Dxy ≠ 0) was
+qualitatively wrong (inverted direction + 50% magnitude). Harmless for
+isotropic or axis-aligned cases (Dxy = 0).
+
+**Fix (Bidomain V1):** Changed `cxy = 1/(4dx·dy)` → `1/(2dx·dy)` and
+flipped all four diagonal entry signs. Validated by `test_aniso_crossderiv.py`
+(3 tests: stencil coefficients, matrix decomposition, directional diffusion).
+No regression in isotropic test suites (19/19 pass).
+Other engine versions (V3, V4, V5.4) and the research doc are NOT yet fixed.
+**Status:** [x] (Bidomain V1 only)
 
 ---
 

@@ -380,7 +380,10 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
 
         cx = 1.0 / (dx * dx)
         cy = 1.0 / (dy * dy)
-        cxy = 1.0 / (4.0 * dx * dy)
+        # Factor of 2 from div(D·∇V) = Dxx·V_xx + 2·Dxy·V_xy + Dyy·V_yy.
+        # The cross-derivative d²V/dxdy ≈ (V_NE - V_NW - V_SE + V_SW)/(4·dx·dy),
+        # multiplied by the factor 2 gives cxy = 2/(4·dx·dy) = 1/(2·dx·dy).
+        cxy = 1.0 / (2.0 * dx * dy)
 
         for i in range(nx):
             for j in range(ny):
@@ -430,27 +433,32 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
                     _add(k, _idx(i, j - 1), w)
 
                 # --- Diagonal directions (9-point, anisotropic) ---
+                # Cross-derivative: 2*Dxy * d²V/dxdy
+                # d²V/dxdy ≈ (V_NE - V_SE - V_NW + V_SW) / (4*dx*dy)
+                # Combined with cxy = 1/(2*dx*dy), the weights are:
+                #   NE: +Dxy*cxy, NW: -Dxy*cxy, SE: -Dxy*cxy, SW: +Dxy*cxy
+
                 # NE (i+1, j+1)
                 if _is_active(i + 1, j + 1):
-                    w = -d_xy * cxy
+                    w = d_xy * cxy
                     _add(k, _idx(i + 1, j + 1), w)
                     center -= w
 
                 # NW (i-1, j+1)
                 if _is_active(i - 1, j + 1):
-                    w = d_xy * cxy
+                    w = -d_xy * cxy
                     _add(k, _idx(i - 1, j + 1), w)
                     center -= w
 
                 # SE (i+1, j-1)
                 if _is_active(i + 1, j - 1):
-                    w = d_xy * cxy
+                    w = -d_xy * cxy
                     _add(k, _idx(i + 1, j - 1), w)
                     center -= w
 
                 # SW (i-1, j-1)
                 if _is_active(i - 1, j - 1):
-                    w = -d_xy * cxy
+                    w = d_xy * cxy
                     _add(k, _idx(i - 1, j - 1), w)
                     center -= w
 
