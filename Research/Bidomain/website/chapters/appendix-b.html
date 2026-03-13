@@ -1,72 +1,53 @@
 <div class="chapter">
   <div class="chapter-number">Appendix B</div>
-  <h2 class="chapter-title">Linear Algebra for Cardiac Simulation</h2>
+  <h2 class="chapter-title">Linear Algebra</h2>
   <div class="chapter-intro">
-    Every simulation in this textbook — from a single cell to a full bidomain heart — ultimately reduces to operations on vectors and matrices. This appendix builds the linear algebra you need from the ground up, following the philosophy of 3Blue1Brown: start with pictures, develop geometric intuition, and let the formalism emerge naturally. We begin with the question that puzzles every calculus student encountering computational methods for the first time: how does a smooth, continuous function become a column of numbers?
+    This appendix builds the linear algebra you need from the ground up, following the philosophy of 3Blue1Brown: start with pictures, develop geometric intuition, and let the formalism emerge naturally. Everything here is abstract — we work with vectors, matrices, and transformations as mathematical objects, independent of any particular application. The connection to differential equations and cardiac simulation is the subject of Appendix C.
   </div>
 
   <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>B.1 &ensp; From Functions to Vectors: The Discretization Leap</h3>
+  <h3>B.1 &ensp; Vectors and Spaces</h3>
 
   <p>
-    In calculus, you learned to think of $y = f(x)$ as a smooth curve — a rule that assigns a number $y$ to every real number $x$ on some interval. You can zoom in arbitrarily close to any point and the curve remains smooth. You can take derivatives and integrals. The function "lives" at infinitely many points simultaneously.
-  </p>
-
-  <p>
-    Now imagine you are a computer. You cannot store infinitely many values — you have finite memory. So you must make a choice: pick a finite set of points $x_0, x_1, \ldots, x_{N-1}$, evaluate the function at those points, and store only those values. This is the <strong>discretization leap</strong>.
-  </p>
-
-  <div class="insight insight-intuition">
-    <p>
-      <strong>From film to frames.</strong> A movie camera captures a continuous scene by taking 24 frames per second. Each frame is a snapshot — a finite approximation of a continuous reality. If the scene changes slowly, 24 frames per second is plenty. If something moves fast (a hummingbird's wing), you need more frames. Discretization is exactly the same: a smooth function becomes a finite list of samples, and the spacing between samples determines what features you can resolve.
-    </p>
-  </div>
-
-  <p>
-    Consider a temperature profile along a rod: $u(x)$ is a smooth function of position $x$ on the interval $[0, L]$. We lay down $N$ equally spaced grid points:
-  </p>
-
-  $$x_j = j \cdot \Delta x, \qquad j = 0, 1, \ldots, N-1, \qquad \Delta x = \frac{L}{N-1}$$
-
-  <p>
-    The entire function $u(x)$ — which required infinitely many numbers to describe — is now approximated by $N$ numbers:
+    A <strong>vector</strong> is an ordered list of numbers — and simultaneously an arrow pointing from the origin to a location in space. In low dimensions, think of the arrow (the 3Blue1Brown viewpoint). In high dimensions ($n = 90{,}000$), the arrow is unvisualizable but the list of numbers works just fine. Both pictures are correct; they emphasize different things:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(B.1)</span>
-    $$\mathbf{u} = \begin{pmatrix} u_0 \\ u_1 \\ \vdots \\ u_{N-1} \end{pmatrix} \quad \text{where } u_j \approx u(x_j)$$
+    $$\mathbf{v} = \begin{pmatrix} v_1 \\ v_2 \\ \vdots \\ v_n \end{pmatrix}$$
   </div>
 
   <p>
-    This column of numbers is a <strong>vector</strong>. Not the arrow-in-space from physics class — a vector in the sense of linear algebra: an ordered list of numbers that you can add, scale, and combine.
+    The number of entries is the <strong>dimension</strong>. A 2-vector lives in $\mathbb{R}^2$ (the plane), a 3-vector in $\mathbb{R}^3$ (3D space), and an $n$-vector in $\mathbb{R}^n$. When $n = 90{,}000$, you cannot visualize the space, but the algebra works identically to $\mathbb{R}^2$.
   </p>
 
-  <h4>Two Dimensions: From Surfaces to Flattened Grids</h4>
-
   <p>
-    In calculus, a function of two variables $z = f(x,y)$ describes a surface — you can picture it as a landscape with hills and valleys hovering above the $xy$-plane. To discretize it, you lay a grid over the plane:
+    Two operations define the algebra of vectors:
   </p>
 
-  $$x_i = i\,\Delta x, \quad y_j = j\,\Delta y, \qquad i = 0,\ldots,N_x-1, \;\; j = 0,\ldots,N_y-1$$
+  <ul>
+    <li><strong>Addition</strong>: Add corresponding entries. $\mathbf{u} + \mathbf{v}$ has entries $u_i + v_i$.</li>
+    <li><strong>Scalar multiplication</strong>: Multiply every entry by a number. $c\,\mathbf{v}$ has entries $c \cdot v_i$.</li>
+  </ul>
 
   <p>
-    Now you have $N_x \times N_y$ sample values $u_{i,j} \approx f(x_i, y_j)$. This is a 2D grid of numbers — a matrix, if you like. But to feed it into a linear algebra solver, we must <strong>flatten</strong> it into a single column vector. We stack the columns (or rows) into one long list:
-  </p>
-
-  $$\mathbf{u} = \begin{pmatrix} u_{0,0} \\ u_{1,0} \\ \vdots \\ u_{N_x-1,0} \\ u_{0,1} \\ \vdots \\ u_{N_x-1,N_y-1} \end{pmatrix} \quad \leftarrow \text{$N_x \times N_y$ entries total}$$
-
-  <p>
-    The ordering convention (which column comes first) is arbitrary but must be consistent. In this textbook, we use <strong>column-major ordering</strong> (stack columns left to right), which matches the <code>indexing='ij'</code> convention of our engine code. Each grid point $(i,j)$ maps to the vector index $k = i + j \cdot N_x$.
+    Any combination $c_1\mathbf{v}_1 + c_2\mathbf{v}_2 + \cdots + c_k\mathbf{v}_k$ is called a <strong>linear combination</strong>. The set of all linear combinations of a collection of vectors is their <strong>span</strong> — the "space" they can reach.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>The key insight.</strong> Once you flatten a 2D grid (or 3D volume) into a 1D vector, <em>every operation on that grid becomes a matrix operation on that vector.</em> Taking a derivative? Matrix multiply. Applying a boundary condition? Modifying a row of a matrix. Solving a PDE? Solving a matrix equation. The entire machinery of linear algebra becomes available, and the physics of the original problem is encoded in the <em>structure</em> of the matrix.
+      <strong>Why "linear"?</strong> These two operations — addition and scaling — are the only ones allowed. No squaring entries, no taking square roots, no multiplying entries together. This restriction seems limiting, but it is what makes the entire theory tractable. Linearity means superposition: if $\mathbf{u}$ and $\mathbf{v}$ are solutions, so is $c_1\mathbf{u} + c_2\mathbf{v}$. This single property drives everything in this appendix.
     </p>
   </div>
 
   <p>
-    This is why linear algebra is the language of scientific computing. The continuous PDE world of calculus must pass through the discretization gate, and on the other side, everything is vectors and matrices. The rest of this appendix teaches you to speak that language.
+    The <strong>inner product</strong> (dot product) of two vectors measures how aligned they are:
+  </p>
+
+  $$\mathbf{u}^T\mathbf{v} = u_1 v_1 + u_2 v_2 + \cdots + u_n v_n$$
+
+  <p>
+    The <strong>norm</strong> (length) of a vector is $\|\mathbf{v}\| = \sqrt{\mathbf{v}^T\mathbf{v}}$. A vector with $\|\mathbf{v}\| = 1$ is called a <strong>unit vector</strong>.
   </p>
 
 
@@ -103,16 +84,49 @@
     </p>
   </div>
 
-  <p>
-    For cardiac simulation, the matrices we encounter are not $2 \times 2$ — they are $N \times N$ where $N$ may be hundreds of thousands. But the principle is identical. The <strong>stiffness matrix</strong> $K$ from Chapter 8 transforms a voltage vector $\mathbf{V}$ (voltage values at every grid point) into a vector $K\mathbf{V}$ that encodes the spatial coupling between neighbors (the discrete Laplacian). The matrix is the discrete version of the differential operator $\nabla \cdot (D\,\nabla)$.
-  </p>
+  <!-- SVG: Unit square transformation -->
+  <div class="figure">
+    <svg viewBox="0 0 540 220" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Left panel: original unit square -->
+      <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Before: unit square</text>
+      <!-- Axes -->
+      <line x1="30" y1="190" x2="220" y2="190" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="30" y1="190" x2="30" y2="30" stroke="#d0d5e0" stroke-width="0.8"/>
+      <!-- Unit square -->
+      <polygon points="30,190 110,190 110,110 30,110" fill="#42a5f520" stroke="#42a5f5" stroke-width="1.8"/>
+      <!-- Basis vectors -->
+      <line x1="30" y1="190" x2="110" y2="190" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrowR)"/>
+      <line x1="30" y1="190" x2="30" y2="110" stroke="#2980b9" stroke-width="2.5" marker-end="url(#arrowB)"/>
+      <text x="70" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">$\hat{\mathbf{e}}_1$</text>
+      <text x="16" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">$\hat{\mathbf{e}}_2$</text>
+      <!-- Arrow in between -->
+      <text x="270" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" fill="#5a6175">$\xrightarrow{\;A = \begin{pmatrix}2 & 1\\0 & 1\end{pmatrix}\;}$</text>
+      <!-- Right panel: transformed parallelogram -->
+      <text x="420" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">After: parallelogram</text>
+      <line x1="320" y1="190" x2="530" y2="190" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="320" y1="190" x2="320" y2="30" stroke="#d0d5e0" stroke-width="0.8"/>
+      <!-- Transformed shape: e1→(2,0), e2→(1,1) -->
+      <polygon points="320,190 480,190 530,110 370,110" fill="#42a5f520" stroke="#42a5f5" stroke-width="1.8"/>
+      <!-- Transformed basis vectors -->
+      <line x1="320" y1="190" x2="480" y2="190" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrowR)"/>
+      <line x1="320" y1="190" x2="370" y2="110" stroke="#2980b9" stroke-width="2.5" marker-end="url(#arrowB)"/>
+      <text x="400" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">$A\hat{\mathbf{e}}_1 = (2,0)$</text>
+      <text x="330" y="140" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">$A\hat{\mathbf{e}}_2 = (1,1)$</text>
+      <!-- Arrowhead defs -->
+      <defs>
+        <marker id="arrowR" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#e94560"/></marker>
+        <marker id="arrowB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2980b9"/></marker>
+      </defs>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure B.1.</span> A matrix transforms the unit square (left) into a parallelogram (right). The columns of $A$ are the destinations of the basis vectors: $\hat{\mathbf{e}}_1 \to (2,0)$ and $\hat{\mathbf{e}}_2 \to (1,1)$. Every other point follows by linearity.</div>
+  </div>
 
 
   <!-- ────────────────────────────────────────────────────────────── -->
   <h3>B.3 &ensp; Matrix-Vector Multiplication: What It Actually Does</h3>
 
   <p>
-    The definition of matrix-vector multiplication is simple. If $A$ is an $m \times n$ matrix and $\mathbf{x}$ is an $n$-vector, the product $\mathbf{y} = A\mathbf{x}$ is an $m$-vector whose $i$-th entry is:
+    If $A$ is an $m \times n$ matrix and $\mathbf{x}$ is an $n$-vector, the product $\mathbf{y} = A\mathbf{x}$ is an $m$-vector whose $i$-th entry is:
   </p>
 
   <div class="equation-block">
@@ -121,11 +135,11 @@
   </div>
 
   <p>
-    Each entry of $\mathbf{y}$ is a <em>weighted sum</em> of the entries of $\mathbf{x}$, with weights given by the corresponding row of $A$. But there are two complementary ways to think about this operation, and both are essential.
+    Each entry of $\mathbf{y}$ is a <em>weighted sum</em> of the entries of $\mathbf{x}$, with weights given by the corresponding row of $A$. There are two complementary ways to think about this.
   </p>
 
   <p>
-    <strong>Row picture (dot products).</strong> Each row of $A$ dots with $\mathbf{x}$ to produce one entry of $\mathbf{y}$. Row $i$ defines a "recipe" for computing $y_i$: which entries of $\mathbf{x}$ to combine and with what weights. For a tridiagonal matrix (like the 1D Laplacian), row $i$ uses only $x_{i-1}$, $x_i$, and $x_{i+1}$ — the nearest neighbors. The recipe is the <strong>stencil</strong>.
+    <strong>Row picture (dot products).</strong> Each row of $A$ dots with $\mathbf{x}$ to produce one entry of $\mathbf{y}$. Row $i$ defines a "recipe" for computing $y_i$: which entries of $\mathbf{x}$ to combine and with what weights. If most entries in a row are zero, the recipe uses only a few ingredients — this is the basis of <em>sparse</em> computation.
   </p>
 
   <p>
@@ -138,14 +152,10 @@
     Each column $\mathbf{a}_j$ gets scaled by the corresponding entry $x_j$, and the results are summed. This is the "columns as destinations" viewpoint from Section B.2.
   </p>
 
-  <p>
-    For cardiac simulation, the row picture is usually most natural. When you compute $L\mathbf{V}$ (Laplacian times voltage), row $i$ computes the discrete Laplacian at node $i$: it takes a weighted combination of the voltage at node $i$ and its neighbors. This is exactly the stencil operation described in Chapter 8.
-  </p>
-
   <h4>Computational Cost</h4>
 
   <p>
-    Multiplying a <em>dense</em> $N \times N$ matrix by an $N$-vector costs $O(N^2)$ operations ($N$ entries, each requiring $N$ multiplications and additions). But for the sparse matrices of cardiac simulation, most entries are zero. A tridiagonal matrix has at most 3 nonzeros per row, so the cost is $O(3N) = O(N)$. A 5-point 2D stencil has at most 5 nonzeros per row: still $O(N)$. This is why sparse matrix-vector multiplication (<strong>SpMV</strong>) is the workhorse operation of every solver in this textbook.
+    Multiplying a <em>dense</em> $N \times N$ matrix by an $N$-vector costs $O(N^2)$ operations. But if the matrix is <em>sparse</em> — with only $k$ nonzeros per row — the cost drops to $O(kN)$. For $k = 5$ (a common case), that is $O(5N) = O(N)$: linear in the problem size. This is why <strong>sparse matrix-vector multiplication (SpMV)</strong> is the workhorse operation of large-scale linear algebra.
   </p>
 
 
@@ -153,19 +163,13 @@
   <h3>B.4 &ensp; Special Matrix Structures</h3>
 
   <p>
-    Not all matrices are created equal. The matrices that arise from PDE discretization have very specific structures, and recognizing these structures is the key to choosing efficient solvers. Here are the structures you will encounter repeatedly in this textbook.
+    Not all matrices are created equal. Recognizing structure is the key to choosing efficient algorithms.
   </p>
 
   <h4>Diagonal Matrices</h4>
 
   <p>
-    A diagonal matrix has nonzero entries only on the main diagonal:
-  </p>
-
-  $$D = \begin{pmatrix} d_1 & & \\ & d_2 & \\ & & d_3 \end{pmatrix}$$
-
-  <p>
-    Multiplying by $D$ simply scales each entry: $(D\mathbf{x})_i = d_i x_i$. Cost: $O(N)$. Inverting $D$ is trivial: $(D^{-1})_{ii} = 1/d_i$ (as long as no $d_i$ is zero). In Chapter 11, the mass matrix $M$ for FDM is the identity — the simplest possible diagonal matrix.
+    A diagonal matrix has nonzero entries only on the main diagonal. Multiplying by it simply scales each entry: $(D\mathbf{x})_i = d_i x_i$. Cost: $O(N)$. Inverting: $(D^{-1})_{ii} = 1/d_i$. Diagonal matrices are the easiest possible case.
   </p>
 
   <h4>Tridiagonal Matrices</h4>
@@ -177,45 +181,39 @@
   $$T = \begin{pmatrix} b_1 & c_1 & & \\ a_2 & b_2 & c_2 & \\ & a_3 & b_3 & c_3 \\ & & a_4 & b_4 \end{pmatrix}$$
 
   <p>
-    This is the structure of the <strong>1D discrete Laplacian</strong>. Each row connects a node to its two neighbors. Tridiagonal systems can be solved in $O(N)$ time by the <em>Thomas algorithm</em> (a simplified form of Gaussian elimination) — no iterative solver needed. This is why 1D problems are "easy."
+    Each row connects an entry to its two neighbors. Tridiagonal systems $T\mathbf{x} = \mathbf{b}$ can be solved in $O(N)$ time by the <em>Thomas algorithm</em> — a simplified form of Gaussian elimination.
   </p>
 
-  <h4>Banded Matrices</h4>
+  <h4>Banded and Sparse Matrices</h4>
 
   <p>
-    A banded matrix with bandwidth $w$ has nonzero entries within $w$ diagonals of the main diagonal. The 2D five-point Laplacian on an $N_x \times N_y$ grid, after flattening to a 1D vector, produces a matrix with bandwidth $N_x$ — the off-diagonal bands connect grid points that are neighbors in the $y$-direction. The matrix is "mostly zeros" but cannot be solved by the Thomas algorithm because $w$ is large.
+    A <strong>banded</strong> matrix has nonzeros within a fixed number of diagonals of the main diagonal. A <strong>sparse</strong> matrix has the vast majority of entries equal to zero — typically a fixed number of nonzeros per row, regardless of $N$. For example, a matrix with 5 nonzeros per row and $N = 90{,}000$ columns is 99.99% zeros.
   </p>
 
-  <h4>Sparse Matrices</h4>
-
   <p>
-    A matrix is <strong>sparse</strong> if the vast majority of its entries are zero. The 2D Laplacian is sparse: each row has at most 5 nonzero entries out of $N$ total columns. For $N = 90{,}000$ (a $300 \times 300$ grid), that is 5 nonzeros versus 90,000 columns — 99.99% zeros. Storing only the nonzero entries (using formats like CSR, COO, or PyTorch's <code>sparse_coo_tensor</code> — see Appendix D, Section D.7) reduces memory from $O(N^2)$ to $O(\text{nnz})$, where $\text{nnz}$ is the number of nonzeros. For the 5-point Laplacian, $\text{nnz} \approx 5N$.
+    Sparse matrices are stored in compressed formats (CSR, COO) that record only the nonzero entries, reducing memory from $O(N^2)$ to $O(\text{nnz})$.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Sparsity reflects locality.</strong> A sparse matrix means each equation involves only a few variables — those that are "nearby" in some sense. For cardiac simulation, "nearby" means spatially adjacent on the tissue grid. A cell's voltage at the next time step depends on its own voltage and the voltages of its immediate neighbors — not on cells millimeters away. This physical locality produces mathematical sparsity, and sparsity is what makes large-scale simulation possible.
+      <strong>Sparsity reflects locality.</strong> A sparse matrix means each equation involves only a few variables — those that are "nearby" in some sense. When a physical system has local interactions (each node couples only to its neighbors), the resulting matrix is sparse. Sparsity is what makes large-scale computation possible.
     </p>
   </div>
 
 
   <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>B.5 &ensp; The Identity Matrix and Matrix Inverses</h3>
+  <h3>B.5 &ensp; The Identity Matrix and Inverses</h3>
 
   <p>
-    The <strong>identity matrix</strong> $I$ is the "do nothing" transformation: $I\mathbf{x} = \mathbf{x}$ for every vector $\mathbf{x}$. It has ones on the diagonal and zeros everywhere else. It is the matrix equivalent of multiplying by 1.
+    The <strong>identity matrix</strong> $I$ is the "do nothing" transformation: $I\mathbf{x} = \mathbf{x}$ for every vector $\mathbf{x}$. It has ones on the diagonal and zeros everywhere else.
   </p>
 
   <p>
-    The <strong>inverse</strong> of a matrix $A$, written $A^{-1}$, is the matrix that "undoes" the transformation: $A^{-1}A = I$. If $A$ stretches space by a factor of 2 in the $x$-direction, then $A^{-1}$ compresses it back. Not every matrix has an inverse — a matrix that collapses a dimension (sends a 2D plane to a line, for instance) cannot be undone.
+    The <strong>inverse</strong> of a matrix $A$, written $A^{-1}$, is the matrix that "undoes" the transformation: $A^{-1}A = I$. If $A$ stretches by 2, then $A^{-1}$ compresses by $\frac{1}{2}$. Not every matrix has an inverse — a matrix that collapses a dimension cannot be undone.
   </p>
 
   <p>
-    In principle, solving $A\mathbf{x} = \mathbf{b}$ means computing $\mathbf{x} = A^{-1}\mathbf{b}$. But in practice, we <strong>never compute $A^{-1}$ explicitly</strong>. For an $N \times N$ matrix, forming $A^{-1}$ costs $O(N^3)$ and produces a dense matrix even when $A$ is sparse. Instead, we use solvers (direct or iterative) that compute the action of $A^{-1}$ on $\mathbf{b}$ without forming $A^{-1}$ itself. When you see $A^{-1}\mathbf{b}$ in this textbook, mentally read it as "the vector $\mathbf{x}$ that solves $A\mathbf{x} = \mathbf{b}$."
-  </p>
-
-  <p>
-    This distinction is crucial for the bidomain solver in Chapter 15. The parabolic and elliptic sub-problems each require "inverting" a sparse matrix at every time step. PCG and spectral methods (Appendix C) compute $A^{-1}\mathbf{b}$ in $O(N)$ to $O(N\log N)$ time — without ever forming the $O(N^2)$-sized inverse.
+    In principle, solving $A\mathbf{x} = \mathbf{b}$ means computing $\mathbf{x} = A^{-1}\mathbf{b}$. In practice, we <strong>never compute $A^{-1}$ explicitly</strong>. For an $N \times N$ matrix, forming $A^{-1}$ costs $O(N^3)$ and produces a dense matrix even when $A$ is sparse. Instead, we use solvers that compute $A^{-1}\mathbf{b}$ without forming $A^{-1}$ itself. When you see $A^{-1}\mathbf{b}$ in this textbook, read it as "the vector $\mathbf{x}$ that solves $A\mathbf{x} = \mathbf{b}$."
   </p>
 
 
@@ -223,34 +221,20 @@
   <h3>B.6 &ensp; Linear Systems: $A\mathbf{x} = \mathbf{b}$</h3>
 
   <p>
-    The equation $A\mathbf{x} = \mathbf{b}$ is the central problem of computational science. Given a matrix $A$ (the "rules") and a vector $\mathbf{b}$ (the "data"), find the vector $\mathbf{x}$ (the "answer"). In one sentence: <em>which input $\mathbf{x}$, when transformed by $A$, produces the desired output $\mathbf{b}$?</em>
-  </p>
-
-  <p>
-    Every implicit time-stepper in this textbook requires solving a linear system. When we write, for example, the Backward Euler step (Chapter 11, equation 11.2):
-  </p>
-
-  $$(I - \Delta t\,L)\,\mathbf{V}^{n+1} = \mathbf{V}^n$$
-
-  <p>
-    we are asking: given the current voltage $\mathbf{V}^n$ (that is $\mathbf{b}$), what is the next voltage $\mathbf{V}^{n+1}$ (that is $\mathbf{x}$) such that the matrix $A = I - \Delta t\,L$ maps it to $\mathbf{V}^n$?
+    The equation $A\mathbf{x} = \mathbf{b}$ is the central problem of computational linear algebra. Given a matrix $A$ (the "rules") and a vector $\mathbf{b}$ (the "data"), find the vector $\mathbf{x}$ (the "answer"). In one sentence: <em>which input $\mathbf{x}$, when transformed by $A$, produces the desired output $\mathbf{b}$?</em>
   </p>
 
   <h4>Three Possible Outcomes</h4>
 
-  <p>
-    A linear system $A\mathbf{x} = \mathbf{b}$ can have:
-  </p>
-
   <ol>
-    <li><strong>Exactly one solution</strong> — when $A$ is invertible (non-singular). This is the normal case for time-stepping systems in cardiac simulation.</li>
-    <li><strong>No solution</strong> — when $\mathbf{b}$ is not in the range of $A$. This does not arise in well-posed physical problems.</li>
-    <li><strong>Infinitely many solutions</strong> — when $A$ is singular (has a null space). This <em>does</em> arise: the bidomain elliptic equation (Chapter 12, equation 12.4) has a singular matrix because the extracellular potential $\phi_e$ is only defined up to a constant. See Section B.10.</li>
+    <li><strong>Exactly one solution</strong> — when $A$ is invertible (non-singular). The generic, well-behaved case.</li>
+    <li><strong>No solution</strong> — when $\mathbf{b}$ is not in the range (column space) of $A$.</li>
+    <li><strong>Infinitely many solutions</strong> — when $A$ is singular (has a null space). Multiple inputs map to the same output.</li>
   </ol>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>The geometry of $A\mathbf{x} = \mathbf{b}$.</strong> Think of $A$ as a transformation that maps "input space" to "output space." The solution $\mathbf{x}$ is the point in input space that maps to $\mathbf{b}$. If $A$ collapses some directions (its null space), multiple inputs map to the same output, giving infinitely many solutions. If $\mathbf{b}$ points in a direction that $A$ cannot reach (outside its range), there is no solution.
+      <strong>The geometry of $A\mathbf{x} = \mathbf{b}$.</strong> Think of $A$ as a transformation that maps "input space" to "output space." The solution $\mathbf{x}$ is the point in input space that maps to $\mathbf{b}$. If $A$ collapses some directions (its null space), multiple inputs map to the same output. If $\mathbf{b}$ points in a direction that $A$ cannot reach (outside its column space), there is no solution.
     </p>
   </div>
 
@@ -259,7 +243,7 @@
   <h3>B.7 &ensp; Eigenvalues and Eigenvectors: The DNA of a Matrix</h3>
 
   <p>
-    Most vectors change direction when you multiply them by a matrix. But some special vectors only get <em>scaled</em> — they point in the same direction (or flip to the opposite direction) after the transformation. These special vectors are called <strong>eigenvectors</strong>, and the scaling factors are called <strong>eigenvalues</strong>:
+    Most vectors change direction when you multiply them by a matrix. But some special vectors only get <em>scaled</em> — they point in the same direction (or flip to the opposite direction) after the transformation. These are <strong>eigenvectors</strong>, and the scaling factors are <strong>eigenvalues</strong>:
   </p>
 
   <div class="equation-block">
@@ -268,45 +252,37 @@
   </div>
 
   <p>
-    Here $\mathbf{v}$ is an eigenvector and $\lambda$ is its corresponding eigenvalue. The matrix $A$ acts on $\mathbf{v}$ by simply multiplying it by $\lambda$. No rotation, no shearing — just scaling. If $\lambda > 1$, the vector gets stretched. If $0 < \lambda < 1$, it gets compressed. If $\lambda < 0$, it gets flipped and scaled. If $\lambda = 0$, it gets sent to zero — the vector is in the <strong>null space</strong>.
+    The matrix $A$ acts on $\mathbf{v}$ by simply multiplying it by $\lambda$. No rotation, no shearing — just scaling. If $\lambda > 1$: stretched. If $0 < \lambda < 1$: compressed. If $\lambda < 0$: flipped and scaled. If $\lambda = 0$: sent to zero (the vector is in the null space).
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Eigenvectors are the natural directions of a matrix.</strong> They are the directions along which the matrix acts most simply — as pure scaling. Every other direction is a mix of stretching, rotating, and shearing. Understanding a matrix's eigenvectors and eigenvalues is like finding the "natural coordinate system" in which the matrix becomes diagonal.
+      <strong>Eigenvectors are the natural directions of a matrix.</strong> They are the directions along which the matrix acts most simply — as pure scaling. Understanding a matrix's eigenvectors and eigenvalues is like finding the "natural coordinate system" in which the matrix becomes diagonal.
     </p>
   </div>
-
-  <h4>Why Eigenvalues Matter for Cardiac Simulation</h4>
-
-  <p>
-    Eigenvalues appear in almost every chapter of this textbook:
-  </p>
-
-  <ul>
-    <li><strong>Stability (Chapter 10)</strong>: The CFL condition $\Delta t \leq 2/|\lambda_{\max}|$ ensures that explicit time-stepping does not blow up. The largest eigenvalue of the Laplacian determines the maximum stable time step.</li>
-    <li><strong>Convergence (Chapter 11, Appendix C)</strong>: The number of iterations PCG needs depends on the ratio $\kappa = \lambda_{\max}/\lambda_{\min}$ (the condition number).</li>
-    <li><strong>Spectral solvers (Appendix C)</strong>: The DCT/DST diagonalize the Laplacian — they find the eigenvectors. In the eigenvector basis, solving the linear system becomes trivial division.</li>
-    <li><strong>Null space (Chapter 15)</strong>: The bidomain elliptic operator has $\lambda = 0$ as an eigenvalue. The corresponding eigenvector (the constant vector) is the null space that must be handled carefully.</li>
-  </ul>
 
   <h4>Finding Eigenvalues</h4>
 
   <p>
-    For a general $N \times N$ matrix, eigenvalues are the roots of the <strong>characteristic polynomial</strong> $\det(A - \lambda I) = 0$. This is a polynomial of degree $N$, so there are exactly $N$ eigenvalues (counting multiplicities, possibly complex). For $N > 4$, there is no closed-form formula — eigenvalues must be computed numerically.
+    For a general $N \times N$ matrix, eigenvalues are the roots of the <strong>characteristic polynomial</strong> $\det(A - \lambda I) = 0$, a polynomial of degree $N$. There are exactly $N$ eigenvalues (counting multiplicities, possibly complex). For $N > 4$, there is no closed-form formula — eigenvalues must be computed numerically.
   </p>
 
+  <h4>Worked Example: A 2×2 Matrix</h4>
+
   <p>
-    But for structured matrices from PDE discretization, the eigenvalues often have known formulas. The discrete Laplacian on a 1D grid with $N$ points and Neumann BCs has eigenvalues (see Appendix C, Section C.8):
+    Let $A = \begin{pmatrix}4 & 1\\2 & 3\end{pmatrix}$. The characteristic polynomial is:
   </p>
 
-  <div class="equation-block">
-    <span class="equation-label">(B.4)</span>
-    $$\lambda_k = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi k}{N}\right) - 1\right), \qquad k = 0, 1, \ldots, N-1$$
-  </div>
+  $$\det(A - \lambda I) = (4-\lambda)(3-\lambda) - 2 = \lambda^2 - 7\lambda + 10 = (\lambda - 5)(\lambda - 2) = 0$$
 
   <p>
-    All eigenvalues are $\leq 0$ (the Laplacian is negative semi-definite). The largest in magnitude is $\lambda_{N-1} \approx -4/\Delta x^2$, which directly gives the CFL bound from Chapter 10.
+    So $\lambda_1 = 5$ and $\lambda_2 = 2$. For $\lambda_1 = 5$: $(A - 5I)\mathbf{v} = 0$ gives $-v_1 + v_2 = 0$, so $\mathbf{v}_1 = [1,\,1]^T$. For $\lambda_2 = 2$: $2v_1 + v_2 = 0$, so $\mathbf{v}_2 = [1,\,-2]^T$. Along $\mathbf{v}_1$, $A$ stretches by 5; along $\mathbf{v}_2$, by 2. These are the natural axes of $A$.
+  </p>
+
+  <h4>Diagonalization</h4>
+
+  <p>
+    If a matrix $A$ has $N$ linearly independent eigenvectors, we can write $A = P\Lambda P^{-1}$, where $P$ is the matrix of eigenvectors and $\Lambda = \text{diag}(\lambda_1, \ldots, \lambda_N)$. In this "eigenbasis," $A$ acts as pure scaling along each axis. This is the key to spectral methods: change to the eigenbasis, do simple arithmetic, change back.
   </p>
 
 
@@ -314,80 +290,129 @@
   <h3>B.8 &ensp; Symmetric and Positive Definite Matrices</h3>
 
   <p>
-    A matrix $A$ is <strong>symmetric</strong> if $A = A^T$ — that is, reflecting across the main diagonal leaves the matrix unchanged: $A_{ij} = A_{ji}$ for all $i,j$. In the language of transformations, symmetry means "the transformation treats all directions fairly" — it has no preferred handedness or rotation.
+    A matrix $A$ is <strong>symmetric</strong> if $A = A^T$: $A_{ij} = A_{ji}$ for all $i,j$. Symmetric matrices have two remarkable properties:
   </p>
 
-  <p>
-    Symmetric matrices have a remarkable property: <strong>all their eigenvalues are real numbers</strong>. No complex values, no oscillatory behavior — just real scaling. Furthermore, the eigenvectors of a symmetric matrix can always be chosen to be <strong>orthogonal</strong> (perpendicular to each other). This means a symmetric matrix can always be diagonalized as $A = Q\Lambda Q^T$, where $Q$ is an orthogonal matrix of eigenvectors and $\Lambda$ is the diagonal matrix of eigenvalues.
-  </p>
+  <ol>
+    <li><strong>All eigenvalues are real.</strong> No complex values — just real scaling.</li>
+    <li><strong>Eigenvectors can be chosen orthogonal.</strong> The matrix diagonalizes as $A = Q\Lambda Q^T$, where $Q$ is orthogonal ($Q^{-1} = Q^T$) and $\Lambda$ is real diagonal.</li>
+  </ol>
 
   <p>
-    A symmetric matrix is <strong>positive definite (PD)</strong> if all its eigenvalues are strictly positive: $\lambda_i > 0$ for all $i$. Equivalently:
+    A symmetric matrix is <strong>positive definite (PD)</strong> if all eigenvalues are strictly positive: $\lambda_i > 0$ for all $i$. Equivalently:
   </p>
 
   <div class="equation-block">
-    <span class="equation-label">(B.5)</span>
+    <span class="equation-label">(B.4)</span>
     $$\mathbf{x}^T A\,\mathbf{x} > 0 \qquad \text{for all } \mathbf{x} \neq \mathbf{0}$$
   </div>
 
   <p>
-    This quadratic form $\mathbf{x}^T A\mathbf{x}$ measures a kind of "energy." Positive definiteness means the energy is always positive — the matrix defines a bowl (paraboloid) in $N$-dimensional space with a unique minimum at the origin. The linear system $A\mathbf{x} = \mathbf{b}$ is equivalent to finding the bottom of this bowl offset by $\mathbf{b}$.
+    This quadratic form measures a kind of "energy." Positive definiteness means the energy is always positive — the matrix defines a bowl in $N$-dimensional space with a unique minimum at the origin. The linear system $A\mathbf{x} = \mathbf{b}$ is equivalent to finding the bottom of this bowl.
   </p>
+
+  <!-- SVG: SPD bowl and semi-definite trough -->
+  <div class="figure">
+    <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Left: SPD bowl -->
+      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Positive definite: bowl</text>
+      <!-- Bowl shape (ellipse + parabolic sides) -->
+      <ellipse cx="130" cy="160" rx="100" ry="25" fill="none" stroke="#42a5f5" stroke-width="1" stroke-dasharray="4,3"/>
+      <path d="M 30,160 Q 80,60 130,50 Q 180,60 230,160" fill="none" stroke="#42a5f5" stroke-width="2"/>
+      <!-- Minimum dot -->
+      <circle cx="130" cy="50" r="4" fill="#e94560"/>
+      <text x="145" y="46" font-family="EB Garamond,serif" font-size="10" fill="#e94560">unique minimum</text>
+      <!-- Axes hint -->
+      <line x1="130" y1="175" x2="130" y2="35" stroke="#d0d5e0" stroke-width="0.6" stroke-dasharray="3,3"/>
+      <text x="130" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">all $\lambda_i > 0$</text>
+
+      <!-- Right: Semi-definite trough -->
+      <text x="410" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Semi-definite: trough</text>
+      <!-- Trough shape (U-shape, flat along one axis) -->
+      <path d="M 310,150 Q 360,70 410,60 Q 460,70 510,150" fill="none" stroke="#e67e22" stroke-width="2"/>
+      <path d="M 320,155 Q 370,75 420,65 Q 470,75 520,155" fill="none" stroke="#e67e22" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <!-- Flat bottom line -->
+      <line x1="390" y1="60" x2="440" y2="65" stroke="#e94560" stroke-width="2"/>
+      <text x="440" y="55" font-family="EB Garamond,serif" font-size="10" fill="#e94560">flat direction</text>
+      <text x="430" y="75" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(null space)</text>
+      <text x="410" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">some $\lambda_i = 0$</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure B.2.</span> Left: a positive-definite matrix defines a bowl — every direction curves upward, and the minimum is unique. Right: a positive semi-definite matrix defines a trough — flat along the null-space direction, so infinitely many minimizers exist along the valley floor.</div>
+  </div>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>SPD = the gold standard.</strong> Symmetric positive-definite (SPD) matrices are the best-behaved matrices in numerical computing. They have real, positive eigenvalues. They are invertible. The conjugate gradient method converges provably. Cholesky factorization (a fast variant of LU) works. Every property you could want, SPD matrices have. This is why so much effort in solver design goes into reformulating problems to produce SPD systems.
+      <strong>SPD = the gold standard.</strong> Symmetric positive-definite (SPD) matrices have real positive eigenvalues, are always invertible, and admit the fastest solvers (Cholesky factorization, conjugate gradient). Every desirable property you could want, SPD matrices have.
     </p>
   </div>
 
   <p>
-    <strong>Semi-definite</strong> means allowing $\lambda_i \geq 0$ (some eigenvalues may be zero). A symmetric positive <em>semi</em>-definite (SPSD) matrix satisfies $\mathbf{x}^T A\mathbf{x} \geq 0$, with equality for vectors in the null space. The Neumann Laplacian is SPSD — it has one zero eigenvalue (the constant mode) and all other eigenvalues are positive.
+    <strong>Semi-definite</strong> means allowing $\lambda_i \geq 0$ (some eigenvalues may be zero). A symmetric positive <em>semi</em>-definite (SPSD) matrix satisfies $\mathbf{x}^T A\mathbf{x} \geq 0$, with equality for vectors in the null space. SPSD matrices are singular but "barely so" — only the null-space directions are collapsed.
   </p>
-
-  <h4>Where SPD Matrices Appear</h4>
-
-  <table>
-    <tr><th>Matrix</th><th>Where</th><th>SPD?</th></tr>
-    <tr><td>$I - \Delta t\,\theta\,L$</td><td>Implicit monodomain (Ch 11)</td><td>Yes (for reasonable $\Delta t$)</td></tr>
-    <tr><td>$-(L_i + L_e)$</td><td>Bidomain elliptic (Ch 12)</td><td>SPSD (null space = constant vector)</td></tr>
-    <tr><td>$\frac{1}{\Delta t}I - \theta L_i$</td><td>Bidomain parabolic (Ch 14)</td><td>Yes</td></tr>
-    <tr><td>Full $2 \times 2$ block system</td><td>Bidomain block (Ch 13)</td><td>No — symmetric indefinite</td></tr>
-  </table>
 
 
   <!-- ────────────────────────────────────────────────────────────── -->
   <h3>B.9 &ensp; The Condition Number: When Matrices Go Bad</h3>
 
   <p>
-    Not all SPD systems are equally easy to solve. Consider two bowls: one is nearly round (like a soup bowl), and the other is long and narrow (like a bathtub). Both have a unique minimum, but finding the minimum of the bathtub is much harder — gradient descent zigzags across the narrow valley, making painfully slow progress toward the minimum.
+    Not all SPD systems are equally easy to solve. Consider two bowls: one is nearly round (a soup bowl), and the other is long and narrow (a bathtub). Both have a unique minimum, but finding the minimum of the bathtub is much harder — gradient descent zigzags across the narrow valley.
   </p>
 
   <p>
-    The <strong>condition number</strong> quantifies this "shape" of the bowl:
+    The <strong>condition number</strong> quantifies this shape:
   </p>
 
   <div class="equation-block">
-    <span class="equation-label">(B.6)</span>
+    <span class="equation-label">(B.5)</span>
     $$\kappa(A) = \frac{\lambda_{\max}}{\lambda_{\min}}$$
   </div>
 
   <p>
-    where $\lambda_{\max}$ and $\lambda_{\min}$ are the largest and smallest eigenvalues of $A$. A condition number near 1 means a round bowl (easy to solve). A condition number of $10^6$ means an extremely elongated bowl (hard to solve). The number of iterations that CG needs scales as $O(\sqrt{\kappa})$.
+    A condition number near 1 means a round bowl (easy). A condition number of $10^6$ means an extremely elongated bowl (hard). Iterative solvers need roughly $O(\sqrt{\kappa})$ iterations.
   </p>
 
-  <p>
-    For the discrete Laplacian on a grid with $N$ points and spacing $\Delta x$:
-  </p>
+  <!-- SVG: Round bowl vs elongated bathtub -->
+  <div class="figure">
+    <svg viewBox="0 0 540 180" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <!-- Left: round bowl (low κ) -->
+      <text x="130" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">$\kappa \approx 1$: round bowl</text>
+      <!-- Contour rings (concentric circles) -->
+      <ellipse cx="130" cy="100" rx="22" ry="20" fill="none" stroke="#42a5f5" stroke-width="1.2"/>
+      <ellipse cx="130" cy="100" rx="44" ry="40" fill="none" stroke="#42a5f5" stroke-width="1"/>
+      <ellipse cx="130" cy="100" rx="66" ry="60" fill="none" stroke="#42a5f5" stroke-width="0.8"/>
+      <ellipse cx="130" cy="100" rx="88" ry="75" fill="none" stroke="#42a5f5" stroke-width="0.6"/>
+      <!-- Minimum -->
+      <circle cx="130" cy="100" r="3" fill="#e94560"/>
+      <!-- Descent path (nearly straight) -->
+      <path d="M 195,52 L 175,65 L 158,78 L 143,90 L 133,98" fill="none" stroke="#27ae60" stroke-width="1.8" marker-end="url(#arrG)"/>
+      <text x="200" y="48" font-family="EB Garamond,serif" font-size="10" fill="#27ae60">fast convergence</text>
+      <text x="130" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$\lambda_{\max} \approx \lambda_{\min}$</text>
 
-  $$\lambda_{\max} \sim \frac{4}{\Delta x^2}, \qquad \lambda_{\min} \sim \frac{\pi^2}{L^2}$$
+      <!-- Right: elongated bathtub (high κ) -->
+      <text x="400" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">$\kappa \gg 1$: bathtub</text>
+      <!-- Contour ellipses (very elongated) -->
+      <ellipse cx="400" cy="100" rx="22" ry="6" fill="none" stroke="#e94560" stroke-width="1.2" transform="rotate(-15,400,100)"/>
+      <ellipse cx="400" cy="100" rx="55" ry="15" fill="none" stroke="#e94560" stroke-width="1" transform="rotate(-15,400,100)"/>
+      <ellipse cx="400" cy="100" rx="88" ry="24" fill="none" stroke="#e94560" stroke-width="0.8" transform="rotate(-15,400,100)"/>
+      <ellipse cx="400" cy="100" rx="120" ry="33" fill="none" stroke="#e94560" stroke-width="0.6" transform="rotate(-15,400,100)"/>
+      <!-- Minimum -->
+      <circle cx="400" cy="100" r="3" fill="#e94560"/>
+      <!-- Zigzag descent path -->
+      <path d="M 490,75 L 440,120 L 470,85 L 430,110 L 450,92 L 415,105 L 405,100" fill="none" stroke="#e67e22" stroke-width="1.5" marker-end="url(#arrO)"/>
+      <text x="500" y="70" font-family="EB Garamond,serif" font-size="10" fill="#e67e22">zigzag!</text>
+      <text x="400" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$\lambda_{\max} \gg \lambda_{\min}$</text>
 
-  <p>
-    so $\kappa \propto (L/\Delta x)^2 \propto N$ (in 1D). Refining the grid makes the condition number worse! This is the fundamental challenge of large-scale simulation, and it is why <strong>preconditioning</strong> — transforming the system to reduce $\kappa$ — is not optional for production solvers.
-  </p>
+      <defs>
+        <marker id="arrG" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#27ae60"/></marker>
+        <marker id="arrO" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#e67e22"/></marker>
+      </defs>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure B.3.</span> Contour plots of $E(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T A\mathbf{x}$. Left: well-conditioned ($\kappa \approx 1$) — nearly circular contours, gradient descent converges quickly. Right: ill-conditioned ($\kappa \gg 1$) — elongated contours, gradient descent zigzags across the narrow valley.</div>
+  </div>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Condition number measures amplification of error.</strong> If you solve $A\mathbf{x} = \mathbf{b}$ with a small error in $\mathbf{b}$, the error in $\mathbf{x}$ is amplified by at most a factor of $\kappa(A)$. For $\kappa = 10^6$ and double-precision arithmetic (about 16 significant digits), you may lose 6 digits of accuracy — leaving only 10 correct digits in the solution.
+      <strong>Condition number measures amplification of error.</strong> If you solve $A\mathbf{x} = \mathbf{b}$ with a small perturbation in $\mathbf{b}$, the perturbation in $\mathbf{x}$ is amplified by at most $\kappa(A)$. For $\kappa = 10^6$ and double-precision arithmetic (16 digits), you may lose 6 digits of accuracy. <strong>Preconditioning</strong> — transforming the system to reduce $\kappa$ — is the standard remedy.
     </p>
   </div>
 
@@ -400,69 +425,63 @@
   </p>
 
   <div class="equation-block">
-    <span class="equation-label">(B.7)</span>
+    <span class="equation-label">(B.6)</span>
     $$\text{null}(A) = \{\mathbf{v} : A\mathbf{v} = \mathbf{0}\}$$
   </div>
 
   <p>
-    If the null space contains only the zero vector, $A$ is invertible and $A\mathbf{x} = \mathbf{b}$ has a unique solution. If the null space is nontrivial (contains nonzero vectors), $A$ is <strong>singular</strong>: it collapses some directions to zero and cannot be inverted.
-  </p>
-
-  <p>
-    This is not a theoretical curiosity — it happens in this textbook. The bidomain elliptic operator $-(L_i + L_e)$ has a one-dimensional null space spanned by the <strong>constant vector</strong> $\mathbf{1} = [1, 1, \ldots, 1]^T$. Physically, this means the extracellular potential $\phi_e$ is defined only up to an additive constant — like a voltage reference that can be placed anywhere.
+    If the null space contains only $\mathbf{0}$, $A$ is invertible. If it contains nonzero vectors, $A$ is <strong>singular</strong>: it collapses some directions to zero.
   </p>
 
   <h4>Solving Singular Systems</h4>
 
   <p>
-    If $A$ is singular, $A\mathbf{x} = \mathbf{b}$ has solutions only when $\mathbf{b}$ is orthogonal to the null space of $A^T$ (which equals the null space of $A$ when $A$ is symmetric). For the bidomain elliptic equation, this means the right-hand side must satisfy a <strong>compatibility condition</strong>: its components must sum to zero. Physically, this means the total current injected must equal the total current extracted — conservation of charge.
-  </p>
-
-  <p>
-    Once compatibility is satisfied, there are infinitely many solutions: if $\mathbf{x}^*$ is one solution, then $\mathbf{x}^* + c\,\mathbf{1}$ is also a solution for any constant $c$. In practice, we pick the unique solution by <strong>pinning</strong>: fixing $\phi_e$ at one node to zero, which removes the null space ambiguity. Chapter 15 (Section 15.2) discusses the two main approaches — row-zeroing (modify the matrix) and mean subtraction (project out the null component during iteration).
+    If $A$ is singular, $A\mathbf{x} = \mathbf{b}$ has solutions only when $\mathbf{b}$ is orthogonal to the null space of $A^T$ (for symmetric $A$, this is the null space of $A$ itself). This is a <strong>compatibility condition</strong>. When it is satisfied, there are infinitely many solutions: if $\mathbf{x}^*$ is one, then $\mathbf{x}^* + \mathbf{v}$ is another for any $\mathbf{v} \in \text{null}(A)$. To select a unique solution, we impose an extra constraint — typically <strong>pinning</strong> (fixing one component) or <strong>projecting out</strong> the null-space component.
   </p>
 
 
   <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>B.11 &ensp; Block Matrices and Coupled Systems</h3>
+  <h3>B.11 &ensp; Block Matrices</h3>
 
   <p>
-    A <strong>block matrix</strong> is a matrix partitioned into rectangular sub-matrices (blocks). This is not just a notational convenience — it reflects the <em>physical structure</em> of coupled systems.
-  </p>
-
-  <p>
-    The bidomain model couples two unknowns: the transmembrane potential $V_m$ and the extracellular potential $\phi_e$. After discretization, the system has the block form (Chapter 13, equation 13.1):
+    A <strong>block matrix</strong> is a matrix partitioned into rectangular sub-matrices (blocks):
   </p>
 
   <div class="equation-block">
-    <span class="equation-label">(B.8)</span>
-    $$\begin{pmatrix} A_{11} & A_{12} \\ A_{21} & A_{22} \end{pmatrix} \begin{pmatrix} \mathbf{V}_m \\ \boldsymbol{\phi}_e \end{pmatrix} = \begin{pmatrix} \mathbf{b}_1 \\ \mathbf{b}_2 \end{pmatrix}$$
+    <span class="equation-label">(B.7)</span>
+    $$\begin{pmatrix} A_{11} & A_{12} \\ A_{21} & A_{22} \end{pmatrix} \begin{pmatrix} \mathbf{x}_1 \\ \mathbf{x}_2 \end{pmatrix} = \begin{pmatrix} \mathbf{b}_1 \\ \mathbf{b}_2 \end{pmatrix}$$
   </div>
 
   <p>
-    Each block is an $N \times N$ matrix (where $N$ is the number of grid nodes). The diagonal blocks $A_{11}$ and $A_{22}$ describe how each variable interacts with itself; the off-diagonal blocks $A_{12}$ and $A_{21}$ describe how the two variables couple to each other.
+    Block structure arises naturally when a system couples multiple variables. The diagonal blocks $A_{11}, A_{22}$ describe how each variable interacts with itself; the off-diagonal blocks $A_{12}, A_{21}$ describe the coupling.
   </p>
 
-  <h4>Why Not Just Solve the Full System?</h4>
+  <h4>Block Elimination and the Schur Complement</h4>
 
   <p>
-    The full block system is $2N \times 2N$. Solving it monolithically requires a solver that handles $2N$ unknowns simultaneously. For a $300 \times 300$ grid, that is $2 \times 90{,}000 = 180{,}000$ unknowns — doable, but the matrix is symmetric indefinite (not SPD), so CG cannot be used. You would need GMRES, which requires more memory and has weaker convergence guarantees.
+    From the first block row: $\mathbf{x}_1 = A_{11}^{-1}(\mathbf{b}_1 - A_{12}\mathbf{x}_2)$. Substituting into the second row gives:
+  </p>
+
+  $$(A_{22} - A_{21}A_{11}^{-1}A_{12})\,\mathbf{x}_2 = \mathbf{b}_2 - A_{21}A_{11}^{-1}\mathbf{b}_1$$
+
+  <p>
+    The matrix $S = A_{22} - A_{21}A_{11}^{-1}A_{12}$ is the <strong>Schur complement</strong>. It reduces a $2N \times 2N$ system to an $N \times N$ system in $\mathbf{x}_2$ alone. This is a powerful technique: solve for $\mathbf{x}_2$ first, then back-substitute to find $\mathbf{x}_1$.
+  </p>
+
+  <h4>Worked Example</h4>
+
+  <p>
+    Consider the $4\times 4$ block system with $2\times 2$ blocks:
+  </p>
+
+  $$\begin{pmatrix} 4 & 1 & 1 & 0 \\ 1 & 3 & 0 & 1 \\ 1 & 0 & 5 & 2 \\ 0 & 1 & 2 & 4 \end{pmatrix} \begin{pmatrix} x_1 \\ x_2 \\ x_3 \\ x_4 \end{pmatrix} = \begin{pmatrix} 8 \\ 7 \\ 14 \\ 11 \end{pmatrix}$$
+
+  <p>
+    Here $A_{11} = \begin{pmatrix}4&1\\1&3\end{pmatrix}$, $A_{12} = \begin{pmatrix}1&0\\0&1\end{pmatrix} = I$, $A_{21} = I$, $A_{22} = \begin{pmatrix}5&2\\2&4\end{pmatrix}$. Since $A_{12} = A_{21} = I$, the Schur complement simplifies to $S = A_{22} - A_{11}^{-1}$. This reduces a $4\times 4$ problem to a $2\times 2$ problem: solve $S\,\mathbf{x}_2 = \mathbf{b}_2 - A_{11}^{-1}\mathbf{b}_1$ for $\mathbf{x}_2$, then back-substitute for $\mathbf{x}_1$.
   </p>
 
   <p>
-    The insight of Chapter 14 is that the block structure allows <strong>decoupling</strong>. We solve for $\mathbf{V}_m$ and $\boldsymbol{\phi}_e$ separately using the individual blocks, iterating between them if needed. Each sub-solve is an $N \times N$ system that <em>is</em> SPD, so CG works. This is the Gauss-Seidel decoupled approach of Algorithm 14.1.
-  </p>
-
-  <h4>The Schur Complement</h4>
-
-  <p>
-    The formal way to decouple a block system is the <strong>Schur complement</strong>. From the first block row: $A_{11}\mathbf{V}_m + A_{12}\boldsymbol{\phi}_e = \mathbf{b}_1$, giving $\mathbf{V}_m = A_{11}^{-1}(\mathbf{b}_1 - A_{12}\boldsymbol{\phi}_e)$. Substituting into the second row:
-  </p>
-
-  $$(A_{22} - A_{21}A_{11}^{-1}A_{12})\,\boldsymbol{\phi}_e = \mathbf{b}_2 - A_{21}A_{11}^{-1}\mathbf{b}_1$$
-
-  <p>
-    The matrix $S = A_{22} - A_{21}A_{11}^{-1}A_{12}$ is the <strong>Schur complement</strong>. It reduces the $2N \times 2N$ system to an $N \times N$ system in $\boldsymbol{\phi}_e$ alone. If $S$ is SPD (which it is for the bidomain problem under appropriate conditions), CG can be used. The decoupled strategies of Chapter 14 can be viewed as approximate Schur complement methods.
+    If the full block system is symmetric indefinite (not SPD), the individual blocks or the Schur complement may still be SPD — allowing the use of fast solvers on the sub-problems even when the full system resists them.
   </p>
 
 
@@ -470,57 +489,25 @@
   <h3>B.12 &ensp; Orthogonality and Projections</h3>
 
   <p>
-    Two vectors $\mathbf{u}$ and $\mathbf{v}$ are <strong>orthogonal</strong> if their inner product is zero: $\mathbf{u}^T\mathbf{v} = 0$. Geometrically, they are perpendicular. Orthogonality is the most powerful simplifying concept in linear algebra, because orthogonal directions do not interfere with each other.
+    Two vectors $\mathbf{u}$ and $\mathbf{v}$ are <strong>orthogonal</strong> if $\mathbf{u}^T\mathbf{v} = 0$. Geometrically, they are perpendicular. Orthogonality is the most powerful simplifying concept in linear algebra: orthogonal directions do not interfere with each other.
   </p>
 
   <p>
-    A <strong>projection</strong> takes a vector and decomposes it into a component along a given direction (or subspace) and a component perpendicular to it. The projection of $\mathbf{v}$ onto the direction $\mathbf{u}$ is:
+    A <strong>projection</strong> decomposes a vector into a component along a given direction and a component perpendicular to it:
   </p>
 
   <div class="equation-block">
-    <span class="equation-label">(B.9)</span>
+    <span class="equation-label">(B.8)</span>
     $$\text{proj}_{\mathbf{u}}\,\mathbf{v} = \frac{\mathbf{u}^T\mathbf{v}}{\mathbf{u}^T\mathbf{u}}\,\mathbf{u}$$
   </div>
 
   <p>
-    This projects $\mathbf{v}$ onto the line defined by $\mathbf{u}$ — the "shadow" of $\mathbf{v}$ in the $\mathbf{u}$ direction.
+    An <strong>orthogonal basis</strong> is a set of mutually orthogonal vectors that spans the space. In an orthogonal basis, every vector decomposes uniquely into components along each basis direction, and the components are just projections. This is the mathematical foundation of spectral transforms (Appendix C, Section C.10) and the conjugate gradient method (Appendix C, Section C.12).
   </p>
-
-  <h4>Where Projections Appear in Cardiac Simulation</h4>
-
-  <ul>
-    <li><strong>Null space handling (Chapter 15)</strong>: After each CG iteration on the elliptic system, we project out the null-space component by subtracting the mean: $\boldsymbol{\phi}_e \leftarrow \boldsymbol{\phi}_e - \bar{\phi}_e \cdot \mathbf{1}$. This is a projection onto the subspace orthogonal to the constant vector.</li>
-    <li><strong>Conjugate gradient (Appendix C)</strong>: The CG algorithm builds search directions that are $A$-orthogonal: $\mathbf{p}_i^T A \mathbf{p}_j = 0$ for $i \neq j$. This is orthogonality with respect to the inner product defined by $A$ (the "energy inner product"). Each iteration projects out one more dimension of error.</li>
-    <li><strong>Spectral transforms (Appendix C)</strong>: The DCT and DST express a vector as a sum of orthogonal basis functions (cosines or sines). The transform coefficients are inner products of the data with each basis function — projections onto the frequency directions.</li>
-  </ul>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>B.13 &ensp; From Linear Algebra to Cardiac Simulation</h3>
-
-  <p>
-    Let us connect every concept in this appendix to a specific place in the textbook. This table is your roadmap — whenever you encounter a linear algebra concept in the main chapters, you can return here to find the relevant section.
-  </p>
-
-  <table>
-    <tr><th>Concept</th><th>Section</th><th>Where It Appears</th></tr>
-    <tr><td>Discretization (functions → vectors)</td><td>B.1</td><td>Chapter 8 (spatial discretization)</td></tr>
-    <tr><td>Matrix as linear operator</td><td>B.2</td><td>Chapters 8, 10, 11 (Laplacian $L$, mass matrix $M$)</td></tr>
-    <tr><td>Sparse matrix-vector product</td><td>B.3–B.4</td><td>Every time-stepper (the dominant cost per step)</td></tr>
-    <tr><td>Tridiagonal structure</td><td>B.4</td><td>1D problems (Chapter 8, Section 8.2)</td></tr>
-    <tr><td>Identity and inverse</td><td>B.5</td><td>Implicit methods: $(I - \Delta t L)^{-1}$ (Ch 11)</td></tr>
-    <tr><td>Linear system $A\mathbf{x} = \mathbf{b}$</td><td>B.6</td><td>Every implicit time step</td></tr>
-    <tr><td>Eigenvalues</td><td>B.7</td><td>CFL condition (Ch 10), spectral solve (App C)</td></tr>
-    <tr><td>SPD matrices</td><td>B.8</td><td>PCG requirements (Ch 11, 15)</td></tr>
-    <tr><td>Condition number</td><td>B.9</td><td>Convergence rate of CG (App C, Section C.9)</td></tr>
-    <tr><td>Null space</td><td>B.10</td><td>Bidomain elliptic pinning (Ch 15)</td></tr>
-    <tr><td>Block matrices</td><td>B.11</td><td>Bidomain 2×2 system (Ch 13–14)</td></tr>
-    <tr><td>Orthogonality / projection</td><td>B.12</td><td>CG directions, spectral transforms, null-space removal</td></tr>
-  </table>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Linear algebra is the language; physics is the content.</strong> Every concept here — eigenvalues, null spaces, condition numbers — has a direct physical meaning in cardiac simulation. Eigenvalues determine stability and wave speeds. The null space is the freedom to choose a voltage reference. The condition number measures how "stiff" the coupling between domains is. When you encounter these ideas in the main chapters, remember: you are not doing abstract mathematics. You are describing how electrical current flows through a living heart.
+      <strong>$A$-orthogonality.</strong> Given an SPD matrix $A$, two vectors $\mathbf{u}$ and $\mathbf{v}$ are called $A$-orthogonal (or conjugate) if $\mathbf{u}^T A \mathbf{v} = 0$. This is orthogonality with respect to the "geometry" defined by $A$ — the bowl shape from Section B.8. The conjugate gradient method (Appendix C) exploits $A$-orthogonality to converge in at most $N$ steps.
     </p>
   </div>
 

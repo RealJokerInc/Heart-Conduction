@@ -669,10 +669,10 @@
         "type": "chapter",
         "id": "appendix-b",
         "num": "Appendix B",
-        "title": "Linear Algebra for Cardiac Simulation",
+        "title": "Linear Algebra",
         "subsections": [
           {
-            "title": "B.1 &ensp; From Functions to Vectors: The Discretization Leap",
+            "title": "B.1 &ensp; Vectors and Spaces",
             "anchor": "B-1"
           },
           {
@@ -688,7 +688,7 @@
             "anchor": "B-4"
           },
           {
-            "title": "B.5 &ensp; The Identity Matrix and Matrix Inverses",
+            "title": "B.5 &ensp; The Identity Matrix and Inverses",
             "anchor": "B-5"
           },
           {
@@ -712,16 +712,12 @@
             "anchor": "B-10"
           },
           {
-            "title": "B.11 &ensp; Block Matrices and Coupled Systems",
+            "title": "B.11 &ensp; Block Matrices",
             "anchor": "B-11"
           },
           {
             "title": "B.12 &ensp; Orthogonality and Projections",
             "anchor": "B-12"
-          },
-          {
-            "title": "B.13 &ensp; From Linear Algebra to Cardiac Simulation",
-            "anchor": "B-13"
           }
         ]
       },
@@ -729,43 +725,63 @@
         "type": "chapter",
         "id": "appendix-c",
         "num": "Appendix C",
-        "title": "Numerical Analysis: From Continuous to Computable",
+        "title": "Numerical Analysis: The Bridge",
         "subsections": [
           {
-            "title": "C.1 &ensp; Truncation Error: The Price of Discretization",
+            "title": "C.1 &ensp; The Discretization Leap",
             "anchor": "C-1"
           },
           {
-            "title": "C.2 &ensp; Stability: When the Solution Blows Up",
+            "title": "C.2 &ensp; Truncation Error",
             "anchor": "C-2"
           },
           {
-            "title": "C.3 &ensp; Consistency, Stability, Convergence: The Lax Equivalence Theorem",
+            "title": "C.3 &ensp; Forward Euler: The Simplest Method",
             "anchor": "C-3"
           },
           {
-            "title": "C.4 &ensp; Order of Accuracy and Richardson Extrapolation",
+            "title": "C.4 &ensp; Stability: When Forward Euler Blows Up",
             "anchor": "C-4"
           },
           {
-            "title": "C.5 &ensp; Stiffness: When Time Scales Clash",
+            "title": "C.5 &ensp; Backward Euler: Unconditional Stability",
             "anchor": "C-5"
           },
           {
-            "title": "C.6 &ensp; Direct vs. Iterative Solvers",
+            "title": "C.6 &ensp; Crank-Nicolson: Second-Order Accuracy",
             "anchor": "C-6"
           },
           {
-            "title": "C.7 &ensp; From Physical Space to Transform Space",
+            "title": "C.7 &ensp; The Lax Equivalence Theorem",
             "anchor": "C-7"
           },
           {
-            "title": "C.8 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries",
+            "title": "C.8 &ensp; Stiffness and Operator Splitting",
             "anchor": "C-8"
           },
           {
-            "title": "C.9 &ensp; Iterative Methods: Conjugate Gradient and Chebyshev",
+            "title": "C.9 &ensp; Solving Ax = b: Three Families",
             "anchor": "C-9"
+          },
+          {
+            "title": "C.10 &ensp; Transform Methods: Spectral Solvers",
+            "anchor": "C-10"
+          },
+          {
+            "title": "C.11 &ensp; Introduction to Iterative Methods",
+            "anchor": "C-11"
+          },
+          {
+            "title": "C.12 &ensp; Conjugate Gradient (CG)",
+            "anchor": "C-12"
+          },
+          {
+            "title": "C.13 &ensp; Preconditioned Conjugate Gradient (PCG)",
+            "anchor": "C-13"
+          },
+          {
+            "title": "C.14 &ensp; Chebyshev Iteration",
+            "anchor": "C-14"
           }
         ]
       },

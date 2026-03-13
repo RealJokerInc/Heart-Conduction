@@ -1,696 +1,985 @@
 <div class="chapter">
   <div class="chapter-number">Appendix C</div>
-  <h2 class="chapter-title">Numerical Analysis: From Continuous to Computable</h2>
+  <h2 class="chapter-title">Numerical Analysis: The Bridge</h2>
   <div class="chapter-intro">
-    Appendix A introduced the three families of PDEs. Appendix B built the linear algebra of vectors and matrices. This appendix connects them: how do you actually <em>solve</em> those matrix systems on a computer? We begin with the idea that a numerical solution is always an approximation, explore how errors arise and propagate, and build up to the spectral and iterative methods that power every solver in this textbook. By the end, you will understand not only <em>what</em> the solvers do, but <em>why</em> they work — and when they fail.
+    Appendix A introduced differential equations — the continuous language of physics. Appendix B introduced linear algebra — the language of computation. This appendix connects them. The central question: <em>how do you take a differential equation that lives in the continuous world and turn it into a matrix problem that a computer can solve?</em> We will build one running example — a 2D grid with a hot spot — and solve it with every method from the simplest (Forward Euler) to the most sophisticated (Chebyshev iteration). By the end, every concept from Appendices A and B will have a job to do.
   </div>
 
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.1 &ensp; Truncation Error: The Price of Discretization</h3>
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.1 &ensp; The Discretization Leap</h3>
 
   <p>
-    When we replace a derivative with a finite difference, we are making an approximation. How good is it? Taylor expansion tells us. Expand $u(x+\Delta x)$ in a Taylor series around $x$:
+    In calculus, $u(x,y)$ is a smooth surface — a rule that assigns a number to every point in a region. A computer cannot store infinitely many values. So we make a choice: lay down a grid, sample the function at each grid point, and store only those values.
   </p>
 
-  $$u(x + \Delta x) = u(x) + \Delta x\,u'(x) + \frac{\Delta x^2}{2}\,u''(x) + \frac{\Delta x^3}{6}\,u'''(x) + \cdots$$
+  <div class="insight insight-intuition">
+    <p>
+      <strong>From film to frames.</strong> A movie camera captures a continuous scene by taking 24 frames per second. Each frame is a finite approximation of a continuous reality. Discretization is the same idea: a smooth function becomes a finite list of samples, and the spacing between samples determines what features you can resolve.
+    </p>
+  </div>
+
+  <h4>1D Warmup: The Three-Point Stencil</h4>
 
   <p>
-    The <strong>forward difference</strong> approximation to the first derivative is:
-  </p>
-
-  $$u'(x) \approx \frac{u(x+\Delta x) - u(x)}{\Delta x} = u'(x) + \frac{\Delta x}{2}\,u''(x) + \cdots$$
-
-  <p>
-    The error is $O(\Delta x)$ — first-order. The <strong>central difference</strong> uses $u(x+\Delta x)$ and $u(x-\Delta x)$:
+    On a 1D rod with equally spaced points $x_j = j\,\Delta x$, the second derivative at point $j$ can be approximated by:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.1)</span>
-    $$u'(x) \approx \frac{u(x+\Delta x) - u(x-\Delta x)}{2\,\Delta x} = u'(x) + \frac{\Delta x^2}{6}\,u'''(x) + \cdots$$
+    $$\frac{\partial^2 u}{\partial x^2}\bigg|_{x_j} \approx \frac{u_{j-1} - 2u_j + u_{j+1}}{\Delta x^2}$$
   </div>
 
   <p>
-    The error is $O(\Delta x^2)$ — second-order. The odd-powered error terms cancel because we are symmetric around $x$. This is why central differences are preferred: same cost (two function evaluations), but one order higher accuracy.
+    This is a <em>weighted sum</em> of three values — weights $[1, -2, 1]/\Delta x^2$. That weighted sum is one row of a matrix-vector product (Section B.3). Stacking all rows gives the <strong>discrete Laplacian</strong> $L$: a tridiagonal matrix where each row encodes the stencil at one grid point.
   </p>
+
+  <h4>The Running Example: A 3×3 Grid</h4>
 
   <p>
-    For the <strong>second derivative</strong> (the Laplacian in 1D), the standard three-point stencil gives:
+    Now the real thing. Consider a square domain discretized into a $3 \times 3$ grid of points, with spacing $\Delta x = \Delta y = 1$. We number the 9 nodes using row-major ordering: $k = i + j \cdot 3$ where $i$ is the column index and $j$ is the row index.
   </p>
 
-  <div class="equation-block">
-    <span class="equation-label">(C.2)</span>
-    $$u''(x) \approx \frac{u(x+\Delta x) - 2u(x) + u(x-\Delta x)}{\Delta x^2} = u''(x) + \frac{\Delta x^2}{12}\,u^{(4)}(x) + \cdots$$
+  <!-- SVG: 3×3 grid with node numbering and 5-point stencil -->
+  <div class="figure">
+    <svg viewBox="0 0 460 340" xmlns="http://www.w3.org/2000/svg" style="max-width:420px;">
+      <!-- Grid lines -->
+      <line x1="80" y1="60" x2="80" y2="260" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="180" y1="60" x2="180" y2="260" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="280" y1="60" x2="280" y2="260" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="80" y1="60" x2="280" y2="60" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="80" y1="160" x2="280" y2="160" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="80" y1="260" x2="280" y2="260" stroke="#d0d5e0" stroke-width="0.8"/>
+      <!-- Node circles with labels -->
+      <!-- Row j=2 (top) -->
+      <circle cx="80" cy="60" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="80" y="64" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">6</text>
+      <circle cx="180" cy="60" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="180" y="64" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">7</text>
+      <circle cx="280" cy="60" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="280" y="64" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">8</text>
+      <!-- Row j=1 (middle) -->
+      <circle cx="80" cy="160" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="80" y="164" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">3</text>
+      <circle cx="180" cy="160" r="18" fill="#fff3e0" stroke="#e94560" stroke-width="2.5"/>
+      <text x="180" y="164" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#e94560" font-weight="700">4</text>
+      <circle cx="280" cy="160" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="280" y="164" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">5</text>
+      <!-- Row j=0 (bottom) -->
+      <circle cx="80" cy="260" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="80" y="264" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">0</text>
+      <circle cx="180" cy="260" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="180" y="264" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">1</text>
+      <circle cx="280" cy="260" r="18" fill="#e8f4f8" stroke="#42a5f5" stroke-width="1.5"/>
+      <text x="280" y="264" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="#16213e" font-weight="600">2</text>
+      <!-- 5-point stencil arrows at node 4 -->
+      <line x1="160" y1="160" x2="105" y2="160" stroke="#e94560" stroke-width="2" marker-end="url(#arrRed)"/>
+      <line x1="200" y1="160" x2="258" y2="160" stroke="#e94560" stroke-width="2" marker-end="url(#arrRed)"/>
+      <line x1="180" y1="140" x2="180" y2="83" stroke="#e94560" stroke-width="2" marker-end="url(#arrRed)"/>
+      <line x1="180" y1="180" x2="180" y2="240" stroke="#e94560" stroke-width="2" marker-end="url(#arrRed)"/>
+      <defs><marker id="arrRed" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#e94560"/></marker></defs>
+      <!-- Labels -->
+      <text x="370" y="155" font-family="EB Garamond,serif" font-size="12" fill="#e94560" font-weight="600">5-point stencil</text>
+      <text x="370" y="172" font-family="EB Garamond,serif" font-size="12" fill="#e94560">at node 4:</text>
+      <text x="370" y="192" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">uses nodes 1,3,4,5,7</text>
+      <!-- Index labels -->
+      <text x="80" y="295" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$i{=}0$</text>
+      <text x="180" y="295" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$i{=}1$</text>
+      <text x="280" y="295" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$i{=}2$</text>
+      <text x="40" y="264" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$j{=}0$</text>
+      <text x="40" y="164" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$j{=}1$</text>
+      <text x="40" y="64" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">$j{=}2$</text>
+      <!-- Δx bracket -->
+      <line x1="80" y1="315" x2="180" y2="315" stroke="#e94560" stroke-width="1"/>
+      <line x1="80" y1="311" x2="80" y2="319" stroke="#e94560" stroke-width="1"/>
+      <line x1="180" y1="311" x2="180" y2="319" stroke="#e94560" stroke-width="1"/>
+      <text x="130" y="330" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560">$\Delta x = 1$</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure C.1.</span> The 3×3 running example grid. Node numbering is row-major: $k = i + 3j$. The 5-point stencil at node 4 (center) connects to its four direct neighbors. Corner and edge nodes have fewer neighbors.</div>
   </div>
 
+  <h4>Building the 2D Laplacian Matrix</h4>
+
   <p>
-    Also second-order. Halving $\Delta x$ reduces the error by a factor of 4. This is the discretization at the heart of every FDM chapter (8, 13), and the truncation error sets the spatial accuracy of the simulation.
+    At the center node (node 4), the 5-point stencil approximates $\nabla^2 u$ using four neighbors:
+  </p>
+
+  $$\nabla^2 u\big|_4 \approx \frac{u_1 + u_3 + u_5 + u_7 - 4u_4}{\Delta x^2}$$
+
+  <p>
+    This is row 4 of the matrix $L$: coefficients $[0,\,1,\,0,\,1,\,-4,\,1,\,0,\,1,\,0]$.
+  </p>
+
+  <p>
+    At boundary nodes, the stencil has <em>fewer</em> neighbors. With Neumann (zero-flux) boundary conditions, we simply skip the missing neighbor — no ghost nodes needed. Node 0 (bottom-left corner) has only two neighbors (1 and 3):
+  </p>
+
+  $$\nabla^2 u\big|_0 \approx \frac{u_1 + u_3 - 2u_0}{\Delta x^2}$$
+
+  <p>
+    Row 0 of $L$: $[-2,\,1,\,0,\,1,\,0,\,0,\,0,\,0,\,0]$. Edge node 1 (bottom edge) has three neighbors:
+  </p>
+
+  $$\nabla^2 u\big|_1 \approx \frac{u_0 + u_2 + u_4 - 3u_1}{\Delta x^2}$$
+
+  <p>
+    Assembling all 9 rows (with $\Delta x = 1$) gives the complete $9 \times 9$ Laplacian:
+  </p>
+
+  $$L = \begin{pmatrix}
+    -2 & 1 & . & 1 & . & . & . & . & . \\
+    1 & -3 & 1 & . & 1 & . & . & . & . \\
+    . & 1 & -2 & . & . & 1 & . & . & . \\
+    1 & . & . & -3 & 1 & . & 1 & . & . \\
+    . & 1 & . & 1 & -4 & 1 & . & 1 & . \\
+    . & . & 1 & . & 1 & -3 & . & . & 1 \\
+    . & . & . & 1 & . & . & -2 & 1 & . \\
+    . & . & . & . & 1 & . & 1 & -3 & 1 \\
+    . & . & . & . & . & 1 & . & 1 & -2
+  \end{pmatrix}$$
+
+  <p>
+    Dots represent zeros. Check: every row sums to zero (Neumann BCs conserve total heat). The matrix is sparse (at most 5 nonzeros per row), symmetric (Section B.8), and negative semi-definite.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Truncation error is the "lens resolution" of your grid.</strong> Just as a camera cannot resolve features smaller than its pixel size, your grid cannot resolve solution features smaller than $\Delta x$. A second-order method means the error scales as $\Delta x^2$: halving the grid spacing gives 4× better accuracy. A fourth-order method gives 16× better accuracy for the same refinement — but requires a wider stencil.
+      <strong>This is the moment Appendix A meets Appendix B.</strong> The differential operator $\nabla^2$ from calculus has become the matrix $L$ from linear algebra. The continuous heat equation $\partial u/\partial t = D\,\nabla^2 u$ becomes the matrix ODE:
     </p>
-  </div>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.2 &ensp; Stability: When the Solution Blows Up</h3>
-
-  <p>
-    Accuracy is necessary but not sufficient. A method that produces a good approximation for one time step can still blow up spectacularly over many steps. <strong>Stability</strong> is the property that errors do not grow unboundedly as time advances.
-  </p>
-
-  <p>
-    The simplest illustration is Forward Euler applied to the scalar ODE $du/dt = \lambda u$ with $\lambda < 0$ (exponential decay):
-  </p>
-
-  $$u^{n+1} = u^n + \Delta t\,\lambda\,u^n = (1 + \Delta t\,\lambda)\,u^n$$
-
-  <p>
-    The <strong>amplification factor</strong> is $g = 1 + \Delta t\,\lambda$. For stability, we need $|g| \leq 1$. Since $\lambda < 0$:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(C.3)</span>
-    $$|1 + \Delta t\,\lambda| \leq 1 \qquad \Longrightarrow \qquad \Delta t \leq \frac{2}{|\lambda|}$$
-  </div>
-
-  <p>
-    This is the <strong>CFL condition</strong> in its simplest form. For the heat equation with the discrete Laplacian (whose largest eigenvalue is $|\lambda_{\max}| \approx 4D/\Delta x^2$), this gives:
-  </p>
-
-  $$\Delta t \leq \frac{\Delta x^2}{2D}$$
-
-  <p>
-    Halving $\Delta x$ requires <em>quartering</em> $\Delta t$ — the explicit time step shrinks quadratically. This is why explicit methods become impractical for fine grids (Chapter 10) and why implicit methods (Chapter 11) exist.
-  </p>
-
-  <h4>Stability Regions</h4>
-
-  <p>
-    For a general time-stepper, the <strong>stability region</strong> is the set of complex values $z = \Delta t\,\lambda$ for which $|g(z)| \leq 1$. Each method has a characteristic region:
-  </p>
-
-  <ul>
-    <li><strong>Forward Euler</strong>: A disk of radius 1 centered at $z = -1$ on the negative real axis. Limited, fragile.</li>
-    <li><strong>RK4</strong>: A larger region that extends further along the negative real axis. Allows $\Delta t$ about 2.8× larger than Forward Euler.</li>
-    <li><strong>Backward Euler</strong>: Everything outside a disk of radius 1 centered at $z = +1$. This includes the <em>entire left half-plane</em> — unconditionally stable for dissipative problems. This is the superpower of implicit methods.</li>
-    <li><strong>Crank-Nicolson</strong>: The entire left half-plane (unconditionally stable) but with $|g| = 1$ on the imaginary axis — it neither damps nor amplifies oscillations. This can cause spurious ringing.</li>
-  </ul>
-
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Explicit methods put a speed limit on $\Delta t$; implicit methods remove it.</strong> But implicit methods require solving a linear system at each step, which is the price of freedom. The choice between explicit and implicit is the central engineering trade-off of time-stepping (Chapter 10 vs. 11).
-    </p>
-  </div>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.3 &ensp; Consistency, Stability, Convergence: The Lax Equivalence Theorem</h3>
-
-  <p>
-    There are three properties every numerical scheme must have:
-  </p>
-
-  <ul>
-    <li><strong>Consistency</strong>: As $\Delta x, \Delta t \to 0$, the discrete approximation approaches the continuous PDE. (The truncation error vanishes.)</li>
-    <li><strong>Stability</strong>: Errors do not grow unboundedly. (The amplification factor is controlled.)</li>
-    <li><strong>Convergence</strong>: The numerical solution approaches the true solution as the grid is refined.</li>
-  </ul>
-
-  <p>
-    The <strong>Lax Equivalence Theorem</strong> (1956) states:
-  </p>
-
-  <div class="insight insight-math">
-    <p>
-      <strong>For a consistent linear scheme, stability is equivalent to convergence.</strong>
+    <p style="text-align:center;">
+      $$\frac{d\mathbf{u}}{dt} = D\,L\,\mathbf{u}$$
     </p>
     <p>
-      That is: if your scheme correctly approximates the PDE (consistency) and errors do not blow up (stability), then the numerical solution will converge to the true solution as you refine the grid. Conversely, if the scheme is unstable, convergence is impossible regardless of how good the approximation is.
+      A partial differential equation is now an ordinary differential equation whose right-hand side is a sparse matrix-vector product. Everything from here is about solving this system efficiently.
     </p>
   </div>
 
+  <div class="insight insight-warning">
+    <p>
+      <strong>Mass matrices.</strong> The finite-difference derivation above gives $d\mathbf{u}/dt = DL\mathbf{u}$ directly. For finite-element methods (Chapter 8), the discretization produces $M\,d\mathbf{u}/dt = K\mathbf{u}$, where $M$ is a <em>mass matrix</em> (not the identity). This does not change the conceptual story but adds one more matrix to handle. Chapter 8 covers this in detail.
+    </p>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.2 &ensp; Truncation Error: The Price of Approximation</h3>
+
   <p>
-    This theorem is the theoretical foundation for everything in Chapters 10 and 11. It tells us that once we verify consistency (by checking truncation error) and stability (by checking the CFL condition or verifying eigenvalue containment), convergence is guaranteed. We do not need to prove convergence separately.
+    The three-point stencil (C.1) is an approximation. How good is it? Taylor-expand $u(x \pm \Delta x)$ around $x$ and add them:
   </p>
 
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.4 &ensp; Order of Accuracy and Richardson Extrapolation</h3>
+  $$\frac{u(x+\Delta x) - 2u(x) + u(x-\Delta x)}{\Delta x^2} = u''(x) + \frac{\Delta x^2}{12}\,u^{(4)}(x) + \cdots$$
 
   <p>
-    A method is <strong>$p$-th order accurate</strong> if the global error scales as $O(\Delta x^p)$ (for spatial discretization) or $O(\Delta t^p)$ (for time stepping). The order tells you how fast the error decreases with refinement:
+    The error is $O(\Delta x^2)$ — <strong>second order</strong>. Halving $\Delta x$ reduces the error by a factor of 4. This <strong>truncation error</strong> sets the spatial accuracy.
   </p>
 
   <table>
-    <tr><th>Order $p$</th><th>Halving $\Delta x$ reduces error by</th><th>Examples</th></tr>
+    <tr><th>Order $p$</th><th>Halving $h$ reduces error by</th><th>Examples</th></tr>
     <tr><td>1</td><td>$2\times$</td><td>Forward Euler (time), upwind FD (space)</td></tr>
     <tr><td>2</td><td>$4\times$</td><td>Crank-Nicolson, RK2, central FD, standard FVM</td></tr>
     <tr><td>4</td><td>$16\times$</td><td>RK4 (time)</td></tr>
   </table>
 
   <p>
-    To verify that your code achieves the expected order, run the simulation at two or more grid resolutions and measure the error. If the error is $E = C\,\Delta x^p$, then:
+    To verify order in practice, run at two resolutions and compute:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(C.2)</span>
+    $$p = \frac{\log(E_1/E_2)}{\log(h_1/h_2)}$$
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.3 &ensp; Forward Euler: The Simplest Method</h3>
+
+  <p>
+    We have the matrix ODE $d\mathbf{u}/dt = D\,L\,\mathbf{u}$. The simplest time-stepping approach: approximate the time derivative as a forward difference and evaluate the right-hand side at the <em>current</em> time:
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(C.3)</span>
+    $$\mathbf{u}^{n+1} = \mathbf{u}^n + \Delta t\,D\,L\,\mathbf{u}^n = \underbrace{(I + \Delta t\,D\,L)}_{G}\,\mathbf{u}^n$$
+  </div>
+
+  <p>
+    This is just a <strong>sparse matrix-vector multiply</strong> (SpMV). No linear system to solve — given $\mathbf{u}^n$, one SpMV produces $\mathbf{u}^{n+1}$. Cost: $O(N)$ per time step. It does not get simpler than this.
+  </p>
+
+  <h4>Worked Example: Hot Spot on the 3×3 Grid</h4>
+
+  <p>
+    Set $D = 1$, $\Delta t = 0.05$. Place all the heat at the center node:
+  </p>
+
+  $$\mathbf{u}^0 = [0,\;0,\;0,\;0,\;9,\;0,\;0,\;0,\;0]^T$$
+
+  <p>
+    First, compute $L\,\mathbf{u}^0$. Most rows give zero because the only nonzero entry in $\mathbf{u}^0$ is at node 4. The rows that have a 1 in column 4 (nodes 1, 3, 5, 7) pick up that value:
+  </p>
+
+  $$L\,\mathbf{u}^0 = [0,\; 9,\; 0,\; 9,\; -36,\; 9,\; 0,\; 9,\; 0]^T$$
+
+  <p>
+    Now apply Forward Euler:
+  </p>
+
+  $$\mathbf{u}^1 = \mathbf{u}^0 + 0.05 \times L\,\mathbf{u}^0 = [\,0,\;\; 0.45,\;\; 0,\;\; 0.45,\;\; 7.20,\;\; 0.45,\;\; 0,\;\; 0.45,\;\; 0\,]^T$$
+
+  <!-- SVG: Before and after Forward Euler step -->
+  <div class="figure">
+    <svg viewBox="0 0 560 230" xmlns="http://www.w3.org/2000/svg" style="max-width:520px;">
+      <!-- Left: t=0 -->
+      <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175" font-weight="600">$t = 0$</text>
+      <!-- Grid cells colored by temperature -->
+      <rect x="30" y="30" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="85" y="30" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="140" y="30" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="30" y="85" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="85" y="85" width="55" height="55" fill="#e94560" stroke="#c0392b" stroke-width="1.2"/>
+      <rect x="140" y="85" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="30" y="140" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="85" y="140" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="140" y="140" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <!-- Values -->
+      <text x="57" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="112" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="167" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="57" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="112" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="13" fill="white" font-weight="700">9</text>
+      <text x="167" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="57" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="112" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="167" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="110" y="210" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">sum $= 9$</text>
+
+      <!-- Arrow -->
+      <text x="265" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#5a6175">→</text>
+      <text x="265" y="135" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">SpMV</text>
+
+      <!-- Right: t=Δt -->
+      <text x="420" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175" font-weight="600">$t = \Delta t$</text>
+      <rect x="340" y="30" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="395" y="30" width="55" height="55" fill="#fce4ec" stroke="#e94560" stroke-width="1"/>
+      <rect x="450" y="30" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="340" y="85" width="55" height="55" fill="#fce4ec" stroke="#e94560" stroke-width="1"/>
+      <rect x="395" y="85" width="55" height="55" fill="#e94560" stroke="#c0392b" stroke-width="1.2"/>
+      <rect x="450" y="85" width="55" height="55" fill="#fce4ec" stroke="#e94560" stroke-width="1"/>
+      <rect x="340" y="140" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <rect x="395" y="140" width="55" height="55" fill="#fce4ec" stroke="#e94560" stroke-width="1"/>
+      <rect x="450" y="140" width="55" height="55" fill="#f0f4ff" stroke="#b0b8d4" stroke-width="0.8"/>
+      <!-- Values -->
+      <text x="367" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="422" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#c0392b">.45</text>
+      <text x="477" y="62" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="367" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#c0392b">.45</text>
+      <text x="422" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="12" fill="white" font-weight="700">7.2</text>
+      <text x="477" y="117" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#c0392b">.45</text>
+      <text x="367" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="422" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#c0392b">.45</text>
+      <text x="477" y="172" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">0</text>
+      <text x="420" y="210" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">sum $= 9$ ✓</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure C.2.</span> One Forward Euler step. Heat flows from center (9 → 7.2) to the four edge-adjacent neighbors (0 → 0.45). Corners stay at zero — the 5-point stencil does not connect diagonally. Total heat is conserved.</div>
+  </div>
+
+  <p>
+    Two things to notice. First, heat only spreads to the four <em>edge-adjacent</em> neighbors, not the four corners — this is because the 5-point stencil has no diagonal connections. Second, the total heat is conserved: $\sum u_j = 9$ before and after. This is guaranteed by the row-sum-zero property of $L$ under Neumann BCs.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.4 &ensp; Stability: When Forward Euler Blows Up</h3>
+
+  <p>
+    Forward Euler worked beautifully with $\Delta t = 0.05$. What happens if we try $\Delta t = 0.5$?
+  </p>
+
+  $$\mathbf{u}^1 = \mathbf{u}^0 + 0.5 \times L\,\mathbf{u}^0 = [\,0,\;\; 4.5,\;\; 0,\;\; 4.5,\;\; \mathbf{-9},\;\; 4.5,\;\; 0,\;\; 4.5,\;\; 0\,]^T$$
+
+  <p>
+    The center value is $-9$ — <strong>negative temperature</strong>. This is physically impossible and numerically catastrophic. The next step will amplify the error further, producing wilder oscillations until the solution explodes to infinity. This is <strong>numerical instability</strong>.
+  </p>
+
+  <h4>Why It Blows Up: Eigenvalue Analysis</h4>
+
+  <p>
+    Apply Forward Euler to a single eigenmode. If $\mathbf{v}$ is an eigenvector of $L$ with eigenvalue $\lambda$ (so $L\mathbf{v} = \lambda\mathbf{v}$), then:
+  </p>
+
+  $$G\mathbf{v} = (I + \Delta t\,D\,L)\,\mathbf{v} = (1 + \Delta t\,D\,\lambda)\,\mathbf{v}$$
+
+  <p>
+    The <strong>amplification factor</strong> is $g = 1 + \Delta t\,D\,\lambda$. For stability, we need $|g| \leq 1$ for every eigenvalue. Since $\lambda < 0$ for the Laplacian:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.4)</span>
-    $$p = \frac{\log(E_1/E_2)}{\log(\Delta x_1/\Delta x_2)}$$
+    $$\Delta t \leq \frac{2}{D\,|\lambda_{\max}|}$$
   </div>
 
   <p>
-    This is the <strong>convergence rate</strong>. Plotting $\log E$ vs. $\log \Delta x$ should give a straight line with slope $p$. This is the standard validation test used in every Engine V5.4 validation suite (see validation tests in Chapters 10 and 11).
-  </p>
-
-  <p>
-    <strong>Richardson extrapolation</strong> takes this one step further. If you have two solutions $u_h$ (grid spacing $h$) and $u_{h/2}$ (grid spacing $h/2$), and the method is $p$-th order, then:
-  </p>
-
-  $$u_{\text{exact}} \approx u_{h/2} + \frac{u_{h/2} - u_h}{2^p - 1}$$
-
-  <p>
-    This "extrapolated" solution has order $p+1$ — one order higher than either individual solution. Free accuracy from combining two runs.
-  </p>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.5 &ensp; Stiffness: When Time Scales Clash</h3>
-
-  <p>
-    A system of ODEs is <strong>stiff</strong> when it contains widely separated time scales — some components change very fast and others very slowly. The ratio of the fastest to slowest time scale is the <strong>stiffness ratio</strong>, which is closely related to the condition number of the Jacobian.
-  </p>
-
-  <p>
-    Cardiac electrophysiology is inherently stiff. During the upstroke (Phase 0), sodium channels open in about 1 ms, changing the voltage by 100 mV. During the plateau (Phase 2), the voltage changes by only a few mV over 200 ms. An explicit method must use a time step small enough to resolve the fastest event (the upstroke) even during the long, boring plateau. This wastes enormous computation.
-  </p>
-
-  <p>
-    The solution is <strong>operator splitting</strong> (Chapter 9): treat the fast ionic dynamics with a small time step (or a specialized solver like Rush-Larsen) and the slow diffusion with a larger time step. Each sub-problem has a much smaller stiffness ratio than the combined system.
-  </p>
-
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Stiffness is the "rush hour traffic" of ODEs.</strong> Imagine a highway where some cars travel at 200 km/h and others at 2 km/h. A traffic simulation that time-steps in increments of 0.01 seconds (to track the fast cars accurately) wastes enormous effort on the slow cars, which barely move. Stiff solvers are like having separate lanes with different speed limits — each scale gets the step size it needs.
-    </p>
-  </div>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.6 &ensp; Direct vs. Iterative Solvers</h3>
-
-  <p>
-    There are two fundamentally different approaches to solving $A\mathbf{x} = \mathbf{b}$:
-  </p>
-
-  <p>
-    <strong>Direct solvers</strong> compute the exact solution (up to round-off) by factoring $A$ into simpler matrices. Gaussian elimination factors $A = LU$ (lower × upper triangular); for SPD matrices, Cholesky factorization gives $A = LL^T$ (cheaper, about half the cost). The solution is then computed by forward and back substitution. Cost: $O(N^3)$ for dense, $O(N^{3/2})$ for 2D sparse (using nested dissection), $O(N^2)$ for 3D sparse. Memory: $O(N^2)$ for dense, much less for sparse due to fill-in patterns.
-  </p>
-
-  <p>
-    <strong>Iterative solvers</strong> start from an initial guess and improve it step by step. Each iteration costs $O(N)$ (one sparse matrix-vector product), and convergence to a given tolerance typically requires $k \ll N$ iterations. Total cost: $O(kN)$. Memory: $O(N)$ (just a few vectors). For the large, sparse systems of cardiac simulation, iterative methods are overwhelmingly preferred.
-  </p>
-
-  <table>
-    <tr><th></th><th>Direct</th><th>Iterative</th></tr>
-    <tr><td>Cost</td><td>$O(N^{3/2})$ to $O(N^3)$</td><td>$O(kN)$ where $k \ll N$</td></tr>
-    <tr><td>Memory</td><td>Large (fill-in)</td><td>Small ($\sim$5–10 vectors)</td></tr>
-    <tr><td>Robustness</td><td>Always converges</td><td>May stagnate</td></tr>
-    <tr><td>Sweet spot</td><td>Small $N$, ill-conditioned</td><td>Large $N$, well-preconditioned</td></tr>
-    <tr><td>GPU-friendly</td><td>No (inherently sequential)</td><td>Yes (SpMV is parallel)</td></tr>
-  </table>
-
-  <div class="insight insight-intuition">
-    <p>
-      <strong>Direct solvers are exact but expensive; iterative solvers are approximate but fast.</strong> For the time-stepping problems of cardiac simulation, we do not need the exact solution — we only need it accurate enough that the time-stepping error dominates. A residual of $10^{-8}$ from 5 CG iterations is more than sufficient when the time-stepping error is $10^{-4}$. This is why every production cardiac solver uses iterative methods.
-    </p>
-  </div>
-
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.7 &ensp; From Physical Space to Transform Space</h3>
-
-  <p>
-    Imagine you are listening to an orchestra. You hear a rich, complex sound — violins, cellos, flutes, and timpani all playing at once. Your ear receives a single pressure wave, a wiggly curve that changes instant by instant. But your brain does something remarkable: it separates that single wave into individual pitches. You hear the violin's high note and the cello's low note <em>simultaneously</em>, even though they arrived as one signal. Your brain has performed a <strong>transform</strong> — it has taken data from the <em>time domain</em> (pressure versus time) and re-expressed it in the <em>frequency domain</em> (which pitches are present and how loud each one is).
-  </p>
-
-  <p>
-    A mathematical transform does exactly the same thing. It takes a function expressed in one "space" and re-writes it in another space where the problem becomes simpler. The key insight is this:
-  </p>
-
-  <div class="insight insight-intuition">
-    <p>
-      <strong>A transform is just looking at the same data through a different lens.</strong> The data does not change — only the way we describe it changes. And in the new description, operations that were hard (like differentiation) become easy (like multiplication).
-    </p>
-  </div>
-
-  <p>
-    To see why this matters for solving PDEs, consider the simplest diffusion problem: the 1D heat equation on a rod of length $L$,
+    This is the <strong>CFL condition</strong>. For the 2D discrete Laplacian with Neumann BCs, the eigenvalues are:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.5)</span>
-    $$\frac{\partial u}{\partial t} = D\,\frac{\partial^2 u}{\partial x^2}$$
+    $$\lambda_{p,q} = \frac{2}{\Delta x^2}\!\left(\cos\!\frac{\pi p}{N_x} - 1\right) + \frac{2}{\Delta y^2}\!\left(\cos\!\frac{\pi q}{N_y} - 1\right)$$
   </div>
 
   <p>
-    In physical space, solving this equation requires computing $\partial^2 u/\partial x^2$ — the second spatial derivative. On a grid with $N$ points, this means assembling and solving a linear system involving an $N \times N$ matrix (the discrete Laplacian). For large $N$, this can be expensive.
+    For our $3 \times 3$ grid ($N_x = N_y = 3$, $\Delta x = \Delta y = 1$), the most negative eigenvalue is $\lambda_{2,2} = -6$, giving:
   </p>
+
+  $$\Delta t \leq \frac{2}{1 \times 6} = \frac{1}{3} \approx 0.333$$
 
   <p>
-    Now suppose we expand $u(x,t)$ in terms of sinusoidal basis functions. That is, we write the solution as a sum of waves:
+    Our stable step ($\Delta t = 0.05$) is well within the limit. The unstable step ($\Delta t = 0.5$) violates it. In general, the CFL condition for Forward Euler on a 2D grid is:
   </p>
 
-  $$u(x,t) = \sum_k \hat{u}_k(t)\,\psi_k(x)$$
+  $$\Delta t \leq \frac{\Delta x^2}{4D} \qquad \text{(2D, square grid)}$$
 
   <p>
-    where each $\psi_k(x)$ is a sine or cosine function and $\hat{u}_k(t)$ is the coefficient (amplitude) of the $k$-th wave at time $t$. The magic happens when we take the second derivative. Each basis function satisfies:
+    The <em>quadratic</em> dependence on $\Delta x$ is brutal: halving the grid spacing requires quartering the time step.
   </p>
 
-  $$\frac{d^2\,\psi_k}{dx^2} = -\lambda_k\,\psi_k$$
+  <h4>Stability Regions</h4>
 
   <p>
-    where $\lambda_k$ is a constant that depends on the wave number $k$. In other words, the second derivative of a sinusoid is just a <em>scaled copy of itself</em>. Substituting into the heat equation, each mode evolves independently:
+    For a general time-stepper, the <strong>stability region</strong> is the set of complex values $z = \Delta t\,\lambda$ for which $|g(z)| \leq 1$:
   </p>
 
-  $$\frac{d\hat{u}_k}{dt} = -D\,\lambda_k\,\hat{u}_k$$
+  <ul>
+    <li><strong>Forward Euler</strong>: A disk of radius 1 centered at $z = -1$. Limited.</li>
+    <li><strong>RK4</strong>: A larger region extending further along the negative real axis. Allows $\sim 2.8\times$ larger $\Delta t$.</li>
+    <li><strong>Backward Euler</strong>: Everything outside a disk of radius 1 centered at $z = +1$ — includes the <em>entire left half-plane</em>. Unconditionally stable.</li>
+    <li><strong>Crank-Nicolson</strong>: The entire left half-plane, but with $|g| = 1$ on the imaginary axis.</li>
+  </ul>
 
-  <p>
-    This is just an ordinary differential equation! Differentiation in physical space has become <em>multiplication by $-D\lambda_k$</em> in transform space. Instead of one big coupled system, we have $N$ independent scalar equations — each trivially solvable. The entire procedure is:
-  </p>
-
-  <ol>
-    <li><strong>Forward transform</strong>: Decompose $u(x)$ into its frequency components $\hat{u}_k$.</li>
-    <li><strong>Operate in transform space</strong>: Multiply (or divide) each $\hat{u}_k$ by the appropriate eigenvalue $\lambda_k$.</li>
-    <li><strong>Inverse transform</strong>: Reassemble the solution from the modified coefficients.</li>
-  </ol>
-
-  <p>
-    This three-step process is the essence of every spectral solver in this textbook, including the DCT solver of Chapter 15.
-  </p>
-
-  <h4>The Discrete Version and the FFT</h4>
-
-  <p>
-    On a computer, we do not have a continuous function — we have $N$ sampled values on a grid. The <strong>Discrete Fourier Transform (DFT)</strong> takes these $N$ values and produces $N$ frequency coefficients $\hat{u}_k$. In matrix form, this is just a matrix-vector multiplication by an $N \times N$ matrix whose entries are complex exponentials. The inverse DFT is another matrix-vector multiplication that recovers the original values.
-  </p>
-
-  <p>
-    Naively, multiplying by an $N \times N$ matrix costs $O(N^2)$ operations. But the <strong>Fast Fourier Transform (FFT)</strong>, discovered by Cooley and Tukey in 1965, exploits the special structure of the DFT matrix to compute the same result in $O(N \log N)$ operations. For a grid with a million points, this is the difference between $10^{12}$ and $10^7$ operations — a factor of 100,000.
-  </p>
-
-  <div class="insight insight-math">
-    <p>
-      <strong>Why $O(N \log N)$?</strong> The FFT works by recursively splitting the DFT of $N$ points into two DFTs of $N/2$ points, using the symmetry of complex exponentials ($e^{i\pi} = -1$). Each split halves the problem, and you need $\log_2 N$ levels of splitting, with $O(N)$ work at each level. The result: $O(N \log N)$ total.
-    </p>
+  <!-- SVG: Stability regions -->
+  <div class="figure">
+    <svg viewBox="0 0 540 260" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
+      <line x1="270" y1="250" x2="270" y2="10" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="30" y1="130" x2="530" y2="130" stroke="#d0d5e0" stroke-width="0.8"/>
+      <text x="535" y="134" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">Re($z$)</text>
+      <text x="274" y="10" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">Im($z$)</text>
+      <!-- Forward Euler disk -->
+      <circle cx="190" cy="130" r="80" fill="#e9456015" stroke="#e94560" stroke-width="2"/>
+      <text x="190" y="228" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">Forward Euler</text>
+      <!-- RK4 region -->
+      <path d="M 270,130 Q 270,45 220,40 Q 140,40 90,80 Q 48,120 48,130 Q 48,140 90,180 Q 140,220 220,220 Q 270,215 270,130 Z" fill="none" stroke="#2980b9" stroke-width="1.8" stroke-dasharray="6,3"/>
+      <text x="100" y="248" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">RK4</text>
+      <!-- Backward Euler boundary -->
+      <circle cx="350" cy="130" r="80" fill="none" stroke="#27ae60" stroke-width="2" stroke-dasharray="4,3"/>
+      <text x="440" y="78" font-family="EB Garamond,serif" font-size="10" fill="#27ae60">BE unstable</text>
+      <text x="440" y="91" font-family="EB Garamond,serif" font-size="10" fill="#27ae60">(inside disk)</text>
+      <text x="370" y="248" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#27ae60" font-weight="600">Backward Euler: stable everywhere else</text>
+      <!-- Laplacian eigenvalues -->
+      <circle cx="110" cy="130" r="3" fill="#16213e"/>
+      <circle cx="150" cy="130" r="3" fill="#16213e"/>
+      <circle cx="190" cy="130" r="3" fill="#16213e"/>
+      <circle cx="230" cy="130" r="3" fill="#16213e"/>
+      <text x="170" y="122" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#16213e">$\Delta t\,\lambda_k$ (Laplacian)</text>
+      <circle cx="270" cy="130" r="2" fill="#5a6175"/>
+      <text x="278" y="142" font-family="EB Garamond,serif" font-size="9" fill="#5a6175">0</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure C.3.</span> Stability regions in the complex $z = \Delta t\lambda$ plane. All eigenvalues of the Laplacian (black dots) must fall inside the stability region. Backward Euler contains the entire left half-plane, so it is unconditionally stable.</div>
   </div>
-
-  <p>
-    For a 2D grid ($N_x \times N_y$ points), the transform can be applied along each dimension separately — first transform all rows, then transform all columns. The total cost is $O(N_x N_y (\log N_x + \log N_y))$, which is effectively $O(N \log N)$ where $N = N_x \times N_y$ is the total number of points.
-  </p>
-
-  <p>
-    But there is a catch. The standard Fourier transform (and its discrete cousin, the DFT/FFT) assumes the signal is <strong>periodic</strong>. It wraps the rod into a circle: the value at $x = L$ is the same as the value at $x = 0$. This is rarely what we want in cardiac simulation, where tissue has edges and boundaries. To handle boundaries properly, we need a different family of transforms — the cosine and sine transforms — which are the subject of the next section.
-  </p>
-
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.8 &ensp; Cosine and Sine Transforms: Why Shape Matters for Boundaries</h3>
-
-  <p>
-    Think of a guitar string. If both ends are clamped (like a real guitar string), the string can only vibrate in shapes that are zero at both ends — these are sine waves. But if both ends are free to slide up and down (imagine the string passing through frictionless rings at each end), the string vibrates in shapes whose <em>slope</em> is zero at each end — these are cosine waves. The shape of the basis function encodes the boundary condition.
-  </p>
-
-  <p>
-    This is the central idea of this section: <strong>the choice of transform determines the boundary condition, and vice versa.</strong>
-  </p>
-
-  <h4>The Problem with the Standard Fourier Transform</h4>
-
-  <p>
-    As we noted in Section C.7, the DFT assumes periodicity. If your data has value 0 at the left edge and value 5 at the right edge, the DFT assumes the signal jumps from 5 back to 0, creating an artificial discontinuity. This discontinuity produces spurious high-frequency ringing in the frequency domain (known as <strong>Gibbs phenomenon</strong>) and ruins the accuracy of a spectral solve.
-  </p>
-
-  <p>
-    What we need are transforms whose basis functions naturally satisfy the boundary conditions of our problem. There are two fundamental types:
-  </p>
-
-  <h4>Cosine Basis → Neumann Boundary Conditions</h4>
-
-  <p>
-    Consider the family of cosine functions on the interval $[0, L]$:
-  </p>
-
-  $$\psi_k(x) = \cos\!\left(\frac{k\pi x}{L}\right), \qquad k = 0, 1, 2, \ldots$$
-
-  <p>
-    Let us check what happens at the boundaries. Take the derivative:
-  </p>
-
-  $$\frac{d\psi_k}{dx} = -\frac{k\pi}{L}\,\sin\!\left(\frac{k\pi x}{L}\right)$$
-
-  <p>
-    At $x = 0$: $\sin(0) = 0$, so $\frac{d\psi_k}{dx}\big|_{x=0} = 0$. At $x = L$: $\sin(k\pi) = 0$ (for every integer $k$), so $\frac{d\psi_k}{dx}\big|_{x=L} = 0$. The derivative vanishes at both endpoints — automatically! This is exactly the <strong>Neumann (zero-flux) boundary condition</strong>: $\partial u/\partial n = 0$.
-  </p>
-
-  <p>
-    If we expand our solution in cosine functions, any function we can represent will automatically satisfy Neumann BCs at both ends. We do not need to impose them separately — the basis enforces them for us. The <strong>Discrete Cosine Transform (DCT)</strong> is the discrete version of this expansion.
-  </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>The basis function <em>is</em> the boundary condition.</strong> Choose the right shape and the BC enforces itself. Cosines have flat endpoints (zero slope) → Neumann. Sines pass through zero → Dirichlet. No ghost nodes, no modified stencils, no special treatment at boundaries. This is why spectral methods are so elegant for structured grids.
+      <strong>Explicit methods put a speed limit on $\Delta t$; implicit methods remove it.</strong> But implicit methods pay a price: instead of a matrix-vector multiply, they require solving a linear system $A\mathbf{x} = \mathbf{b}$ at each step. This is the central engineering trade-off of time-stepping.
     </p>
   </div>
 
-  <h4>Sine Basis → Dirichlet Boundary Conditions</h4>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.5 &ensp; Backward Euler: Unconditional Stability</h3>
 
   <p>
-    Now consider the family of sine functions:
-  </p>
-
-  $$\phi_k(x) = \sin\!\left(\frac{k\pi x}{L}\right), \qquad k = 1, 2, 3, \ldots$$
-
-  <p>
-    At $x = 0$: $\sin(0) = 0$. At $x = L$: $\sin(k\pi) = 0$. The function itself vanishes at both endpoints — this is the <strong>Dirichlet boundary condition</strong>: $u = 0$ on the boundary.
-  </p>
-
-  <p>
-    If we expand our solution in sine functions, the solution is automatically zero at both ends. The <strong>Discrete Sine Transform (DST)</strong> is the discrete version. Note that the index starts at $k = 1$ (not $k = 0$), because $\sin(0) = 0$ everywhere — a constant zero function carries no information.
-  </p>
-
-  <h4>Eigenvalues: What Each Transform Does to the Laplacian</h4>
-
-  <p>
-    For the spectral solver of Chapter 15, we need the eigenvalues of the discrete Laplacian — the constants $\lambda_k$ such that $\Delta \psi_k = -\lambda_k \psi_k$. These eigenvalues come directly from the basis functions.
-  </p>
-
-  <p>
-    <strong>1D eigenvalues, Neumann (DCT).</strong> On a grid with $N$ points and spacing $\Delta x = L/N$, the discrete Laplacian's eigenvalues for the cosine basis are:
+    Forward Euler evaluates the right-hand side at the <em>current</em> time. What if we evaluate it at the <em>future</em> time instead?
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.6)</span>
-    $$\lambda_k^{\text{DCT}} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi k}{N}\right) - 1\right), \qquad k = 0, 1, \ldots, N-1$$
+    $$\mathbf{u}^{n+1} = \mathbf{u}^n + \Delta t\,D\,L\,\mathbf{u}^{n+1}$$
   </div>
 
   <p>
-    All eigenvalues are $\leq 0$ (the Laplacian is negative semi-definite). The $k=0$ mode has $\lambda_0 = 0$, corresponding to the constant mode $\psi_0(x) = 1$ — a spatially uniform solution whose Laplacian is zero. This zero eigenvalue is the spectral fingerprint of the Neumann null space, and it will appear again in Chapter 15 when we discuss spectral solvers.
+    The unknown $\mathbf{u}^{n+1}$ appears on both sides. Rearranging:
   </p>
 
+  $$\underbrace{(I - \Delta t\,D\,L)}_{A}\;\mathbf{u}^{n+1} = \mathbf{u}^n$$
+
   <p>
-    <strong>1D eigenvalues, Dirichlet (DST).</strong> For the sine basis:
+    This is $A\mathbf{x} = \mathbf{b}$ — a <strong>linear system</strong>. The unknown is $\mathbf{x} = \mathbf{u}^{n+1}$, the right-hand side is $\mathbf{b} = \mathbf{u}^n$. We must <em>solve</em> this system at every time step.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>This is the climactic moment.</strong> The PDE from Appendix A has become a linear system from Appendix B. The matrix $A = I - \Delta t\,D\,L$ inherits structure from the Laplacian: it is sparse (Section B.4), symmetric (Section B.8), and positive definite (because $L$ is negative semi-definite and $I$ pushes all eigenvalues above zero). It is SPD — the gold standard from Section B.8.
+    </p>
+  </div>
+
+  <h4>Worked Example: Same Grid, Same Hot Spot</h4>
+
+  <p>
+    With $D = 1$, $\Delta t = 0.05$, the matrix $A = I - 0.05\,L$ for our $3 \times 3$ grid is:
+  </p>
+
+  $$A = \begin{pmatrix}
+    1.1 & -0.05 & . & -0.05 & . & . & . & . & . \\
+    -0.05 & 1.15 & -0.05 & . & -0.05 & . & . & . & . \\
+    . & -0.05 & 1.1 & . & . & -0.05 & . & . & . \\
+    -0.05 & . & . & 1.15 & -0.05 & . & -0.05 & . & . \\
+    . & -0.05 & . & -0.05 & 1.2 & -0.05 & . & -0.05 & . \\
+    . & . & -0.05 & . & -0.05 & 1.15 & . & . & -0.05 \\
+    . & . & . & -0.05 & . & . & 1.1 & -0.05 & . \\
+    . & . & . & . & -0.05 & . & -0.05 & 1.15 & -0.05 \\
+    . & . & . & . & . & -0.05 & . & -0.05 & 1.1
+  \end{pmatrix}$$
+
+  <p>
+    Solving $A\,\mathbf{u}^1 = \mathbf{u}^0$ (with $\mathbf{u}^0 = [0,0,0,0,9,0,0,0,0]^T$) gives:
+  </p>
+
+  $$\mathbf{u}^1 \approx [\,0.016,\;\; 0.405,\;\; 0.016,\;\; 0.405,\;\; 7.316,\;\; 0.405,\;\; 0.016,\;\; 0.405,\;\; 0.016\,]^T$$
+
+  <p>
+    Compare with Forward Euler: the center value is 7.32 vs. 7.20, and the corners now receive a tiny amount of heat (0.016) through the implicit coupling. The result is similar but computed fundamentally differently — by solving a system rather than multiplying a matrix. The payoff: Backward Euler is <strong>unconditionally stable</strong>. We could use $\Delta t = 0.5$ or $\Delta t = 100$ without blowup.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.6 &ensp; Crank-Nicolson: Second-Order Accuracy</h3>
+
+  <p>
+    Forward Euler (first-order, explicit) and Backward Euler (first-order, implicit) sit at opposite ends of a tradeoff. Can we get the best of both? <strong>Crank-Nicolson</strong> averages them:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.7)</span>
-    $$\lambda_k^{\text{DST}} = \frac{2}{\Delta x^2}\left(\cos\!\left(\frac{\pi k}{N+1}\right) - 1\right), \qquad k = 1, 2, \ldots, N$$
+    $$\left(I - \tfrac{\Delta t}{2}\,D\,L\right)\mathbf{u}^{n+1} = \left(I + \tfrac{\Delta t}{2}\,D\,L\right)\mathbf{u}^n$$
   </div>
 
   <p>
-    Notice the subtle difference: the denominator is $N+1$ instead of $N$, and the index starts at $k=1$. There is no zero eigenvalue — Dirichlet BCs pin the boundary values, removing the constant mode from the solution space. This means the Laplacian matrix is non-singular (invertible) under Dirichlet BCs, which simplifies the spectral solve: no special handling of a null space is needed.
+    Still $A\mathbf{x} = \mathbf{b}$, but now both sides involve matrix operations. The left-hand matrix is SPD; the right-hand side requires one additional SpMV. The reward: <strong>second-order accuracy in time</strong> while remaining unconditionally stable.
   </p>
 
-  <h4>The 2D Extension: Products of Basis Functions</h4>
+  <h4>Comparison on the 3×3 Grid</h4>
 
   <p>
-    On a 2D grid ($N_x \times N_y$), the basis functions are <em>products</em> of 1D basis functions, one for each spatial direction. Which product you use depends on the boundary condition <em>in that direction</em>:
+    All three methods, same problem, $\Delta t = 0.05$:
   </p>
 
   <table>
-    <tr><th>BC on $x$-boundaries</th><th>BC on $y$-boundaries</th><th>Basis function</th><th>Transform</th></tr>
-    <tr><td>Neumann</td><td>Neumann</td><td>$\cos(i\pi x/L_x)\cdot\cos(j\pi y/L_y)$</td><td>DCT in $x$ and $y$</td></tr>
-    <tr><td>Dirichlet</td><td>Dirichlet</td><td>$\sin(i\pi x/L_x)\cdot\sin(j\pi y/L_y)$</td><td>DST in $x$ and $y$</td></tr>
-    <tr><td>Neumann</td><td>Dirichlet</td><td>$\cos(i\pi x/L_x)\cdot\sin(j\pi y/L_y)$</td><td>DCT in $x$, DST in $y$</td></tr>
-    <tr><td>Dirichlet</td><td>Neumann</td><td>$\sin(i\pi x/L_x)\cdot\cos(j\pi y/L_y)$</td><td>DST in $x$, DCT in $y$</td></tr>
+    <tr><th>Node</th><th>Forward Euler</th><th>Backward Euler</th><th>Crank-Nicolson</th></tr>
+    <tr><td>Center (4)</td><td>7.200</td><td>7.316</td><td>7.257</td></tr>
+    <tr><td>Edge (1,3,5,7)</td><td>0.450</td><td>0.405</td><td>0.428</td></tr>
+    <tr><td>Corner (0,2,6,8)</td><td>0.000</td><td>0.016</td><td>0.007</td></tr>
+    <tr><td>Accuracy</td><td>$O(\Delta t)$</td><td>$O(\Delta t)$</td><td>$O(\Delta t^2)$</td></tr>
+    <tr><td>Stability</td><td>CFL restricted</td><td>Unconditional</td><td>Unconditional</td></tr>
+    <tr><td>Cost/step</td><td>1 SpMV</td><td>solve $A\mathbf{x}=\mathbf{b}$</td><td>1 SpMV + solve $A\mathbf{x}=\mathbf{b}$</td></tr>
   </table>
 
   <p>
-    The 2D eigenvalues are simply the sum of the 1D eigenvalues from each direction:
+    Crank-Nicolson sits between FE and BE at each node — this is exactly what "averaging" means geometrically. The same pattern extends to <strong>BDF2</strong> and other implicit methods: each produces a system $(aI - bDL)\,\mathbf{u}^{n+1} = \text{known}$, differing only in the constants $a,b$. Chapters 10 and 11 develop all these methods for cardiac simulation.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.7 &ensp; The Lax Equivalence Theorem</h3>
+
+  <p>
+    We have now seen three methods. Before adding more, a powerful theorem ties the theory together. Every numerical scheme must have three properties:
+  </p>
+
+  <ul>
+    <li><strong>Consistency</strong>: As $\Delta x, \Delta t \to 0$, the discrete scheme approaches the continuous PDE. (Truncation error vanishes.)</li>
+    <li><strong>Stability</strong>: Errors do not grow unboundedly. (Amplification factor controlled.)</li>
+    <li><strong>Convergence</strong>: The numerical solution approaches the true solution.</li>
+  </ul>
+
+  <div class="insight insight-math">
+    <p>
+      <strong>Lax Equivalence Theorem (1956):</strong> For a consistent linear scheme, <em>stability is equivalent to convergence.</em>
+    </p>
+    <p>
+      Verify consistency (check truncation error, Section C.2) and stability (check CFL, Section C.4), and convergence is guaranteed. This is the theoretical foundation for Chapters 10 and 11.
+    </p>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.8 &ensp; Stiffness and Operator Splitting</h3>
+
+  <p>
+    A system is <strong>stiff</strong> when it contains widely separated time scales — some components change very fast, others very slowly. Cardiac electrophysiology is inherently stiff. During the upstroke, sodium channels open in $\sim$1 ms, changing voltage by 100 mV. During the plateau, voltage changes by a few mV over 200 ms.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Stiffness is "rush hour traffic."</strong> A highway where some cars travel at 200 km/h and others at 2 km/h. A simulation using one $\Delta t$ for both is like setting the speed limit for the fastest car — the slow ones barely move per step. <strong>Operator splitting</strong> is separate lanes: treat the fast dynamics (ionic currents) with a small step, and the slow dynamics (diffusion) with a larger step.
+    </p>
+  </div>
+
+  <h4>The Idea: Divide and Conquer</h4>
+
+  <p>
+    Instead of solving $\partial u/\partial t = \mathcal{D}(u) + \mathcal{R}(u)$ (diffusion + reaction) all at once, split each time step into sub-problems:
+  </p>
+
+  <p><strong>Godunov (Lie) splitting</strong> — first order:</p>
+
+  <div class="equation-block" style="text-align:left; padding:0.8em; background:#f8f8f8; border-left:3px solid #666;">
+    1. &ensp; <strong>Reaction</strong>: Solve $\partial u/\partial t = \mathcal{R}(u)$ for one full step $\Delta t$ → gives $u^*$<br>
+    2. &ensp; <strong>Diffusion</strong>: Solve $\partial u/\partial t = \mathcal{D}(u)$ for one full step $\Delta t$, starting from $u^*$ → gives $u^{n+1}$
+  </div>
+
+  <p><strong>Strang splitting</strong> — second order:</p>
+
+  <div class="equation-block" style="text-align:left; padding:0.8em; background:#f8f8f8; border-left:3px solid #666;">
+    1. &ensp; <strong>Half diffusion</strong>: Solve $\partial u/\partial t = \mathcal{D}(u)$ for $\Delta t/2$ → gives $u^*$<br>
+    2. &ensp; <strong>Full reaction</strong>: Solve $\partial u/\partial t = \mathcal{R}(u)$ for $\Delta t$, starting from $u^*$ → gives $u^{**}$<br>
+    3. &ensp; <strong>Half diffusion</strong>: Solve $\partial u/\partial t = \mathcal{D}(u)$ for $\Delta t/2$, starting from $u^{**}$ → gives $u^{n+1}$
+  </div>
+
+  <h4>Why This Is Powerful</h4>
+
+  <p>
+    The <strong>reaction sub-problem</strong> $\mathcal{R}(u)$ is a system of ODEs at each grid point independently — no spatial coupling, embarrassingly parallel. On our 3×3 grid, this means solving 9 independent ODE systems (one per node), each handling its own ion channel dynamics. Use Rush-Larsen or explicit methods (Chapter 9).
+  </p>
+
+  <p>
+    The <strong>diffusion sub-problem</strong> $\mathcal{D}(u)$ is a linear PDE with no reaction stiffness. It produces exactly the $A\mathbf{x} = \mathbf{b}$ systems from Sections C.5–C.6. The matrix $A$ is SPD, sparse, and the same at every step — we can precompute and reuse.
+  </p>
+
+  <p>
+    Each sub-problem is much easier than the combined system. Chapter 9 develops operator splitting in full detail for cardiac simulation.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.9 &ensp; Solving $A\mathbf{x} = \mathbf{b}$: Three Families</h3>
+
+  <p>
+    Sections C.5–C.6 showed that implicit time-stepping requires solving a linear system at every step. How do we actually solve it? There are three families of methods, each with distinct strengths:
+  </p>
+
+  <table>
+    <tr><th></th><th>Direct</th><th>Spectral</th><th>Iterative</th></tr>
+    <tr><td>Idea</td><td>Factor $A = LL^T$</td><td>Change to eigenbasis</td><td>Improve a guess</td></tr>
+    <tr><td>Cost</td><td>$O(N^{3/2})$ for 2D sparse</td><td>$O(N\log N)$</td><td>$O(kN)$, $k \ll N$</td></tr>
+    <tr><td>Memory</td><td>Large (fill-in)</td><td>$O(N)$</td><td>$O(N)$</td></tr>
+    <tr><td>Requirements</td><td>None</td><td>Structured grid + uniform BCs</td><td>SPD for CG</td></tr>
+    <tr><td>GPU-friendly</td><td>No (sequential)</td><td>Yes (FFT)</td><td>Yes (SpMV)</td></tr>
+  </table>
+
+  <p>
+    For the large sparse systems of cardiac simulation ($N = 10^4$ to $10^6$), iterative and spectral methods dominate. We do not need the exact solution — only one accurate enough that time-stepping error dominates. Sections C.10–C.14 develop each approach.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.10 &ensp; Transform Methods: Spectral Solvers</h3>
+
+  <p>
+    Imagine listening to an orchestra — violins, cellos, flutes all at once. Your ear receives a single pressure wave, but your brain separates it into individual pitches. A <strong>transform</strong> does the same to a vector: re-expresses it in a new basis where the problem becomes simpler.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The discrete Laplacian has known eigenvectors — sines and cosines.</strong> In the eigenvector basis, the matrix becomes diagonal (Section B.7). The system $A\mathbf{x} = \mathbf{b}$ becomes $N$ independent scalar divisions. No iteration, no factorization — just divide.
+    </p>
+  </div>
+
+  <h4>Choosing the Right Basis</h4>
+
+  <p>
+    <strong>Cosines → Neumann BCs.</strong> The functions $\cos(k\pi x/L)$ have zero derivative at both endpoints — they automatically satisfy the zero-flux boundary condition. The <strong>Discrete Cosine Transform (DCT)</strong> decomposes a vector into these modes.
+  </p>
+
+  <p>
+    <strong>Sines → Dirichlet BCs.</strong> The functions $\sin(k\pi x/L)$ are zero at both endpoints — they automatically satisfy fixed-value boundary conditions. The <strong>Discrete Sine Transform (DST)</strong> decomposes a vector into these modes.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>The basis function <em>is</em> the boundary condition.</strong> Cosines have flat endpoints (zero slope) → Neumann. Sines pass through zero → Dirichlet. No ghost nodes, no special boundary treatment.
+    </p>
+  </div>
+
+  <h4>Eigenvalues</h4>
+
+  <p>
+    The 1D Neumann eigenvalues come from equation (C.5) with one dimension. For Dirichlet:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.8)</span>
-    $$\lambda_{i,j} = \lambda_i^{(x)} + \lambda_j^{(y)}$$
+    $$\lambda_k^{\text{DST}} = \frac{2}{\Delta x^2}\left(\cos\!\frac{\pi k}{N+1} - 1\right), \qquad k = 1, \ldots, N$$
   </div>
 
   <p>
-    where $\lambda_i^{(x)}$ and $\lambda_j^{(y)}$ are the 1D eigenvalues from equation (C.6) or (C.7), depending on the boundary condition in that direction.
+    The Neumann eigenvalues include $\lambda_0 = 0$ (the null space — a constant is unchanged by the Laplacian). The Dirichlet eigenvalues have no zero eigenvalue — the boundary condition pins the solution. In 2D, eigenvalues are sums of 1D eigenvalues:
   </p>
 
-  <h4>When Can DCT and DST Be Combined?</h4>
+  <div class="equation-block">
+    <span class="equation-label">(C.9)</span>
+    $$\lambda_{p,q} = \lambda_p^{(x)} + \lambda_q^{(y)}$$
+  </div>
+
+  <h4>The Algorithm</h4>
 
   <p>
-    This is a question that often trips up newcomers. The answer is straightforward once you understand the basis function structure:
+    To solve $(I - \Delta t\,D\,L)\,\mathbf{u}^{n+1} = \mathbf{u}^n$:
+  </p>
+
+  <ol>
+    <li><strong>Forward transform</strong>: Decompose $\mathbf{u}^n$ into spectral coefficients $\hat{u}_k$ via DCT or DST.</li>
+    <li><strong>Divide</strong>: $\hat{u}_k^{n+1} = \hat{u}_k^n \;/\; (1 - \Delta t\,D\,\lambda_k)$.</li>
+    <li><strong>Inverse transform</strong>: Recover $\mathbf{u}^{n+1}$ from $\hat{u}_k^{n+1}$.</li>
+  </ol>
+
+  <p>
+    The transforms cost $O(N \log N)$ via FFT. The division is $O(N)$. Total: $O(N \log N)$ per time step — faster than any iterative solver. In 2D, apply the 1D transform along each axis separately (the transforms are separable).
+  </p>
+
+  <h4>Worked Example: 1D Neumann, $N = 4$</h4>
+
+  <p>
+    Rod with $N = 4$ points, $\Delta x = 1$, $D = 1$, Neumann BCs. Initial: $\mathbf{u} = [4,\, 2,\, 1,\, 3]^T$. One Backward Euler step with $\Delta t = 0.1$.
+  </p>
+
+  <p>
+    <strong>Eigenvalues</strong> from (C.5): $\lambda_0 = 0$, $\lambda_1 \approx -0.586$, $\lambda_2 = -2$, $\lambda_3 \approx -3.414$.
+  </p>
+
+  <table>
+    <tr><th>$k$</th><th>$\hat{u}_k$ (DCT)</th><th>$1 - 0.1\lambda_k$</th><th>$\hat{u}_k^{n+1}$ (divide)</th></tr>
+    <tr><td>0</td><td>5.000</td><td>1.000</td><td>5.000</td></tr>
+    <tr><td>1</td><td>1.577</td><td>1.059</td><td>1.490</td></tr>
+    <tr><td>2</td><td>0.500</td><td>1.200</td><td>0.417</td></tr>
+    <tr><td>3</td><td>$-0.224$</td><td>1.341</td><td>$-0.167$</td></tr>
+  </table>
+
+  <p>
+    Inverse DCT gives $\mathbf{u}^{n+1}$. Higher modes are damped more — exactly what diffusion does. The mean ($k = 0$) is preserved because Neumann BCs conserve total heat.
   </p>
 
   <div class="insight insight-warning">
     <p>
-      <strong>DCT and DST can be combined when different boundary conditions apply to different spatial axes.</strong> You use a cosine transform along any axis where Neumann BCs hold, and a sine transform along any axis where Dirichlet BCs hold. The transforms are applied independently, dimension by dimension.
-    </p>
-    <p>
-      What you <em>cannot</em> do is mix boundary conditions on the <em>same</em> axis with a pure spectral method. If one end of the $x$-axis has Neumann and the other has Dirichlet, neither pure cosines nor pure sines will satisfy both conditions simultaneously. In that case, you need a different approach — such as a "quarter-wave" transform (rarely used in practice) or simply falling back to an iterative solver like PCG (Chapter 15, Section 15.1).
-    </p>
-  </div>
-
-  <h4>Worked Example: 1D Neumann Heat Equation via DCT</h4>
-
-  <p>
-    To make all of this concrete, let us solve a simple 1D diffusion problem using the DCT. Consider a rod with $N = 4$ grid points, spacing $\Delta x = 1$, diffusion coefficient $D = 1$, and Neumann BCs at both ends. The initial temperature profile is $u = [4,\, 2,\, 1,\, 3]$.
-  </p>
-
-  <p>
-    <strong>Step 1: Compute the eigenvalues.</strong> Using equation (C.6) with $N = 4$ and $\Delta x = 1$:
-  </p>
-
-  <table>
-    <tr><th>$k$</th><th>$\cos(\pi k/4)$</th><th>$\lambda_k = 2(\cos(\pi k/4) - 1)$</th></tr>
-    <tr><td>0</td><td>1</td><td>$0$</td></tr>
-    <tr><td>1</td><td>$\cos(\pi/4) \approx 0.707$</td><td>$\approx -0.586$</td></tr>
-    <tr><td>2</td><td>$\cos(\pi/2) = 0$</td><td>$-2$</td></tr>
-    <tr><td>3</td><td>$\cos(3\pi/4) \approx -0.707$</td><td>$\approx -3.414$</td></tr>
-  </table>
-
-  <p>
-    <strong>Step 2: Forward DCT.</strong> Transform $u = [4, 2, 1, 3]$ into frequency space. The DCT (type II, orthonormal) gives: $\hat{u} = [5.0,\; 1.577,\; 0.5,\; -0.224]$ (values rounded).
-  </p>
-
-  <p>
-    <strong>Step 3: Solve in spectral space.</strong> Suppose we want to solve the implicit (BDF1) equation $u^{n+1} - \Delta t\,D\,\Delta u^{n+1} = u^n$ with $\Delta t = 0.1$. In spectral space, for each mode $k$:
-  </p>
-
-  $$\hat{u}_k^{n+1} = \frac{\hat{u}_k^n}{1 - \Delta t \cdot D \cdot \lambda_k}$$
-
-  <table>
-    <tr><th>$k$</th><th>Denominator $1 - 0.1\lambda_k$</th><th>$\hat{u}_k^{n+1}$</th></tr>
-    <tr><td>0</td><td>1.000</td><td>5.000</td></tr>
-    <tr><td>1</td><td>1.059</td><td>1.490</td></tr>
-    <tr><td>2</td><td>1.200</td><td>0.417</td></tr>
-    <tr><td>3</td><td>1.341</td><td>$-0.167$</td></tr>
-  </table>
-
-  <p>
-    <strong>Step 4: Inverse DCT.</strong> Transform $\hat{u}^{n+1}$ back to physical space to get $u^{n+1}$. The higher modes ($k = 2, 3$) have been damped more than the lower modes — exactly what diffusion should do. The mean ($k = 0$) is preserved, because Neumann BCs conserve total heat.
-  </p>
-
-  <p>
-    That is the entire algorithm. No matrix assembly, no iterative convergence loop. The cost per time step is dominated by two DCTs: $O(N \log N)$. For the 2D cardiac grids of this textbook, the same procedure applies dimension by dimension, as described in Chapter 15, Section 15.3.
-  </p>
-
-  <div class="insight insight-engine">
-    <p>
-      <strong>Engine connection.</strong> The spectral solver in <code>linear_solver/spectral.py</code> implements exactly this algorithm. It pre-computes the 2D eigenvalue grid $\lambda_{i,j}$ using equation (C.8), then uses <code>torch.fft.dctn</code> / <code>torch.fft.idctn</code> for the forward and inverse transforms. The eigenvalues are cached after the first solve and reused at every subsequent time step — a single $O(N)$ setup cost for unlimited $O(N \log N)$ solves.
+      <strong>When spectral methods fail.</strong> They require a <strong>structured grid</strong> and <strong>uniform BCs per axis</strong>. On irregular geometries, unstructured meshes, or mixed BCs, the Laplacian does not have known eigenvectors. Fall back to iterative methods. Chapter 15 describes the three-tier automatic selection used in Engine V1.
     </p>
   </div>
 
 
-  <!-- ────────────────────────────────────────────────────────────── -->
-  <h3>C.9 &ensp; Iterative Methods: Conjugate Gradient and Chebyshev</h3>
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.11 &ensp; Introduction to Iterative Methods</h3>
 
   <p>
-    Imagine you are blindfolded in a hilly landscape, trying to find the lowest valley. You cannot see the terrain, but you can feel the slope beneath your feet. The obvious strategy: always step downhill. If the slope is steep, take a big step; if it is gentle, take a small step. Eventually, you will reach a valley. This is <strong>gradient descent</strong> — and it is the simplest iterative method for solving linear systems.
+    When spectral methods cannot be used — irregular geometry, anisotropic conductivity, mixed boundary conditions — we need a general-purpose approach. <strong>Iterative methods</strong> start from an initial guess $\mathbf{x}_0$ and improve it step by step:
+  </p>
+
+  <div class="equation-block" style="text-align:left; padding:0.8em; background:#f8f8f8; border-left:3px solid #666;">
+    <strong>The iterative loop:</strong><br>
+    1. &ensp; Compute residual: $\mathbf{r}_k = \mathbf{b} - A\mathbf{x}_k$<br>
+    2. &ensp; If $\|\mathbf{r}_k\|/\|\mathbf{b}\| < \varepsilon$: stop (converged)<br>
+    3. &ensp; Compute an update direction $\mathbf{p}_k$ and step size $\alpha_k$<br>
+    4. &ensp; $\mathbf{x}_{k+1} = \mathbf{x}_k + \alpha_k\,\mathbf{p}_k$<br>
+    5. &ensp; Go to 1
+  </div>
+
+  <p>
+    Each iteration costs $O(N)$ — one SpMV to compute $A\mathbf{p}$. The methods differ in <em>how they choose the direction $\mathbf{p}_k$</em>. A good choice converges in few iterations; a bad one zigzags forever.
+  </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Warm-starting is free lunch.</strong> In time-stepping, we solve $A\mathbf{x} = \mathbf{b}$ at every step, and the solution changes only slightly between steps. Using the previous step's solution as $\mathbf{x}_0$ starts us close to the answer — convergence in 3–8 iterations instead of 20–50.
+    </p>
+  </div>
+
+  <p>
+    The three iterative methods below form a progression: CG is the foundation, PCG adds preconditioning for faster convergence, and Chebyshev removes global communication for GPU scalability.
+  </p>
+
+  <h4>The Running Example for Iterative Methods</h4>
+
+  <p>
+    For Sections C.12–C.14, we switch to a <strong>4-point 1D rod</strong> ($\Delta x = 1$, $D = 1$, Neumann BCs) so we can trace every number by hand. The Backward Euler system with $\Delta t = 0.1$ is:
+  </p>
+
+  $$A = \begin{pmatrix} 1.1 & -0.1 & 0 & 0 \\ -0.1 & 1.2 & -0.1 & 0 \\ 0 & -0.1 & 1.2 & -0.1 \\ 0 & 0 & -0.1 & 1.1\end{pmatrix}, \qquad \mathbf{b} = \begin{pmatrix} 4 \\ 2 \\ 1 \\ 3 \end{pmatrix}$$
+
+  <p>
+    $A$ is SPD and tridiagonal. The exact solution is $\mathbf{x}^* \approx [3.82,\; 2.08,\; 1.28,\; 2.82]^T$.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.12 &ensp; Conjugate Gradient (CG)</h3>
+
+  <p>
+    Imagine you are blindfolded in a hilly landscape, trying to find the lowest valley. You can feel the slope beneath your feet. The obvious strategy: always walk downhill. This is <strong>gradient descent</strong>. But in a long, narrow valley (an ill-conditioned problem — Section B.9), gradient descent zigzags back and forth, making painfully slow progress.
   </p>
 
   <p>
-    But gradient descent has a problem. In a long, narrow valley (imagine a bowling-lane-shaped landscape), it zigzags back and forth across the valley floor, making slow progress toward the minimum. Each step corrects for one direction but overshoots in another. For a system with $N$ unknowns, this can require $O(N)$ iterations — not much better than a direct solve.
-  </p>
-
-  <p>
-    The <strong>conjugate gradient (CG)</strong> method fixes this problem with a beautiful geometric idea: instead of always stepping in the steepest direction, choose search directions that are <em>conjugate</em> (orthogonal with respect to the matrix $A$). Each conjugate direction eliminates the error along one dimension of the problem, guaranteeing that the exact solution is reached in at most $N$ steps. In practice, for well-conditioned systems, far fewer than $N$ steps are needed.
-  </p>
-
-  <h4>Why Iterative?</h4>
-
-  <p>
-    To solve $A\mathbf{x} = \mathbf{b}$ where $A$ is an $N \times N$ matrix, the most straightforward approach is a direct method: Gaussian elimination (LU factorization). This always works, but it costs $O(N^3)$ operations and $O(N^2)$ memory. For the 2D cardiac grids in this textbook, $N$ can easily be $10^5$ to $10^6$ (a $300 \times 300$ grid has 90,000 nodes). A direct solve on 90,000 unknowns would require roughly $10^{15}$ floating-point operations — completely impractical.
-  </p>
-
-  <p>
-    Iterative methods take a different approach. Starting from an initial guess $\mathbf{x}_0$ (often zero, or the solution from the previous time step), they generate a sequence $\mathbf{x}_0, \mathbf{x}_1, \mathbf{x}_2, \ldots$ that converges to the true solution. Each iteration costs $O(N)$ operations (dominated by one sparse matrix-vector multiply), and convergence typically requires far fewer than $N$ iterations. The total cost is $O(k \cdot N)$ where $k$ is the number of iterations — and for cardiac simulation with warm starting, $k$ is often as small as 3–8.
+    The <strong>conjugate gradient</strong> method fixes this with a geometric idea from Section B.12: choose search directions that are <em>$A$-conjugate</em> (orthogonal with respect to the bowl shape defined by $A$). Each conjugate direction eliminates error along one dimension permanently, guaranteeing convergence in at most $N$ steps.
   </p>
 
   <h4>The Energy Minimization Viewpoint</h4>
 
   <p>
-    When $A$ is <strong>symmetric positive-definite (SPD)</strong> — meaning $A = A^T$ and $\mathbf{x}^T A \mathbf{x} > 0$ for all nonzero $\mathbf{x}$ — solving $A\mathbf{x} = \mathbf{b}$ is equivalent to minimizing the <em>energy functional</em>:
-  </p>
-
-  <div class="equation-block">
-    <span class="equation-label">(C.9)</span>
-    $$E(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T A\,\mathbf{x} - \mathbf{b}^T\mathbf{x}$$
-  </div>
-
-  <p>
-    Taking the gradient (in the multivariable calculus sense) and setting it to zero gives $\nabla E = A\mathbf{x} - \mathbf{b} = 0$, which is exactly $A\mathbf{x} = \mathbf{b}$. The function $E(\mathbf{x})$ defines a paraboloid (a bowl shape) in $N$-dimensional space, and the solution $\mathbf{x}^*$ sits at the bottom.
-  </p>
-
-  <p>
-    The gradient at any point $\mathbf{x}$ is $\nabla E = A\mathbf{x} - \mathbf{b}$. But this is exactly the <strong>negative residual</strong>: $-\mathbf{r}$, where $\mathbf{r} = \mathbf{b} - A\mathbf{x}$ is the residual (how far we are from satisfying the equation). So the steepest-descent direction is the residual $\mathbf{r}$ — and the residual tells us both the direction and the magnitude of the error.
-  </p>
-
-  <h4>From Gradient Descent to Conjugate Gradient</h4>
-
-  <p>
-    <strong>Gradient descent</strong> takes each step in the direction of steepest descent (the residual $\mathbf{r}$), choosing the step size $\alpha$ that minimizes $E$ along that line. This works but zigzags.
-  </p>
-
-  <p>
-    <strong>Conjugate gradient</strong> builds a sequence of search directions $\mathbf{p}_0, \mathbf{p}_1, \mathbf{p}_2, \ldots$ that are <em>$A$-conjugate</em>: $\mathbf{p}_i^T A \mathbf{p}_j = 0$ for $i \neq j$. This means each direction is orthogonal to all previous directions <em>with respect to the geometry defined by $A$</em>. The key property is that once you minimize along direction $\mathbf{p}_i$, you never need to revisit it — the error along $\mathbf{p}_i$ stays zero in all subsequent iterations. This is why CG converges in at most $N$ steps (one per dimension of the problem).
-  </p>
-
-  <p>
-    The beautiful trick of CG is that these conjugate directions can be constructed cheaply. Each new direction needs only the current residual and the previous direction — no storage of the full history:
-  </p>
-
-  $$\mathbf{p}_{k+1} = \mathbf{r}_{k+1} + \beta_k\,\mathbf{p}_k$$
-
-  <p>
-    where $\beta_k$ is a scalar chosen to ensure $A$-conjugacy. The complete algorithm has remarkably few operations per iteration.
-  </p>
-
-  <h4>The PCG Algorithm</h4>
-
-  <p>
-    In practice, CG is almost always used with <strong>preconditioning</strong>. A preconditioner $M$ is an approximation to $A$ that is cheap to invert. Instead of solving $A\mathbf{x} = \mathbf{b}$, we effectively solve $M^{-1}A\mathbf{x} = M^{-1}\mathbf{b}$. If $M \approx A$, then $M^{-1}A \approx I$ (the identity), and the system is nearly trivial.
-  </p>
-
-  <p>
-    The simplest preconditioner is <strong>Jacobi (diagonal) preconditioning</strong>: $M = \text{diag}(A)$. This scales each equation by the inverse of its diagonal entry, making all diagonal entries equal to 1. It is nearly free to compute and often reduces the iteration count by a factor of 2–5.
-  </p>
-
-  <p>
-    The Preconditioned Conjugate Gradient (PCG) algorithm, written step by step:
-  </p>
-
-  <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
-    <strong>Algorithm C.1: PCG with Jacobi preconditioning</strong><br><br>
-    <strong>Input</strong>: SPD matrix $A$, right-hand side $\mathbf{b}$, initial guess $\mathbf{x}_0$, tolerance $\varepsilon$<br>
-    <strong>Setup</strong>: $M^{-1} = 1/\text{diag}(A)$ &emsp;(Jacobi preconditioner)<br><br>
-    1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$ &emsp;(initial residual)<br>
-    2. &ensp; $\mathbf{z}_0 = M^{-1}\mathbf{r}_0$ &emsp;(preconditioned residual)<br>
-    3. &ensp; $\mathbf{p}_0 = \mathbf{z}_0$ &emsp;(initial search direction)<br>
-    4. &ensp; <strong>for</strong> $k = 0, 1, 2, \ldots$<br>
-    5. &emsp;&emsp; $\alpha_k = \dfrac{\mathbf{r}_k^T \mathbf{z}_k}{\mathbf{p}_k^T A\mathbf{p}_k}$ &emsp;(step size)<br><br>
-    6. &emsp;&emsp; $\mathbf{x}_{k+1} = \mathbf{x}_k + \alpha_k\,\mathbf{p}_k$ &emsp;(update solution)<br>
-    7. &emsp;&emsp; $\mathbf{r}_{k+1} = \mathbf{r}_k - \alpha_k\,A\mathbf{p}_k$ &emsp;(update residual)<br>
-    8. &emsp;&emsp; <strong>if</strong> $\|\mathbf{r}_{k+1}\|/\|\mathbf{b}\| < \varepsilon$: <strong>stop</strong> &emsp;(converged)<br>
-    9. &emsp;&emsp; $\mathbf{z}_{k+1} = M^{-1}\mathbf{r}_{k+1}$ &emsp;(precondition)<br>
-    10. &emsp;&ensp; $\beta_k = \dfrac{\mathbf{r}_{k+1}^T \mathbf{z}_{k+1}}{\mathbf{r}_k^T \mathbf{z}_k}$ &emsp;(conjugacy parameter)<br><br>
-    11. &emsp;&ensp; $\mathbf{p}_{k+1} = \mathbf{z}_{k+1} + \beta_k\,\mathbf{p}_k$ &emsp;(new search direction)<br>
-    12. &ensp; <strong>end for</strong>
-  </div>
-
-  <p>
-    Each iteration requires exactly one matrix-vector product ($A\mathbf{p}_k$ in line 5, reused in line 7), two inner products ($\mathbf{r}^T\mathbf{z}$ and $\mathbf{p}^T A\mathbf{p}$), and a few vector additions and scalings. On a GPU, the matrix-vector product dominates; the inner products require a global reduction (summing across all threads), which is the primary synchronization cost.
-  </p>
-
-  <h4>Convergence: How Many Iterations?</h4>
-
-  <p>
-    The convergence rate of CG depends on the <strong>condition number</strong> $\kappa = \lambda_{\max}/\lambda_{\min}$ (Section B.9). The error after $k$ iterations satisfies:
+    When $A$ is SPD, solving $A\mathbf{x} = \mathbf{b}$ is equivalent to minimizing:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.10)</span>
-    $$\|\mathbf{x}_k - \mathbf{x}^*\|_A \leq 2\left(\frac{\sqrt{\kappa} - 1}{\sqrt{\kappa} + 1}\right)^k \|\mathbf{x}_0 - \mathbf{x}^*\|_A$$
+    $$E(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T A\,\mathbf{x} - \mathbf{b}^T\mathbf{x}$$
   </div>
 
   <p>
-    where $\|\cdot\|_A$ denotes the $A$-norm. In practice, this means CG needs roughly $O(\sqrt{\kappa})$ iterations to reduce the error by a fixed factor. For the discrete Laplacian on an $N$-point grid, $\kappa \propto N$ (or $\propto 1/\Delta x^2$), so unpreconditioned CG requires $O(\sqrt{N})$ iterations. With Jacobi preconditioning, $\kappa$ is reduced modestly; with more powerful preconditioners (like AMG), $\kappa$ can be brought close to 1, making convergence nearly mesh-independent.
+    The gradient is $\nabla E = A\mathbf{x} - \mathbf{b} = -\mathbf{r}$, where $\mathbf{r} = \mathbf{b} - A\mathbf{x}$ is the <strong>residual</strong>. CG builds conjugate search directions cheaply — each new direction needs only the current residual and the previous direction.
   </p>
 
-  <h4>Chebyshev Iteration: When You Know the Eigenvalue Bounds</h4>
+  <h4>The CG Algorithm</h4>
+
+  <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
+    <strong>Algorithm C.1: Conjugate Gradient</strong><br><br>
+    <strong>Input</strong>: SPD matrix $A$, RHS $\mathbf{b}$, initial guess $\mathbf{x}_0$, tolerance $\varepsilon$<br><br>
+    1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$, &ensp; $\mathbf{p}_0 = \mathbf{r}_0$<br>
+    2. &ensp; <strong>for</strong> $k = 0, 1, 2, \ldots$<br>
+    3. &emsp;&emsp; $\alpha_k = \dfrac{\mathbf{r}_k^T \mathbf{r}_k}{\mathbf{p}_k^T A\mathbf{p}_k}$ &emsp; <em>(step size)</em><br><br>
+    4. &emsp;&emsp; $\mathbf{x}_{k+1} = \mathbf{x}_k + \alpha_k\,\mathbf{p}_k$ &emsp; <em>(update solution)</em><br>
+    5. &emsp;&emsp; $\mathbf{r}_{k+1} = \mathbf{r}_k - \alpha_k\,A\mathbf{p}_k$ &emsp; <em>(update residual)</em><br>
+    6. &emsp;&emsp; <strong>if</strong> $\|\mathbf{r}_{k+1}\|/\|\mathbf{b}\| < \varepsilon$: <strong>stop</strong><br>
+    7. &emsp;&emsp; $\beta_k = \dfrac{\mathbf{r}_{k+1}^T \mathbf{r}_{k+1}}{\mathbf{r}_k^T \mathbf{r}_k}$ &emsp; <em>(conjugacy weight)</em><br><br>
+    8. &emsp;&emsp; $\mathbf{p}_{k+1} = \mathbf{r}_{k+1} + \beta_k\,\mathbf{p}_k$ &emsp; <em>(new search direction)</em><br>
+    9. &ensp; <strong>end for</strong>
+  </div>
 
   <p>
-    The conjugate gradient method adapts to the spectrum of $A$ automatically — it discovers the eigenvalue distribution as it runs. But what if you already <em>know</em> the eigenvalue bounds $\lambda_{\min}$ and $\lambda_{\max}$? Then you can use <strong>Chebyshev iteration</strong>, which achieves similar convergence rates without inner products.
+    Each iteration: one SpMV ($A\mathbf{p}_k$), two inner products ($\mathbf{r}^T\mathbf{r}$ and $\mathbf{p}^T A\mathbf{p}$), and a few vector updates. Cost per iteration: $O(N)$.
+  </p>
+
+  <h4>Worked Example: CG on the 4-Point Rod</h4>
+
+  <p>
+    Start with $\mathbf{x}_0 = [0,\,0,\,0,\,0]^T$ (cold start).
   </p>
 
   <p>
-    The idea is elegant. Chebyshev polynomials $T_k(x)$ have a special property: among all polynomials of degree $k$ that equal 1 at $x = 0$, they have the smallest maximum value on the interval $[-1, 1]$. By mapping the eigenvalue interval $[\lambda_{\min}, \lambda_{\max}]$ to $[-1, 1]$, we can construct an optimal error polynomial that minimizes the error over all eigenvalues simultaneously.
+    <strong>Iteration 1.</strong> $\mathbf{r}_0 = \mathbf{b} = [4,\,2,\,1,\,3]^T$, $\mathbf{p}_0 = \mathbf{r}_0$.
   </p>
 
+  $$A\mathbf{p}_0 = [4.2,\; 1.9,\; 0.7,\; 3.2]^T$$
+
+  $$\alpha_0 = \frac{\mathbf{r}_0^T\mathbf{r}_0}{\mathbf{p}_0^T A\mathbf{p}_0} = \frac{30}{30.9} = 0.971$$
+
+  $$\mathbf{x}_1 = 0.971 \times [4,\,2,\,1,\,3]^T = [3.88,\; 1.94,\; 0.97,\; 2.91]^T$$
+
+  $$\mathbf{r}_1 = \mathbf{r}_0 - 0.971 \times A\mathbf{p}_0 = [-0.08,\; 0.16,\; 0.32,\; -0.11]^T$$
+
   <p>
-    The Chebyshev iteration has a <strong>three-term recurrence</strong>:
+    <strong>Iteration 2.</strong> $\beta_0 = \|\mathbf{r}_1\|^2/\|\mathbf{r}_0\|^2 = 0.144/30 = 0.0048$.
+  </p>
+
+  $$\mathbf{p}_1 = \mathbf{r}_1 + 0.0048\,\mathbf{p}_0 = [-0.06,\; 0.16,\; 0.32,\; -0.09]^T$$
+
+  $$\alpha_1 = 0.84, \qquad \mathbf{x}_2 = [3.83,\; 2.08,\; 1.24,\; 2.84]^T$$
+
+  <p>
+    Convergence summary:
+  </p>
+
+  <table>
+    <tr><th>Iteration</th><th>$\|\mathbf{r}\|/\|\mathbf{b}\|$</th></tr>
+    <tr><td>0</td><td>100%</td></tr>
+    <tr><td>1</td><td>6.9%</td></tr>
+    <tr><td>2</td><td>0.3%</td></tr>
+    <tr><td>3</td><td>$&lt; 0.01\%$</td></tr>
+  </table>
+
+  <p>
+    Three iterations to reach machine-level residual on a 4-point system. CG is guaranteed to converge in at most $N$ steps (in exact arithmetic).
+  </p>
+
+  <h4>Convergence Rate</h4>
+
+  <p>
+    The error after $k$ iterations satisfies:
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(C.11)</span>
-    $$\mathbf{x}_{k+1} = \omega_{k+1}\left(\frac{2}{\gamma}\,M^{-1}\mathbf{r}_k + \mathbf{x}_k - \mathbf{x}_{k-1}\right) + \mathbf{x}_{k-1}$$
+    $$\|\mathbf{x}_k - \mathbf{x}^*\|_A \leq 2\left(\frac{\sqrt{\kappa} - 1}{\sqrt{\kappa} + 1}\right)^k \|\mathbf{x}_0 - \mathbf{x}^*\|_A$$
   </div>
 
   <p>
-    where $\gamma = (\lambda_{\max} + \lambda_{\min})/2$ is the center and $\omega_k$ are iteration-dependent weights derived from the Chebyshev recurrence. The key advantage: <strong>no inner products</strong>. Each iteration is purely local — a matrix-vector product, a preconditioner apply, and vector updates. This makes Chebyshev iteration ideal for GPU execution, where inner products require expensive global reductions.
+    where $\kappa = \lambda_{\max}/\lambda_{\min}$ is the condition number (Section B.9). CG needs $O(\sqrt{\kappa})$ iterations. For the Laplacian, $\kappa \propto N$, so unpreconditioned CG needs $O(\sqrt{N})$ iterations — fine for small problems, too many for $N = 90{,}000$.
+  </p>
+
+  <div class="insight insight-warning">
+    <p>
+      <strong>CG requires $A$ to be SPD.</strong> If $A$ is symmetric but indefinite (both positive and negative eigenvalues), CG breaks down. The full bidomain block system (Chapter 13) is symmetric indefinite — use MINRES or GMRES. But the decoupled sub-problems (Chapter 14) are each SPD, so CG works on them individually.
+    </p>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.13 &ensp; Preconditioned Conjugate Gradient (PCG)</h3>
+
+  <p>
+    CG converges in $O(\sqrt{\kappa})$ iterations. For a fine cardiac mesh with $N = 90{,}000$ nodes, $\kappa \propto N$, so CG needs $\sim 300$ iterations — expensive. The solution: <strong>preconditioning</strong>.
+  </p>
+
+  <h4>The Idea</h4>
+
+  <p>
+    A <strong>preconditioner</strong> $M$ is a matrix that approximates $A$ but is cheap to invert. Instead of solving $A\mathbf{x} = \mathbf{b}$, we solve $M^{-1}A\mathbf{x} = M^{-1}\mathbf{b}$. If $M \approx A$, then $M^{-1}A \approx I$, so $\kappa(M^{-1}A) \approx 1$ — a round bowl instead of a bathtub. CG on the preconditioned system converges in far fewer iterations.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>CG vs. Chebyshev: adaptivity vs. parallelism.</strong> CG adapts to the actual eigenvalue distribution and typically converges faster for clustered spectra. But it requires two inner products per iteration (global synchronization points). Chebyshev needs eigenvalue bounds upfront but has zero global synchronization — every operation is local. For GPU-based cardiac simulation, the no-inner-product property of Chebyshev can outweigh CG's better convergence, especially on multi-GPU systems where synchronization latency is high.
+      <strong>Preconditioning reshapes the bowl.</strong> Recall from Section B.9: an ill-conditioned system looks like an elongated bathtub — gradient descent zigzags across the narrow valley. The preconditioner stretches the bathtub back toward a round bowl, making CG converge in a handful of iterations instead of hundreds.
     </p>
   </div>
 
+  <h4>Jacobi Preconditioning</h4>
+
   <p>
-    In practice, the eigenvalue bounds for Chebyshev are estimated from a few CG iterations (the Lanczos process inherent in CG produces eigenvalue estimates as a byproduct). Engine V1 uses this approach: PCG runs for the first few time steps to estimate the spectrum, then Chebyshev takes over for the remaining thousands of steps.
+    The simplest preconditioner: $M = \text{diag}(A)$. One line of code, $O(N)$ to apply, and it is often enough to halve the iteration count. For our 4-point rod:
   </p>
 
-  <h4>Worked Example: CG on a 5-Node 1D Laplacian</h4>
+  $$M^{-1} = \text{diag}\!\left(\frac{1}{1.1},\; \frac{1}{1.2},\; \frac{1}{1.2},\; \frac{1}{1.1}\right) = \text{diag}(0.909,\; 0.833,\; 0.833,\; 0.909)$$
+
+  <h4>The PCG Algorithm</h4>
+
+  <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
+    <strong>Algorithm C.2: Preconditioned Conjugate Gradient</strong><br><br>
+    <strong>Input</strong>: SPD matrix $A$, RHS $\mathbf{b}$, initial guess $\mathbf{x}_0$, preconditioner $M$, tolerance $\varepsilon$<br><br>
+    1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$, &ensp; $\mathbf{z}_0 = M^{-1}\mathbf{r}_0$, &ensp; $\mathbf{p}_0 = \mathbf{z}_0$<br>
+    2. &ensp; <strong>for</strong> $k = 0, 1, 2, \ldots$<br>
+    3. &emsp;&emsp; $\alpha_k = \dfrac{\mathbf{r}_k^T\mathbf{z}_k}{\mathbf{p}_k^T A\mathbf{p}_k}$<br><br>
+    4. &emsp;&emsp; $\mathbf{x}_{k+1} = \mathbf{x}_k + \alpha_k\,\mathbf{p}_k$<br>
+    5. &emsp;&emsp; $\mathbf{r}_{k+1} = \mathbf{r}_k - \alpha_k\,A\mathbf{p}_k$<br>
+    6. &emsp;&emsp; <strong>if</strong> $\|\mathbf{r}_{k+1}\|/\|\mathbf{b}\| < \varepsilon$: <strong>stop</strong><br>
+    7. &emsp;&emsp; $\mathbf{z}_{k+1} = M^{-1}\mathbf{r}_{k+1}$ &emsp; <em>(apply preconditioner)</em><br>
+    8. &emsp;&emsp; $\beta_k = \dfrac{\mathbf{r}_{k+1}^T\mathbf{z}_{k+1}}{\mathbf{r}_k^T\mathbf{z}_k}$<br><br>
+    9. &emsp;&emsp; $\mathbf{p}_{k+1} = \mathbf{z}_{k+1} + \beta_k\,\mathbf{p}_k$<br>
+    10. &ensp; <strong>end for</strong>
+  </div>
 
   <p>
-    Let us solve a concrete system by hand. Consider the 1D discrete Laplacian on 5 interior nodes with Dirichlet BCs ($u_0 = u_6 = 0$), spacing $\Delta x = 1$:
+    The only difference from CG (Algorithm C.1) is: (a) the preconditioner solve $\mathbf{z} = M^{-1}\mathbf{r}$ at line 7, and (b) the inner products use $\mathbf{z}$ instead of $\mathbf{r}$ for the direction computation. When $M = I$, PCG reduces to CG exactly.
   </p>
 
-  $$A = \begin{pmatrix} 2 & -1 & & & \\ -1 & 2 & -1 & & \\ & -1 & 2 & -1 & \\ & & -1 & 2 & -1 \\ & & & -1 & 2\end{pmatrix}, \qquad \mathbf{b} = \begin{pmatrix}1\\0\\0\\0\\1\end{pmatrix}$$
+  <h4>Cost vs. Benefit</h4>
 
   <p>
-    <strong>Initial guess</strong>: $\mathbf{x}_0 = \mathbf{0}$ (no preconditioning for simplicity, so $M = I$).
+    Each PCG iteration costs slightly more than CG (one extra $M^{-1}$ application). But the iteration count drops:
   </p>
 
-  <p>
-    <strong>Iteration 0</strong>: $\mathbf{r}_0 = \mathbf{b} - A\mathbf{0} = [1, 0, 0, 0, 1]^T$. Set $\mathbf{p}_0 = \mathbf{r}_0$. Compute $A\mathbf{p}_0 = [2, -1, 0, -1, 2]^T$. Then $\alpha_0 = \mathbf{r}_0^T\mathbf{r}_0 / (\mathbf{p}_0^T A\mathbf{p}_0) = 2/6 = 1/3$. Update: $\mathbf{x}_1 = [1/3, 0, 0, 0, 1/3]^T$. New residual: $\mathbf{r}_1 = [1/3, 1/3, 0, 1/3, 1/3]^T$. Compute $\beta_0 = \|\mathbf{r}_1\|^2/\|\mathbf{r}_0\|^2 = (4/9)/2 = 2/9$. New direction: $\mathbf{p}_1 = \mathbf{r}_1 + \frac{2}{9}\mathbf{p}_0$.
-  </p>
+  <table>
+    <tr><th></th><th>CG</th><th>PCG (Jacobi)</th></tr>
+    <tr><td>Iterations on $4 \times 4$ rod</td><td>3</td><td>3 (system too small to benefit)</td></tr>
+    <tr><td>Iterations on $300 \times 300$ mesh</td><td>$\sim 300$</td><td>$\sim 50$</td></tr>
+    <tr><td>Cost per iteration</td><td>1 SpMV + 2 dots</td><td>1 SpMV + 2 dots + 1 diagonal scale</td></tr>
+  </table>
 
   <p>
-    <strong>Iteration 1</strong>: Continuing the same procedure with $\mathbf{p}_1$, we compute $\alpha_1$, update $\mathbf{x}_2$, and so on. After 5 iterations (at most), the exact solution is $\mathbf{x}^* = [1, 1, 1, 1, 1]^T$. In practice, the residual norm drops below $10^{-10}$ after just 3 iterations for this small system.
+    For our tiny 4-point example, preconditioning adds no benefit — the system is already well-conditioned. The payoff appears at scale: on a 90,000-node cardiac mesh, Jacobi preconditioning typically cuts iterations from $O(\sqrt{N})$ to $O(\sqrt{N}/c)$ with $c \approx 3\text{–}5$. More sophisticated preconditioners (incomplete Cholesky, AMG) reduce further.
+  </p>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h3>C.14 &ensp; Chebyshev Iteration</h3>
+
+  <p>
+    CG and PCG have a hidden cost: two <strong>inner products</strong> per iteration (steps 3 and 7/8 in Algorithms C.1/C.2). An inner product $\mathbf{r}^T\mathbf{z}$ requires summing $N$ products across all nodes — a <strong>global synchronization</strong> where every processor must wait for every other processor before continuing. On a GPU with thousands of cores, these synchronization points become the bottleneck.
   </p>
 
   <div class="insight insight-intuition">
     <p>
-      <strong>Warm-starting is free lunch.</strong> In cardiac simulation, we solve a linear system at every time step, and the solution changes only slightly between time steps (the voltage field evolves smoothly). By using the previous time step's solution $\mathbf{x}^{n-1}$ as the initial guess $\mathbf{x}_0$ for the current step, we start very close to the answer. The residual is already small, and CG converges in just a few iterations — often 3–8 instead of 20–50. This is why the PCG solver in Engine V1 has warm starting as its default.
+      <strong>The GPU bottleneck.</strong> A SpMV is embarrassingly parallel — each row of $A$ can be processed independently. But an inner product requires collecting results from all rows into a single number. On a GPU, this "reduce" operation stalls thousands of cores waiting for one sum. Two reduces per iteration × thousands of time steps = significant overhead.
     </p>
   </div>
 
-  <h4>When CG Cannot Be Used</h4>
+  <h4>Chebyshev's Deal</h4>
 
   <p>
-    CG requires the matrix $A$ to be symmetric positive-definite. If $A$ is symmetric but indefinite (has both positive and negative eigenvalues), CG will break down — the step size $\alpha_k$ can become negative or infinite. This is relevant for the bidomain model: the full 2×2 block system of Chapter 13 (equation 13.1) is symmetric but <em>indefinite</em> (it has a saddle-point structure). For such systems, you need a different Krylov method — <strong>MINRES</strong> (for symmetric indefinite) or <strong>GMRES</strong> (for general non-symmetric). However, PCG <em>can</em> be used on individual blocks of the bidomain system (the parabolic and elliptic sub-problems are SPD), and this is the dominant approach in practice (see Chapter 15).
+    <strong>Chebyshev iteration</strong> offers a trade: <em>give me the eigenvalue bounds $\lambda_{\min}$ and $\lambda_{\max}$ of $A$, and I will converge at the same rate as CG with <strong>zero inner products</strong>.</em> The update uses only local operations — SpMV, vector additions, and scalar multiplications:
   </p>
 
-  <div class="insight insight-engine">
+  <div class="equation-block">
+    <span class="equation-label">(C.12)</span>
+    $$\mathbf{x}_{k+1} = \omega_{k+1}\!\left(\frac{2}{\gamma}\,M^{-1}\mathbf{r}_k + \mathbf{x}_k - \mathbf{x}_{k-1}\right) + \mathbf{x}_{k-1}$$
+  </div>
+
+  <p>
+    where $\gamma = (\lambda_{\max} + \lambda_{\min})/2$ is the spectral center and $\omega_k$ are Chebyshev-derived weights computed from a simple recurrence:
+  </p>
+
+  $$\omega_1 = 1, \qquad \omega_2 = \frac{2}{2 - \rho^2}, \qquad \omega_{k+1} = \frac{1}{1 - \rho^2\omega_k/4}$$
+
+  <p>
+    with $\rho = (\lambda_{\max} - \lambda_{\min})/(\lambda_{\max} + \lambda_{\min})$.
+  </p>
+
+  <h4>The Three-Term Recurrence</h4>
+
+  <p>
+    Chebyshev iteration is a <strong>three-term recurrence</strong>: each update uses $\mathbf{x}_k$ and $\mathbf{x}_{k-1}$ (the current and previous iterates). This is what enables zero inner products — the algorithm looks ahead using its knowledge of the eigenvalue bounds rather than adapting to the residual at each step.
+  </p>
+
+  <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
+    <strong>Algorithm C.3: Preconditioned Chebyshev Iteration</strong><br><br>
+    <strong>Input</strong>: SPD matrix $A$, RHS $\mathbf{b}$, initial guess $\mathbf{x}_0$, preconditioner $M$, eigenvalue bounds $\lambda_{\min}, \lambda_{\max}$, iterations $K$<br>
+    <strong>Setup</strong>: $\gamma = (\lambda_{\max} + \lambda_{\min})/2$, &ensp; $\delta = (\lambda_{\max} - \lambda_{\min})/2$<br><br>
+    1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$, &ensp; $\mathbf{x}_1 = \mathbf{x}_0 + (1/\gamma)\,M^{-1}\mathbf{r}_0$, &ensp; $\omega_1 = 1$<br>
+    2. &ensp; <strong>for</strong> $k = 1, 2, \ldots, K-1$<br>
+    3. &emsp;&emsp; $\omega_{k+1} = 1\,/\,(1 - \delta^2\omega_k\,/\,(2\gamma^2))$<br>
+    4. &emsp;&emsp; $\mathbf{r}_k = \mathbf{b} - A\mathbf{x}_k$<br>
+    5. &emsp;&emsp; $\mathbf{x}_{k+1} = \omega_{k+1}\!\left(\tfrac{2}{\gamma}\,M^{-1}\mathbf{r}_k + \mathbf{x}_k - \mathbf{x}_{k-1}\right) + \mathbf{x}_{k-1}$<br>
+    6. &ensp; <strong>end for</strong>
+  </div>
+
+  <p>
+    Every operation is local — no inner products, no global synchronization. This makes Chebyshev iteration <strong>ideal for GPU execution</strong>.
+  </p>
+
+  <h4>The Practical Workflow: CG Then Chebyshev</h4>
+
+  <p>
+    Chebyshev needs eigenvalue bounds, but CG discovers them automatically. The standard approach:
+  </p>
+
+  <ol>
+    <li><strong>First few time steps</strong>: Use PCG. Track the extreme eigenvalue estimates from the CG recurrence coefficients (the Lanczos connection).</li>
+    <li><strong>Remaining time steps</strong>: Switch to Chebyshev using the estimated bounds. Since the matrix $A$ is the same at every step (it depends only on $\Delta t$, $D$, and the mesh), the bounds computed once are valid forever.</li>
+  </ol>
+
+  <h4>Comparison: CG vs. PCG vs. Chebyshev</h4>
+
+  <table>
+    <tr><th></th><th>CG</th><th>PCG</th><th>Chebyshev</th></tr>
+    <tr><td>Inner products/iter</td><td>2</td><td>2</td><td><strong>0</strong></td></tr>
+    <tr><td>SpMV/iter</td><td>1</td><td>1</td><td>1</td></tr>
+    <tr><td>Adapts to spectrum?</td><td>Yes</td><td>Yes</td><td>No (fixed bounds)</td></tr>
+    <tr><td>Needs eigenvalue bounds?</td><td>No</td><td>No</td><td>Yes</td></tr>
+    <tr><td>GPU scalability</td><td>Good</td><td>Good</td><td><strong>Excellent</strong></td></tr>
+    <tr><td>Typical use</td><td>Small problems</td><td>General purpose</td><td>GPU time-stepping</td></tr>
+  </table>
+
+  <div class="insight insight-intuition">
     <p>
-      <strong>Engine connection.</strong> The <code>PCGSolver</code> in <code>linear_solver/pcg.py</code> and <code>ChebyshevSolver</code> in <code>linear_solver/chebyshev.py</code> implement both algorithms. The three-tier automatic selection in Chapter 15 (Section 15.3) chooses between spectral (DCT, when applicable), Chebyshev (when eigenvalue bounds are available), and PCG (the fallback). Key parameters: <code>max_iters=500</code>, <code>tol=1e-8</code>, warm starting enabled by default.
+      <strong>The hierarchy in practice.</strong> Start with PCG (robust, adaptive). If GPU performance matters and the same $A$ is used for many solves (as in time-stepping), switch to Chebyshev after a few PCG steps calibrate the eigenvalue bounds. Chapter 15 describes how Engine V1 implements this three-tier strategy: spectral (if possible) → Chebyshev (if eigenvalue bounds known) → PCG (fallback).
     </p>
   </div>
 
 
   <div class="footnote" style="margin-top:3em;">
-    <p>The numerical analysis concepts in this appendix draw on the classical treatments in LeVeque's <em>Finite Difference Methods for Ordinary and Partial Differential Equations</em> (2007) and Trefethen &amp; Bau's <em>Numerical Linear Algebra</em> (1997). The Chebyshev iteration follows Gutknecht &amp; Röllin (2002).</p>
+    <p>The numerical analysis in this appendix draws on LeVeque's <em>Finite Difference Methods for ODEs and PDEs</em> (2007) and Trefethen &amp; Bau's <em>Numerical Linear Algebra</em> (1997). The Chebyshev iteration follows Gutknecht &amp; Röllin (2002). The pedagogical approach follows 3Blue1Brown.</p>
   </div>
 </div>

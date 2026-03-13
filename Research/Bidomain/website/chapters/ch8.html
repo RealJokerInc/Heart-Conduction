@@ -1011,7 +1011,7 @@
   </div>
 
   <p>
-    The forward pointer to spectral methods is also worth noting: the cosine basis naturally satisfies Neumann BCs (Appendix C.8), which is why the DCT diagonalizes $\mathbf{K}_{\text{Neu}}$. The eigenvalues of equation (C.6) are precisely the eigenvalues of this matrix.
+    The forward pointer to spectral methods is also worth noting: the cosine basis naturally satisfies Neumann BCs (Appendix C.10), which is why the DCT diagonalizes $\mathbf{K}_{\text{Neu}}$. The eigenvalues of equation (C.5) are precisely the eigenvalues of this matrix.
   </p>
 
   <h4>8.7.3 &ensp; Dirichlet Boundary Conditions</h4>
@@ -1053,7 +1053,7 @@
   </p>
 
   <p>
-    The sine basis naturally satisfies Dirichlet BCs (Appendix C.8), which is why the DST diagonalizes the Laplacian with clamped boundaries. The eigenvalues of equation (C.7) correspond to this case.
+    The sine basis naturally satisfies Dirichlet BCs (Appendix C.10), which is why the DST diagonalizes the Laplacian with clamped boundaries. The eigenvalues of equation (C.8) correspond to this case.
   </p>
 
   <h4>8.7.4 &ensp; Summary and Forward Pointers</h4>
@@ -1068,13 +1068,13 @@
       <td>Neumann (zero-flux)</td>
       <td>Ghost node mirroring (8.3)</td>
       <td>Natural — automatic from weak form</td>
-      <td>DCT (Appendix C.8)</td>
+      <td>DCT (Appendix C.10)</td>
     </tr>
     <tr>
       <td>Dirichlet (fixed voltage)</td>
       <td>Row elimination (8.5)</td>
       <td>Essential — row elimination or penalty</td>
-      <td>DST (Appendix C.8)</td>
+      <td>DST (Appendix C.10)</td>
     </tr>
     <tr>
       <td>Mixed (Neumann on some edges, Dirichlet on others)</td>

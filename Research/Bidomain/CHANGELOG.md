@@ -2,23 +2,66 @@
 
 All major edits to `bidomain_textbook.html`, newest first.
 
-## 2026-03-08 (session 14) — Four-Appendix Restructure: A(trimmed), B(LA), C(NumAn), D(PyTorch)
+## 2026-03-09 (session 15) — Appendix C Complete Rewrite + B Visual Overhaul
 
-### Motivation
-Linear algebra and numerical analysis concepts (SPD, eigenvalues, condition number, null space, CFL, Chebyshev) were used throughout Parts II–IV without proper introduction. Appendix A had grown to A.1–A.10, mixing PDE types with solver methods. PyTorch (Appendix B) sat between them awkwardly.
+### Design Decision
+Appendix C restructured from concept-organized (9 sections) to **method-by-method on a 2D grid** (14 sections). Each numerical method gets its own section with a worked example on the same running problem. Iterative methods expanded: CG, PCG, and Chebyshev each get dedicated sections per user request.
 
-### Structural Changes
-- **Appendix A**: Trimmed to A.1–A.7 (PDE types only). A.8–A.10 (transforms, DCT/DST, CG) migrated to Appendix C.
-- **Appendix B** (NEW): Linear Algebra for Cardiac Simulation — 13 sections (B.1–B.13), 3B1B style. B.1 bridges calculus→discrete (functions→vectors, "film to frames" analogy). B.7 eigenvalues, B.8 SPD, B.9 condition number, B.10 null space, B.11 block matrices/Schur complement, B.12 orthogonality, B.13 concept→chapter cross-reference table. Equations (B.1)–(B.9).
-- **Appendix C** (NEW): Numerical Analysis — 9 sections (C.1–C.9). C.1–C.6 new content (truncation error, stability/CFL, Lax equivalence, order of accuracy, stiffness, direct vs iterative). C.7–C.9 migrated from A.8–A.10 with renumbered equations (C.5)–(C.11). C.9 expanded with Chebyshev iteration (three-term recurrence, CG vs Chebyshev comparison).
-- **Appendix D**: Old Appendix B (PyTorch) renumbered B.x→D.x. Content unchanged.
+### Appendix C Rewrite (C.1–C.14)
+- **C.1**: 3×3 grid setup, explicit 9×9 Laplacian assembly, SVG Figure C.1 (grid + 5-point stencil), boundary node stencils, mass matrix aside
+- **C.2**: Truncation error (kept, condensed)
+- **C.3**: Forward Euler — dedicated section, hot-spot worked example on 3×3 grid, SVG Figure C.2 (before/after heatmap)
+- **C.4**: Stability — CFL violation blowup demo ($\Delta t = 0.5$ gives $-9$ at center), eigenvalue analysis, 2D CFL formula, SVG Figure C.3 (stability regions)
+- **C.5**: Backward Euler — dedicated section, same grid, builds $A = I - \Delta t DL$ explicitly (9×9), worked example with solution
+- **C.6**: Crank-Nicolson — dedicated section, FE vs BE vs CN comparison table on same grid
+- **C.7**: Lax Equivalence (kept, brief)
+- **C.8**: Operator Splitting — expanded: Godunov and Strang algorithms (boxed), explanation of why each sub-problem is easier
+- **C.9**: Three solver families comparison table (direct/spectral/iterative)
+- **C.10**: Transform methods — orchestra analogy, DCT/DST, eigenvalue formulas, 1D worked example, limitations
+- **C.11**: Iterative methods intro — the iteration loop, warm-starting, 4-point 1D running example setup
+- **C.12**: Conjugate Gradient — energy minimization, Algorithm C.1 (boxed), 2-iteration worked example on 4×4 system with full arithmetic, convergence bound
+- **C.13**: PCG — preconditioning concept ("reshape the bowl"), Jacobi preconditioner, Algorithm C.2 (boxed), cost vs benefit table
+- **C.14**: Chebyshev — GPU bottleneck motivation, three-term recurrence, Algorithm C.3 (boxed), CG-then-Chebyshev workflow, comparison table
+
+### Appendix B Visual Overhaul
+- **B.1**: Softened vector definition to dual arrow+list (3B1B alignment)
+- **B.2**: Added SVG Figure B.1 (unit square → parallelogram transformation)
+- **B.7**: Added 2×2 eigenvalue worked example
+- **B.8**: Added SVG Figure B.2 (SPD bowl vs semi-definite trough)
+- **B.9**: Added SVG Figure B.3 (round vs elongated contour plots with descent paths)
+- **B.11**: Added numerical 4×4 Schur complement worked example
+
+### Appendix A Fix
+- **A.7**: "Chapter 17" → "Part IV (Chapters 18–20)"
 
 ### Cross-Reference Updates
-- Ch 8: A.8→C.6, A.9→C.7/C.8
-- Ch 15: A.10→C.9
-- Appendix B (new): references C.x for transforms/solvers, D.x for PyTorch sparse
-- toc.json: updated with 4-appendix structure
-- INDEX.md: updated appendix table and equation registry
+- ch8.html: equation (C.7) → (C.5), Appendix C.8 → C.10
+- ch15.html: Appendix C.9 → C.13
+- appendix-b.html: Section C.8 → C.10, Section C.9 → C.12
+
+### Equation Renumbering
+Old → New: C.3 (FE) kept, C.4 (CFL) kept, C.5 (eigenvalues, was C.7), C.6 (BE, was C.4), C.7 (CN, was C.5), C.8 (DST, was C.8), C.9 (2D sum, was C.9), C.10–C.12 (iterative, was C.10–C.12)
+
+---
+
+## 2026-03-09 (session 14) — Four-Appendix Restructure: A(DEs), B(LA), C(Bridge), D(PyTorch)
+
+### Motivation
+Linear algebra and numerical analysis concepts (SPD, eigenvalues, condition number, null space, CFL, Chebyshev) were used throughout Parts II–IV without proper introduction. The three appendices should form a clean dependency chain: A = what we want to solve (DEs), B = the tools (LA), C = how to combine them (numerical analysis as the bridge).
+
+### Design Principle
+Each appendix does ONE job. A is pure differential equations. B is pure linear algebra (no cardiac content, no discretization). C is "The Bridge" — it shows how A + B combine to produce computable solutions. The discretization story (functions→vectors→matrices) lives in C.1, not B.1, because discretization IS the bridge.
+
+### Structural Changes
+- **Appendix A**: Trimmed to A.1–A.7 (PDE types only). A.8–A.10 migrated to C.
+- **Appendix B** (NEW): Pure Linear Algebra — 12 sections (B.1–B.12), 3B1B style. B.1 vectors/spaces, B.2 matrices as transformations, B.7 eigenvalues (abstract, no Laplacian formulas), B.8 SPD (no cardiac table), B.11 block matrices/Schur (abstract, no bidomain). Equations (B.1)–(B.8). No B.13 cross-reference table.
+- **Appendix C** (NEW): Numerical Analysis: The Bridge — 9 sections (C.1–C.9). Narrative arc: C.1 discretization leap (PDE→matrix), C.2 truncation error, **C.3 time-stepping → Ax=b** (the climactic section where A meets B), C.4 stability with Laplacian eigenvalue formulas, C.5 Lax, C.6 stiffness, C.7 direct vs iterative, C.8 transform methods (DCT/DST), C.9 CG/PCG/Chebyshev. Equations (C.1)–(C.12).
+- **Appendix D**: Old PyTorch appendix renumbered B.x→D.x. Content unchanged.
+
+### Cross-Reference Updates
+- Ch 8: Neumann eigenvalues → eq (C.7), Dirichlet → eq (C.8), transforms → Appendix C.8
+- Ch 15: PCG theory → Appendix C.9
+- toc.json, INDEX.md, CHANGELOG.md updated
 
 ## 2026-03-08 (session 13b) — Complete Part III Rewrite: Ch 12–15 (formerly 12–17)
 

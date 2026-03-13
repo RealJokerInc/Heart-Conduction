@@ -250,8 +250,9 @@
 - **Summary:** *[Metadata from batch query — key review on cardiac lineage determination and morphogenesis, linking developmental biology to congenital heart defect origins]*
 
 ### Bruneau (2008) — The Developmental Genetics of Congenital Heart Disease
-- **PMID:** 8614825 | **DOI:** Referenced in CHD genetic/molecular search
-- **Summary:** *[Key paper on developmental genetics of CHDs]*
+- **PMID:** 18288184 | **DOI:** [10.1038/nature06801](https://doi.org/10.1038/nature06801)
+- **Journal:** Nature, 451(7181):943-8
+- **Summary:** Landmark review establishing that congenital heart disease is the leading cause of infant morbidity in the Western world. Reviews the genetic basis for common forms of CHD uncovered in the past decade, providing new insight into how the heart develops and how dysregulation leads to disease. Covers transcription factors, signaling pathways, and microRNAs in cardiac development.
 
 ### Blue et al. (2017), Zaidi & Bhatt (2020), and others
 - Multiple additional papers were identified in the CHD genetic/molecular search (PMIDs: 28792876, 15075735, 20462343, 35218503, 25942538, 40314345, 23633400, 32404184, 28436429, 32592706, 28583745, 34694888)
@@ -262,13 +263,14 @@
 ## 10. Single-Cell Transcriptomics & Atlases
 
 ### Asp et al. (2019) — A Spatiotemporal Organ-Wide Gene Expression and Cell Atlas of the Developing Human Heart
-- **PMID:** 31589297 | **DOI:** [10.1016/j.cell.2019.11.025](https://doi.org/10.1016/j.cell.2019.11.025)
-- **Journal:** Cell
-- **Summary:** Spatiotemporal organ-wide gene expression and cell atlas of the developing human heart. Landmark resource for understanding cell populations and gene regulatory programs during human cardiac development.
+- **PMID:** 31835037 | **DOI:** [10.1016/j.cell.2019.11.025](https://doi.org/10.1016/j.cell.2019.11.025)
+- **Journal:** Cell, 179(7):1647-1660.e19
+- **Summary:** Spatiotemporal organ-wide gene expression and cell atlas of the developing human heart. Landmark resource for understanding cell populations and gene regulatory programs during human cardiac development using spatial transcriptomics and single-cell RNA-seq across three developmental stages.
 
-### Cui et al. (2019) — Single-Cell Transcriptome Analysis Maps the Developmental Track of the Human Heart
-- **PMID:** 31589297 (related cluster) | Identified via search
-- **Summary:** Maps developmental trajectory of the human heart at single-cell resolution, identifying cell types and state transitions during cardiac development.
+### Suryawanshi et al. (2020) — Cell Atlas of the Foetal Human Heart and Implications for Autoimmune-Mediated Congenital Heart Block
+- **PMID:** 31589297 | **DOI:** [10.1093/cvr/cvz257](https://doi.org/10.1093/cvr/cvz257)
+- **Journal:** Cardiovascular Research, 116(8):1446-1457
+- **Summary:** Single-cell transcriptomic atlas of the foetal human heart from mid-gestational healthy and anti-SSA/Ro associated congenital heart block (CHB) samples. Identified diverse sub-populations of endothelial cells and heterogeneous interferon responses in the CHB heart. Provides an information-rich resource for understanding human heart development and disease pathogenesis.
 
 ### Litviňuková et al. (2020) — Cells of the Adult Human Heart
 - **PMID:** 32971526 (related) | **DOI:** [10.1038/s41586-020-2797-4](https://doi.org/10.1038/s41586-020-2797-4)

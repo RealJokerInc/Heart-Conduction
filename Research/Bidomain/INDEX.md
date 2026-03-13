@@ -48,9 +48,9 @@
 | Ch | Title | Sections | Style Status |
 |----|-------|----------|-------------|
 | Refs | Key References | 4 groups | Fine |
-| A | A Visual Guide to Differential Equations | A.1–A.7 | Good — 3B1B style. Trimmed: A.8–A.10 moved to Appendix C |
-| B | Linear Algebra for Cardiac Simulation | B.1–B.13 | **NEW session 14**: 3B1B style. B.1 (functions→vectors, discretization leap), B.2–B.3 (matrices as transformations, mat-vec), B.4 (special structures), B.5 (identity/inverse), B.6 (Ax=b), B.7 (eigenvalues), B.8 (SPD), B.9 (condition number), B.10 (null space), B.11 (block matrices/Schur), B.12 (orthogonality), B.13 (concept→chapter map). Eqs (B.1)–(B.9). |
-| C | Numerical Analysis: From Continuous to Computable | C.1–C.9 | **NEW session 14**: C.1–C.6 (truncation error, stability, Lax theorem, order of accuracy, stiffness, direct vs iterative). C.7–C.9 migrated from A.8–A.10 with new eq numbering (C.5)–(C.11) + Chebyshev iteration added to C.9. |
+| A | A Visual Guide to Differential Equations | A.1–A.7 | Good — 3B1B style. Trimmed: A.8–A.10 moved to Appendix C. Cross-ref fix: Ch 17→Part IV. |
+| B | Linear Algebra | B.1–B.12 | **Revised session 15**: Added 3 SVGs (B.1 transformation, B.2 SPD bowl, B.3 condition number contours), 2×2 eigenvalue worked example (B.7), numerical Schur example (B.11), softened B.1 vector definition to align with 3B1B. Eqs (B.1)–(B.8). |
+| C | Numerical Analysis: The Bridge | C.1–C.14 | **Rewritten session 15**: Method-by-method on 2D grid. C.1 (3×3 grid, build 9×9 Laplacian), C.2 (truncation error), C.3 (Forward Euler + 2D worked example), C.4 (stability/CFL/blowup demo), C.5 (Backward Euler + 2D worked example), C.6 (Crank-Nicolson + comparison table), C.7 (Lax), C.8 (operator splitting with Godunov/Strang), C.9 (3 solver families table), C.10 (spectral/DCT/DST + 1D worked example), C.11 (iterative intro), C.12 (CG: algorithm + 4-point worked example), C.13 (PCG: algorithm + preconditioning), C.14 (Chebyshev: algorithm + GPU workflow). Eqs (C.1)–(C.12). |
 | D | Introduction to PyTorch | D.1–D.13 | Renumbered from Appendix B. Content unchanged. |
 
 ## Equation Number Registry
@@ -73,8 +73,8 @@
 | 19 (LBM Mono) | (19.1)–(19.11) + (19.10b) | 19.1 = diffusion tensor, 19.3 = BGK with source, 19.8 = MRT, 19.11 = 6-stage step |
 | 20 (LBM Bi) | (20.1)–(20.4) | 20.1 = pseudo-time, 20.2 = phi_e relaxation, 20.3 = Vm lattice, 20.4 = phi_e lattice |
 | A (Appendix) | (A.1)–(A.7) | A.1 = heat equation, A.7 = bidomain PDE classification |
-| B (LA) | (B.1)–(B.9) | B.1 = discretization, B.3 = eigenvalue def, B.5 = SPD, B.6 = condition number, B.8 = block system |
-| C (NumAn) | (C.1)–(C.11) | C.1–C.2 = FD stencils, C.3 = CFL, C.5–C.8 = transforms/DCT/DST eigenvalues, C.9 = energy functional, C.10 = CG convergence, C.11 = Chebyshev |
+| B (LA) | (B.1)–(B.8) | B.1 = vector def, B.2 = mat-vec, B.3 = eigenvalue def, B.4 = SPD, B.5 = condition number, B.6 = null space, B.7 = block system, B.8 = projection |
+| C (Bridge) | (C.1)–(C.12) | C.1 = 3-pt stencil, C.2 = convergence rate, C.3 = Forward Euler, C.4 = CFL, C.5 = 2D Neumann eigenvalues, C.6 = Backward Euler, C.7 = Crank-Nicolson, C.8 = DST eigenvalues, C.9 = 2D eigenvalue sum, C.10 = energy functional, C.11 = CG convergence, C.12 = Chebyshev |
 
 ## Engine V5.4 Verification Status
 
