@@ -93,6 +93,7 @@ class DecoupledJacobiSolver(BidomainDiffusionSolver):
         rhs_para = sparse_mv(self.B_para, state.Vm) \
                    + self._spatial.apply_L_i(state.phi_e)  # phi_e^n
         rhs_ellip = self._spatial.apply_L_i(state.Vm)       # Vm^n
+        self._zero_dirichlet_rhs(rhs_ellip)
 
         if self._needs_pinning:
             rhs_ellip[self._pin_node] = 0.0

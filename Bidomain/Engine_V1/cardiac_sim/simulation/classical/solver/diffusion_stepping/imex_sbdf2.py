@@ -136,6 +136,7 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
     def _solve_elliptic(self, state, Vm_new):
         """Shared elliptic solve and state update."""
         rhs_ellip = self._spatial.apply_L_i(Vm_new)
+        self._zero_dirichlet_rhs(rhs_ellip)
         if self._needs_pinning:
             rhs_ellip[self._pin_node] = 0.0
         phi_e_new = self.elliptic_solver.solve(self.A_ellip, rhs_ellip)

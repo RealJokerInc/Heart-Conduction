@@ -30,6 +30,25 @@ class BidomainDiffusionSolver(ABC):
     def __init__(self, spatial: 'BidomainSpatialDiscretization', dt: float):
         self._spatial = spatial
         self._dt = dt
+        self._build_dirichlet_mask(spatial)
+
+    def _build_dirichlet_mask(self, spatial: 'BidomainSpatialDiscretization'):
+        """Cache flat Dirichlet mask for phi_e boundary enforcement."""
+        dmask = spatial.grid.dirichlet_mask_phi_e  # (Nx, Ny) bool
+        if dmask.any():
+            self._dirichlet_flat_mask = dmask.flatten()
+        else:
+            self._dirichlet_flat_mask = None
+
+    def _zero_dirichlet_rhs(self, rhs: torch.Tensor) -> None:
+        """Zero out RHS entries at Dirichlet boundary nodes.
+
+        The elliptic operator A_ellip has identity rows at Dirichlet nodes
+        (from symmetric elimination). The RHS must be zero at those nodes
+        so that phi_e[boundary] = 0.
+        """
+        if self._dirichlet_flat_mask is not None:
+            rhs[self._dirichlet_flat_mask] = 0.0
 
     @abstractmethod
     def step(self, state: 'BidomainState', dt: float) -> None:

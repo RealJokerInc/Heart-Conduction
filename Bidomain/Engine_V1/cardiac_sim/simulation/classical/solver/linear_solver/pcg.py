@@ -196,9 +196,11 @@ class PCGSolver(LinearSolver):
             Ap.copy_(sparse_mv(A, p))
 
             # alpha = rz / (p^T * Ap)
-            # PCG-1 FIX: scale-relative pAp threshold
+            # Breakdown check: pAp <= 0 means A is not SPD (or severe
+            # roundoff). For SPD A, pAp is always positive and decreases
+            # naturally as CG converges — do NOT threshold on magnitude.
             pAp = torch.dot(p, Ap)
-            if pAp.abs() < 1e-14 * b_norm * b_norm:
+            if pAp <= 0.0:
                 break
             alpha = rz / pAp
 
