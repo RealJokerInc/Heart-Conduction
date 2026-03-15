@@ -206,3 +206,75 @@ class TestMehrstellenSpectral:
         residual = A_ellip @ u - b
         rel_res = torch.norm(residual).item() / torch.norm(b).item()
         assert rel_res < 1e-10, f"Relative residual (mixed BC) = {rel_res}"
+
+
+# ============================================================
+# Step 3: Solver Factory Wiring
+# ============================================================
+
+def _make_sim(nx=21, ny=21, stencil='5pt', bc='insulated'):
+    """Create BidomainSimulation with given stencil."""
+    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
+    from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec, Edge
+    from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
+    from cardiac_sim.simulation.classical.discretization.fdm import BidomainFDMDiscretization
+    from cardiac_sim.tissue_builder.stimulus import StimulusProtocol, left_edge_region
+    from cardiac_sim.simulation.classical.bidomain import BidomainSimulation
+
+    lx = 1.0
+    ly = lx * (ny - 1) / (nx - 1)
+    grid = StructuredGrid.create_rectangle(Lx=lx, Ly=ly, Nx=nx, Ny=ny)
+    if bc == 'insulated':
+        grid.boundary_spec = BoundarySpec.insulated()
+    elif bc == 'bath_tb':
+        grid.boundary_spec = BoundarySpec.bath_coupled_edges([Edge.TOP, Edge.BOTTOM])
+    cond = BidomainConductivity(D_i=0.00124, D_e=0.00446)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0, stencil=stencil)
+
+    stim = StimulusProtocol()
+    stim.add_stimulus(
+        region=left_edge_region(width=0.1),
+        start_time=1.0, duration=2.0, amplitude=-80.0,
+    )
+    sim = BidomainSimulation(
+        spatial=spatial, ionic_model='ttp06', stimulus=stim,
+        dt=0.02, elliptic_solver='auto',
+    )
+    return sim, grid
+
+
+class TestMehrstellenWiring:
+    """Tests 11-13: Stencil parameter wired through solver factories."""
+
+    def test_auto_selection_works(self):
+        """M-T11: Mehrstellen auto-selects spectral for insulated isotropic."""
+        sim, _ = _make_sim(stencil='mehrstellen', bc='insulated')
+        assert sim._elliptic_solver_name == 'spectral'
+
+    def test_smoke_test_10_steps(self):
+        """M-T12: 10 steps of BidomainSimulation with mehrstellen, no NaN/Inf."""
+        sim, grid = _make_sim(stencil='mehrstellen')
+        count = 0
+        for state in sim.run(t_end=0.2, save_every=0.2):
+            V = grid.flat_to_grid(state.Vm)
+            assert torch.isfinite(V).all(), "NaN/Inf in Vm"
+            count += 1
+        assert count >= 1
+
+    def test_elliptic_spd_dirichlet(self):
+        """M-T13: A_ellip with mehrstellen is positive definite (bath_tb)."""
+        from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
+        from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec, Edge
+        from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
+        from cardiac_sim.simulation.classical.discretization.fdm import BidomainFDMDiscretization
+
+        nx, ny = 12, 12
+        lx = 1.0
+        ly = lx * (ny - 1) / (nx - 1)
+        grid = StructuredGrid.create_rectangle(Lx=lx, Ly=ly, Nx=nx, Ny=ny)
+        grid.boundary_spec = BoundarySpec.bath_coupled_edges([Edge.TOP, Edge.BOTTOM])
+        cond = BidomainConductivity(D_i=0.00124, D_e=0.00446)
+        spatial = BidomainFDMDiscretization(grid, cond, Cm=1.0, stencil='mehrstellen')
+        A = spatial.get_elliptic_operator().to_dense()
+        eigvals = torch.linalg.eigvalsh(A)
+        assert eigvals.min().item() > 0, f"Min eigenvalue = {eigvals.min().item()}"

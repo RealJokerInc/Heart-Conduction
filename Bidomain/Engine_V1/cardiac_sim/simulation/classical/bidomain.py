@@ -173,7 +173,9 @@ def _build_linear_solver(name, spatial):
         if txy is None:
             raise ValueError("BCs not spectrally eligible")
         bc_x, bc_y = t_map[txy[0]], t_map[txy[1]]
-        return SpectralSolver(nx, ny, dx, dy, D, bc_x=bc_x, bc_y=bc_y)
+        stencil = getattr(spatial, 'stencil', '5pt')
+        return SpectralSolver(nx, ny, dx, dy, D, bc_x=bc_x, bc_y=bc_y,
+                              stencil=stencil)
     elif name == 'pcg_spectral':
         from .solver.linear_solver.pcg_spectral import PCGSpectralSolver
         grid = spatial.grid
@@ -187,7 +189,9 @@ def _build_linear_solver(name, spatial):
         uniform = bc.spectral_transform
         bc_type = {'dct': 'neumann', 'dst': 'dirichlet',
                    'fft': 'periodic'}.get(uniform, 'neumann')
-        return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type)
+        stencil = getattr(spatial, 'stencil', '5pt')
+        return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type,
+                                 stencil=stencil)
     elif name == 'pcg_gmg':
         # Stub — falls back to PCG
         from .solver.linear_solver.pcg import PCGSolver

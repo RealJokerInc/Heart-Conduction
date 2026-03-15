@@ -41,10 +41,11 @@ class PCGSpectralSolver(LinearSolver):
     """
 
     def __init__(self, nx, ny, dx, dy, D, bc_type='neumann',
-                 max_iters=50, tol=1e-8):
+                 max_iters=50, tol=1e-8, stencil='5pt'):
         self.max_iters = max_iters
         self.tol = tol
-        self._precond = SpectralSolver(nx, ny, dx, dy, D, bc_type)
+        self._precond = SpectralSolver(nx, ny, dx, dy, D, bc_type,
+                                       stencil=stencil)
 
         # Workspace (lazy)
         self._r = None
