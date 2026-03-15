@@ -102,7 +102,7 @@ class SpectralSolver(LinearSolver):
     """
 
     def __init__(self, nx, ny, dx, dy, D, bc_type='neumann',
-                 bc_x=None, bc_y=None):
+                 bc_x=None, bc_y=None, stencil='5pt'):
         self.nx = nx
         self.ny = ny
         self.dx = dx
@@ -112,10 +112,18 @@ class SpectralSolver(LinearSolver):
         self.bc_y = bc_y if bc_y is not None else bc_type
         # Keep bc_type for backward compat (used by some callers)
         self.bc_type = bc_type
+        self._stencil = stencil
         self._eigenvalues = None
 
     def _compute_eigenvalues(self, device, dtype):
-        """Compute separable Laplacian eigenvalues per axis."""
+        """Compute Laplacian eigenvalues (separable 5pt or non-separable Mehrstellen)."""
+        if self._stencil == 'mehrstellen':
+            self._compute_eigenvalues_mehrstellen(device, dtype)
+        else:
+            self._compute_eigenvalues_5pt(device, dtype)
+
+    def _compute_eigenvalues_5pt(self, device, dtype):
+        """Compute separable 5-point Laplacian eigenvalues per axis."""
         lam_x = self._axis_eigenvalues(
             self.bc_x, self.nx, self.dx, device, dtype)
         lam_y = self._axis_eigenvalues(
@@ -133,6 +141,53 @@ class SpectralSolver(LinearSolver):
         # Working grid dimensions (Dirichlet strips boundary nodes)
         self._nx_work = lam_x.shape[0]
         self._ny_work = lam_y.shape[0]
+
+    def _compute_eigenvalues_mehrstellen(self, device, dtype):
+        """Compute non-separable Mehrstellen 9-point eigenvalues.
+
+        For the Mehrstellen stencil [1,4,1;4,-20,4;1,4,1]/(6h^2),
+        the eigenvalues are:
+
+            lambda_{k,l} = D * (20 - 8*CX_k - 8*CY_l - 4*CX_k*CY_l) / (6*h^2)
+
+        where CX_k = cos(pi*k/N) for Neumann, etc. This is NOT separable
+        because of the CX*CY cross term, but the same spectral transforms
+        (DCT/DST/FFT) diagonalize it.
+        """
+        h = self.dx  # dx == dy for Mehrstellen
+        CX = self._axis_cosines(self.bc_x, self.nx, device, dtype)
+        CY = self._axis_cosines(self.bc_y, self.ny, device, dtype)
+        CX_2d, CY_2d = torch.meshgrid(CX, CY, indexing='ij')
+
+        self._eigenvalues = self.D * (
+            20.0 - 8.0 * CX_2d - 8.0 * CY_2d - 4.0 * CX_2d * CY_2d
+        ) / (6.0 * h * h)
+
+        self._has_null = (self.bc_x in ('neumann', 'periodic') and
+                          self.bc_y in ('neumann', 'periodic'))
+        if self._has_null:
+            self._eigenvalues[0, 0] = 1.0  # avoid div-by-zero
+
+        self._nx_work = CX.shape[0]
+        self._ny_work = CY.shape[0]
+
+    @staticmethod
+    def _axis_cosines(bc, n, device, dtype):
+        """Compute cos(theta_k) values for one axis given its BC type.
+
+        Returns the same cosine terms that appear in _axis_eigenvalues:
+        eigenvalue_k = (2/h^2) * (1 - cos_k), so cos_k = 1 - h^2/2 * lam_k.
+        """
+        if bc == 'neumann':
+            k = torch.arange(n, device=device, dtype=dtype)
+            return torch.cos(torch.pi * k / n)
+        elif bc == 'dirichlet':
+            m = n - 2  # interior nodes
+            k = torch.arange(m, device=device, dtype=dtype)
+            return torch.cos(torch.pi * (k + 1) / (m + 1))
+        elif bc == 'periodic':
+            k = torch.arange(n, device=device, dtype=dtype)
+            return torch.cos(2.0 * torch.pi * k / n)
 
     @staticmethod
     def _axis_eigenvalues(bc, n, dx, device, dtype):

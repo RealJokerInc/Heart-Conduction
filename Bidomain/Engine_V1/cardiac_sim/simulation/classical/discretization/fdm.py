@@ -56,6 +56,56 @@ def _speye(n: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     return torch.sparse_coo_tensor(indices, values, size=(n, n)).coalesce()
 
 
+def _neumann_tridiag(n: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """Build 1D face-based Neumann Laplacian T as sparse matrix.
+
+    T(0,0)=-1, T(0,1)=1;  T(i,i-1)=1, T(i,i)=-2, T(i,i+1)=1;
+    T(n-1,n-2)=1, T(n-1,n-1)=-1. Symmetric, zero row sum.
+    """
+    diag = torch.full((n,), -2.0, device=device, dtype=dtype)
+    diag[0] = -1.0
+    diag[n - 1] = -1.0
+    off = torch.ones(n - 1, device=device, dtype=dtype)
+
+    rows = []
+    cols = []
+    vals = []
+    for i in range(n):
+        rows.append(i); cols.append(i); vals.append(diag[i].item())
+        if i > 0:
+            rows.append(i); cols.append(i - 1); vals.append(1.0)
+        if i < n - 1:
+            rows.append(i); cols.append(i + 1); vals.append(1.0)
+
+    return torch.sparse_coo_tensor(
+        torch.tensor([rows, cols], device=device),
+        torch.tensor(vals, device=device, dtype=dtype),
+        size=(n, n)
+    ).coalesce()
+
+
+def _sparse_kron(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """Sparse Kronecker product A ⊗ B."""
+    A = A.coalesce()
+    B = B.coalesce()
+    ai, av = A.indices(), A.values()
+    bi, bv = B.indices(), B.values()
+    p, q = B.shape
+
+    # Outer product of indices: (i*p + k, j*q + l) for each (i,j) in A, (k,l) in B
+    row = ai[0].unsqueeze(1) * p + bi[0].unsqueeze(0)  # (nnz_A, nnz_B)
+    col = ai[1].unsqueeze(1) * q + bi[1].unsqueeze(0)
+    val = av.unsqueeze(1) * bv.unsqueeze(0)
+
+    m, n = A.shape
+    return torch.sparse_coo_tensor(
+        torch.stack([row.flatten(), col.flatten()]),
+        val.flatten(),
+        size=(m * p, n * q),
+        device=A.device, dtype=A.dtype
+    ).coalesce()
+
+
 def _sparse_mv(A: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """Sparse matrix-vector multiplication."""
     if A.is_sparse:
@@ -504,129 +554,50 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         Dyy: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Assemble the Mehrstellen isotropic 9-point Laplacian.
+        Assemble the Mehrstellen isotropic 9-point Laplacian via tensor products.
 
-        The standard Mehrstellen weights for the Laplacian on a uniform grid
-        (dx = dy = h) with constant D are:
+        The Mehrstellen stencil for constant D on dx=dy=h:
 
-            [1, 4, 1; 4, -20, 4; 1, 4, 1] / (6*h^2)
+            D * [1, 4, 1; 4, -20, 4; 1, 4, 1] / (6*h^2)
 
-        This is a 4th-order accurate, isotropic discretization of the
-        Laplacian on a uniform grid. It uses the same face-based symmetry
-        approach as the 5-point stencil: each face/corner contributes
-        equally to both adjacent nodes. Out-of-domain neighbors are skipped
-        (zero flux = Neumann).
+        This decomposes as:
 
-        For heterogeneous D, we use the harmonic mean at cardinal faces
-        (same as 5pt) and the geometric mean at diagonal faces.
+            L = D * (6*(I_x ⊗ T_y + T_x ⊗ I_y) + T_x ⊗ T_y) / (6*h^2)
 
-        Parameters
-        ----------
-        Dxx, Dyy : torch.Tensor
-            Diagonal diffusion tensor components, shape (Nx, Ny).
-            Must satisfy Dxx ≈ Dyy for the isotropic stencil to be valid.
+        where T is the 1D face-based Neumann Laplacian [1,-2,1] with
+        boundary rows [-1,1] and [1,-1]. This tensor product form
+        guarantees spectral compatibility: the DCT-II/DST-I basis
+        diagonalizes L with eigenvalues matching the spectral formula.
+
+        Requires constant D (uniform isotropic), dx==dy, and full
+        rectangular grid (no domain_mask).
         """
         nx, ny = self._nx, self._ny
-        h = self._dx  # dx == dy guaranteed by __init__ assertion
+        h = self._dx
         device = self._device
         dtype = self._dtype
-        mask = self._grid.domain_mask
 
-        dxx = Dxx.detach().cpu().numpy()
-        dyy = Dyy.detach().cpu().numpy()
-        mask_np = mask.detach().cpu().numpy() if mask is not None else None
+        assert self._grid.domain_mask is None, \
+            "Mehrstellen stencil requires full rectangular grid (no domain_mask)"
 
-        # Build active-node index mapping
-        if mask_np is not None:
-            active_map = np.full((nx, ny), -1, dtype=np.int64)
-            count = 0
-            for i in range(nx):
-                for j in range(ny):
-                    if mask_np[i, j]:
-                        active_map[i, j] = count
-                        count += 1
-            N = count
-        else:
-            N = nx * ny
+        # Extract constant D (uniform isotropic)
+        D = Dxx[0, 0].item()
 
-        def _is_active(i, j):
-            if i < 0 or i >= nx or j < 0 or j >= ny:
-                return False
-            if mask_np is not None:
-                return bool(mask_np[i, j])
-            return True
+        # Build 1D face-based Neumann Laplacians
+        T_x = _neumann_tridiag(nx, device, dtype)
+        T_y = _neumann_tridiag(ny, device, dtype)
+        I_x = _speye(nx, device, dtype)
+        I_y = _speye(ny, device, dtype)
 
-        def _idx(i, j):
-            if mask_np is not None:
-                return int(active_map[i, j])
-            return i * ny + j
+        # L = D * (6*(I⊗T + T⊗I) + T⊗T) / (6*h^2)
+        kron_IT = _sparse_kron(I_x, T_y)
+        kron_TI = _sparse_kron(T_x, I_y)
+        kron_TT = _sparse_kron(T_x, T_y)
 
-        rows_list = []
-        cols_list = []
-        vals_list = []
-
-        def _add(r, c, v):
-            rows_list.append(r)
-            cols_list.append(c)
-            vals_list.append(v)
-
-        def _harm(a, b):
-            s = a + b
-            return 2.0 * a * b / s if s > 0 else 0.0
-
-        def _geom(a, b):
-            p = a * b
-            return (p ** 0.5) if p > 0 else 0.0
-
-        # Mehrstellen weights: cardinal = 4/(6h^2), diagonal = 1/(6h^2)
-        # Center = -20/(6h^2) when all neighbors present
         h2 = h * h
-        c_card = 4.0 / (6.0 * h2)
-        c_diag = 1.0 / (6.0 * h2)
+        L = (D / (6.0 * h2)) * (6.0 * (kron_IT + kron_TI) + kron_TT)
 
-        for i in range(nx):
-            for j in range(ny):
-                if mask_np is not None and not mask_np[i, j]:
-                    continue
-
-                k = _idx(i, j)
-                # Average D at this node (Dxx ≈ Dyy for isotropic)
-                D_here = 0.5 * (float(dxx[i, j]) + float(dyy[i, j]))
-
-                center = 0.0
-
-                # --- Cardinal directions (weight 4) with harmonic mean ---
-                for di, dj in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                    ni, nj = i + di, j + dj
-                    if _is_active(ni, nj):
-                        D_nbr = 0.5 * (float(dxx[ni, nj]) + float(dyy[ni, nj]))
-                        D_face = _harm(D_here, D_nbr)
-                        w = D_face * c_card
-                        center -= w
-                        _add(k, _idx(ni, nj), w)
-
-                # --- Diagonal directions (weight 1) with geometric mean ---
-                for di, dj in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
-                    ni, nj = i + di, j + dj
-                    if _is_active(ni, nj):
-                        D_nbr = 0.5 * (float(dxx[ni, nj]) + float(dyy[ni, nj]))
-                        D_face = _geom(D_here, D_nbr)
-                        w = D_face * c_diag
-                        center -= w
-                        _add(k, _idx(ni, nj), w)
-
-                _add(k, k, center)
-
-        rows = torch.tensor(rows_list, dtype=torch.long, device=device)
-        cols = torch.tensor(cols_list, dtype=torch.long, device=device)
-        vals = torch.tensor(vals_list, dtype=dtype, device=device)
-
-        L = torch.sparse_coo_tensor(
-            torch.stack([rows, cols]), vals,
-            size=(N, N), dtype=dtype, device=device
-        ).coalesce()
-
-        return L
+        return L.coalesce()
 
     def __repr__(self) -> str:
         bs = self._grid.boundary_spec

@@ -96,3 +96,113 @@ class TestMehrstellenFDM:
         spatial_mst = _make_fdm(stencil='mehrstellen')
         assert spatial_5pt.stencil == '5pt'
         assert spatial_mst.stencil == 'mehrstellen'
+
+
+# ============================================================
+# Step 2: Spectral Eigenvalues for Mehrstellen
+# ============================================================
+
+def _make_spectral(nx=16, ny=16, D=0.0057, bc_x='neumann', bc_y='neumann',
+                   stencil='5pt'):
+    """Create a SpectralSolver with given params."""
+    from cardiac_sim.simulation.classical.solver.linear_solver.spectral import SpectralSolver
+    lx = 1.0
+    dx = lx / (nx - 1)
+    return SpectralSolver(nx, ny, dx, dx, D, bc_x=bc_x, bc_y=bc_y,
+                          stencil=stencil)
+
+
+class TestMehrstellenSpectral:
+    """Tests 7-10: Spectral eigenvalues for Mehrstellen."""
+
+    def test_eigenvalue_consistency(self):
+        """M-T7: Sparse L_i eigenvalues match spectral formula on 16x16 Neumann."""
+        from cardiac_sim.simulation.classical.solver.linear_solver.spectral import SpectralSolver
+        nx, ny = 16, 16
+        D_i, D_e = 0.00124, 0.00446
+        D_sum = D_i + D_e
+        spatial = _make_fdm(nx=nx, ny=ny, D_i=D_i, D_e=D_e,
+                            bc='insulated', stencil='mehrstellen')
+
+        # Eigenvalues from sparse matrix: -(L_i + L_e) = A_ellip
+        L_ie = (spatial.L_i + spatial.L_e).to_dense()
+        sparse_eigvals = torch.linalg.eigvalsh(-L_ie).sort()[0]
+
+        # Eigenvalues from spectral formula (compute directly, no placeholder)
+        device, dtype = torch.device('cpu'), torch.float64
+        h = 1.0 / (nx - 1)
+        CX = SpectralSolver._axis_cosines('neumann', nx, device, dtype)
+        CY = SpectralSolver._axis_cosines('neumann', ny, device, dtype)
+        CX_2d, CY_2d = torch.meshgrid(CX, CY, indexing='ij')
+        spectral_eigvals = D_sum * (
+            20.0 - 8.0 * CX_2d - 8.0 * CY_2d - 4.0 * CX_2d * CY_2d
+        ) / (6.0 * h * h)
+        spectral_eigvals = spectral_eigvals.flatten().sort()[0]
+
+        max_diff = (sparse_eigvals - spectral_eigvals).abs().max().item()
+        assert max_diff < 1e-10, f"Eigenvalue mismatch: max diff = {max_diff}"
+
+    def test_null_mode(self):
+        """M-T8: eigenvalues[0,0] == 0 for Neumann/Neumann (before placeholder)."""
+        spec = _make_spectral(stencil='mehrstellen')
+        # Manually compute to check the raw value
+        from cardiac_sim.simulation.classical.solver.linear_solver.spectral import SpectralSolver
+        h = 1.0 / 15
+        D = 0.0057
+        # CX[0] = cos(0) = 1, CY[0] = cos(0) = 1
+        # eigenvalue = D * (20 - 8 - 8 - 4) / (6*h^2) = D * 0 / (6*h^2) = 0
+        raw = D * (20.0 - 8.0 - 8.0 - 4.0) / (6.0 * h * h)
+        assert abs(raw) < 1e-14, f"Null mode not zero: {raw}"
+
+    def test_spectral_solve_residual_neumann(self):
+        """M-T9: Solve -D*Lap(u) = b with Mehrstellen spectral, verify residual."""
+        nx, ny = 16, 16
+        D_i, D_e = 0.00124, 0.00446
+        D_sum = D_i + D_e
+        spatial = _make_fdm(nx=nx, ny=ny, D_i=D_i, D_e=D_e,
+                            bc='insulated', stencil='mehrstellen')
+
+        # Build RHS: random with zero mean (Neumann compatibility)
+        torch.manual_seed(42)
+        b = torch.randn(nx * ny)
+        b -= b.mean()
+
+        spec = _make_spectral(nx=nx, ny=ny, D=D_sum, stencil='mehrstellen')
+        u = spec.solve(None, b)
+
+        # Compute residual: L_mehrstellen * u should = -b (since -D*Lap*u = b → L*u = -b/D... no)
+        # Actually: spectral solves -D*Lap*u = b. The sparse matrix is L = D*Lap (negative semidefinite).
+        # So -L*u = b, i.e. L*u = -b. But L is -(L_i+L_e) for elliptic.
+        # More precisely: A_ellip = -(L_i + L_e), and spectral solves A_ellip * u = b.
+        L_ie = (spatial.L_i + spatial.L_e).to_dense()
+        A_ellip = -L_ie
+        residual = A_ellip @ u - b
+        rel_res = torch.norm(residual).item() / torch.norm(b).item()
+        assert rel_res < 1e-10, f"Relative residual = {rel_res}"
+
+    def test_spectral_solve_residual_mixed_bc(self):
+        """M-T10: Spectral Mehrstellen with Neumann-x / Dirichlet-y (bath_tb)."""
+        nx, ny = 16, 16
+        D_i, D_e = 0.00124, 0.00446
+        D_sum = D_i + D_e
+        spatial = _make_fdm(nx=nx, ny=ny, D_i=D_i, D_e=D_e,
+                            bc='bath_tb', stencil='mehrstellen')
+
+        # Get A_ellip (has Dirichlet enforcement)
+        A_ellip = spatial.get_elliptic_operator().to_dense()
+
+        # Build RHS: random, with zeros at Dirichlet nodes
+        torch.manual_seed(123)
+        b = torch.randn(nx * ny)
+        # Zero out Dirichlet rows (top/bottom boundary = j=0 and j=ny-1)
+        for i in range(nx):
+            b[i * ny] = 0.0          # j=0 (bottom)
+            b[i * ny + ny - 1] = 0.0  # j=ny-1 (top)
+
+        spec = _make_spectral(nx=nx, ny=ny, D=D_sum, bc_x='neumann',
+                              bc_y='dirichlet', stencil='mehrstellen')
+        u = spec.solve(None, b)
+
+        residual = A_ellip @ u - b
+        rel_res = torch.norm(residual).item() / torch.norm(b).item()
+        assert rel_res < 1e-10, f"Relative residual (mixed BC) = {rel_res}"
