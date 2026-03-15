@@ -350,6 +350,42 @@ must converge to this. Deviations are numerical artifacts, not physics.
 
 ---
 
+## 9. Stencil Isotropy for Curved Wavefronts
+
+The Kleber boundary speedup creates **triangular wavefront deformations** at bath-coupled
+edges. On a wide domain (e.g. 8cm), the two triangles from top and bottom edges merge at
+~400ms, forming a stable bowl-shaped wavefront. Resolving these curved wavefronts accurately
+requires an isotropic FDM stencil.
+
+### Standard 5-Point Stencil
+The standard 5-point stencil `[0,1,0; 1,-4,1; 0,1,0]/h²` is **anisotropic** on the grid:
+it has zero response along diagonals. For circular or bowl-shaped wavefronts, this introduces
+grid-dependent artifacts that depend on the angle between the wavefront normal and the grid axes.
+
+### Mehrstellen 9-Point Stencil
+The Mehrstellen stencil `[1,4,1; 4,-20,4; 1,4,1]/(6h²)` is the unique 9-point compact
+stencil that is:
+1. **Isotropic** — 4th-order truncation error for ∇²u, independent of wavefront angle
+2. **Spectrally compatible** — DCT/DST/FFT diagonalizes it via tensor product decomposition
+3. **O(h⁴) accurate** on uniform grids with constant coefficients
+
+The tensor product decomposition `L = D*(6*(I⊗T + T⊗I) + T⊗T)/(6h²)` produces
+non-separable eigenvalues `λ = D*(20 - 8*cos_x - 8*cos_y - 4*cos_x*cos_y)/(6h²)`.
+The same spectral transforms (DCT/DST/FFT) work; only the eigenvalue formula changes.
+
+### Implementation
+Added to Bidomain Engine V1 (`stencil='mehrstellen'` parameter):
+- **Requirements:** dx==dy, isotropic conductivity (no cross-derivative), full rectangular grid
+- **Validated:** 16 tests including eigenvalue consistency, spectral solve residuals, and
+  bidomain-monodomain equivalence (insulated BCs, wavefront match within 2 nodes at t=25ms)
+
+### Expected Impact on Triangle Merger
+The Mehrstellen stencil should give smoother, more circular wavefront contours compared to
+5pt, particularly at the merger point where wavefront curvature is highest. The triangle
+merger experiment compares both stencils to quantify this isotropy effect.
+
+---
+
 ## References
 
 - Kleber & Rudy, Physiol Rev 84(2), 2004 -- boundary speedup in cardiac tissue

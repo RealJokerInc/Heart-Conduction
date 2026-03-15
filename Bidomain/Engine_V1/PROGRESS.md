@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase:** Phase 6 DONE
-**Last Updated:** 2026-03-05
+**Active Phase:** Phase 6 DONE + Mehrstellen Stencil Extension
+**Last Updated:** 2026-03-14
 
 ---
 
@@ -357,6 +357,53 @@ CV_ratio should converge to ~1.13 with O(h²) convergence.
 
 ---
 
+## Mehrstellen 9-Point Stencil Extension -- DONE
+
+**Goal:** Add isotropic 9-point Mehrstellen stencil for improved curved-wavefront resolution.
+Supports the triangle merger experiment (Kleber boundary speedup wavefront characterization).
+
+**Key design:** The Mehrstellen stencil `[1,4,1; 4,-20,4; 1,4,1]/(6h²)` decomposes as
+`D*(6*(I⊗T + T⊗I) + T⊗T)/(6h²)` where T is the 1D face-based Neumann Laplacian.
+This tensor product form guarantees spectral compatibility (DCT/DST/FFT diagonalizes it).
+Non-separable eigenvalues: `λ = D*(20 - 8*CX - 8*CY - 4*CX*CY)/(6h²)`.
+
+**Requires:** dx==dy, isotropic conductivity (Dxy==0), full rectangular grid (no domain_mask).
+
+**Files modified:**
+
+| # | File | Changes |
+|---|------|---------|
+| M.1 | `discretization/fdm.py` | `stencil='5pt'\|'mehrstellen'` param, `_build_laplacian_mehrstellen()` via tensor product, `_neumann_tridiag()`, `_sparse_kron()` helpers |
+| M.2 | `solver/linear_solver/spectral.py` | `stencil` param, `_compute_eigenvalues_mehrstellen()`, `_axis_cosines()` |
+| M.3 | `solver/linear_solver/pcg_spectral.py` | `stencil` param forwarded to SpectralSolver |
+| M.4 | `simulation/classical/bidomain.py` | `_build_linear_solver()` reads stencil from spatial, forwards to solvers |
+| M.5 | `tests/cv_shared.py` | `stencil` param in `build_bidomain_sim()`, `run_monodomain_fdm_mehrstellen()`, `bath_tb` bc_type |
+
+**Validation:** 16 tests in `tests/test_mehrstellen.py`
+
+| # | Test | What It Checks | Pass Criteria |
+|---|------|---------------|---------------|
+| M-T1 | Default backward compat | `BidomainFDMDiscretization(grid, cond)` unchanged | stencil=='5pt' |
+| M-T2 | L_i symmetry | L_i with mehrstellen | ‖L - L^T‖ < 1e-14 |
+| M-T3 | Zero row sum | Conservation / Neumann | max row sum < 1e-14 |
+| M-T4 | Negative semi-definite | Eigenvalues ≤ 0 | max eig < 1e-12 |
+| M-T5 | dx≠dy rejection | AssertionError | Raises |
+| M-T6 | Stencil property | Readable | Correct string |
+| M-T7 | Eigenvalue consistency | Sparse vs spectral formula | max diff < 1e-10 |
+| M-T8 | Null mode | eigenvalue(0,0) = 0 | < 1e-14 |
+| M-T9 | Spectral solve residual (Neumann) | -D*Lap*u = b | rel_res < 1e-10 |
+| M-T10 | Spectral solve residual (mixed) | Neumann-x/Dirichlet-y | rel_res < 1e-10 |
+| M-T11 | Auto-selection | Mehrstellen selects spectral | 'spectral' |
+| M-T12 | Smoke test (10 steps) | No NaN/Inf | All finite |
+| M-T13 | A_ellip SPD (Dirichlet) | Positive definite | min eig > 0 |
+| M-T14 | cv_shared default preserved | run_bidomain() works | No error |
+| M-T15 | cv_shared mehrstellen | build_bidomain_sim(stencil='mehrstellen') | No error |
+| M-T18 | Bidomain-Monodomain equivalence | Insulated matches monodomain D_eff | Wavefront within 2 nodes |
+
+**Result: 16/16 tests PASSED (2026-03-14)**
+
+---
+
 ## Key Line Numbers in improvement.md
 
 - Architecture tree: L60-125
@@ -403,3 +450,4 @@ CV_ratio should converge to ~1.13 with O(h²) convergence.
 | 2026-03-05 | 9 | Phases 3-5: SpectralSolver (DCT/DST/FFT), PCGSpectralSolver, GMG stubs, DecoupledBidomainDiffusionSolver, BidomainSimulation orchestrator. 38/38 tests PASSED |
 | 2026-03-05 | 10 | Phase 6 planning: discovered chi*Cm convention bug, wrote CROSS_VALIDATION_PLAN.md, created 4 phased test scripts (6A-6D) + cv_shared.py. Analyzed LBM_V1 and bidomain FDM operator forms. |
 | 2026-03-05 | 11 | Phase 6 execution: Fixed 4 critical bugs (DCT impl, parabolic coupling, elliptic solver selection, bc_type mismatch). Added monodomain FDM control. All 16/16 tests PASS. Kleber boundary speedup confirmed (ratio=1.0714, converging to 1.131). |
+| 2026-03-14 | 12 | Mehrstellen 9-point stencil: tensor product FDM assembly, non-separable spectral eigenvalues, solver wiring, cv_shared builders, bidomain-monodomain equivalence. 16/16 tests PASS. |

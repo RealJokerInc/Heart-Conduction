@@ -784,3 +784,16 @@ Support two BC configurations at tissue edges:
 - **Bath-coupled (Kleber):** Vm=Neumann, phi_e=Dirichlet → DST → ~13% CV increase
 The bath-coupled BC is what produces the boundary speedup. DST (not DCT) is required
 because phi_e=0 is a Dirichlet condition.
+
+### 9. Mehrstellen 9-Point Stencil (Extension, 2026-03-14)
+
+The FDM discretization supports two stencil types via `stencil='5pt'|'mehrstellen'`:
+- **5pt (default):** Standard `[0,1,0; 1,-4,1; 0,1,0]/h²`. O(h²), separable eigenvalues.
+- **Mehrstellen:** Isotropic `[1,4,1; 4,-20,4; 1,4,1]/(6h²)`. O(h⁴), non-separable eigenvalues.
+
+The Mehrstellen stencil requires dx==dy, isotropic conductivity, and full rectangular grid.
+It is built via tensor product decomposition `D*(6*(I⊗T+T⊗I)+T⊗T)/(6h²)` to guarantee
+spectral compatibility. Same DCT/DST/FFT transforms work; only eigenvalue formula changes.
+
+Used for the triangle merger experiment to quantify stencil isotropy effects on
+curved wavefronts from the Kleber boundary speedup.
