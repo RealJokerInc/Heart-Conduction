@@ -95,6 +95,7 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         conductivity: BidomainConductivity,
         Cm: float = 1.0,
         chi: float = None,
+        stencil: str = '5pt',
     ):
         if chi is not None and chi != 1.0:
             import warnings
@@ -103,6 +104,15 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
                 "Pass chi via ConductivityConfig (D = sigma/(chi*Cm)) instead.",
                 DeprecationWarning, stacklevel=2
             )
+
+        # Validate stencil
+        if stencil not in ('5pt', 'mehrstellen'):
+            raise ValueError(f"Unknown stencil: {stencil!r}. Must be '5pt' or 'mehrstellen'.")
+        if stencil == 'mehrstellen':
+            assert abs(grid.dx - grid.dy) < 1e-14 * max(grid.dx, grid.dy), (
+                f"Mehrstellen stencil requires dx == dy, got dx={grid.dx}, dy={grid.dy}")
+        self._stencil = stencil
+
         self._grid = grid
         self._conductivity = conductivity
         self._nx = grid.Nx
@@ -131,11 +141,17 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
             conductivity.theta
         )
 
-        # Build two Laplacians using symmetric face-based stencils.
-        # Both use the same stencil construction (Neumann-like face-based).
-        # Dirichlet BCs are enforced in get_elliptic_operator() only.
-        self._L_i_mat = self._build_laplacian(Dxx_i, Dxy_i, Dyy_i)
-        self._L_e_mat = self._build_laplacian(Dxx_e, Dxy_e, Dyy_e)
+        if stencil == 'mehrstellen':
+            assert (Dxy_i.abs().max() < 1e-14 and Dxy_e.abs().max() < 1e-14), (
+                "Mehrstellen stencil requires isotropic conductivity (Dxy == 0)")
+            self._L_i_mat = self._build_laplacian_mehrstellen(Dxx_i, Dyy_i)
+            self._L_e_mat = self._build_laplacian_mehrstellen(Dxx_e, Dyy_e)
+        else:
+            # Build two Laplacians using symmetric face-based stencils.
+            # Both use the same stencil construction (Neumann-like face-based).
+            # Dirichlet BCs are enforced in get_elliptic_operator() only.
+            self._L_i_mat = self._build_laplacian(Dxx_i, Dxy_i, Dyy_i)
+            self._L_e_mat = self._build_laplacian(Dxx_e, Dxy_e, Dyy_e)
         self._L_ie_mat = None  # Lazy: built on first use
         self._A_ellip = None   # Lazy: built on first use
 
@@ -163,6 +179,11 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         if self._L_ie_mat is None:
             self._L_ie_mat = (self._L_i_mat + self._L_e_mat).coalesce()
         return _sparse_mv(self._L_ie_mat, V)
+
+    @property
+    def stencil(self) -> str:
+        """Stencil type: '5pt' or 'mehrstellen'."""
+        return self._stencil
 
     @property
     def Cm(self) -> float:
@@ -475,11 +496,144 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
 
         return L
 
+    # === Internal: Mehrstellen (Isotropic 9-Point) Laplacian Assembly ===
+
+    def _build_laplacian_mehrstellen(
+        self,
+        Dxx: torch.Tensor,
+        Dyy: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Assemble the Mehrstellen isotropic 9-point Laplacian.
+
+        The standard Mehrstellen weights for the Laplacian on a uniform grid
+        (dx = dy = h) with constant D are:
+
+            [1, 4, 1; 4, -20, 4; 1, 4, 1] / (6*h^2)
+
+        This is a 4th-order accurate, isotropic discretization of the
+        Laplacian on a uniform grid. It uses the same face-based symmetry
+        approach as the 5-point stencil: each face/corner contributes
+        equally to both adjacent nodes. Out-of-domain neighbors are skipped
+        (zero flux = Neumann).
+
+        For heterogeneous D, we use the harmonic mean at cardinal faces
+        (same as 5pt) and the geometric mean at diagonal faces.
+
+        Parameters
+        ----------
+        Dxx, Dyy : torch.Tensor
+            Diagonal diffusion tensor components, shape (Nx, Ny).
+            Must satisfy Dxx ≈ Dyy for the isotropic stencil to be valid.
+        """
+        nx, ny = self._nx, self._ny
+        h = self._dx  # dx == dy guaranteed by __init__ assertion
+        device = self._device
+        dtype = self._dtype
+        mask = self._grid.domain_mask
+
+        dxx = Dxx.detach().cpu().numpy()
+        dyy = Dyy.detach().cpu().numpy()
+        mask_np = mask.detach().cpu().numpy() if mask is not None else None
+
+        # Build active-node index mapping
+        if mask_np is not None:
+            active_map = np.full((nx, ny), -1, dtype=np.int64)
+            count = 0
+            for i in range(nx):
+                for j in range(ny):
+                    if mask_np[i, j]:
+                        active_map[i, j] = count
+                        count += 1
+            N = count
+        else:
+            N = nx * ny
+
+        def _is_active(i, j):
+            if i < 0 or i >= nx or j < 0 or j >= ny:
+                return False
+            if mask_np is not None:
+                return bool(mask_np[i, j])
+            return True
+
+        def _idx(i, j):
+            if mask_np is not None:
+                return int(active_map[i, j])
+            return i * ny + j
+
+        rows_list = []
+        cols_list = []
+        vals_list = []
+
+        def _add(r, c, v):
+            rows_list.append(r)
+            cols_list.append(c)
+            vals_list.append(v)
+
+        def _harm(a, b):
+            s = a + b
+            return 2.0 * a * b / s if s > 0 else 0.0
+
+        def _geom(a, b):
+            p = a * b
+            return (p ** 0.5) if p > 0 else 0.0
+
+        # Mehrstellen weights: cardinal = 4/(6h^2), diagonal = 1/(6h^2)
+        # Center = -20/(6h^2) when all neighbors present
+        h2 = h * h
+        c_card = 4.0 / (6.0 * h2)
+        c_diag = 1.0 / (6.0 * h2)
+
+        for i in range(nx):
+            for j in range(ny):
+                if mask_np is not None and not mask_np[i, j]:
+                    continue
+
+                k = _idx(i, j)
+                # Average D at this node (Dxx ≈ Dyy for isotropic)
+                D_here = 0.5 * (float(dxx[i, j]) + float(dyy[i, j]))
+
+                center = 0.0
+
+                # --- Cardinal directions (weight 4) with harmonic mean ---
+                for di, dj in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                    ni, nj = i + di, j + dj
+                    if _is_active(ni, nj):
+                        D_nbr = 0.5 * (float(dxx[ni, nj]) + float(dyy[ni, nj]))
+                        D_face = _harm(D_here, D_nbr)
+                        w = D_face * c_card
+                        center -= w
+                        _add(k, _idx(ni, nj), w)
+
+                # --- Diagonal directions (weight 1) with geometric mean ---
+                for di, dj in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:
+                    ni, nj = i + di, j + dj
+                    if _is_active(ni, nj):
+                        D_nbr = 0.5 * (float(dxx[ni, nj]) + float(dyy[ni, nj]))
+                        D_face = _geom(D_here, D_nbr)
+                        w = D_face * c_diag
+                        center -= w
+                        _add(k, _idx(ni, nj), w)
+
+                _add(k, k, center)
+
+        rows = torch.tensor(rows_list, dtype=torch.long, device=device)
+        cols = torch.tensor(cols_list, dtype=torch.long, device=device)
+        vals = torch.tensor(vals_list, dtype=dtype, device=device)
+
+        L = torch.sparse_coo_tensor(
+            torch.stack([rows, cols]), vals,
+            size=(N, N), dtype=dtype, device=device
+        ).coalesce()
+
+        return L
+
     def __repr__(self) -> str:
         bs = self._grid.boundary_spec
         bc_str = "insulated" if bs.phi_e_has_null_space else "bath-coupled"
         return (f"BidomainFDMDiscretization("
                 f"{self._nx}x{self._ny}, "
                 f"dx={self._dx:.4f}, dy={self._dy:.4f}, "
+                f"stencil={self._stencil}, "
                 f"n_dof={self._n_dof}, "
                 f"phi_e_bc={bc_str})")
