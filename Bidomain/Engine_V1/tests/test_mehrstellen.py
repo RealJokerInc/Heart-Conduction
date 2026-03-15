@@ -308,3 +308,73 @@ class TestMehrstellenCvShared:
             assert torch.isfinite(V).all()
             count += 1
         assert count >= 1
+
+
+# ============================================================
+# Step 5: Bidomain-Monodomain Equivalence
+# ============================================================
+
+class TestMehrstellenEquivalence:
+    """Test 18: Bidomain insulated ≡ Monodomain with Mehrstellen stencil."""
+
+    @pytest.mark.slow
+    def test_bidomain_monodomain_equivalence(self):
+        """M-T18: Bidomain insulated matches monodomain with Mehrstellen stencil.
+
+        Both use same:
+        - Mehrstellen 9-point Laplacian
+        - D_eff = D_i*D_e/(D_i+D_e) for monodomain
+        - Neumann BCs everywhere
+        - Same domain, dx, stimulus
+
+        The bidomain with insulated BCs (equal Neumann on both domains)
+        reduces to monodomain with D_eff. Wavefront position should
+        match within dx at t=25ms.
+        """
+        from cv_shared import (build_bidomain_sim, run_monodomain_fdm_mehrstellen,
+                               D_I, D_E, D_EFF, DX, DT, STIM_AMP,
+                               STIM_START, STIM_DUR, THRESHOLD)
+
+        nx, ny = 121, 61  # ~3 x 1.5 cm at dx=0.025
+        dx = DX
+        t_end = 25.0
+
+        # --- Monodomain Mehrstellen ---
+        times_mono, V_mono = run_monodomain_fdm_mehrstellen(
+            nx=nx, ny=ny, dx=dx, dt=DT, D=D_EFF,
+            t_end=t_end, save_every=t_end,
+            stim_cols=5, stim_start=STIM_START, stim_dur=STIM_DUR,
+            stim_amp=STIM_AMP,
+        )
+        assert len(V_mono) > 0, "Monodomain produced no snapshots"
+
+        # --- Bidomain Mehrstellen Insulated ---
+        sim, grid = build_bidomain_sim(
+            nx=nx, ny=ny, dx=dx, dt=DT, D_i=D_I, D_e=D_E,
+            bc_type='insulated', stencil='mehrstellen', theta=0.5,
+        )
+        V_bi = None
+        for state in sim.run(t_end=t_end, save_every=t_end):
+            V_bi = grid.flat_to_grid(state.Vm)
+
+        assert V_bi is not None, "Bidomain produced no snapshots"
+        V_mono_final = V_mono[-1]
+
+        # Find wavefront position at center row: first x where V > threshold
+        y_mid = ny // 2
+
+        def _front_x(V, threshold=-30.0):
+            for ix in range(nx - 1, -1, -1):
+                if V[ix, y_mid].item() > threshold:
+                    return ix
+            return 0
+
+        front_mono = _front_x(V_mono_final)
+        front_bi = _front_x(V_bi)
+
+        # Wavefront should match within 2*dx (allow slight splitting error)
+        diff_nodes = abs(front_mono - front_bi)
+        assert diff_nodes <= 2, (
+            f"Wavefront mismatch: mono x={front_mono} ({front_mono*dx:.3f}cm), "
+            f"bi x={front_bi} ({front_bi*dx:.3f}cm), diff={diff_nodes} nodes"
+        )

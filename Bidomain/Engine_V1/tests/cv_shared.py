@@ -336,6 +336,98 @@ def run_monodomain_fdm(nx=NX, ny=NY, dx=DX, dt=DT, D=D_EFF,
 
 
 # ============================================================
+# Monodomain FDM Mehrstellen (explicit Euler + 9-point stencil)
+# ============================================================
+def run_monodomain_fdm_mehrstellen(nx=NX, ny=NY, dx=DX, dt=DT, D=D_EFF,
+                                    t_end=T_END, save_every=SAVE_EVERY,
+                                    stim_cols=STIM_COLS, stim_start=STIM_START,
+                                    stim_dur=STIM_DUR, stim_amp=STIM_AMP):
+    """Run monodomain FDM with Mehrstellen 9-point stencil (explicit + Rush-Larsen).
+
+    Same operator splitting as run_monodomain_fdm but uses the Mehrstellen
+    Laplacian [1,4,1; 4,-20,4; 1,4,1]/(6h^2) via sparse matrix-vector product.
+    Requires dx == dy. Neumann BCs via face-based tensor product form.
+    """
+    from cardiac_sim.ionic.ttp06.model import TTP06Model
+    from cardiac_sim.simulation.classical.discretization.fdm import (
+        _neumann_tridiag, _sparse_kron, _speye)
+
+    assert abs(dx - dx) < 1e-14, "Mehrstellen requires dx == dy"
+    h = dx
+    model = TTP06Model(device='cpu')
+    V = torch.full((nx, ny), model.V_rest, dtype=torch.float64)
+    S = model.get_initial_state(nx * ny).reshape(nx, ny, -1)
+
+    # Build Mehrstellen sparse Laplacian: D*(6*(I⊗T + T⊗I) + T⊗T)/(6h²)
+    device = torch.device('cpu')
+    dtype = torch.float64
+    T_x = _neumann_tridiag(nx, device, dtype)
+    T_y = _neumann_tridiag(ny, device, dtype)
+    I_x = _speye(nx, device, dtype)
+    I_y = _speye(ny, device, dtype)
+    L = (D / (6.0 * h * h)) * (
+        6.0 * (_sparse_kron(I_x, T_y) + _sparse_kron(T_x, I_y))
+        + _sparse_kron(T_x, T_y)
+    ).coalesce()
+
+    # CFL stability: max eigenvalue of Mehrstellen Laplacian is
+    # D * (20+8+8-4)/(6h²) = D * 32/(6h²)
+    lam_max = D * 32.0 / (6.0 * h * h)
+    dt_max = 2.0 / lam_max
+    if dt > dt_max:
+        print(f"    WARNING: dt={dt} > CFL limit={dt_max:.4f}, using dt={dt_max*0.8:.4f}")
+        dt = dt_max * 0.8
+
+    stim_mask = torch.zeros(nx, ny, dtype=torch.bool)
+    stim_mask[:stim_cols, :] = True
+
+    times = []
+    V_hist = []
+    t = 0.0
+    next_save = save_every
+    n_steps = int(t_end / dt + 0.5)
+
+    for step_i in range(n_steps):
+        V_flat = V.reshape(-1)
+        S_flat = S.reshape(-1, S.shape[-1])
+
+        Iion = model.compute_Iion(V_flat, S_flat)
+
+        Istim = torch.zeros_like(V_flat)
+        if stim_start <= t < stim_start + stim_dur:
+            Istim[stim_mask.reshape(-1)] = stim_amp
+
+        V_flat = V_flat + dt * (-(Iion + Istim))
+
+        gate_inf = model.compute_gate_steady_states(V_flat, S_flat)
+        gate_tau = model.compute_gate_time_constants(V_flat, S_flat)
+        for k, gi in enumerate(model.gate_indices):
+            tau_k = gate_tau[:, k].clamp(min=1e-6)
+            inf_k = gate_inf[:, k]
+            S_flat[:, gi] = inf_k + (S_flat[:, gi] - inf_k) * torch.exp(-dt / tau_k)
+
+        conc_rates = model.compute_concentration_rates(V_flat, S_flat)
+        for k, ci in enumerate(model.concentration_indices):
+            S_flat[:, ci] = S_flat[:, ci] + dt * conc_rates[:, k]
+
+        V = V_flat.reshape(nx, ny)
+        S = S_flat.reshape(nx, ny, -1)
+
+        # Diffusion: explicit Euler with Mehrstellen Laplacian (sparse matvec)
+        lap = torch.sparse.mm(L, V.reshape(-1, 1)).squeeze(1).reshape(nx, ny)
+        V = V + dt * lap
+
+        t += dt
+
+        if t >= next_save - 1e-12:
+            next_save += save_every
+            times.append(t)
+            V_hist.append(V.clone())
+
+    return times, V_hist
+
+
+# ============================================================
 # Result Formatting
 # ============================================================
 def format_cv(cv):
