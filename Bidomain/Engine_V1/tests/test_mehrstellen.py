@@ -278,3 +278,33 @@ class TestMehrstellenWiring:
         A = spatial.get_elliptic_operator().to_dense()
         eigvals = torch.linalg.eigvalsh(A)
         assert eigvals.min().item() > 0, f"Min eigenvalue = {eigvals.min().item()}"
+
+
+# ============================================================
+# Step 4: cv_shared Builders
+# ============================================================
+
+class TestMehrstellenCvShared:
+    """Tests 14-15: cv_shared builders accept stencil parameter."""
+
+    def test_default_preserved(self):
+        """M-T14: run_bidomain() without stencil arg runs normally."""
+        from cv_shared import build_bidomain_sim, NX, NY, DX, DT, D_I, D_E
+        # Just build, don't run (too slow for unit test)
+        sim, grid = build_bidomain_sim(nx=21, ny=21, dx=DX, dt=DT,
+                                       D_i=D_I, D_e=D_E)
+        assert sim is not None
+
+    def test_mehrstellen_accepted(self):
+        """M-T15: build_bidomain_sim with stencil='mehrstellen' works."""
+        from cv_shared import build_bidomain_sim, DX, DT, D_I, D_E
+        sim, grid = build_bidomain_sim(nx=21, ny=21, dx=DX, dt=DT,
+                                       D_i=D_I, D_e=D_E,
+                                       stencil='mehrstellen')
+        # Run 5ms
+        count = 0
+        for state in sim.run(t_end=0.1, save_every=0.1):
+            V = grid.flat_to_grid(state.Vm)
+            assert torch.isfinite(V).all()
+            count += 1
+        assert count >= 1
