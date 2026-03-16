@@ -48,6 +48,13 @@ class TuningConfig:
     # Tissue parameters (from spiral_wave_s1s2)
     dx_cm: float = 0.04             # cm (400 μm, matches spiral_wave_s1s2)
     cable_length_cm: float = 1.5    # cm (1D cable for CV — shorter = faster)
+    # Engine selection
+    engine: str = 'monodomain'      # 'monodomain' | 'bidomain'
+    # Bidomain parameters (from cv_shared.py: sigma_i=1.74, sigma_e=6.25, chi=1400, Cm=1.0)
+    De_Di_ratio: float = 3.597      # D_e / D_i ratio (physiological default)
+    bc_type: str = 'insulated'      # 'insulated' | 'bath'
+    bidomain_splitting: str = 'strang'
+    elliptic_solver: str = 'auto'
 
 
 # ============================================================================
