@@ -42,22 +42,24 @@ Master index for the research knowledge base. Start here when looking up theory,
 | campos_2016_lbm_gpu | [PDF](papers/campos_2016_lbm_gpu.pdf) | Q4/overview.md | LBM, GPU, parallel |
 | lbm_review_macro_flows | [PDF](papers/lbm_review_macro_flows.pdf) | Q4/overview.md | LBM, theory |
 | 12859_2023_article_5513 | [PDF](papers/12859_2023_article_5513.pdf) | — | (to be summarized) |
-| pouranbarani_2019_multiobjective_rm | DOI: 10.1371/journal.pone.0225245 | Q8/pouranbarani_2019_multiobjective_rm.md | NSGA-II, multi-objective, Rm, CV |
-| coveney_2021_bayesian_restitution | DOI: 10.3389/fphys.2021.693015 | Q8/coveney_2021_bayesian_restitution.md | Bayesian, GP emulator, PCA, restitution |
-| nietoramos_2023_bayesian_hmc | DOI: 10.1007/s11517-022-02685-y | Q8/nietoramos_2023_bayesian_hmc.md | HMC, ABC-SMC, Bayesian, posterior |
-| groenendaal_2015_cell_specific | DOI: 10.1371/journal.pcbi.1004242 | Q8/groenendaal_2015_cell_specific.md | GA, cell-specific, non-uniqueness |
-| zhang_2024_gradient_two_waveform | DOI: 10.1038/s41598-024-63413-0 | Q8/zhang_2024_gradient_two_waveform.md | gradient PO, two-waveform, hiPSC-CM |
-| chang_2017_uq_cipa | DOI: 10.3389/fphys.2017.00917 | Q8/chang_2017_uq_cipa.md | UQ, ORd, CiPA, MCMC |
-| nietoramos_2022_hmc_cinc | DOI: 10.23919/cinc53138.2021.9662836 | Q8/nietoramos_2022_hmc_cinc.md | HMC, NUTS, proof-of-concept |
-| cairns_2017_ga_parameterization | DOI: 10.1063/1.5000354 | Q8/cairns_2017_ga_parameterization.md | GA, parameterization |
-| bishop_2011_augmented_monodomain | DOI: 10.1109/TBME.2010.2096425 | Q5/bishop_2011_augmented_monodomain.md | bath-loading, augmented monodomain, CV speedup |
-| bishop_2011_bath_loading_arrhythmias | DOI: 10.1016/j.bpj.2011.10.052 | Q5/bishop_2011_bath_loading_arrhythmias.md | bath-loading, arrhythmias, fiber rotation |
-| rossi_2018_thickness_curvature | DOI: 10.3389/fphys.2018.01344 | Q5/rossi_2018_thickness_curvature.md | wall thickness, curvature, atrial CV |
-| patel_2005_bidomain_boundary | DOI: 10.1103/PhysRevE.72.051931 | Q5/patel_2005_bidomain_boundary.md | overdetermined BC, tissue-bath interface, analytical |
-| roberts_2008_discrete_multidomain | DOI: 10.1529/biophysj.108.137349 | Q5/roberts_2008_discrete_multidomain.md | discrete multidomain, extracellular cleft, microscale |
-| tranquillo_2005_analytical_bath | DOI: 10.1109/TBME.2004.840467 | Q5/tranquillo_2005_analytical_bath.md | analytical phi_e, finite bath, Fourier series |
-| johnston_2008_approximate_bidomain | DOI: 10.1103/PhysRevE.78.041904 | Q5/johnston_2008_approximate_bidomain.md | approximate bidomain, boundary layer, Patel-Roth extension |
-| sambelashvili_2004_scroll_wave | DOI: 10.1152/ajpheart.01108.2003 | Q5/sambelashvili_2004_scroll_wave.md | scroll wave, filament, boundary type, reentry |
+| pouranbarani_2019_multiobjective_rm | [PDF](papers/multiobjective_optimization_membrane_resistance_2019_pouranbarani.pdf) | Q8/pouranbarani_2019_multiobjective_rm.md | NSGA-II, multi-objective, Rm, CV |
+| coveney_2021_bayesian_restitution | [PDF](papers/bayesian_calibration_restitution_emulators_2021_coveney.pdf) | Q8/coveney_2021_bayesian_restitution.md | Bayesian, GP emulator, PCA, restitution |
+| nietoramos_2023_bayesian_hmc | [PDF](papers/bayesian_hmc_abc_cardiac_fitting_2023_nietoramos.pdf) | Q8/nietoramos_2023_bayesian_hmc.md | HMC, ABC-SMC, Bayesian, posterior |
+| groenendaal_2015_cell_specific | [PDF](papers/cell_specific_electrophysiology_models_2015_groenendaal.pdf) | Q8/groenendaal_2015_cell_specific.md | GA, cell-specific, non-uniqueness |
+| zhang_2024_gradient_two_waveform | [PDF](papers/gradient_based_hipsc_two_waveform_fitting_2024_zhang.pdf) | Q8/zhang_2024_gradient_two_waveform.md | gradient PO, two-waveform, hiPSC-CM |
+| chang_2017_uq_cipa | [PDF](papers/uncertainty_quantification_proarrhythmia_cipa_2017_chang.pdf) | Q8/chang_2017_uq_cipa.md | UQ, ORd, CiPA, MCMC |
+| nietoramos_2022_hmc_cinc | [PDF](papers/hamiltonian_monte_carlo_ap_parameters_2022_nietoramos.pdf) | Q8/nietoramos_2022_hmc_cinc.md | HMC, NUTS, proof-of-concept |
+| cairns_2017_ga_parameterization | [PDF](papers/genetic_algorithm_ap_parameterization_2017_cairns.pdf) | Q8/cairns_2017_ga_parameterization.md | GA, parameterization |
+| bishop_2011_augmented_monodomain | [PDF](papers/augmented_monodomain_bath_loading_2011_bishop.pdf) | Q5/bishop_2011_augmented_monodomain.md | bath-loading, augmented monodomain, CV speedup |
+| bishop_2011_bath_loading_arrhythmias | [PDF](papers/bath_loading_arrhythmia_wavefront_curvature_2011_bishop.pdf) | Q5/bishop_2011_bath_loading_arrhythmias.md | bath-loading, arrhythmias, fiber rotation |
+| rossi_2018_thickness_curvature | [PDF](papers/muscle_thickness_curvature_conduction_velocity_2018_rossi.pdf) | Q5/rossi_2018_thickness_curvature.md | wall thickness, curvature, atrial CV |
+| patel_2005_bidomain_boundary | [PDF](papers/overdetermined_boundary_condition_bidomain_2005_patel.pdf) | Q5/patel_2005_bidomain_boundary.md | overdetermined BC, tissue-bath interface, analytical |
+| roberts_2008_discrete_multidomain | [PDF](papers/discrete_multidomain_interstitial_space_2008_roberts.pdf) | Q5/roberts_2008_discrete_multidomain.md | discrete multidomain, extracellular cleft, microscale |
+| tranquillo_2005_analytical_bath | [PDF](papers/analytical_extracellular_potential_finite_bath_2005_tranquillo.pdf) | Q5/tranquillo_2005_analytical_bath.md | analytical phi_e, finite bath, Fourier series |
+| johnston_2008_approximate_bidomain | [PDF](papers/approximate_bidomain_boundary_solutions_2008_johnston.pdf) | Q5/johnston_2008_approximate_bidomain.md | approximate bidomain, boundary layer, Patel-Roth extension |
+| sambelashvili_2004_scroll_wave | [PDF](papers/scroll_wave_reentry_boundary_dynamics_2004_sambelashvili.pdf) | Q5/sambelashvili_2004_scroll_wave.md | scroll wave, filament, boundary type, reentry |
+
+| hipsc_cm_maturation_models | (multi-paper survey) | Q8/hipsc_cm_maturation_models.md | hiPSC-CM, maturation, IK1, If, automaticity, quiescence |
 
 *Add new papers using `/summarize-paper` or `/research`. Each entry maps citation key → PDF → summary file → topic tags.*
 
