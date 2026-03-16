@@ -36,14 +36,18 @@ class TuningConfig:
     ionic_model: str = 'phas13'     # 'phas13' | 'ttp06'
     tier: int = 1                   # Parameter tier (1, 2, or 3)
     device: str = 'cuda'
-    dt: float = 0.005               # ms
-    n_beats: int = 20               # Beats to pace before measuring
+    dt: float = 0.02                # ms — tissue dt (CFL: dx²/4D)
+    dt_cell: float = 0.2            # ms — single-cell dt (validated: <1% Vpeak drift vs 0.05)
+    n_beats: int = 10               # Beats to pace before measuring
     pacing_cl: float = 1000.0       # ms (pacing cycle length)
     stim_amplitude: float = -5.0    # A/F
     stim_duration: float = 2.0      # ms
     n_initial: int = 0              # BoTorch initial points (0 = auto)
     n_iterations: int = 200         # BoTorch evaluations
     dtype: torch.dtype = torch.float64
+    # Tissue parameters (from spiral_wave_s1s2)
+    dx_cm: float = 0.04             # cm (400 μm, matches spiral_wave_s1s2)
+    cable_length_cm: float = 1.5    # cm (1D cable for CV — shorter = faster)
 
 
 # ============================================================================
