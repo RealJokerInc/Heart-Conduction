@@ -1,9 +1,13 @@
 """
-Optimizer V1 — Batched PHAS13 Ionic Step
+Optimizer V1 — Batched Ionic Step (PHAS13 / MHAS13)
 
 Simulates M parameter sets simultaneously. Each cell has its own
 conductance scaling but shares the same gating kinetics (which depend
 only on V, not conductances).
+
+Supports two IK1 modes:
+- 'phas13': native Paci IK1 formulation (spontaneous model)
+- 'mhas13': TTP06 IK1 formulation + g_f=0 (matured, quiescent)
 
 The conductance tensor has shape (M, 14) with columns ordered as in
 PHAS13_REGISTRY (tier 1-3). Non-tuned parameters use published defaults.
@@ -69,11 +73,13 @@ N_ALL_PARAMS = len(_ALL_PARAM_NAMES)
 
 def build_conductance_tensor(theta_batch: torch.Tensor, tier: int,
                              dtype=torch.float64,
-                             device='cpu') -> torch.Tensor:
+                             device='cpu',
+                             ionic_model: str = 'mhas13') -> torch.Tensor:
     """
     Convert (M, n_tier_params) scaling factors to (M, 14) actual conductance values.
 
     Non-tuned parameters (tiers above `tier`) use published defaults (scale=1.0).
+    For MHAS13: g_f is forced to 0 (If suppressed).
     """
     M = theta_batch.shape[0]
     # Start with all-ones (published defaults)
@@ -89,6 +95,10 @@ def build_conductance_tensor(theta_batch: torch.Tensor, tier: int,
     for i, name in enumerate(_ALL_PARAM_NAMES):
         cond[:, i] *= PHAS13_REGISTRY[name].published
 
+    # MHAS13 maturation: suppress If
+    if ionic_model == 'mhas13':
+        cond[:, C_g_f] = 0.0
+
     return cond
 
 
@@ -98,12 +108,12 @@ def batch_step(
     dt: float,
     cond: torch.Tensor,             # (M, 14) actual conductance values
     I_stim: Optional[torch.Tensor] = None,  # (M,) or None
+    ionic_model: str = 'mhas13',    # 'mhas13' uses TTP06 IK1; 'phas13' uses Paci IK1
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Advance M cells by one timestep with per-cell conductances.
 
-    This is a batched version of PHAS13Model.step() where conductance
-    parameters are (M,) tensors instead of scalars.
+    Supports PHAS13 (Paci IK1) and MHAS13 (TTP06 IK1 + g_f=0).
     """
     p = PHAS13Parameters()  # For non-tunable constants (Nao, Ki, Cao, etc.)
 
@@ -168,14 +178,26 @@ def batch_step(
     k_ks = 1.0 + 0.6 / (1.0 + (3.8e-5 / Cai) ** 1.4)
     iKs = g_Ks * (Xs ** 2) * (V - EKs) * k_ks
 
-    # IK1
+    # IK1 — model-dependent formulation
     VmEK = V - EK
-    alpha_k1 = 3.91 / (1.0 + safe_exp(0.5942 * (VmEK - 200.0)))
-    beta_k1 = ((-1.509 * safe_exp(0.0002 * (VmEK + 100.0)) +
-                safe_exp(0.5886 * (VmEK - 10.0))) /
-               (1.0 + safe_exp(0.4547 * VmEK)))
-    inf_k1 = alpha_k1 / (alpha_k1 + beta_k1)
-    iK1 = g_K1 * inf_k1 * torch.sqrt(torch.tensor(p.Ko / 5.4)) * (V - EK)
+    if ionic_model == 'mhas13':
+        # TTP06 IK1 formulation (Verkerk 2019) with fixed GK1_ttp06
+        from cardiac_sim.ionic.mhas13.parameters import MHAS13Parameters
+        GK1_ttp06 = MHAS13Parameters().GK1_ttp06
+        alpha_k1 = 0.1 / (1.0 + safe_exp(0.06 * (VmEK - 200.0)))
+        beta_k1 = (3.0 * safe_exp(0.0002 * (VmEK + 100.0)) +
+                    safe_exp(0.1 * (VmEK - 10.0))) / \
+                   (1.0 + safe_exp(-0.5 * VmEK))
+        xK1 = alpha_k1 / (alpha_k1 + beta_k1)
+        iK1 = GK1_ttp06 * (p.Ko / 5.4) ** 0.5 * xK1 * (V - EK)
+    else:
+        # Native Paci IK1 formulation
+        alpha_k1 = 3.91 / (1.0 + safe_exp(0.5942 * (VmEK - 200.0)))
+        beta_k1 = ((-1.509 * safe_exp(0.0002 * (VmEK + 100.0)) +
+                    safe_exp(0.5886 * (VmEK - 10.0))) /
+                   (1.0 + safe_exp(0.4547 * VmEK)))
+        inf_k1 = alpha_k1 / (alpha_k1 + beta_k1)
+        iK1 = g_K1 * inf_k1 * torch.sqrt(torch.tensor(p.Ko / 5.4)) * (V - EK)
 
     # Ito
     ito = g_to * q * r_gate * (V - EK)

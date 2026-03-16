@@ -33,14 +33,14 @@ class TuningTargets:
 @dataclass
 class TuningConfig:
     """Configuration for an optimization run."""
-    ionic_model: str = 'phas13'     # 'phas13' | 'ttp06'
+    ionic_model: str = 'mhas13'     # 'mhas13' | 'phas13'
     tier: int = 1                   # Parameter tier (1, 2, or 3)
     device: str = 'cuda'
     dt: float = 0.02                # ms — tissue dt (CFL: dx²/4D)
     dt_cell: float = 0.2            # ms — single-cell dt (validated: <1% Vpeak drift vs 0.05)
     n_beats: int = 10               # Beats to pace before measuring
     pacing_cl: float = 1000.0       # ms (pacing cycle length)
-    stim_amplitude: float = -5.0    # A/F
+    stim_amplitude: float = -40.0   # A/F (MHAS13 threshold ~-15 A/F)
     stim_duration: float = 2.0      # ms
     n_initial: int = 0              # BoTorch initial points (0 = auto)
     n_iterations: int = 200         # BoTorch evaluations

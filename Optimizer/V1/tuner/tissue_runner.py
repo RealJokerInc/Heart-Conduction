@@ -15,8 +15,16 @@ from dataclasses import dataclass
 sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                 '..', '..', '..', 'Monodomain', 'Engine_V5.4'))
 
-from cardiac_sim.ionic.phas13 import PHAS13Model, PHAS13Parameters
+from cardiac_sim.ionic.phas13 import PHAS13Model
+from cardiac_sim.ionic.mhas13 import MHAS13Model
 from .config import TuningConfig, apply_scaling, theta_to_dict
+
+
+def _create_model(config: TuningConfig):
+    """Create the appropriate ionic model based on config."""
+    if config.ionic_model == 'mhas13':
+        return MHAS13Model(device=config.device)
+    return PHAS13Model(device=config.device)
 
 
 @dataclass
@@ -54,7 +62,7 @@ def run_cv_measurement(theta_ionic: torch.Tensor,
     dt_ionic = dt * ionic_substeps  # Actual ionic dt (close to dt_cell)
 
     # Create model
-    model = PHAS13Model(device=config.device)
+    model = _create_model(config)
     theta_dict = theta_to_dict(theta_ionic, config.tier)
     apply_scaling(model.params, theta_dict)
 

@@ -15,10 +15,19 @@ from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                 '..', '..', '..', 'Monodomain', 'Engine_V5.4'))
 
-from cardiac_sim.ionic.phas13.parameters import V_REST, get_initial_state as _get_initial_state
+from cardiac_sim.ionic.phas13.parameters import (
+    V_REST as V_REST_PHAS13,
+    get_initial_state as _get_initial_state,
+)
 from .config import TuningConfig, TuningTargets, get_param_names
 from .batch_ionic import batch_step, build_conductance_tensor
 from .metrics import detect_aps, measure_apd, measure_dvdt_max, measure_v_rest, measure_peak, measure_cl
+
+# V_rest for each model
+_V_REST = {
+    'phas13': -74.334005762384,
+    'mhas13': -83.7,
+}
 
 
 @dataclass
@@ -70,10 +79,13 @@ def run_single_cell_batch(theta_batch: torch.Tensor,
     dtype = config.dtype
 
     # Build conductance tensor: (M, 14)
-    cond = build_conductance_tensor(theta_batch, config.tier, dtype, device)
+    model_name = config.ionic_model
+    cond = build_conductance_tensor(theta_batch, config.tier, dtype, device,
+                                    ionic_model=model_name)
 
     # Initialize: all cells start from same initial state
-    V = torch.full((M,), V_REST, dtype=dtype, device=device)
+    v_rest = _V_REST.get(model_name, -83.7)
+    V = torch.full((M,), v_rest, dtype=dtype, device=device)
     init_state = _get_initial_state(device=torch.device(device), dtype=dtype)
     states = init_state.unsqueeze(0).expand(M, -1).clone()
 
@@ -96,7 +108,8 @@ def run_single_cell_batch(theta_batch: torch.Tensor,
                 I_stim = torch.full((M,), config.stim_amplitude,
                                     dtype=dtype, device=device)
 
-        V, states = batch_step(V, states, dt, cond, I_stim)
+        V, states = batch_step(V, states, dt, cond, I_stim,
+                               ionic_model=model_name)
         t_current += dt
 
         # Save
@@ -198,9 +211,12 @@ def run_s1s2(theta: torch.Tensor, config: TuningConfig,
     device = config.device
     dtype = config.dtype
 
-    cond = build_conductance_tensor(theta_batch, config.tier, dtype, device)
+    model_name = config.ionic_model
+    cond = build_conductance_tensor(theta_batch, config.tier, dtype, device,
+                                    ionic_model=model_name)
 
-    V = torch.full((1,), V_REST, dtype=dtype, device=device)
+    v_rest = _V_REST.get(model_name, -83.7)
+    V = torch.full((1,), v_rest, dtype=dtype, device=device)
     init_state = _get_initial_state(device=torch.device(device), dtype=dtype)
     states = init_state.unsqueeze(0)
 
@@ -212,7 +228,8 @@ def run_s1s2(theta: torch.Tensor, config: TuningConfig,
         I_stim = None
         if (t_current % s1_cl) < config.stim_duration:
             I_stim = torch.full((1,), config.stim_amplitude, dtype=dtype, device=device)
-        V, states = batch_step(V, states, dt, cond, I_stim)
+        V, states = batch_step(V, states, dt, cond, I_stim,
+                               ionic_model=model_name)
         t_current += dt
         if not torch.isfinite(V).all():
             return CellResult(converged=False)
@@ -224,7 +241,8 @@ def run_s1s2(theta: torch.Tensor, config: TuningConfig,
     for di in di_values:
         V_run, states_run = V_s1.clone(), states_s1.clone()
         for _ in range(int(di / dt)):
-            V_run, states_run = batch_step(V_run, states_run, dt, cond)
+            V_run, states_run = batch_step(V_run, states_run, dt, cond,
+                                           ionic_model=model_name)
             if not torch.isfinite(V_run).all():
                 break
         if not torch.isfinite(V_run).all():
@@ -236,7 +254,8 @@ def run_s1s2(theta: torch.Tensor, config: TuningConfig,
             I_stim = None
             if t_s2 < config.stim_duration:
                 I_stim = torch.full((1,), config.stim_amplitude, dtype=dtype, device=device)
-            V_run, states_run = batch_step(V_run, states_run, dt, cond, I_stim)
+            V_run, states_run = batch_step(V_run, states_run, dt, cond, I_stim,
+                                           ionic_model=model_name)
             t_s2 += dt
             t_list.append(t_s2)
             v_list.append(V_run[0].item())
