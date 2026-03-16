@@ -1,106 +1,191 @@
-# Project Instructions for Claude Code
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Python Environment
 
-Use the conda environment `heart-conduction` for Python execution:
+Conda environment `heart-conduction`, Python 3.11, PyTorch 2.10 (CUDA), scipy, torch_dct.
+
 ```bash
 conda activate heart-conduction
-python script.py
 ```
+
+GPU: NVIDIA RTX PRO 4500 Blackwell. All tensors default to float64.
+
+## Running Tests
+
+**Bidomain Engine V1** (pytest-based, 38+ tests across 6 phases):
+```bash
+cd Bidomain/Engine_V1
+pytest tests/ -v                                    # All tests
+pytest tests/test_phase2_fdm.py -v                  # Single phase
+pytest tests/test_phase6c_boundary_cv.py::test_name  # Single test
+```
+
+**Monodomain Engine V5.4** (standalone scripts, not pytest):
+```bash
+cd Monodomain/Engine_V5.4
+python test_phase7.py    # Builder integration (7 tests)
+python test_phase8.py    # Per-node conductivity (7 tests)
+```
+
+**LBM V1** (pytest or standalone):
+```bash
+cd Monodomain/LBM_V1
+python -m pytest tests/ -v
+```
+
+## Project Architecture
+
+This is a **cardiac electrophysiology simulation** project with multiple engine implementations, a research corpus, and a neural surrogate pipeline.
+
+### Active Engines
+
+| Engine | Path | Status | Purpose |
+|--------|------|--------|---------|
+| **Bidomain V1** | `Bidomain/Engine_V1/` | 6 phases DONE (38+ tests) | Full bidomain equations, decoupled GS splitting, three-tier spectral/PCG/GMG elliptic solver. Ground truth for Surrogate training. |
+| **Monodomain V5.3** | `Monodomain/Engine_V5.3/` | VALIDATED BASELINE | **Read-only.** Reference for V5.4 migration. Never modify. |
+| **Monodomain V5.4** | `Monodomain/Engine_V5.4/` | 9 phases DONE (77 tests) | Full rewrite: pluggable FEM/FDM/FVM, 6 diffusion solvers, Strang/Godunov splitting, LBM (D2Q5/D3Q7). |
+| **LBM V1** | `Monodomain/LBM_V1/` | 8 phases DONE (34 tests) | Lattice Boltzmann monodomain (D2Q5/D2Q9, BGK/MRT). Boundary speedup research. |
+
+Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — do not modify.
+
+### Supporting Components
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| **Builder** | `Builder/` | Image-to-mesh conversion (PNG/SVG → StructuredGrid + stimulus). Integrated with V5.4. `Builder/MeshLibrary/` has geometry assets. |
+| **Optimizer** | `Optimizer/` | Engine Tuner: BayesOpt pipeline for tuning ionic model parameters (TTP06/ORd) to target CV, APD, and restitution. V1 targets Monodomain V5.4 only. |
+| **Surrogate** | `Surrogate/` | Neural operator pipeline (Ionic Transformer + Diffusion ResNet) replacing Bidomain V1 solver. Planning phase. |
+| **Research** | `Research/` | Literature reviews organized by question (Q1–Q8). `Research/INDEX.md` is the entry point. Papers in `Research/papers/`. |
+| **ResearchStatement** | `ResearchStatement/` | Grant materials. |
+| **Images** | `Images/` | Centralized copies of all project images, organized by source (see subdirectories below). Originals remain in place. |
+| **Videos** | `Videos/` | Centralized copies of all project videos, organized by source. |
+
+### Shared Module Pattern
+
+Ionic models (TTP06, O'Hara-Rudy) are copied across engines with identical interfaces:
+- `ionic/base.py` — IonicModel ABC: `compute_Iion(V, states)`, `gate_inf()`, `gate_tau()`
+- `ionic/lut.py` — Lookup table acceleration
+- `ionic/ttp06/`, `ionic/ord/` — 18-state and 40-state models respectively
+
+### Bidomain V1 Architecture (most active engine)
+
+```
+BidomainSimulation (orchestrator)
+  → SplittingStrategy (Strang / Godunov)
+    → IonicSolver (RushLarsen / ForwardEuler)
+    → DecoupledBidomainDiffusionSolver
+      → Step 1: Parabolic solve (A_para * Vm^{n+1} = rhs)
+      → Step 2: Elliptic solve  (A_ellip * phi_e^{n+1} = L_i * Vm^{n+1})
+        → LinearSolver: Tier 1 Spectral / Tier 2 PCG+Spectral / Tier 3 PCG+GMG
+```
+
+Key conventions:
+- chi=1.0, Cm=1.0 in operators; D_i, D_e pre-scaled by chi*Cm
+- Parabolic coupling: RHS uses `L_i * phi_e` (full coupling, NOT `theta * L_i * phi_e`)
+- Elliptic solver auto-selected from BoundarySpec (Neumann→DCT, Dirichlet→DST, Mixed→PCG+GMG)
+
+### Monodomain V5.4 Architecture
+
+```
+MonodomainSimulation (orchestrator)
+  → SplittingStrategy (Strang / Godunov)
+    → IonicSolver (RushLarsen / ForwardEuler)
+    → DiffusionSolver
+      → Explicit: ForwardEuler, RK2, RK4
+      → Implicit: CrankNicolson, BDF1, BDF2 → LinearSolver (PCG / Chebyshev / FFT)
+  → SpatialDiscretization (FEM / FDM / FVM — pluggable)
+  → LBM path: LBMSimulation → Collision (BGK/MRT) + Streaming + BoundaryConditions
+```
+
+### LBM V1 Architecture (`Monodomain/LBM_V1/`)
+
+Self-contained Lattice Boltzmann engine. Two-layer design: OOP classes for configuration, pure functions for `@torch.compile` kernel fusion.
+
+```
+LBMSimulation (coordinator, lattice-agnostic)
+  → CollisionOperator (BGK single-tau / MRT multi-relaxation)
+  → Streaming (stream_d2q5 / stream_d2q9 — pure functions)
+  → BoundaryConditions (Neumann bounce-back / Dirichlet anti-bounce / absorbing equilibrium)
+  → IonicSolver (Rush-Larsen standalone step)
+  → Lattice (D2Q5 isotropic / D2Q9 full tensor — frozen dataclass singletons)
+```
+
+Key details:
+- Research goal: demonstrate Kleber boundary speedup effect (reduced electrotonic loading at tissue edges)
+- `sigma_to_D()` / `tau_from_D()` in `src/diffusion.py` handle LBM ↔ physical unit conversion
+- State uses `(Nx, Ny)` grid convention, matching V5.4
 
 ## Permission Handling
 
-When running Bash commands that require user approval:
 - **DO NOT** request permissions for complete inline commands with embedded code
 - Commands should use pattern-based permissions ending with `:*`
-- Example: Use `Bash(python3:*)` not `Bash(python3 -c "import sys...")`
-
-If a command requires specific inline code, prefer:
-1. Writing the code to a temporary file first
-2. Then running that file with a pattern-friendly command
+- If a command requires specific inline code, write to a temp file first, then run the file
 
 ## Plan Mode Usage
 
-When using plan mode:
-- Plan files should contain **structured implementation steps only**
+- Plan files contain **structured implementation steps only**
 - Never write conversation transcripts, tool outputs, or raw session data to plan files
-- Plans should be concise markdown with clear action items
 
 ---
 
-## Textbook Writing (Bidomain Textbook)
+## Research & Textbook Workflows
 
-When editing or creating content for `Research/Bidomain/bidomain_textbook.html`:
+Four custom slash commands are available for research-related work (defined in `.claude/commands/`):
 
-1. **Read `Research/Bidomain/STYLE_GUIDE.md` first** — it defines the "Feynman style" writing approach
-2. **Read `Research/Bidomain/CHANGELOG.md`** — tracks all major edits with dates, prevents re-doing work
-3. **Read `Research/Bidomain/INDEX.md`** — document structure with line numbers, page counts, status per chapter
-4. **Pipeline**: HTML + local MathJax + Playwright → PDF via `html_to_pdf_v3.py` (in session root)
-5. **After edits**: Always regenerate PDF, update CHANGELOG.md and INDEX.md
-6. **Equation numbering**: Chapter N uses equations (N.x). Check for conflicts after adding equations.
-7. **Splice scripts**: For large content replacements (>50 lines), write content to a temp file and use a Python splice script rather than Edit tool.
+| Command | When to use |
+|---------|-------------|
+| `/research` | Full pipeline: search PubMed → screen → acquire → summarize → file. Handles topic searches, DOIs, PMIDs, citations, and local PDFs. |
+| `/summarize-paper` | Quick-summarize a single local PDF (stages 4-5 of `/research` only) |
+| `/research-debug` | Finding relevant research when debugging simulation issues or choosing algorithms |
+| `/textbook-edit` | Writing or revising textbook content (reads style guide, changelog, audits first) |
+| `/textbook-compile` | Building the textbook PDF from HTML source via Playwright |
+
+**Key entry point**: `Research/INDEX.md` — master question map, debugging quick-reference, and citation registry. Read this first when doing any research-related work.
+
+Research is organized by question (`Research/Q1_spatial_discretization/` through `Research/Q7_fetal_heart_development/`). Each Q-folder has a README.md with the answer summary. Papers live in `Research/papers/` with citation-key naming. The textbook (HTML source, PDFs, style guide, audits) is in `Research/textbook/`.
 
 ---
 
 ## V5.4 Implementation Workflow
 
-This project is a multi-phase engine rewrite (7 phases, 70+ validation tests). Sessions will frequently hit compaction. These rules ensure continuity.
+Multi-phase engine rewrite (9 phases, 77 validation tests). Sessions frequently hit compaction.
 
 ### Session Startup — Orientation Protocol
 
-**Every session (new or resumed after compaction), before doing any work:**
+**Every session, before doing any work:**
 
-1. Read `Monodomain/Engine_V5.4/PROGRESS.md` — tells you current phase, what's done, what's in-progress, what's next
-2. Read the relevant IMPLEMENTATION.md section for the current phase (don't re-read the whole file)
-3. If implementing a specific file, read its ABC from `improvement.md` at the line number listed in PROGRESS.md
-4. Check MEMORY.md for any notes about gotchas or prior failures
+1. Read `Monodomain/Engine_V5.4/PROGRESS.md` — current phase, done/in-progress/next
+2. Read the relevant IMPLEMENTATION.md section for the current phase (not the whole file)
+3. If implementing a file, read its ABC from `improvement.md` at the line number in PROGRESS.md
+4. Check MEMORY.md for gotchas or prior failures
 
-**Do NOT re-read entire documents speculatively.** Use the line numbers in PROGRESS.md and MEMORY.md to jump to exactly what you need.
+**Do NOT re-read entire documents speculatively.** Use line numbers from PROGRESS.md.
 
 ### Compaction Recovery
 
-When a conversation is compacted (you see "continued from a previous conversation"):
-
-1. **Stop.** Do not continue blindly — the summary may be lossy.
-2. Run the orientation protocol above (read PROGRESS.md first).
-3. If you were mid-file when compaction hit, re-read that file to verify your in-progress work.
-4. If the user says "continue", pick up from the next incomplete task in PROGRESS.md.
-5. Do NOT re-do work that PROGRESS.md marks as done.
+1. **Stop.** Don't continue blindly.
+2. Run orientation protocol (PROGRESS.md first).
+3. If mid-file when compacted, re-read that file to verify.
+4. On "continue", pick up from next incomplete task in PROGRESS.md.
+5. Do NOT re-do work marked as done.
 
 ### Task Management
 
-- **Use TaskCreate** at the start of each phase to track that phase's action items
-- **Mark tasks in_progress** before starting work on them
-- **Mark tasks completed** only after validation passes
-- After completing a task, **update PROGRESS.md** immediately — this is your checkpoint
-- If a session ends mid-work, the user should be able to start a new session and you'll know exactly where to resume from PROGRESS.md
-
-### Progress Tracking (PROGRESS.md)
-
-`Monodomain/Engine_V5.4/PROGRESS.md` is the single source of truth for implementation state. Update it:
-
-- When a phase starts (mark `IN PROGRESS`)
-- When each file is completed (add to done list with date)
-- When validation tests pass/fail (record results)
-- When a phase completes (mark `DONE`, move to next)
+- Use TaskCreate at phase start, mark in_progress/completed as work proceeds
+- After each task: **update PROGRESS.md immediately**
 
 ### Implementation Rules
 
-1. **Always check the ABC first.** Before implementing any file, read its abstract base class from `improvement.md` (line numbers in PROGRESS.md). The ABC defines the interface contract — do not deviate.
+1. **Always check the ABC first** from `improvement.md` (line numbers in PROGRESS.md).
+2. **Always check research references** in `IMPLEMENTATION.md § Summary of Key Research References`.
+3. **V5.3 is ground truth for migrated code** — bitwise-identical output required.
+4. **New code validates against IMPLEMENTATION.md criteria** (each phase has a validation table).
+5. **One file at a time** — implement → validate → commit → update PROGRESS.md.
+6. **Simple before complex** — ForwardEuler before CrankNicolson, BGK before MRT, isotropic before anisotropic.
 
-2. **Always check research references.** Each file has a primary research doc listed in `IMPLEMENTATION.md § Summary of Key Research References`. Read the relevant lines before implementing. Don't guess algorithms.
-
-3. **V5.3 is ground truth for migrated code.** When migrating code from V5.3 (FEM, PCG, CN, BDF, ionic models), the V5.4 version MUST produce bitwise-identical output for the same inputs. Run V5.3 tests through the new interface as the first validation step.
-
-4. **New code validates against IMPLEMENTATION.md criteria.** Each phase has a validation table (e.g., `2-V3: FDM Laplacian convergence`). Follow those criteria exactly.
-
-5. **One file at a time.** Implement → validate → commit → update PROGRESS.md → next file. Don't batch multiple files without intermediate validation.
-
-6. **Explicit before implicit, simple before complex.** Within a phase, implement the simplest variant first (e.g., ForwardEuler before CrankNicolson, BGK before MRT, isotropic before anisotropic). Each simpler variant serves as a reference for the next.
-
-### Cross-Referencing (Don't Memorize — Look Up)
-
-The project has extensive documentation. Use it instead of relying on context:
+### Cross-Reference Table
 
 | What you need | Where to find it |
 |---------------|-----------------|
@@ -108,15 +193,17 @@ The project has extensive documentation. Use it instead of relying on context:
 | Phase plan, validation criteria | `Engine_V5.4/IMPLEMENTATION.md` |
 | ABC interfaces, design decisions | `Engine_V5.4/improvement.md` (use line numbers from PROGRESS.md) |
 | High-level architecture | `Engine_V5.4/README.md` |
-| Algorithm details, code snippets | `Research/openCARP_FDM_FVM/01-04_*.md` |
+| Algorithm details | `Research/openCARP_FDM_FVM/01-04_*.md` |
 | Reference implementations | `Research/code_examples/` |
-| V5.3 validated code | `Engine_V5.3/` (source) and `Engine_V5.3/IMPLEMENTATION.md` (docs) |
+| V5.3 validated code | `Engine_V5.3/` |
+| All project images | `Images/` (subdirs by source engine/component) |
+| All project videos | `Videos/` (subdirs by source engine/component) |
 
 ### What NOT To Do
 
-- **Don't re-read improvement.md in full** — it's 1750 lines. Use line-number jumps.
-- **Don't implement without reading the ABC** — you'll drift from the spec.
-- **Don't skip validation** — every file gets tested before moving on.
-- **Don't modify V5.3** — it's the validated baseline. All work happens in V5.4.
-- **Don't write code from memory after compaction** — re-read the source first.
-- **Don't create new architectural patterns** — the architecture is fully specified in improvement.md. If something seems missing, ask the user before inventing.
+- Don't re-read `improvement.md` in full (1750+ lines) — use line-number jumps
+- Don't implement without reading the ABC
+- Don't skip validation
+- Don't modify V5.3
+- Don't write code from memory after compaction — re-read source first
+- Don't create new architectural patterns — ask the user if something seems missing

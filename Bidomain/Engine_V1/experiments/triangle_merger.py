@@ -222,6 +222,7 @@ def run_bidomain(stencil='5pt'):
         bc_type='bath_tb', stencil=stencil,
         stim_width=STIM_WIDTH, stim_start=STIM_START,
         stim_dur=STIM_DUR, stim_amp=STIM_AMP,
+        device=DEVICE,
     )
 
     # Activation time tracking

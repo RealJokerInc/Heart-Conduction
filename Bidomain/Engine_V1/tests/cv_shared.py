@@ -167,7 +167,8 @@ def run_lbm(nx=NX, ny=NY, dx=DX, dt=DT, D=D_EFF, lattice='d2q5',
 def build_bidomain_sim(nx, ny, dx, dt, D_i, D_e, bc_type='insulated',
                        Cm=CM_NUM, stim_width=STIM_WIDTH,
                        stim_start=STIM_START, stim_dur=STIM_DUR,
-                       stim_amp=STIM_AMP, theta=0.5, stencil='5pt'):
+                       stim_amp=STIM_AMP, theta=0.5, stencil='5pt',
+                       device='cpu'):
     """Build a BidomainSimulation with standard parameters.
 
     Parameters
@@ -203,7 +204,8 @@ def build_bidomain_sim(nx, ny, dx, dt, D_i, D_e, bc_type='insulated',
         raise ValueError(f"Unknown bc_type: {bc_type}")
 
     grid = StructuredGrid(Nx=nx, Ny=ny, Lx=Lx, Ly=Ly,
-                          boundary_spec=boundary_spec)
+                          boundary_spec=boundary_spec,
+                          _device=torch.device(device))
     cond = BidomainConductivity(D_i=D_i, D_e=D_e)
     spatial = BidomainFDMDiscretization(grid, cond, Cm=Cm, stencil=stencil)
 
