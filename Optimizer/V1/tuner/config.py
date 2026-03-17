@@ -24,6 +24,10 @@ class TuningTargets:
     v_peak_min: float = 20.0        # mV (constraint, not objective)
     spontaneous_cl: Optional[float] = 1200.0  # ms (optional target)
     restitution: Optional[List[Tuple[float, float]]] = None  # (DI_ms, APD_ms)
+    # Hard constraints (A1) — reject solutions outside these bounds
+    dvdt_max_upper: float = 60.0    # V/s — reject if dV/dt > this
+    v_peak_max: float = 60.0        # mV — reject if V_peak > this
+    v_rest_range: Tuple[float, float] = (-92.0, -70.0)  # mV
 
 
 # ============================================================================
@@ -34,7 +38,8 @@ class TuningTargets:
 class TuningConfig:
     """Configuration for an optimization run."""
     ionic_model: str = 'mhas13'     # 'mhas13' | 'phas13'
-    tier: int = 1                   # Parameter tier (1, 2, or 3)
+    tier: int = 2                   # Parameter tier (1=6, 2=10, 3=14 params)
+    seed: int = 42                  # Reproducibility seed
     device: str = 'cuda'
     dt: float = 0.02                # ms — tissue dt (CFL: dx²/4D)
     dt_cell: float = 0.2            # ms — single-cell dt (validated: <1% Vpeak drift vs 0.05)
@@ -76,7 +81,7 @@ PHAS13_REGISTRY: Dict[str, ParamSpec] = {
     'g_Na':   ParamSpec('g_Na',   3.6712302,    1, (0.5, 2.0)),
     'g_CaL':  ParamSpec('g_CaL',  8.635702e-5,  1, (0.3, 2.0)),
     'g_Kr':   ParamSpec('g_Kr',   0.0298667,    1, (0.5, 3.0)),
-    'g_Ks':   ParamSpec('g_Ks',   0.002041,     1, (0.3, 3.0)),
+    'g_Ks':   ParamSpec('g_Ks',   0.002041,     1, (0.3, 2.5)),
     'g_K1':   ParamSpec('g_K1',   0.0281492,    1, (0.3, 2.0)),
     'g_to':   ParamSpec('g_to',   0.0299038,    1, (0.3, 2.5)),
 

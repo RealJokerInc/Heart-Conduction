@@ -165,7 +165,13 @@ def fit_tissue(theta_ionic: torch.Tensor,
 def _verify_and_refine(theta_ionic, config, cv_target, D_est,
                        cv_ref, D_ref, D_bounds,
                        verbose, label) -> Tuple[float, float, int]:
-    """Verify analytical D_eff estimate, refine with Newton if off by > 10%."""
+    """
+    Verify analytical D_eff estimate, refine with secant method if off.
+
+    Uses two-point secant from (D_ref, cv_ref) and (D_est, cv_est)
+    for better convergence than single-point Newton (A3).
+    Allows up to 4 refinement iterations for tighter convergence (A4).
+    """
     n_sims = 0
 
     result = _run_cv(theta_ionic, D_est, config, n_beats=3)
@@ -183,15 +189,26 @@ def _verify_and_refine(theta_ionic, config, cv_target, D_est,
         print(f"  {label}: D_eff = {D_est:.6f} -> CV = {cv_achieved:.1f} cm/s "
               f"(target {cv_target:.1f}, err {rel_error*100:.1f}%)")
 
-    if rel_error < 0.10:
+    if rel_error < 0.05:
         return D_est, cv_achieved, n_sims
 
-    for _ in range(2):
-        dCV_dD = cv_achieved / (2.0 * D_est)
-        if abs(dCV_dD) < 1e-10:
+    # Secant method using two data points: (D_ref, cv_ref) and (D_est, cv_achieved)
+    D_prev, cv_prev = D_ref, cv_ref
+    D_curr, cv_curr = D_est, cv_achieved
+
+    for _ in range(4):  # Up to 4 secant iterations (A4: was 2)
+        dCV = cv_curr - cv_prev
+        dD = D_curr - D_prev
+        if abs(dCV) < 1e-10:
             break
-        D_new = D_est + (cv_target - cv_achieved) / dCV_dD
+
+        # Secant step: D_new = D_curr + (cv_target - cv_curr) * dD / dCV
+        D_new = D_curr + (cv_target - cv_curr) * dD / dCV
         D_new = np.clip(D_new, *D_bounds)
+
+        # Don't re-evaluate nearly the same D
+        if abs(D_new - D_curr) / max(abs(D_curr), 1e-10) < 0.01:
+            break
 
         result = _run_cv(theta_ionic, D_new, config, n_beats=3)
         n_sims += 1
@@ -199,15 +216,16 @@ def _verify_and_refine(theta_ionic, config, cv_target, D_est,
         if result.cv is None or not result.converged:
             break
 
-        D_est = D_new
-        cv_achieved = result.cv
-        rel_error = abs(cv_achieved - cv_target) / cv_target
+        D_prev, cv_prev = D_curr, cv_curr
+        D_curr = D_new
+        cv_curr = result.cv
+        rel_error = abs(cv_curr - cv_target) / cv_target
 
         if verbose:
-            print(f"  {label}: Newton -> D_eff = {D_est:.6f} -> CV = {cv_achieved:.1f} "
+            print(f"  {label}: secant -> D_eff = {D_curr:.6f} -> CV = {cv_curr:.1f} "
                   f"(err {rel_error*100:.1f}%)")
 
-        if rel_error < 0.05:
+        if rel_error < 0.03:  # Tighter convergence threshold
             break
 
-    return D_est, cv_achieved, n_sims
+    return D_curr, cv_curr, n_sims

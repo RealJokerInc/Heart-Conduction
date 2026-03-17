@@ -1,8 +1,9 @@
 """
-Optimizer V1 — Cell Fitter (Multi-Objective BayesOpt)
+Optimizer V1 — Cell Fitter (Constrained Multi-Objective BayesOpt)
 
-Uses BoTorch qLogNEHVI to find Pareto-optimal ionic parameter scalings.
-Evaluates candidates in batches for GPU acceleration.
+Uses BoTorch qLogNEHVI with hard constraints on dV/dt, V_peak, V_rest.
+Candidates violating constraints receive heavy penalties.
+Evaluates candidates in batches for performance.
 """
 
 import torch
@@ -29,6 +30,9 @@ from .cell_runner import (
 )
 
 
+CONSTRAINT_PENALTY = -2000.0  # Heavy penalty for constraint violations
+
+
 @dataclass
 class CellFitResult:
     """Result from cell fitting."""
@@ -38,6 +42,21 @@ class CellFitResult:
     all_Y: torch.Tensor
     param_names: List[str]
     objective_names: List[str]
+    n_feasible: int = 0         # How many evals passed all constraints
+    n_total: int = 0
+
+
+def _check_constraints(res: CellResult, targets: TuningTargets) -> bool:
+    """Return True if result passes all hard constraints."""
+    if not res.converged:
+        return False
+    if res.dvdt_max is not None and res.dvdt_max > targets.dvdt_max_upper:
+        return False
+    if res.v_peak > targets.v_peak_max:
+        return False
+    if res.v_rest < targets.v_rest_range[0] or res.v_rest > targets.v_rest_range[1]:
+        return False
+    return True
 
 
 def _evaluate_batch(theta_batch: torch.Tensor, config: TuningConfig,
@@ -45,35 +64,43 @@ def _evaluate_batch(theta_batch: torch.Tensor, config: TuningConfig,
     """
     Evaluate M theta vectors -> (M, n_obj) objective matrix.
 
-    All M cells simulated simultaneously in one batched run.
+    Applies hard constraints: infeasible candidates get CONSTRAINT_PENALTY.
+    Feasible candidates get negative absolute errors (higher = better).
     """
     M = theta_batch.shape[0]
     n_obj = 2
     if targets.spontaneous_cl is not None:
         n_obj = 3
 
-    # Run all M cells in one batch
     t, V_all = run_single_cell_batch(theta_batch, config)
     results = extract_biomarkers_batch(t, V_all, config, targets)
 
-    Y = torch.zeros(M, n_obj, dtype=config.dtype)
+    Y = torch.full((M, n_obj), CONSTRAINT_PENALTY, dtype=config.dtype)
 
     for i, res in enumerate(results):
-        # APD90 error
-        if res.apd90 is not None and res.converged:
+        feasible = _check_constraints(res, targets)
+
+        if not feasible:
+            # All objectives get penalty
+            continue
+
+        # APD90 error (feasible)
+        if res.apd90 is not None:
             Y[i, 0] = -abs(res.apd90 - targets.apd_90)
         else:
             Y[i, 0] = -1000.0
 
-        # dV/dt error
-        if res.dvdt_max is not None and res.converged:
+        # dV/dt error (feasible — already passed constraint)
+        if res.dvdt_max is not None:
             Y[i, 1] = -abs(res.dvdt_max - targets.dvdt_max)
         else:
             Y[i, 1] = -500.0
 
-    # CL objective (requires separate spontaneous runs — not batched yet)
+    # CL objective (optional, sequential)
     if targets.spontaneous_cl is not None:
         for i in range(M):
+            if Y[i, 0] <= CONSTRAINT_PENALTY + 1:
+                continue  # Already penalized
             spont = run_spontaneous(theta_batch[i], config, duration_ms=5000.0)
             if spont.cl is not None and spont.converged:
                 Y[i, 2] = -abs(spont.cl - targets.spontaneous_cl)
@@ -88,8 +115,11 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
              n_iterations: Optional[int] = None,
              verbose: bool = True) -> CellFitResult:
     """
-    Run multi-objective BayesOpt with batched evaluation.
+    Run constrained multi-objective BayesOpt with batched evaluation.
     """
+    # Reproducibility (R3)
+    torch.manual_seed(config.seed)
+
     bounds = get_bounds_tensor(config.tier, config.dtype)
     param_names = get_param_names(config.tier)
     n_params = len(param_names)
@@ -107,26 +137,30 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
 
     ref_point = torch.tensor([-500.0] * n_obj, dtype=config.dtype)
 
-    # Phase 1: Initial design — evaluate ALL initial points in one batch
     if verbose:
         print(f"Cell Fitter: {n_params} params (tier {config.tier}), "
               f"{n_obj} objectives, device={config.device}")
+        print(f"  Constraints: dVdt<{targets.dvdt_max_upper}V/s, "
+              f"Vpeak<{targets.v_peak_max}mV, "
+              f"Vrest∈[{targets.v_rest_range[0]},{targets.v_rest_range[1]}]mV")
         print(f"  Initial design: {n_initial} points (batched)")
 
-    X_init = draw_sobol_samples(bounds=bounds, n=n_initial, q=1).squeeze(1)
+    X_init = draw_sobol_samples(bounds=bounds, n=n_initial, q=1,
+                                seed=config.seed).squeeze(1)
 
     from time import perf_counter
     t0 = perf_counter()
     Y_init = _evaluate_batch(X_init, config, targets)
     t_batch = perf_counter() - t0
 
+    n_feasible_init = (Y_init[:, 0] > CONSTRAINT_PENALTY + 1).sum().item()
     if verbose:
-        print(f"  Initial batch: {t_batch:.1f}s ({t_batch/n_initial:.1f}s/eval amortized)")
+        print(f"  Initial batch: {t_batch:.1f}s ({t_batch/n_initial:.1f}s/eval), "
+              f"{n_feasible_init}/{n_initial} feasible")
 
     train_X = X_init.clone()
     train_Y = Y_init.clone()
 
-    # Phase 2: BayesOpt loop
     if verbose:
         print(f"  BO iterations: {n_iterations}")
 
@@ -145,7 +179,6 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
             prune_baseline=True,
         )
 
-        # Request q=4 candidates per iteration for batch evaluation
         q_batch = min(4, max(1, n_iterations - iteration))
         candidate, _ = optimize_acqf(
             acq_function=acq,
@@ -155,7 +188,6 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
             raw_samples=256,
         )
 
-        # Evaluate batch
         new_X = candidate.squeeze(0) if q_batch == 1 else candidate
         if new_X.dim() == 1:
             new_X = new_X.unsqueeze(0)
@@ -166,18 +198,37 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
         train_Y = torch.cat([train_Y, new_Y])
 
         if verbose and (iteration + 1) % max(1, n_iterations // 5) == 0:
-            best_apd = train_Y[:, 0].max().item()
-            print(f"  Iter {iteration + 1}/{n_iterations}: "
-                  f"best APD error = {-best_apd:.1f} ms, "
-                  f"{train_X.shape[0]} total evals")
+            feasible_mask = train_Y[:, 0] > CONSTRAINT_PENALTY + 1
+            n_feas = feasible_mask.sum().item()
+            if n_feas > 0:
+                best_apd = train_Y[feasible_mask, 0].max().item()
+                best_dvdt = train_Y[feasible_mask, 1].max().item()
+                print(f"  Iter {iteration + 1}/{n_iterations}: "
+                      f"APD err={-best_apd:.1f}ms, dVdt err={-best_dvdt:.1f}V/s, "
+                      f"{n_feas}/{train_X.shape[0]} feasible")
+            else:
+                print(f"  Iter {iteration + 1}/{n_iterations}: "
+                      f"0/{train_X.shape[0]} feasible (relaxing search)")
 
-    # Extract Pareto front
-    pareto_mask = is_non_dominated(train_Y)
-    pareto_X = train_X[pareto_mask]
-    pareto_Y = train_Y[pareto_mask]
+    # Extract Pareto front from FEASIBLE solutions only
+    feasible_mask = train_Y[:, 0] > CONSTRAINT_PENALTY + 1
+    n_feasible = feasible_mask.sum().item()
+
+    if n_feasible > 0:
+        feasible_X = train_X[feasible_mask]
+        feasible_Y = train_Y[feasible_mask]
+        pareto_mask = is_non_dominated(feasible_Y)
+        pareto_X = feasible_X[pareto_mask]
+        pareto_Y = feasible_Y[pareto_mask]
+    else:
+        # Fallback: return best overall (least penalized)
+        best_idx = train_Y[:, 0].argmax()
+        pareto_X = train_X[best_idx:best_idx+1]
+        pareto_Y = train_Y[best_idx:best_idx+1]
 
     if verbose:
-        print(f"  Done. Pareto front: {pareto_X.shape[0]} points")
+        print(f"  Done. Pareto front: {pareto_X.shape[0]} points "
+              f"({n_feasible}/{train_X.shape[0]} feasible)")
 
     return CellFitResult(
         pareto_X=pareto_X,
@@ -186,4 +237,6 @@ def fit_cell(config: TuningConfig, targets: TuningTargets,
         all_Y=train_Y,
         param_names=param_names,
         objective_names=obj_names,
+        n_feasible=n_feasible,
+        n_total=train_X.shape[0],
     )

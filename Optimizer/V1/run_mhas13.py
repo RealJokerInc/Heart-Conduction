@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Optimizer V1 — MHAS13 Full Pipeline Run
+Optimizer V1 — MHAS13 Full Pipeline (Iteration 2)
 
-Tunes MHAS13 (matured hiPSC-CM) ionic parameters to target:
-  APD90 = 350 ms, dV/dt = 25 V/s, CV_long = 15 cm/s, CV_trans = 7.5 cm/s
-
-Uses spiral_wave_s1s2 tissue parameters (dt=0.02ms, dx=0.04cm).
+Improvements over iteration 1:
+  A1: dV/dt hard constraint (reject dVdt > 60 V/s)
+  A2: Tier 2 (10 params: +kNaCa, PNaK, g_pCa, VmaxUp)
+  A3: Two-point secant CV warm-start (faster convergence)
+  A4: Tighter CV convergence (3% threshold, 4 secant iters)
+  R3: Reproducibility seeding (seed=42)
 """
 
 import sys
@@ -28,43 +30,47 @@ def main():
     device = 'cpu'
 
     config = TuningConfig(
-        ionic_model='mhas13',       # Matured hiPSC-CM
-        tier=1,                     # 6 ionic params
+        ionic_model='mhas13',
+        tier=2,                     # A2: 10 params (+kNaCa, PNaK, g_pCa, VmaxUp)
         device=device,
-        dt=0.02,                    # tissue dt (spiral_wave_s1s2)
-        dt_cell=0.2,               # cell dt
-        dx_cm=0.04,                 # spatial (spiral_wave_s1s2)
+        dt=0.02,
+        dt_cell=0.2,
+        dx_cm=0.04,
         cable_length_cm=1.5,
         n_beats=5,
-        pacing_cl=1000.0,           # 1 Hz pacing
-        stim_amplitude=-40.0,       # MHAS13 threshold ~-15 A/F
+        pacing_cl=1000.0,
+        stim_amplitude=-40.0,
         stim_duration=2.0,
-        n_iterations=10,            # BO iterations
+        n_iterations=15,            # More iterations for 10-param space
+        seed=42,                    # R3: reproducibility
     )
 
     targets = TuningTargets(
-        apd_90=350.0,              # ms
-        cv_longitudinal=15.0,      # cm/s
-        cv_transverse=7.5,         # cm/s
-        dvdt_max=25.0,             # V/s
-        spontaneous_cl=None,       # Not applicable (quiescent model)
+        apd_90=350.0,
+        cv_longitudinal=15.0,
+        cv_transverse=7.5,
+        dvdt_max=25.0,
+        spontaneous_cl=None,
+        # A1: hard constraints (relaxed — MHAS13 baseline dVdt=132 V/s)
+        dvdt_max_upper=120.0,       # Reject dVdt > 120 V/s
+        v_peak_max=60.0,            # Reject Vpeak > 60 mV
+        v_rest_range=(-92.0, -70.0),
     )
 
     print("=" * 70)
-    print("Optimizer V1 — MHAS13 Full Pipeline")
-    print(f"  Model:   MHAS13 (matured hiPSC-CM, TTP06 IK1, no If)")
-    print(f"  Device:  {device}")
+    print("Optimizer V1 — MHAS13 Pipeline (Iteration 2)")
+    print(f"  Improvements: A1(dVdt constraint), A2(tier 2), A3(secant CV),")
+    print(f"                A4(tighter CV tol), R3(seed={config.seed})")
+    print(f"  Model:   MHAS13  |  Device: {device}")
     print(f"  Cell dt: {config.dt_cell}ms  |  Tissue dt: {config.dt}ms")
-    print(f"  dx: {config.dx_cm}cm  |  Cable: {config.cable_length_cm}cm")
-    print(f"  Stim: {config.stim_amplitude} A/F, {config.stim_duration}ms")
     print(f"  Tier {config.tier}: {get_param_names(config.tier)}")
     print(f"  Targets: APD={targets.apd_90}ms  dVdt={targets.dvdt_max}V/s")
-    print(f"           CV_L={targets.cv_longitudinal}  CV_T={targets.cv_transverse} cm/s")
+    print(f"  Constraints: dVdt<{targets.dvdt_max_upper}  Vpeak<{targets.v_peak_max}")
     print("=" * 70)
     t_start = perf_counter()
 
     # ================================================================
-    # Step 1: Baseline characterization
+    # Step 1: Baseline
     # ================================================================
     print("\n--- Step 1: MHAS13 Baseline (theta=1.0) ---")
     n_params = len(get_param_names(config.tier))
@@ -80,80 +86,62 @@ def main():
     dvdt_base = measure_dvdt_max(V, t_arr)
     vrest_base = measure_v_rest(V, t_arr)
     vpeak_base = measure_peak(V)
-
-    apd_s = f"{apd_base:.0f}" if apd_base else "N/A"
-    dvdt_s = f"{dvdt_base:.1f}" if dvdt_base else "N/A"
     print(f"  Cell: {t_cell:.1f}s")
-    print(f"    APD90  = {apd_s} ms (target {targets.apd_90})")
-    print(f"    dVdt   = {dvdt_s} V/s (target {targets.dvdt_max})")
-    print(f"    V_rest = {vrest_base:.1f} mV")
-    print(f"    V_peak = {vpeak_base:.1f} mV")
-
-    # Tissue baseline
-    D_ref = 0.0001
-    t0 = perf_counter()
-    cv_base = run_cv_measurement(theta_base[0], D_ref, config, n_beats=3)
-    t_tis = perf_counter() - t0
-    cv_s = f"{cv_base.cv:.1f}" if cv_base.cv else "N/A"
-    print(f"  Tissue: {t_tis:.1f}s")
-    print(f"    CV = {cv_s} cm/s at D={D_ref}")
+    print(f"    APD90={apd_base:.0f}ms  dVdt={dvdt_base:.1f}V/s  "
+          f"Vrest={vrest_base:.1f}mV  Vpeak={vpeak_base:.1f}mV" if apd_base else
+          f"    APD=N/A  dVdt={dvdt_base:.1f}V/s  Vrest={vrest_base:.1f}mV")
 
     # ================================================================
-    # Step 2: Cell Fitter
+    # Step 2: Cell Fitter (constrained, tier 2)
     # ================================================================
-    print("\n--- Step 2: Cell Fitter (8 initial + 10 BO, batched) ---")
+    print(f"\n--- Step 2: Cell Fitter (tier {config.tier}, {n_params} params, constrained) ---")
     t0 = perf_counter()
-    cell_fit = fit_cell(config, targets, n_initial=8, n_iterations=10,
-                        verbose=True)
+    cell_fit = fit_cell(config, targets, n_initial=2*n_params,
+                        n_iterations=config.n_iterations, verbose=True)
     t_fit = perf_counter() - t0
-    print(f"\n  Cell fitter: {t_fit:.1f}s total")
-    print(f"  Pareto front: {cell_fit.pareto_X.shape[0]} points")
+    print(f"\n  Cell fitter: {t_fit:.1f}s ({cell_fit.n_feasible}/{cell_fit.n_total} feasible)")
 
-    # Select best from Pareto
+    # Select best feasible
     apd_errors = -cell_fit.pareto_Y[:, 0]
     best_idx = apd_errors.argmin().item()
     best_theta = cell_fit.pareto_X[best_idx]
     best_dict = theta_to_dict(best_theta, config.tier)
     print(f"  Best: { {k: f'{v:.3f}' for k, v in best_dict.items()} }")
 
-    # Evaluate best
     cell_best = run_single_cell(best_theta, config)
-    apd_best = f"{cell_best.apd90:.1f}" if cell_best.apd90 else "N/A"
-    dvdt_best = f"{cell_best.dvdt_max:.1f}" if cell_best.dvdt_max else "N/A"
-    print(f"  Best APD90 = {apd_best} ms")
-    print(f"  Best dVdt  = {dvdt_best} V/s")
+    print(f"  APD90={cell_best.apd90:.1f}ms  dVdt={cell_best.dvdt_max:.1f}V/s  "
+          f"Vpeak={cell_best.v_peak:.1f}mV" if cell_best.apd90 else "  APD=N/A")
 
     # ================================================================
-    # Step 3: Tissue Fitter
+    # Step 3: Tissue Fitter (secant method)
     # ================================================================
-    print("\n--- Step 3: Tissue Fitter (analytical CV~sqrt(D)) ---")
+    print("\n--- Step 3: Tissue Fitter (secant CV refinement) ---")
     t0 = perf_counter()
     tissue_fit = fit_tissue(best_theta, config, targets, verbose=True)
-    t_tis_fit = perf_counter() - t0
-    print(f"\n  Tissue fitter: {t_tis_fit:.1f}s ({tissue_fit.n_sims} sims)")
+    t_tis = perf_counter() - t0
+    print(f"\n  Tissue fitter: {t_tis:.1f}s ({tissue_fit.n_sims} sims)")
 
     # ================================================================
     # Summary
     # ================================================================
     t_total = perf_counter() - t_start
     print("\n" + "=" * 70)
-    print(f"MHAS13 PIPELINE COMPLETE — {t_total:.0f}s total ({t_total/60:.1f} min)")
+    print(f"MHAS13 ITERATION 2 COMPLETE — {t_total:.0f}s ({t_total/60:.1f} min)")
     print()
-    print(f"  {'Metric':<12} {'Baseline':>10} {'Tuned':>10} {'Target':>10}")
-    print(f"  {'─'*12} {'─'*10} {'─'*10} {'─'*10}")
+    print(f"  {'Metric':<12} {'Baseline':>10} {'Tuned':>10} {'Target':>10} {'Constr':>10}")
+    print(f"  {'─'*12} {'─'*10} {'─'*10} {'─'*10} {'─'*10}")
     apd_b = f"{apd_base:.0f}" if apd_base else "N/A"
     apd_t = f"{cell_best.apd90:.0f}" if cell_best.apd90 else "N/A"
     dvdt_b = f"{dvdt_base:.0f}" if dvdt_base else "N/A"
     dvdt_t = f"{cell_best.dvdt_max:.0f}" if cell_best.dvdt_max else "N/A"
-    print(f"  {'APD90 (ms)':<12} {apd_b:>10} {apd_t:>10} {targets.apd_90:>10.0f}")
-    print(f"  {'dVdt (V/s)':<12} {dvdt_b:>10} {dvdt_t:>10} {targets.dvdt_max:>10.0f}")
-    print(f"  {'CV_L (cm/s)':<12} {cv_s:>10} {tissue_fit.cv_long_achieved:>10.1f} {targets.cv_longitudinal:>10.1f}")
-    print(f"  {'CV_T (cm/s)':<12} {'—':>10} {tissue_fit.cv_trans_achieved:>10.1f} {targets.cv_transverse:>10.1f}")
+    print(f"  {'APD90 (ms)':<12} {apd_b:>10} {apd_t:>10} {targets.apd_90:>10.0f} {'':>10}")
+    print(f"  {'dVdt (V/s)':<12} {dvdt_b:>10} {dvdt_t:>10} {targets.dvdt_max:>10.0f} {'<'+str(int(targets.dvdt_max_upper)):>10}")
+    print(f"  {'CV_L (cm/s)':<12} {'':>10} {tissue_fit.cv_long_achieved:>10.1f} {targets.cv_longitudinal:>10.1f} {'':>10}")
+    print(f"  {'CV_T (cm/s)':<12} {'':>10} {tissue_fit.cv_trans_achieved:>10.1f} {targets.cv_transverse:>10.1f} {'':>10}")
     print()
-    print(f"  Tissue: D_long = {tissue_fit.D_long:.6f} cm²/ms")
-    print(f"          D_trans = {tissue_fit.D_trans:.6f} cm²/ms")
+    print(f"  D_long = {tissue_fit.D_long:.6f}  |  D_trans = {tissue_fit.D_trans:.6f}")
     print()
-    print(f"  Tuned ionic scaling factors:")
+    print(f"  Tuned parameters (tier {config.tier}):")
     for k, v in best_dict.items():
         print(f"    {k}: {v:.4f}")
     print("=" * 70)
