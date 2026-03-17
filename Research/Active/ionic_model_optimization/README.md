@@ -19,11 +19,13 @@ Ionic model parameters are not universal — they must be tuned to match specifi
 - [x] MHAS13 test run through optimizer (APD=347ms, target 350ms)
 - [x] MHAS13 test run through bidomain pipeline (APD=349ms, CV=15.8 cm/s)
 - [x] 10x speedup via batching, subcycling, analytical CV
-- [ ] Optimizer V1 Phase 1: Cell fit (8 ionic conductances)
-- [ ] Optimizer V1 Phase 2: Tissue fit (D_long, D_trans)
-- [ ] Optimizer V1 Phase 3: Joint refinement
-- [ ] Optimizer V1 Phase 4: Validation
+- [x] Optimizer V1 Cell + Tissue fit implemented (tier 2, constrained, both engines)
+- [x] Bidomain pipeline support (tissue_runner_bidomain.py, D_eff decomposition)
+- [ ] Optimizer V1 Joint refinement (GP emulator + NSGA-II)
+- [ ] Optimizer V1 Validation suite (novel CL, stimulus robustness, stability)
 - [ ] Cross-engine validation (V5.4 vs Bidomain vs LBM)
+- [ ] Multi-rate pacing (break IKr/IKs degeneracy)
+- [ ] Revise dVdt target for MHAS13 (~100 V/s, not 25)
 
 ## Sub-Questions
 
@@ -51,6 +53,27 @@ See `literature/` for paper summaries. Key references:
 - Nieto Ramos 2023 (HMC + ABC-SMC, full posteriors)
 - Groenendaal 2015 (GA, proves single-AP fitting is non-unique)
 - Zhang 2024 (gradient-based, two-waveform fitting)
+
+## Engine References
+
+Files to read when resuming work on this question:
+
+| File | What it tells you |
+|------|-------------------|
+| `Optimizer/V1/README.md` | Optimizer V1 overview, pipeline phases |
+| `Optimizer/V1/ARCHITECTURE.md` | Input spec, constraints, timeline |
+| `Optimizer/V1/IMPLEMENTATION.md` | Phase-by-phase plan with validation |
+| `Optimizer/V1/TARGET_VALUES.md` | Target CV, APD, restitution specs |
+| `Optimizer/V1/run_mhas13.py` | Latest MHAS13 monodomain optimization script |
+| `Optimizer/V1/run_mhas13_bidomain.py` | MHAS13 bidomain optimization script |
+| `Optimizer/V1/BIDOMAIN_PLAN.md` | Bidomain pipeline design (D_eff, ratio constraint) |
+| `Optimizer/V1/tuner/batch_ionic.py` | Batched ionic step (PHAS13/MHAS13 IK1 switching) |
+| `Optimizer/V1/tuner/tissue_runner_bidomain.py` | BidomainSimulation wrapper for CV measurement |
+| `Optimizer/V1/tuner/cell_fitter.py` | Constrained multi-objective BayesOpt with feasibility filtering |
+| `Optimizer/improvement.md` | Multi-engine adapter design (V2) |
+| `Monodomain/Engine_V5.4/cardiac_sim/ionic/mhas13/model.py` | MHAS13 ionic model implementation |
+| `Monodomain/Engine_V5.4/PROGRESS.md` | V5.4 engine status |
+| `Research/Active/hipsc_cm_ionic_models/KNOWLEDGE.md` | MHAS13 maturation pathway details |
 
 ## Connected Research
 - **hipsc_cm_ionic_models** — MHAS13 is the primary tuning target

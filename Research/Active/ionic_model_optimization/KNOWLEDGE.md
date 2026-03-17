@@ -5,7 +5,16 @@
 
 ## Current Understanding
 
-Tuning ionic model parameters (TTP06/ORd) to match target CV and APD requires **multi-objective optimization** because fitting to a single action potential waveform is fundamentally non-unique. Many parameter sets produce identical APs but yield different tissue-level behavior (CV, membrane resistance, restitution).
+Tuning ionic model parameters (MHAS13/TTP06/ORd) to match target CV and APD requires **multi-objective optimization** because fitting to a single action potential waveform is fundamentally non-unique. Many parameter sets produce identical APs but yield different tissue-level behavior (CV, membrane resistance, restitution).
+
+### Pipeline status (updated 2026-03-17)
+
+The Optimizer V1 pipeline is implemented end-to-end across both engines:
+- **Cell fitter**: batched BayesOpt (qLogNEHVI), 10-param tier 2, hard constraints on dVdt/Vpeak/Vrest
+- **Tissue fitter**: analytical CV∝√D_eff warm-start + secant refinement, engine-agnostic (mono or bidomain)
+- **Bidomain support**: `tissue_runner_bidomain.py` wraps BidomainSimulation with D_eff→(D_i,D_e) decomposition at fixed ratio D_e/D_i=3.597
+- **Best result** (iteration 2): APD=352ms (0.6% err), CV_L=14.6 (2.4%), CV_T=7.6 (1.7%), dVdt=106V/s (constrained <120)
+- **Monodomain vs bidomain**: D_eff values agree within 6% (0.000447 mono vs 0.000422 bidomain), confirming D_eff≈D_i·D_e/(D_i+D_e) is a good approximation for insulated tissue
 
 ### The core degeneracy problem
 
@@ -51,6 +60,11 @@ Single-AP fitting with 9 parameters: parameters converge to wrong values despite
 | Parameter space | Maximal conductance scaling factors (6-16) | Standard approach across all reviewed literature |
 | Target data | hiPSC-CM experimental measurements | MHAS13 model provides baseline; Optimizer V1 tunes to targets |
 | Differentiability | PyTorch-based ionic models enable gradient computation | Opens path to HMC if BayesOpt proves insufficient |
+| dVdt handling | Hard constraint (dvdt<120 V/s), NOT objective | Objective caused infeasibility at 60 V/s; 120 matches MHAS13 physiology |
+| Tier level | Tier 2 (10 params) for production | Tier 1 (6) had 4/6 at bounds; tier 2 adds kNaCa, PNaK, g_pCa, VmaxUp |
+| CV warm-start | Two-point secant (not analytical √D) | Secant uses real sim data; converges to <3% in 2-3 steps |
+| Bidomain tissue | D_eff optimization with fixed D_e/D_i=3.597 | Reduces 2-unknown problem to 1-unknown; ratio from cv_shared.py |
+| Reproducibility | seed=42 in config, passed to Sobol + torch | Ensures identical runs |
 
 ### Iteration 2 findings (2026-03-17)
 
