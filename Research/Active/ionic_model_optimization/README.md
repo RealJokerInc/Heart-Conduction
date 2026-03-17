@@ -1,0 +1,58 @@
+# Ionic Model Parameter Optimization
+
+## Question
+How do we tune ionic model parameters (TTP06/ORd/MHAS13) to match target CV, APD, and restitution curves?
+
+## Status: Active
+
+## Why It Matters
+Ionic model parameters are not universal — they must be tuned to match specific cell types, species, or experimental preparations. Fitting to a single AP waveform is non-unique (many parameter sets produce identical APs but different tissue behavior). Multi-objective optimization with tissue-level targets is required.
+
+## Engines
+- **Monodomain V5.4**: Simulation backend for the optimization pipeline
+- **Bidomain V1**: Cross-validation of optimized parameters
+- **Optimizer V1**: BayesOpt pipeline (qNEHVI + BoTorch)
+
+## Completion Criteria
+- [x] Literature review complete (8 papers, method comparison)
+- [x] Optimizer V1 architecture designed (4-phase pipeline)
+- [x] MHAS13 test run through optimizer (APD=347ms, target 350ms)
+- [x] MHAS13 test run through bidomain pipeline (APD=349ms, CV=15.8 cm/s)
+- [x] 10x speedup via batching, subcycling, analytical CV
+- [ ] Optimizer V1 Phase 1: Cell fit (8 ionic conductances)
+- [ ] Optimizer V1 Phase 2: Tissue fit (D_long, D_trans)
+- [ ] Optimizer V1 Phase 3: Joint refinement
+- [ ] Optimizer V1 Phase 4: Validation
+- [ ] Cross-engine validation (V5.4 vs Bidomain vs LBM)
+
+## Sub-Questions
+
+| Sub-Question | Status | Key Finding |
+|-------------|--------|-------------|
+| Parameter degeneracy | Complete | IKr/IKs compensation — need multi-rate pacing to separate |
+| Method selection | Complete | BayesOpt qNEHVI for V1; HMC deferred to V2 |
+| Pipeline speedup | Complete | 10x via batching + subcycling + analytical CV |
+| dVdt constraint tuning | Complete | dvdt<120 V/s is correct for MHAS13; 60 too tight (2/74 feasible) |
+| Tier 2 validation | Complete | 10 params, 41/74 feasible, APD=352ms (0.6% error) |
+| CV secant refinement | Complete | 2-point secant: CV_L=14.6 (2.4%), CV_T=7.6 (1.7%) |
+
+## Experiments
+
+| Experiment | Engine | Result | Location |
+|-----------|--------|--------|----------|
+| MHAS13 optimizer run | V5.4 / Optimizer | APD=347ms (target 350) | `Optimizer/experiments/` |
+| MHAS13 bidomain run | Bidomain V1 | APD=349ms, CV=15.8 cm/s | `Bidomain/Engine_V1/experiments/` |
+| MHAS13 iter 2 (constrained, tier 2) | V5.4 / Optimizer | APD=352ms, dVdt=106, CV_L=14.6 | `Optimizer/V1/run_mhas13.py` |
+
+## Literature
+See `literature/` for paper summaries. Key references:
+- Pouranbarani 2019 (NSGA-II, AP + tissue CV via membrane resistance)
+- Coveney 2021 (GP emulator + Bayesian MCMC, restitution curves)
+- Nieto Ramos 2023 (HMC + ABC-SMC, full posteriors)
+- Groenendaal 2015 (GA, proves single-AP fitting is non-unique)
+- Zhang 2024 (gradient-based, two-waveform fitting)
+
+## Connected Research
+- **hipsc_cm_ionic_models** — MHAS13 is the primary tuning target
+- **boundary_conduction_speedup** — Boundary effects must be accounted for in tissue-level CV fitting
+- **engine_consolidation** — Cross-engine validation needs unified API
