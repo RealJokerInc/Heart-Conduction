@@ -117,6 +117,29 @@ Key details:
 - `sigma_to_D()` / `tau_from_D()` in `src/diffusion.py` handle LBM ↔ physical unit conversion
 - State uses `(Nx, Ny)` grid convention, matching V5.4
 
+## Three-Document Architecture
+
+Each research question in `Research/Active/` uses three documents with distinct purposes:
+
+| Document | Resolution | Purpose | Lifecycle |
+|----------|-----------|---------|-----------|
+| **KNOWLEDGE.md** | High | Reference: facts, analysis, designs, comparisons. Look things up. | Accumulates → promoted to `Research/Knowledge/` on completion |
+| **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log. Scan in 30s. | Living → archived with question on completion |
+| **PLAN.md** | High (structured) | Cold-start agent execution steps. Created by `/blueprint`. | Created → steps checked off → archived |
+
+**When to write where:**
+- Findings, analysis, designs, decisions with rationale → **KNOWLEDGE.md**
+- Ideas, failures, "oh wait" moments, session snapshots, next steps → **IDEALOG.md**
+- Implementation steps for agent execution → **PLAN.md** (via `/blueprint`)
+
+**`MASTER_KNOWLEDGE_INDEX.md`** at project root indexes all research questions and their KNOWLEDGE files.
+
+### Planning Workflow
+
+Pipeline: **`/reason`** (interactive thinking) → **`/blueprint`** (generate PLAN.md) → **`/audit`** (optional adversarial review) → execute PLAN.md steps.
+
+`/reason` writes to IDEALOG.md on natural transitions (~3-4 writes per session, not after every exchange). When the approach is settled, `/blueprint` reads IDEALOG + codebase and generates a self-contained PLAN.md with cold-start steps.
+
 ## Permission Handling
 
 - **DO NOT** request permissions for complete inline commands with embedded code
@@ -132,19 +155,33 @@ Key details:
 
 ## Research & Textbook Workflows
 
-Four custom slash commands are available for research-related work (defined in `.claude/commands/`):
+Custom skills are available for research, planning, and engineering work (defined in `.claude/skills/`):
 
-| Command | When to use |
-|---------|-------------|
-| `/research` | Full pipeline: search PubMed → screen → acquire → summarize → file. Handles topic searches, DOIs, PMIDs, citations, and local PDFs. |
+| Skill | When to use |
+|-------|-------------|
+| **Research lifecycle** | |
+| `/research-new` | Create new research question (README + KNOWLEDGE + IDEALOG + dirs). Updates MASTER.md. |
+| `/research-resume` | Resume work — loads KNOWLEDGE + IDEALOG, shows current direction, next step, what NOT to retry |
+| `/research-update` | Route by type: findings/analysis → KNOWLEDGE.md, ideas/failures/issues → IDEALOG.md |
+| `/research-status` | Staleness audit across all active questions |
+| `/research-complete` | Active/ → Complete/, promote KNOWLEDGE to Knowledge/, archive IDEALOG |
+| `/research` | Full PubMed pipeline: search → screen → acquire → summarize → file |
 | `/summarize-paper` | Quick-summarize a single local PDF (stages 4-5 of `/research` only) |
-| `/research-debug` | Finding relevant research when debugging simulation issues or choosing algorithms |
+| **Planning & reasoning** | |
+| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions |
+| `/blueprint` | Generates machine-targeted PLAN.md from IDEALOG + codebase |
+| `/audit` | Adversarial review via Opus subagent (opt-in) |
+| **Engineering** | |
+| `/verify` | Auto-detect engine, run test suite, produce pass/fail report |
+| `/build-fix` | Systematic one-at-a-time error resolution with guardrails |
+| `/strategic-compact` | Compaction decision table + pre-compact checklist |
+| **Textbook** | |
 | `/textbook-edit` | Writing or revising textbook content (reads style guide, changelog, audits first) |
 | `/textbook-compile` | Building the textbook PDF from HTML source via Playwright |
 
 **Key entry point**: `Research/INDEX.md` — master question map, debugging quick-reference, and citation registry. Read this first when doing any research-related work.
 
-Research is organized by question (`Research/Q1_spatial_discretization/` through `Research/Q7_fetal_heart_development/`). Each Q-folder has a README.md with the answer summary. Papers live in `Research/papers/` with citation-key naming. The textbook (HTML source, PDFs, style guide, audits) is in `Research/textbook/`.
+Research is organized by question (`Research/Active/` for in-progress, `Research/Complete/` for finished). Each question folder has README.md (status/criteria), KNOWLEDGE.md (reference), and IDEALOG.md (thinking trail). Papers live in `Research/papers/`. The textbook is in `Research/textbook/`.
 
 ---
 
