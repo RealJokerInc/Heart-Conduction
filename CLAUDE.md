@@ -166,7 +166,7 @@ Custom skills are available for research, planning, and engineering work (define
 | **Research lifecycle** | |
 | `/research-new` | Create new research question (README + KNOWLEDGE + IDEALOG + dirs). Updates MASTER.md. |
 | `/research-resume` | Resume work — loads KNOWLEDGE + IDEALOG, shows current direction, next step, what NOT to retry |
-| `/research-update` | Route by type: findings/analysis → KNOWLEDGE.md, ideas/failures/issues → IDEALOG.md |
+| `/quicksave` | Quick checkpoint — summarize chat into IDEALOG + NOTEBOOK. No editorial pass. |
 | `/research-status` | Staleness audit across all active questions |
 | `/research-complete` | Active/ → Complete/, promote KNOWLEDGE to Knowledge/, archive IDEALOG |
 | `/research` | Full PubMed pipeline: search → screen → acquire → summarize → file |
