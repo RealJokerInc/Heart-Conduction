@@ -8,7 +8,7 @@
 Architecture stabilized. NOTEBOOK.md merged back into IDEALOG.md (routing friction eliminated). 18 skills total, tmux workspace with glow rendering operational. Document architecture: KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD. Ready for real-world use on actual research questions.
 
 ## Next Step
-Test the full workflow on a real research question (e.g., `boundary_conduction_speedup` anisotropic study): `/research-resume` → `/reason` (with tmux panes) → `/blueprint` → `/audit` → implement → `/save-session` → `/reason-end`.
+Update PLAN.md with all pending changes (KNOWLEDGE.md restructure across all 6 questions, README.md Future Work section, `/blueprint` iterative mode, `/save-session` Job 2 structure guidance, `/reason` + `/research-new` + `/research-resume` + `/research-complete` dependency chain updates). Then implement.
 
 ## Thread
 
@@ -56,6 +56,40 @@ Zellij uses different pane commands than tmux: `zellij action new-pane --directi
 
 ### 2026-03-17: tmux workspace design finalized
 Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
+
+### 2026-03-18: Future Work section in README.md for deferred items
+"Patterns We're Evaluating" (tmux layout hook, cost tracking, /draw skill, etc.) don't fit KNOWLEDGE.md (not validated findings), IDEALOG.md (gets condensed per session), or Open Questions (they're proposals, not unknowns). Solution: README.md gets a "Future Work" section — persistent, per-question, never purged. Dependency chain: `/reason` (no topic) should read Future Work as possible topics, `/research-new` should include it in template, `/research-resume` should show it in briefing, `/research-complete` should warn about unfinished items.
+
+### 2026-03-18: /blueprint should be iterative, not one-off
+Currently `/blueprint` always creates a fresh PLAN.md. Should be recursive: if PLAN.md exists, read it and update (incorporate new IDEALOG decisions, audit findings, Phase 1 learnings) instead of regenerating from scratch. Preserve completed steps (`[x]`), modify open steps, record changes in Mutation Log. This enables: /blueprint v1 → /audit → /reason → /blueprint v2 → implement Phase 1 → /reason → /blueprint v3 (adjust remaining phases). Key behaviors: (1) detect existing PLAN.md, (2) diff IDEALOG.md against what the plan already reflects, (3) only modify open/future steps, (4) log mutations.
+
+### 2026-03-18: README.md gets "Future Work" section for deferred items
+Deferred patterns (tmux layout hook, cost tracking, /draw skill) don't fit KNOWLEDGE (not validated), IDEALOG (gets condensed), or Open Questions (they're proposals, not unknowns). README.md is per-question, persistent, never purged — natural home. Dependency chain: `/reason` reads Future Work when no topic given, `/research-new` includes empty section in template, `/research-resume` shows in briefing, `/research-complete` warns about unfinished items.
+
+### 2026-03-18: Comprehensive session — architecture refinements + implementation planning
+Key decisions and technical detail from this session:
+
+**KNOWLEDGE.md structural rework**: Diagnosed the 1109-line file as fundamentally broken — ~400 lines of embedded templates (IDEALOG, PLAN.md, MASTER_KNOWLEDGE_INDEX templates pasted as reference), 232-line ECC analysis that could be condensed, 568-line skill designs section mixing active reference with historical evolution. Solution: per-topic structure where each topic has optional-but-ordered subsections: Findings → Design → Reference → Decisions. Topics are self-contained (look up "workspace integration" → everything in one place). No templates (those live in skill files), no evolution history (IDEALOG's job).
+
+**`/save-session` Job 2 needs structural guidance**: Previous runs did surface polish (fix counts, update stale refs) but didn't reorganize because Job 2 has no target structure defined. Will add per-topic skeleton to Job 2 instructions so it maintains the structure on every editorial pass. Key rule: new findings slot into existing topics; if none fits, create a new topic.
+
+**README.md "Future Work" section**: Deferred ideas (tmux layout hook, cost tracking, /draw skill, MASTER_KNOWLEDGE.md for textbook) need a persistent home. KNOWLEDGE.md = validated findings only. IDEALOG.md = gets condensed per session. Open Questions = unknowns, not proposals. README.md is per-question, persistent, never purged. Dependency chain: `/reason` reads Future Work when no topic, `/research-new` adds to template, `/research-resume` shows in briefing, `/research-complete` warns about unfinished items.
+
+**`/blueprint` iterative mode**: Currently always creates fresh PLAN.md. Should detect existing PLAN.md and switch to update mode — preserve completed steps (`[x]`), incorporate new IDEALOG decisions, log mutations. Enables: blueprint v1 → audit → reason → blueprint v2 → implement → reason → blueprint v3 cycle.
+
+**Other skills needing updates**: `/save-session` Job 2 (add structure guidance), `/reason` Step 0 (read README Future Work), `/research-new` (add Future Work to template), `/research-resume` (show Future Work in briefing), `/research-complete` (warn about unfinished Future Work), `/blueprint` (add iterative mode). Plus the KNOWLEDGE.md restructure itself across all 6 active questions.
+
+**Skill guardrail limitation discovered**: Skill instructions fade from active context in long conversations. The routing rules for NOTEBOOK.md (now merged) and the "never implement during /reason" rule both got violated because they only exist in skill files, not in always-loaded CLAUDE.md or MEMORY.md. Open design question: how to make skill behavioral rules persist globally.
+
+**tmux workspace refinements**: Dynamic glow width (`-w $(tput cols)` instead of hardcoded `-w 70`), 50-25-25 pane ratio, shell loop with md5sum universal fix for color rendering in both tmux and zellij, scrolling works via tmux copy mode.
+
+### 2026-03-18: KNOWLEDGE.md per-topic structure decided
+Every topic in KNOWLEDGE.md follows optional-but-ordered subsections: Findings → Design → Reference → Decisions. Topics are self-contained — you look up "workspace integration" and find everything in one place. This replaces the flat dump structure that mixed templates, history, and reference material at the same level. `/save-session` Job 2 needs to maintain this structure on editorial passes.
+
+### 2026-03-18: Three issues identified during live testing
+1. **KNOWLEDGE.md is disorganized** — ~1000 lines grew organically, no clear hierarchy, mixed historical/current/stale sections. Needs `/save-session` Job 2 (full editorial pass) but we keep skipping it for quick saves.
+2. **IDEALOG.md format too low-res** — thread entries are 2-3 line summaries, lacking the technical depth that was supposed to go to NOTEBOOK.md (now merged). Need richer entries without losing scannability. Consider: short summary line + detail underneath.
+3. **WHITEBOARD.md needs persistent + variable sections** — top section always shows: Current Focus + To-Do list (persistent across session). Below a divider: Scratch area (diagrams, maps, trade-offs) that `/reason` overwrites freely. Persistent sections never overwritten during session.
 
 ### 2026-03-18: Quick implement — dynamic glow width for tmux panes
 Changed `-w 70` to `-w $(tput cols)` in `/reason` skill tmux pane setup. Panes are 108 cols wide but glow was rendering at 70, wasting 38 columns. Now captures pane width dynamically at loop start.

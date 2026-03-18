@@ -42,6 +42,12 @@ If any criteria are NOT met, stop and report to the user:
 - What work remains
 - Ask whether to proceed anyway (user may want to complete with a note about remaining items)
 
+Check README.md **Future Work** section. If items remain, list them and ask:
+- Move items to a different question?
+- Create a new question for them?
+- Drop them?
+Do not complete with unresolved Future Work items without explicit user approval.
+
 ## Step 3: Handle Sub-Questions vs Top-Level
 
 ### Completing a sub-question:

@@ -19,19 +19,19 @@ Our multi-engine cardiac EP project has long-running research sessions that freq
 - [x] Three-document architecture finalized: KNOWLEDGE (high-res reference) + IDEALOG (low-res thinking trail) + PLAN (agent steps)
 - [x] `/reason` write behavior designed: transition-based writes to IDEALOG, not per-exchange
 - [x] Full skill pipeline designed: /reason → /blueprint → /audit → execute
-- [ ] Extend `/research-new`: create IDEALOG.md with template
-- [ ] Extend `/research-resume`: read IDEALOG.md, add "What NOT to retry" + "Current Direction" + "Next Step"
-- [ ] Extend `/research-update`: route by type — finding/analysis→KNOWLEDGE, idea/failure/issue/next-step→IDEALOG
-- [ ] Extend `/research-complete`: archive IDEALOG.md with question (not promoted)
-- [ ] Add `/reason` skill: interactive planning agent, writes to IDEALOG on transitions, can invoke /blueprint
-- [ ] Add `/blueprint` skill: autonomous pipeline, generates PLAN.md from IDEALOG + codebase
-- [ ] Add `/save-session` skill: writes session snapshot to IDEALOG.md Session Log section
-- [ ] Add `/audit` skill: adversarial Opus subagent, opt-in, works on any document
-- [ ] Add `/verify` skill: auto-detect engine, run test suite, produce report
-- [ ] Add `/build-fix` skill: systematic error resolution with guardrails
-- [ ] Add `/strategic-compact` skill: decision table for phase transitions + pre-compact checklist
-- [ ] Add PreCompact hook (with emergency dump for active /reason sessions)
-- [ ] Update CLAUDE.md with three-document architecture, new skill table, compaction guidance
+- [x] Extend `/research-new`: create IDEALOG.md with template
+- [x] Extend `/research-resume`: read IDEALOG.md, add "What NOT to retry" + "Current Direction" + "Next Step"
+- [x] Extend `/research-update`: route by type — finding/analysis→KNOWLEDGE, idea/failure/issue/next-step→IDEALOG
+- [x] Extend `/research-complete`: archive IDEALOG.md with question (not promoted)
+- [x] Add `/reason` skill: interactive reasoning buddy (189 lines)
+- [x] Add `/blueprint` skill: autonomous PLAN.md generator (209 lines)
+- [x] Add `/save-session` skill: 5-job cleanup agent (154 lines)
+- [x] Add `/audit` skill: adversarial Opus subagent (97 lines)
+- [x] Add `/verify` skill: auto-detect engine, run tests (77 lines)
+- [x] Add `/build-fix` skill: systematic error resolution (114 lines)
+- [x] Add `/strategic-compact` skill: compaction decision guide (74 lines)
+- [x] Add PreCompact hook + settings.json
+- [x] Update CLAUDE.md with three-document architecture, 16-skill table (247 lines)
 
 ## Sub-Questions
 
@@ -161,6 +161,17 @@ THEIR STRUCTURE                          OUR STRUCTURE
 ```
 
 **Key architectural difference**: They build a general-purpose plugin ecosystem. We have a domain-specific research workflow. Their modularity is valuable; their generality is not.
+
+## Future Work
+- SessionStart tmux layout hook (auto-setup on session start)
+- `/draw` skill for WHITEBOARD.md visualization
+- Cost tracking hook (token usage per session)
+- Post-edit ruff formatting hook
+- MASTER_KNOWLEDGE.md (textbook-oriented consolidated knowledge)
+- Memory.md role in document architecture (always-loaded cheat sheet?)
+- Skill guardrail persistence (rules that survive beyond skill invocation)
+- IDEALOG.md format improvement (richer entries without losing scannability)
+- WHITEBOARD.md persistent sections (Current Focus + To-Do above divider, variable Scratch below)
 
 ## Literature
 | Paper | Summary | Key Insight |

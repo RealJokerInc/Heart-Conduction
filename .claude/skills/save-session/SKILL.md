@@ -65,6 +65,21 @@ Perform a **full editorial pass**. This can be a comprehensive rewrite if the do
 
 Write the updated KNOWLEDGE.md using the Edit tool (or Write if the rewrite is extensive enough to warrant it).
 
+**Target structure for KNOWLEDGE.md** — maintain on every editorial pass:
+
+Each topic section has optional-but-ordered subsections:
+1. **Findings** — what was discovered or validated
+2. **Design** — what was built based on findings
+3. **Reference** — comparison tables, technical detail for lookup
+4. **Decisions** — final choices with rationale (no evolution history)
+
+Rules:
+- New findings slot into existing topic's Findings subsection
+- If no existing topic fits, create a new topic section
+- No templates in KNOWLEDGE.md — those live in skill files
+- No evolution history — that's IDEALOG's job
+- Condense, don't accumulate — tighten on each pass
+
 ---
 
 ## Job 3: Cross-Reference IDEALOG <-> KNOWLEDGE

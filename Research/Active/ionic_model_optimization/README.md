@@ -75,6 +75,9 @@ Files to read when resuming work on this question:
 | `Monodomain/Engine_V5.4/PROGRESS.md` | V5.4 engine status |
 | `Research/Active/hipsc_cm_ionic_models/KNOWLEDGE.md` | MHAS13 maturation pathway details |
 
+## Future Work
+{No deferred items yet.}
+
 ## Connected Research
 - **hipsc_cm_ionic_models** — MHAS13 is the primary tuning target
 - **boundary_conduction_speedup** — Boundary effects must be accounted for in tissue-level CV fitting

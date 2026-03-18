@@ -96,6 +96,9 @@ Next step:
 What NOT to retry:
   {from IDEALOG.md Failed Approaches section — list each failed approach}
 
+Future work:
+  - {items from README.md Future Work section, or "none"}
+
 Completion criteria:
   [x] done items
   [ ] remaining items    ← these are what we can work on

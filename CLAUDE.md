@@ -172,6 +172,7 @@ Custom skills are available for research, planning, and engineering work (define
 | **Planning & reasoning** | |
 | `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions |
 | `/blueprint` | Generates machine-targeted PLAN.md from IDEALOG + codebase |
+| `/blueprint-revise` | Update existing PLAN.md — preserve completed steps, incorporate new IDEALOG, log mutations |
 | `/audit` | Adversarial review via Opus subagent (opt-in) |
 | `/save-session` | Session cleanup (5 jobs): snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, condense, update index |
 | `/reason-end` | End reasoning session: calls `/save-session`, wipes WHITEBOARD, kills tmux panes |

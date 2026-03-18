@@ -16,7 +16,7 @@ Input: $ARGUMENTS
 
 **If argument provided**: Use it as the reasoning topic.
 
-**If no argument provided (or "continue")**: Check conversation history for a recent `/research-resume` session. If one exists, auto-resume that question — read its IDEALOG.md Current Direction and Next Step as the topic. Do NOT ask "what topic?" — just pick up where we left off.
+**If no argument provided (or "continue")**: Check conversation history for a recent `/research-resume` session. If one exists, auto-resume that question — read its IDEALOG.md Current Direction and Next Step as the topic. Also read `Research/Active/{question}/README.md` for the **Future Work** section. If it has items, mention them: "Also pending in Future Work: {brief list}." Do NOT ask "what topic?" — just pick up where we left off.
 
 **If no argument AND no recent `/research-resume`**: Ask which question to reason about.
 

@@ -113,6 +113,9 @@ Sub-questions are lightweight. They share the parent's `literature/`, `papers/`,
 | Paper | Summary | Key Insight |
 |-------|---------|-------------|
 | {empty initially} | | |
+
+## Future Work
+{No deferred items yet.}
 ```
 
 ### Sub-question README:

@@ -1,461 +1,479 @@
-# PLAN: Merge NOTEBOOK.md into IDEALOG.md
+# PLAN: Architecture Refinements — KNOWLEDGE restructure, README Future Work, skill updates, /blueprint iterative mode
 
 Created: 2026-03-18
 Engine(s): None (cross-cutting workflow)
 Research question: [research_environment_optimization](README.md)
-Source: [IDEALOG.md](IDEALOG.md) — "2026-03-18: NOTEBOOK.md merged back into IDEALOG.md"
+Source: [IDEALOG.md](IDEALOG.md) — "2026-03-18: Comprehensive session — architecture refinements"
 
 ## Objective
-Remove NOTEBOOK.md as a separate document. IDEALOG.md becomes the single log file for both strategic insights and raw technical detail. Eliminates routing friction that caused NOTEBOOK.md to go unused during `/reason` sessions.
+Four interconnected changes: (1) Restructure the research_environment_optimization KNOWLEDGE.md into per-topic sections (the other 5 are small and already organized), (2) Add "Future Work" section to README.md for deferred items, (3) Update skill dependency chain (reason, research-new, research-resume, research-complete, save-session), (4) Make /blueprint iterative (update existing PLAN.md instead of always creating fresh).
 
 ## Success Criteria
-- [ ] No skill file references NOTEBOOK.md as a separate document
-- [ ] CLAUDE.md architecture section shows IDEALOG.md only (no NOTEBOOK.md)
-- [ ] `.gitignore` no longer lists NOTEBOOK.md
-- [ ] Existing NOTEBOOK.md content merged into IDEALOG.md
-- [ ] `/save-session` Job 6 (NOTEBOOK graduation) removed or repurposed
-- [ ] `/reason-end` no longer wipes NOTEBOOK.md separately
+- [ ] research_environment_optimization KNOWLEDGE.md restructured with per-topic sections (Findings/Design/Reference/Decisions)
+- [ ] All 6 active README.md files have a Future Work section
+- [ ] `/save-session` Job 2 has per-topic structure guidance
+- [ ] `/reason` Step 0 reads README.md Future Work when no topic given
+- [ ] `/research-new` template includes Future Work section
+- [ ] `/research-resume` briefing shows Future Work items
+- [ ] `/research-complete` warns about unfinished Future Work items
+- [ ] `/blueprint` detects existing PLAN.md and switches to update mode
 
 ## Architecture Changes
-- DEL: `Research/Active/research_environment_optimization/NOTEBOOK.md` — content merged into IDEALOG.md
-- MOD: `CLAUDE.md:124-137` — remove NOTEBOOK.md from architecture table and routing rules
-- MOD: `.claude/skills/reason/SKILL.md` — remove NOTEBOOK.md routing, write everything to IDEALOG.md
-- MOD: `.claude/skills/quicksave/SKILL.md` — remove NOTEBOOK.md references, write to IDEALOG.md only
-- MOD: `.claude/skills/blueprint/SKILL.md` — read IDEALOG.md for technical detail (was NOTEBOOK.md)
-- MOD: `.claude/skills/save-session/SKILL.md` — remove Job 6 (NOTEBOOK graduation), update job count 6→5
-- MOD: `.claude/skills/reason-end/SKILL.md` — remove NOTEBOOK.md wipe step
-- MOD: `.claude/skills/strategic-compact/SKILL.md` — remove NOTEBOOK.md from survival table
-- MOD: `.gitignore` — remove `**/NOTEBOOK.md` line
-- MOD: `Research/Active/research_environment_optimization/KNOWLEDGE.md` — update NOTEBOOK.md design section
+- MOD: `Research/Active/research_environment_optimization/KNOWLEDGE.md` — full restructure into per-topic sections
+- MOD: `Research/Active/*/README.md` — add Future Work section to all 6
+- MOD: `.claude/skills/save-session/SKILL.md` — add per-topic structure guidance to Job 2
+- MOD: `.claude/skills/reason/SKILL.md` — Step 0 reads README.md Future Work
+- MOD: `.claude/skills/research-new/SKILL.md` — add Future Work to README template
+- MOD: `.claude/skills/research-resume/SKILL.md` — show Future Work in briefing
+- MOD: `.claude/skills/research-complete/SKILL.md` — warn about unfinished Future Work
+- MOD: `.claude/skills/blueprint/SKILL.md` — add iterative mode (detect existing PLAN.md)
 
 ## Known Failures (from IDEALOG)
-- NOTEBOOK.md routing friction — the rule "strategic → IDEALOG, technical → NOTEBOOK" required constant judgment calls that faded from context in long conversations, leading to everything defaulting to IDEALOG anyway.
+- Previous `/save-session` runs did surface polish but didn't restructure — Job 2 lacks structural guidance
+- NOTEBOOK.md routing friction — the IDEALOG/NOTEBOOK split required judgment calls that faded from context. Merged into single IDEALOG. Don't re-introduce document routing complexity.
+- Skill guardrails fade in long conversations — instructions in skill files don't persist as global rules
 
 ---
 
-## Phase 1: Merge Content + Update Skills
+## Phase 1: Restructure research_environment_optimization KNOWLEDGE.md
 
-**Goal**: Move NOTEBOOK.md content into IDEALOG.md, update all 6 skill files that reference NOTEBOOK.md, update CLAUDE.md and .gitignore. All changes ship together to avoid inconsistent state.
-**Tier**: medium
-**Estimated scope**: 10 files, ~69 occurrences of "NOTEBOOK" to address
+**Goal**: Transform the 1109-line flat dump into a clean per-topic reference document. Remove embedded templates, condense historical analysis, organize by topic with optional Findings/Design/Reference/Decisions subsections.
+**Tier**: large
 
 ### Phase Context
-Every change is a text edit to a markdown file — no code, no tests, no engine work. The risk is missing a reference, not breaking functionality. All NOTEBOOK.md references must become IDEALOG.md references or be removed entirely. The existing NOTEBOOK.md for research_environment_optimization has valuable technical content (tmux/zellij commands, glow findings, pane ratios) that must be merged into IDEALOG.md before deletion.
+The KNOWLEDGE.md has 5 content categories: Current Understanding (6 lines, keep), ECC Analysis (232 lines, condense), Document Architecture (142 lines, keep design, remove templates), Skill Designs (568 lines, condense — full detail lives in skill files), Workspace/Rollout/Decisions/Open Questions (116 lines, reorganize). Target: per-topic structure. Templates, evolution history, and rollout plan move to IDEALOG or are removed (already captured there).
 
-### Step 1.1: Merge existing NOTEBOOK.md content into IDEALOG.md
-**Model**: sonnet
+### Step 1.1: Rewrite KNOWLEDGE.md
+**Model**: opus
 
 #### Read First
-- `Research/Active/research_environment_optimization/NOTEBOOK.md` — full content to merge
-- `Research/Active/research_environment_optimization/IDEALOG.md` — target file
+- `Research/Active/research_environment_optimization/KNOWLEDGE.md` — read in chunks (0-250, 250-500, 500-750, 750-1000, 1000-end)
+- `Research/Active/research_environment_optimization/IDEALOG.md` — verify evolution history is already captured there
 
 #### Why
-The only existing NOTEBOOK.md has technical findings (tmux commands, glow rendering, pane ratios) that would be lost if we just delete it. Must merge into IDEALOG.md first.
+The file is unusable as reference — 400 lines of templates, sections at different resolutions, no topic-based organization. Must be a document you can look up cold.
 
 #### Implementation Spec
-**Files to modify:** `Research/Active/research_environment_optimization/IDEALOG.md` — append NOTEBOOK.md content as a new thread entry
-**Files to delete:** `Research/Active/research_environment_optimization/NOTEBOOK.md` — after merge
+**Files to modify:** `Research/Active/research_environment_optimization/KNOWLEDGE.md` — full rewrite via Write tool
 
-#### Pseudocode
+New structure:
 ```
-1. Read NOTEBOOK.md content
-2. Append to IDEALOG.md Thread section as:
-   ### 2026-03-17: Technical findings (merged from NOTEBOOK.md)
-   {full NOTEBOOK.md content}
-3. Delete NOTEBOOK.md
+## Summary (5-7 sentences)
+
+## ECC Analysis
+  ### Findings (condense 232→~50 lines: key tables, core philosophy)
+  ### Reference (skill gap table, session persistence comparison — keep)
+  ### Decisions (adopted/skipped/deferred — clean table, no evolution)
+
+## Document Architecture
+  ### Findings (KNOWLEDGE overload problem, negative knowledge gap)
+  ### Design (KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD, interaction diagram)
+  ### Decisions (per-topic structure, NOTEBOOK merged, etc.)
+
+## Skill Pipeline
+  ### Design (18 skills by category, /reason→/blueprint→/audit pipeline)
+  ### Reference (ECC planner comparison, complexity tiers, phasing philosophy)
+  ### Decisions (key skill decisions — clean table)
+
+## Workspace Integration
+  ### Findings (tmux vs zellij, glow rendering, shell loop fix)
+  ### Design (50-25-25 layout, dynamic width, md5sum change detection)
+  ### Decisions (tmux only, /reason owns panes)
+
+## Open Questions
+
+## Connections
 ```
 
-#### Test Spec
-- Manual: verify IDEALOG.md contains all NOTEBOOK.md content (tmux commands, glow findings, comparison table, pane ratios)
-- Manual: verify NOTEBOOK.md is deleted
+Rules:
+- No embedded templates (IDEALOG, PLAN.md, MASTER_KNOWLEDGE_INDEX templates)
+- No evolution history (strikethroughs, "originally planned X then Y")
+- No rollout plan (historical, already executed)
+- Deferred patterns move to README.md Future Work (Phase 2)
+- Skill designs condensed to key design points — full detail is in skill files
+- NOTEBOOK.md design section marked as historical one-liner
 
 #### Checklist
-- [ ] Read NOTEBOOK.md
-- [ ] Append content to IDEALOG.md Thread
-- [ ] Delete NOTEBOOK.md
+- [ ] Read full file in chunks
+- [ ] Write Summary
+- [ ] Write ECC Analysis (Findings/Reference/Decisions)
+- [ ] Write Document Architecture (Findings/Design/Decisions)
+- [ ] Write Skill Pipeline (Design/Reference/Decisions)
+- [ ] Write Workspace Integration (Findings/Design/Decisions)
+- [ ] Write Open Questions + Connections
+- [ ] Verify no templates remain
+- [ ] Verify evolution history in IDEALOG (not lost)
 
 #### Verify
 ```bash
-test ! -f Research/Active/research_environment_optimization/NOTEBOOK.md && echo "DELETED" || echo "STILL EXISTS"
-grep "tmux Pane Ratio" Research/Active/research_environment_optimization/IDEALOG.md && echo "MERGED" || echo "MISSING"
+wc -l Research/Active/research_environment_optimization/KNOWLEDGE.md
+grep -c "^## " Research/Active/research_environment_optimization/KNOWLEDGE.md
+grep -c "## Current Direction\|## Thread\|## Session Log\|## Failed Approaches" Research/Active/research_environment_optimization/KNOWLEDGE.md  # should be 0
 ```
 
 #### Exit Criteria
-- [ ] NOTEBOOK.md deleted
-- [ ] All technical content present in IDEALOG.md
+- [ ] Per-topic structure with Findings/Design/Reference/Decisions subsections
+- [ ] No embedded templates
+- [ ] All reference material preserved (condensed, not deleted)
 
 #### Risk
-None — straightforward content merge.
-
----
-
-### Step 1.2: Update `/reason` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/reason/SKILL.md` — 10 NOTEBOOK references
-
-#### Why
-`/reason` currently routes technical findings to NOTEBOOK.md. Must route everything to IDEALOG.md instead.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/reason/SKILL.md`
-
-Changes:
-1. Remove NOTEBOOK.md location section (lines ~34-36)
-2. Update routing table (Step 5): remove NOTEBOOK.md row, all content goes to IDEALOG.md
-3. Remove "NOTEBOOK.md is scratch paper..." paragraph
-4. Update Step 8 (checkpoint): `/quicksave` dumps to IDEALOG only
-5. Update Rules: remove "NOTEBOOK.md is owned by /reason" rule, update allowed tools list
-6. Keep WHITEBOARD.md references — those are unchanged
-
-#### Checklist
-- [ ] Remove NOTEBOOK.md location section
-- [ ] Update routing table — all to IDEALOG.md
-- [ ] Remove NOTEBOOK.md scratch paper paragraph
-- [ ] Update checkpoint description
-- [ ] Update Rules section (allowed tools, ownership rule)
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/reason/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in reason/SKILL.md
-
-#### Risk
-Must not accidentally remove WHITEBOARD.md references — those stay.
-
----
-
-### Step 1.3: Update `/quicksave` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/quicksave/SKILL.md` — 7 NOTEBOOK references
-
-#### Why
-`/quicksave` currently dumps to both IDEALOG.md and NOTEBOOK.md. Now dumps to IDEALOG.md only.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/quicksave/SKILL.md`
-
-Changes:
-1. Update description in frontmatter: remove "+ NOTEBOOK.md"
-2. Remove Step 2 (Dump Detail → NOTEBOOK.md) entirely
-3. Update Step 3 report format: remove NOTEBOOK.md line
-4. Update Rules: remove "Create NOTEBOOK.md if it doesn't exist"
-
-#### Checklist
-- [ ] Update frontmatter description
-- [ ] Remove Step 2 (NOTEBOOK dump)
-- [ ] Update report format
-- [ ] Update Rules
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/quicksave/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in quicksave/SKILL.md
-
-#### Risk
-None.
-
----
-
-### Step 1.4: Update `/blueprint` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/blueprint/SKILL.md` — 3 NOTEBOOK references
-
-#### Why
-`/blueprint` currently reads NOTEBOOK.md as primary implementation detail source. Now reads IDEALOG.md for both strategic decisions and technical detail.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/blueprint/SKILL.md`
-
-Changes:
-1. Remove Step 1b (NOTEBOOK.md input section) entirely
-2. Update Step 1a (IDEALOG.md): note it now contains both strategic decisions AND raw technical findings
-3. Renumber 1c→1b, 1d→1c, 1e→1d
-4. Update precondition: remove NOTEBOOK.md fallback check
-
-#### Checklist
-- [ ] Remove Step 1b (NOTEBOOK.md)
-- [ ] Update Step 1a to note IDEALOG has technical detail too
-- [ ] Renumber remaining steps
-- [ ] Update precondition
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/blueprint/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in blueprint/SKILL.md
-
-#### Risk
-None.
-
----
-
-### Step 1.5: Update `/save-session` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/save-session/SKILL.md` — 8 NOTEBOOK references
-
-#### Why
-`/save-session` has Job 6 (graduate NOTEBOOK findings to KNOWLEDGE). This job is no longer needed — IDEALOG.md content is graduated via Job 3 (cross-reference). Job count drops from 6 to 5.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/save-session/SKILL.md`
-
-Changes:
-1. Update frontmatter description: "6 jobs" → "5 jobs", remove NOTEBOOK mention
-2. Update body text: "six editorial jobs" → "five editorial jobs"
-3. Remove NOTEBOOK.md from Project Structure Reference
-4. Remove Job 6 entirely
-5. Update Step Final report: remove NOTEBOOK.md line
-6. Update Rules: remove "NOTEBOOK.md: graduate, never delete" rule
-
-#### Checklist
-- [ ] Update frontmatter (6→5, remove NOTEBOOK)
-- [ ] Update body text job count
-- [ ] Remove NOTEBOOK from structure reference
-- [ ] Remove Job 6
-- [ ] Update report format
-- [ ] Update Rules
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/save-session/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in save-session/SKILL.md
-- [ ] Job count is 5
-
-#### Risk
-Must verify Job numbering is still sequential (Jobs 1-5).
-
----
-
-### Step 1.6: Update `/reason-end` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/reason-end/SKILL.md` — 15 NOTEBOOK references
-
-#### Why
-`/reason-end` currently wipes NOTEBOOK.md as a separate step. That step is removed entirely. The skill now only wipes WHITEBOARD.md and kills panes.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/reason-end/SKILL.md`
-
-Changes:
-1. Update frontmatter description: remove NOTEBOOK mentions
-2. Remove Step 3 (Wipe NOTEBOOK.md) entirely
-3. Renumber: old Step 4→3, old Step 5→4, old Step 6→5
-4. Update Step 2 (/save-session): remove mention of NOTEBOOK graduation
-5. Update report format: remove NOTEBOOK.md line
-6. Update Rules: remove "Only wipe the active question's NOTEBOOK.md"
-
-#### Checklist
-- [ ] Update frontmatter
-- [ ] Remove NOTEBOOK wipe step
-- [ ] Renumber remaining steps
-- [ ] Update /save-session description
-- [ ] Update report format
-- [ ] Update Rules
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/reason-end/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in reason-end/SKILL.md
-
-#### Risk
-None.
-
----
-
-### Step 1.7: Update `/strategic-compact` skill
-**Model**: sonnet
-
-#### Read First
-- `.claude/skills/strategic-compact/SKILL.md` — 2 NOTEBOOK references
-
-#### Why
-NOTEBOOK.md is listed in the "what survives compaction" table and per-question save checklist. Remove both entries.
-
-#### Implementation Spec
-**Files to modify:** `.claude/skills/strategic-compact/SKILL.md`
-
-Changes:
-1. Remove NOTEBOOK.md row from "Survives Compaction" table
-2. Remove NOTEBOOK.md row from "Per-question documents" table
-
-#### Checklist
-- [ ] Remove from survival table
-- [ ] Remove from per-question table
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" .claude/skills/strategic-compact/SKILL.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references
-
-#### Risk
-None.
-
----
-
-### Step 1.8: Update CLAUDE.md
-**Model**: sonnet
-
-#### Read First
-- `CLAUDE.md:124-137` — Three-Document Architecture section
-
-#### Why
-CLAUDE.md is always loaded. It currently lists NOTEBOOK.md in the architecture table and routing rules. Must be removed so future sessions don't create NOTEBOOK.md files.
-
-#### Implementation Spec
-**Files to modify:** `CLAUDE.md`
-
-Changes:
-1. Remove NOTEBOOK.md row from the document table (line ~129)
-2. Remove "Raw technical detail during reasoning → NOTEBOOK.md" routing rule (line ~135)
-3. Update `/reason` description in skill table if it mentions NOTEBOOK
-4. Update `/save-session` description: "6 jobs" → "5 jobs", remove NOTEBOOK mention
-5. Update `/reason-end` description: remove NOTEBOOK mention
-
-#### Checklist
-- [ ] Remove NOTEBOOK from architecture table
-- [ ] Remove NOTEBOOK routing rule
-- [ ] Update skill table descriptions
-- [ ] Verify no NOTEBOOK references remain
-
-#### Verify
-```bash
-grep -c "NOTEBOOK" CLAUDE.md  # should be 0
-```
-
-#### Exit Criteria
-- [ ] Zero NOTEBOOK references in CLAUDE.md
-
-#### Risk
-None.
-
----
-
-### Step 1.9: Update .gitignore
-**Model**: sonnet
-
-#### Implementation Spec
-**Files to modify:** `.gitignore`
-
-Remove the `**/NOTEBOOK.md` line. Keep `WHITEBOARD.md`.
-
-#### Checklist
-- [ ] Remove `**/NOTEBOOK.md` line
-
-#### Verify
-```bash
-grep "NOTEBOOK" .gitignore  # should return nothing
-```
-
-#### Exit Criteria
-- [ ] .gitignore has no NOTEBOOK reference
-
-#### Risk
-None.
-
----
-
-### Step 1.10: Update KNOWLEDGE.md (research_environment_optimization)
-**Model**: sonnet
-
-#### Read First
-- `Research/Active/research_environment_optimization/KNOWLEDGE.md` — 8 NOTEBOOK references
-
-#### Why
-KNOWLEDGE.md has the NOTEBOOK.md design section and references throughout. Update to reflect the merge — NOTEBOOK.md design becomes historical note, active references point to IDEALOG.md.
-
-#### Implementation Spec
-**Files to modify:** `Research/Active/research_environment_optimization/KNOWLEDGE.md`
-
-Changes:
-1. Update NOTEBOOK.md Design section: add note that NOTEBOOK was merged into IDEALOG (historical)
-2. Update document interaction diagram: remove NOTEBOOK.md box
-3. Update folder structure diagram: remove NOTEBOOK.md
-4. Update any routing rules that mention NOTEBOOK
-
-#### Checklist
-- [ ] Mark NOTEBOOK design section as historical
-- [ ] Update diagrams
-- [ ] Update routing references
-- [ ] Verify references are historical-only (not active instructions)
-
-#### Exit Criteria
-- [ ] No active instructions reference NOTEBOOK.md as a current document
-
-#### Risk
-KNOWLEDGE.md is large (1000+ lines). Use targeted edits, not full rewrite.
+Information loss during condensation. Mitigation: verify all removed content exists elsewhere (templates in skill files, evolution in IDEALOG, rollout plan historical). Make git commit after this step for rollback safety.
 
 ---
 
 ### Phase 1 Verification
 ```bash
-# Zero NOTEBOOK references in all skill files
-for f in .claude/skills/*/SKILL.md; do echo "$f: $(grep -c NOTEBOOK "$f")"; done
-
-# Zero in CLAUDE.md
-grep -c NOTEBOOK CLAUDE.md
-
-# Zero in .gitignore
-grep NOTEBOOK .gitignore
-
-# NOTEBOOK.md file deleted
-test ! -f Research/Active/research_environment_optimization/NOTEBOOK.md && echo "DELETED"
-
-# Content preserved in IDEALOG.md
-grep "tmux Pane Ratio" Research/Active/research_environment_optimization/IDEALOG.md && echo "CONTENT PRESERVED"
+wc -l Research/Active/research_environment_optimization/KNOWLEDGE.md
+grep -c "^## \|^### " Research/Active/research_environment_optimization/KNOWLEDGE.md
 ```
 
 ### Phase 1 Exit Criteria
-- [ ] All 10 files updated
-- [ ] Zero active NOTEBOOK.md references across all skill files + CLAUDE.md
-- [ ] Existing NOTEBOOK.md content merged into IDEALOG.md
-- [ ] .gitignore cleaned
-- [ ] KNOWLEDGE.md references are historical only
+- [ ] KNOWLEDGE.md restructured with per-topic sections
+- [ ] glow renders cleanly in tmux pane (visual check)
 
 ### Phase 1 Cleanup
-- Verify no stale NOTEBOOK.md files elsewhere: `find . -name "NOTEBOOK.md"`
-- Check git diff for any missed references
+- Visual check of tmux KNOWLEDGE.md pane rendering
 
-**→ Commit point: "Merge NOTEBOOK.md into IDEALOG.md — single log file, remove NOTEBOOK from architecture"**
+**→ Commit point: "Restructure KNOWLEDGE.md: per-topic sections (Findings/Design/Reference/Decisions)"**
+
+---
+
+## Phase 2: README.md Future Work + Deferred Patterns
+
+**Goal**: Add "Future Work" section to all 6 active README.md files. Move deferred patterns from KNOWLEDGE.md to research_environment_optimization's README.md Future Work.
+**Tier**: small
+
+### Step 2.1: Add Future Work section to all 6 active README.md files
+**Model**: sonnet
+
+#### Read First
+- `Research/Active/*/README.md` — check if any already have a Future Work section
+
+#### Why
+Deferred ideas need a persistent, per-question home. README.md is never purged and is read by `/reason`, `/research-resume`, and `/research-complete`.
+
+#### Implementation Spec
+**Files to modify:** All 6 `Research/Active/*/README.md`
+
+For research_environment_optimization, populate with the deferred patterns:
+```markdown
+## Future Work
+- SessionStart tmux layout hook (auto-setup on session start)
+- `/draw` skill for WHITEBOARD.md visualization
+- Cost tracking hook (token usage per session)
+- Post-edit ruff formatting hook
+- MASTER_KNOWLEDGE.md (textbook-oriented consolidated knowledge)
+- Memory.md role in document architecture (always-loaded cheat sheet?)
+- Skill guardrail persistence (rules that survive beyond skill invocation)
+- IDEALOG.md format improvement (richer entries without losing scannability)
+- WHITEBOARD.md persistent sections (Current Focus + To-Do above divider, variable Scratch below)
+```
+
+For the other 5 questions, add an empty section:
+```markdown
+## Future Work
+{No deferred items yet.}
+```
+
+#### Checklist
+- [ ] Add Future Work to research_environment_optimization README.md (populated)
+- [ ] Add empty Future Work to boundary_conduction_speedup README.md
+- [ ] Add empty Future Work to ionic_model_optimization README.md
+- [ ] Add empty Future Work to engine_consolidation README.md
+- [ ] Add empty Future Work to geometry_induced_pacemaking README.md
+- [ ] Add empty Future Work to mature_hipsc_cm_models README.md
+
+#### Verify
+```bash
+for d in Research/Active/*/; do echo "$d: $(grep -c 'Future Work' ${d}README.md)"; done
+```
+
+#### Exit Criteria
+- [ ] All 6 README.md files have a Future Work section
+
+#### Risk
+None — additive section to existing files.
+
+---
+
+### Phase 2 Verification
+```bash
+for d in Research/Active/*/; do grep -l "Future Work" ${d}README.md; done | wc -l  # should be 6
+```
+
+### Phase 2 Exit Criteria
+- [ ] All 6 README.md files have Future Work section
+- [ ] Deferred patterns moved from KNOWLEDGE.md to README.md
+
+### Phase 2 Cleanup
+None.
+
+**→ Commit point: "Add Future Work section to all 6 active README.md files"**
+
+---
+
+## Phase 3: Skill Dependency Chain Updates
+
+**Goal**: Update 5 skills to support Future Work section and per-topic KNOWLEDGE.md structure.
+**Tier**: medium
+
+### Phase Context
+5 skills need updates. All are markdown edits to skill files. They must all ship together for consistency.
+
+### Step 3.1: Update `/save-session` Job 2 with per-topic structure guidance
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/save-session/SKILL.md:54-66` — current Job 2
+
+#### Why
+Job 2 does surface polish because it has no target structure. Adding per-topic guidance ensures it maintains the Findings/Design/Reference/Decisions organization.
+
+#### Implementation Spec
+**Files to modify:** `.claude/skills/save-session/SKILL.md`
+
+Add after the current Job 2 bullet list:
+```markdown
+**Target structure for KNOWLEDGE.md** — maintain on every editorial pass:
+
+Each topic section has optional-but-ordered subsections:
+1. **Findings** — what was discovered or validated
+2. **Design** — what was built based on findings
+3. **Reference** — comparison tables, technical detail for lookup
+4. **Decisions** — final choices with rationale (no evolution history)
+
+Rules:
+- New findings slot into existing topic's Findings subsection
+- If no existing topic fits, create a new topic section
+- No templates — those live in skill files
+- No evolution history — that's IDEALOG's job
+- Condense, don't accumulate — tighten on each pass
+```
+
+#### Checklist
+- [ ] Add per-topic structure guidance to Job 2
+- [ ] Add maintenance rules
+
+---
+
+### Step 3.2: Update `/reason` Step 0 to read README.md Future Work
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/reason/SKILL.md:15-22` — current Step 0
+
+#### Why
+When `/reason` has no topic, it should show Future Work items as potential things to work on, not just IDEALOG Current Direction.
+
+#### Implementation Spec
+**Files to modify:** `.claude/skills/reason/SKILL.md`
+
+In Step 0, after the auto-resume logic, add:
+```markdown
+After loading IDEALOG.md, also read `Research/Active/{question}/README.md` for the **Future Work** section. If it has items, mention them as available topics:
+> "Continuing {question}. Current direction: {from IDEALOG}. Also pending in Future Work: {list items}."
+```
+
+#### Checklist
+- [ ] Add README.md Future Work read to Step 0
+- [ ] Include Future Work items in the resume message
+
+---
+
+### Step 3.3: Update `/research-new` template to include Future Work
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/research-new/SKILL.md` — find README template section
+
+#### Why
+New research questions should have the Future Work section from the start.
+
+#### Implementation Spec
+**Files to modify:** `.claude/skills/research-new/SKILL.md`
+
+Add to the README.md template (after Literature table):
+```markdown
+## Future Work
+{No deferred items yet.}
+```
+
+#### Checklist
+- [ ] Add Future Work to README template in research-new
+
+---
+
+### Step 3.4: Update `/research-resume` to show Future Work in briefing
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/research-resume/SKILL.md` — find briefing format
+
+#### Why
+When resuming a question, you should see what deferred items exist — they might be what you want to work on.
+
+#### Implementation Spec
+**Files to modify:** `.claude/skills/research-resume/SKILL.md`
+
+Add to the session brief format (after "What NOT to retry"):
+```
+Future work:
+  - {items from README.md Future Work section, if any}
+```
+
+#### Checklist
+- [ ] Add Future Work to briefing format
+
+---
+
+### Step 3.5: Update `/research-complete` to warn about unfinished Future Work
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/research-complete/SKILL.md` — find completion verification section
+
+#### Why
+Before completing a question, unfinished Future Work items should be flagged — they might need to be moved to a new question or explicitly dropped.
+
+#### Implementation Spec
+**Files to modify:** `.claude/skills/research-complete/SKILL.md`
+
+Add a check step before the move:
+```markdown
+Check README.md Future Work section. If items remain:
+- List them and ask the user: move to a different question, create a new question, or drop?
+- Do not complete the question with unresolved Future Work items without explicit user approval.
+```
+
+#### Checklist
+- [ ] Add Future Work check before completion
+
+---
+
+### Phase 3 Verification
+```bash
+grep -c "Future Work" .claude/skills/reason/SKILL.md .claude/skills/research-new/SKILL.md .claude/skills/research-resume/SKILL.md .claude/skills/research-complete/SKILL.md
+grep -c "per-topic\|Findings.*Design.*Reference.*Decisions" .claude/skills/save-session/SKILL.md
+```
+
+### Phase 3 Exit Criteria
+- [ ] All 5 skills updated
+- [ ] Future Work integrated into the skill dependency chain
+
+### Phase 3 Cleanup
+- Verify no stale references in updated skills
+
+**→ Commit point: "Update 5 skills: Future Work dependency chain + /save-session per-topic structure"**
+
+---
+
+## Phase 4: Create `/blueprint-revise` Skill
+
+**Goal**: Create a separate skill for updating an existing PLAN.md instead of bloating `/blueprint` with iterative mode. Keeps both skills focused and under 210 lines.
+**Tier**: small
+
+### Phase Context
+`/blueprint` is already 210 lines. Adding iterative mode would push it to 250+, hitting the zone where skill instructions fade from context in long conversations. Splitting into two skills: `/blueprint` creates, `/blueprint-revise` updates.
+
+### Step 4.1: Create `/blueprint-revise` skill
+**Model**: sonnet
+
+#### Read First
+- `.claude/skills/blueprint/SKILL.md` — understand the PLAN.md format it generates
+
+#### Why
+Plans get revised through multiple `/reason` → `/blueprint` → `/audit` cycles. A separate skill avoids bloating `/blueprint` and keeps each skill focused. Clear mental model: "create" vs "revise."
+
+#### Implementation Spec
+**Files to create:** `.claude/skills/blueprint-revise/SKILL.md` (~80-100 lines)
+
+```yaml
+---
+name: blueprint-revise
+description: Update an existing PLAN.md — preserve completed steps, incorporate new IDEALOG decisions, log mutations. Use after /audit findings or mid-implementation course corrections.
+argument-hint: "[what changed — reason for revision]"
+---
+```
+
+Body structure:
+1. Read existing PLAN.md in full
+2. Read IDEALOG.md for decisions/findings made AFTER the PLAN.md was created (compare dates)
+3. Identify completed steps (`[x]`) — preserve unchanged
+4. Identify open steps that need modification based on new IDEALOG content
+5. Update open steps, add new steps if needed, mark obsolete steps as SKIPPED
+6. Log all changes in Mutation Log: `**MUTATED {date}**: Step X.Y {MODIFIED|ADDED|SKIPPED} — {reason}`
+7. Do NOT modify completed steps unless user explicitly requests it
+8. Present summary of changes and STOP — wait for user approval
+
+Rules:
+- Never modify completed steps without explicit request
+- Always log mutations
+- STOP after revision — same approval gate as /blueprint
+
+#### Checklist
+- [ ] Create `.claude/skills/blueprint-revise/SKILL.md`
+- [ ] Write YAML frontmatter
+- [ ] Write revision logic (read existing, diff against IDEALOG, modify open steps)
+- [ ] Write mutation logging format
+- [ ] Write approval gate (STOP after revision)
+- [ ] Verify skill file is under 100 lines
+
+#### Verify
+```bash
+test -f .claude/skills/blueprint-revise/SKILL.md && echo "EXISTS"
+wc -l .claude/skills/blueprint-revise/SKILL.md
+```
+
+#### Exit Criteria
+- [ ] `/blueprint-revise` skill file created
+- [ ] Under 100 lines
+- [ ] Has approval gate (STOP after revision)
+
+#### Risk
+None — new file, no existing functionality affected.
+
+---
+
+### Step 4.2: Update CLAUDE.md skill table
+**Model**: sonnet
+
+#### Read First
+- `CLAUDE.md` — find Planning & reasoning section of skill table
+
+#### Implementation Spec
+**Files to modify:** `CLAUDE.md`
+
+Add `/blueprint-revise` to the skill table after `/blueprint`:
+```markdown
+| `/blueprint-revise` | Update existing PLAN.md — preserve completed steps, incorporate new IDEALOG, log mutations |
+```
+
+#### Checklist
+- [ ] Add `/blueprint-revise` to CLAUDE.md skill table
+
+---
+
+### Phase 4 Verification
+```bash
+test -f .claude/skills/blueprint-revise/SKILL.md && echo "SKILL EXISTS"
+grep "blueprint-revise" CLAUDE.md && echo "IN SKILL TABLE"
+```
+
+### Phase 4 Exit Criteria
+- [ ] `/blueprint-revise` skill created
+- [ ] CLAUDE.md skill table updated
+
+### Phase 4 Cleanup
+None.
+
+**→ Commit point: "Create /blueprint-revise skill — update existing PLAN.md without bloating /blueprint"**
 
 ---
 
 ## Final Cleanup
-
-- Verify all 18 skills load without errors
-- Run `/research-status` to confirm no broken references
+- Run `/save-session` to test Job 2 with new per-topic structure guidance
+- Verify all 18 skills load correctly
+- Visual check of tmux KNOWLEDGE.md pane after restructure
 
 ## Mutation Log
 {To be filled during execution}
