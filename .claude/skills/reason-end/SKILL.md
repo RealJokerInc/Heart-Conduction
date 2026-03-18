@@ -1,12 +1,12 @@
 ---
-name: end-session
-description: Tear down tmux research workspace. Kills viewer panes, cleans up WHITEBOARD.md. Optionally prompts to run /save-session first.
+name: reason-end
+description: Tear down tmux research workspace. Kills viewer panes, cleans up WHITEBOARD.md. Counterpart to /research-resume workspace setup.
 argument-hint: ""
 ---
 
-# End Session — Workspace Teardown
+# Reason End — Workspace Teardown
 
-Tears down the tmux research workspace created by `/research-resume`. This is separate from `/save-session` — save is a checkpoint (keep working), end is a teardown (done for now).
+Tears down the tmux research workspace created by `/research-resume`. This is separate from `/save-session` — save is a checkpoint (keep working), reason-end is a teardown (done for now).
 
 ---
 

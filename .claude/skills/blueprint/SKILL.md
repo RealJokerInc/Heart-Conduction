@@ -197,6 +197,7 @@ Then ask:
 
 ## Rules
 
+- **STOP after writing PLAN.md.** Do NOT begin implementation. Present the plan summary, ask about `/audit`, and WAIT for the user to explicitly approve before any code is written. The user must say "go", "approved", "implement", or equivalent. This is a hard gate.
 - **PLAN.md is for the machine, not the human.** The human's thinking is in IDEALOG.md. PLAN.md is a construction manual that a cold-start agent can execute without conversation history.
 - **Never duplicate IMPLEMENTATION.md content.** Link to it (`see IMPLEMENTATION.md Phase 3 validation table`). Single source of truth.
 - **Include Known Failures.** Pull every failed approach from IDEALOG.md. The executing agent must not retry dead ends.
