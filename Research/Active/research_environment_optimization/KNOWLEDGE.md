@@ -7,7 +7,7 @@
 
 Analyzed `everything-claude-code` (github.com/affaan-m/everything-claude-code), the most popular open-source Claude Code configuration framework. Key takeaway: **context is the scarcest resource** — every optimization should reduce wasted tokens and improve session continuity.
 
-Also audited our own 9 existing skills. **Key finding**: our skills cover the research writing lifecycle comprehensively (6 skills from `/research-new` through `/research-complete`) but have **zero coverage for engineering workflow** — no planning, session persistence, verification, debugging, or compaction management skills.
+Audited our own skills and identified zero engineering workflow coverage. **Implementation now complete**: 17 total skills (9 original research/textbook + 8 new: reason, reason-end, blueprint, save-session, audit, verify, build-fix, strategic-compact). Three-document architecture (KNOWLEDGE + IDEALOG + PLAN) + NOTEBOOK.md (scratch) + WHITEBOARD.md (visual) live across all 6 active research questions. MASTER_KNOWLEDGE_INDEX.md created, PreCompact hook active, CLAUDE.md updated. Tmux and zellij workspace integration tested — tmux has better native pane control. The skill gap analysis below is historical (pre-implementation state) and kept for reference.
 
 ## ECC Analysis
 
@@ -33,7 +33,7 @@ Also audited our own 9 existing skills. **Key finding**: our skills cover the re
 | Captures failure | IDEALOG.md Failed Approaches (added via three-doc architecture) | "What Did NOT Work" with exact errors |
 | Next step | IDEALOG.md "Next Step" section (added via three-doc architecture) | Required "Exact Next Step" section |
 | File status tracking | No | Table of every file touched (done/in-progress/broken) |
-| Wrap-up | `/save-session` (5-job cleanup agent) | Separate `/save-session` command |
+| Wrap-up | `/save-session` (6-job cleanup agent) | Separate `/save-session` command |
 
 ### Full Structural Comparison: Our System vs ECC
 
@@ -160,7 +160,7 @@ plans/{project}-{objective}.md    Single plan file (blueprint)
   ↓
 [work: experiments, papers, implementation]
   ↓
-/research-update       → findings→KNOWLEDGE, ideas/failures→IDEALOG
+/quicksave             → quick checkpoint: chat summary → IDEALOG + NOTEBOOK
 /save-session          → session snapshot to IDEALOG Session Log
   ↓
 /verify                → auto-detect engine, run tests
@@ -175,7 +175,7 @@ plans/{project}-{objective}.md    Single plan file (blueprint)
 - `/research-resume`: Reads README, KNOWLEDGE, IDEALOG. Briefing shows: Current Direction, Next Step, What NOT to Retry.
 - `/reason`: Reads KNOWLEDGE + IDEALOG + engine files. Writes to IDEALOG.md on transitions (decisions, rejections, topic shifts).
 - `/blueprint`: Reads IDEALOG (settled approach) + codebase. Creates PLAN.md.
-- `/research-update`: Routes by type — findings/analysis → KNOWLEDGE.md, ideas/failures/issues → IDEALOG.md.
+- `/quicksave`: Quick checkpoint — summarize chat into IDEALOG + NOTEBOOK. No editorial pass.
 - `/save-session`: (1) Session snapshot → IDEALOG Session Log, (2) Organize KNOWLEDGE.md, (3) Cross-reference IDEALOG ↔ KNOWLEDGE.
 - `/research-complete`: Moves folder Active/ → Complete/. Copies KNOWLEDGE.md → Knowledge/. IDEALOG.md archived with question. Updates MASTER.md.
 
@@ -215,10 +215,10 @@ plans/{project}-{objective}.md    Single plan file (blueprint)
 | **Negative knowledge** | IDEALOG.md Failed Approaches section (NEW — was a gap) | Session files capture "What Did NOT Work" | Both now covered. Ours is version-controlled + scoped to question. |
 | **Planning** | `/reason` interactive agent + `/blueprint` generates PLAN.md (NEW — was a gap) | `/reason` + `/blueprint` | Both now covered. Ours adds visual zoom + IDEALOG persistence. |
 | **Session continuity** | `/research-resume` + IDEALOG.md Session Log (NEW) | `/save-session` + `/resume-session` | Both now covered. Ours integrates with research question lifecycle. |
-| **Verification** | Manual pytest per engine (gap — `/verify` designed but not yet built) | `/verify` auto-detects and runs. |
-| **Adversarial review** | `/audit` designed but not yet built | Opus subagent reviews plans. |
-| **Hooks/automation** | PreCompact hook designed but not yet built | 16 hooks. |
-| **Compaction recovery** | Orientation Protocol + PreCompact hook (designed, not built) | Strategic compact skill + PreCompact hook. |
+| **Verification** | `/verify` auto-detects engine, runs tests, produces report (implemented) | `/verify` auto-detects and runs. | Both covered. |
+| **Adversarial review** | `/audit` spawns Opus subagent for review (implemented) | Opus subagent reviews plans. | Both covered. |
+| **Hooks/automation** | PreCompact hook active (implemented) | 16 hooks. | We have 1 hook; they have 16. Future expansion possible. |
+| **Compaction recovery** | Orientation Protocol + PreCompact hook + `/strategic-compact` (implemented) | Strategic compact skill + PreCompact hook. | Both covered. |
 | **Paper management** | Full PubMed pipeline with structured summaries | None. |
 | **Experiment tracking** | EXPERIMENT.md with backlinks to research questions | None. |
 
@@ -360,7 +360,7 @@ Research/Active/{question}/
 
 ```
   Papers, experiments   ┌──────────────┐
-  analysis, designs ──▶ │ KNOWLEDGE.md │  ← /research-update finding
+  analysis, designs ──▶ │ KNOWLEDGE.md │  ← /save-session (editorial pass)
                         │ (high-res    │  ← /research (paper summaries)
                         │  reference)  │
                         └──────────────┘
@@ -368,7 +368,7 @@ Research/Active/{question}/
   Thinking trail        ┌──────────────┐
   "oh wait" moments ──▶ │ IDEALOG.md   │  ← /reason (writes on transitions)
   failed approaches     │ (low-res     │  ← /save-session (session snapshots)
-  session snapshots     │  narrative)  │  ← /research-update idea/failure
+  session snapshots     │  narrative)  │  ← /quicksave (fast checkpoint)
                         └──────┬───────┘
                                │ settled idea
                                ▼
@@ -390,13 +390,13 @@ Research/Active/{question}/
 **Extend existing skills:**
 1. **Extend `/research-new`** — Create IDEALOG.md with template. KNOWLEDGE.md keeps high resolution (analysis, designs, comparisons) but narrative process stuff moves to IDEALOG.
 2. **Extend `/research-resume`** — Read IDEALOG.md in addition to KNOWLEDGE.md. Briefing includes: "Current Direction" + "Next Step" (from IDEALOG), "What NOT to retry" (from IDEALOG Failed Approaches).
-3. **Extend `/research-update`** — Route by type: `finding` (facts, analysis, designs) → KNOWLEDGE.md. `idea`, `failure`, `issue`, `next-step` → IDEALOG.md.
+3. **~~`/research-update`~~ → replaced by `/quicksave`** — Simpler mid-session checkpoint that dumps chat summary to IDEALOG + NOTEBOOK. No routing logic, no KNOWLEDGE edits.
 4. **Extend `/research-complete`** — Archive IDEALOG.md with the question folder in Complete/ (not promoted to Research/Knowledge/).
 
 **New skills:**
 4. **`/reason`** — Interactive planning agent. Reads IDEALOG, KNOWLEDGE, engine files. Discusses ideas conversationally. Writes to IDEALOG.md on **natural transitions** — not after every exchange. Write triggers: user settles on a decision, rejects an approach, shifts topics, says "write that down", or PreCompact fires. Batch related insights into single edits to minimize workflow disruption. Can invoke `/blueprint` when user says "let's build this."
 5. **`/blueprint`** — Autonomous pipeline. Reads IDEALOG.md (settled approach, known failures to avoid) + codebase. Generates PLAN.md with self-contained steps. Asks "Want adversarial audit?" before finalizing.
-6. **`/save-session`** — Session-end cleanup agent. Five jobs: (1) write session snapshot to IDEALOG.md Session Log, (2) organize KNOWLEDGE.md for clean reference lookup, (3) cross-reference IDEALOG ↔ KNOWLEDGE for consistency, (4) condense verbose IDEALOG entries, (5) update MASTER_KNOWLEDGE_INDEX.md. See detailed design below.
+6. **`/save-session`** — Session-end cleanup agent. Six jobs: (1) write session snapshot to IDEALOG.md Session Log, (2) organize KNOWLEDGE.md for clean reference lookup, (3) cross-reference IDEALOG ↔ KNOWLEDGE for consistency, (4) condense verbose IDEALOG entries, (5) update MASTER_KNOWLEDGE_INDEX.md. See detailed design below.
 7. **`/audit`** — Adversarial review. Spawns Opus subagent with read-only tools. Challenges any document (PLAN.md, design, code). Opt-in, never auto-triggered.
 8. **`/verify`** — Auto-detect engine, run test suite, produce report.
 9. **`/build-fix`** — Systematic error resolution with guardrails.
@@ -887,7 +887,7 @@ The phase structure means:
 
 ### `/save-session` Detailed Design
 
-Not a quick snapshot writer — a **cleanup agent** that runs at session end. Five jobs:
+Not a quick snapshot writer — a **cleanup agent** that runs at session end. Six jobs:
 
 #### Job 1: Write Session Snapshot to IDEALOG.md
 
@@ -991,6 +991,68 @@ The agent reports what it changed:
 
 Without this cleanup step, KNOWLEDGE.md slowly degrades into a chronological dump, IDEALOG ideas that get validated never graduate, and cross-question connections are invisible. `/save-session` is the editorial agent that keeps all documents healthy — KNOWLEDGE.md as a polished reference, IDEALOG.md as a concise thinking trail, and MASTER_KNOWLEDGE_INDEX.md as the cross-cutting executive summary.
 
+## Workspace Integration (tmux/zellij)
+
+### Layout: Option A (2-column)
+```
+┌──────────────────┬──────────────┐
+│                  │ KNOWLEDGE.md │
+│  Claude Code     │  (glow)      │
+│                  ├──────────────┤
+│                  │ WHITEBOARD.md│
+│                  │  (glow)      │
+└──────────────────┴──────────────┘
+```
+Setup triggered lazily by `/research-resume` when a question is selected. Teardown by `/reason-end`.
+
+### Renderer: glow with custom style
+- Installed via `sudo snap install glow`
+- Custom style: `.glow-style.json` in project root (snap can't access `~/.config/`)
+- Removes `#` prefix from headers, adds color coding per heading level
+
+### tmux vs zellij Comparison
+
+| Feature | tmux | zellij |
+|---------|------|--------|
+| Pane targeting | By index (safe, precise) | By focus direction (risky) |
+| Read pane content | `capture-pane -t N -p` | Not available natively (zjctl adds it) |
+| Send to specific pane | `send-keys -t N` | Focused pane only |
+| Close specific pane | `kill-pane -t N` (safe) | `close-pane` (focused — can kill Claude) |
+| Glow colors via watch | `watch --color` works | Does NOT work — needs shell loop |
+| New pane cwd | Inherits | Must `cd` explicitly |
+| zjctl workaround | N/A | `cargo install zjctl` adds pane ID targeting |
+
+### Auto-refresh with color (zellij shell loop)
+```bash
+# md5sum change detection prevents flicker
+H=""; while true; do
+  N=$(md5sum FILE | cut -d" " -f1)
+  [ "$N" != "$H" ] && clear && glow -s .glow-style.json -w 70 FILE && H=$N
+  sleep 2
+done
+```
+
+### Multiplexer detection
+```bash
+if [ -n "$TMUX" ]; then echo "tmux"
+elif [ -n "$ZELLIJ" ]; then echo "zellij"
+else echo "none"; fi
+```
+
+### NOTEBOOK.md Design
+
+Scratch pad owned by `/reason`. High-resolution technical findings dumped freely without formatting pressure.
+
+| Aspect | Detail |
+|--------|--------|
+| Created by | `/reason` (first technical finding) |
+| Written to by | `/reason` (raw findings, commands, configs, errors) |
+| Read by | `/blueprint` (primary source for implementation detail) |
+| Graduated by | `/save-session` Job 6 (polishes into KNOWLEDGE.md, does NOT delete) |
+| Wiped by | `/reason-end` (after calling `/save-session` first) |
+| Location | `Research/Active/{question}/NOTEBOOK.md` or project root (engine-only work) |
+| Git | Gitignored (ephemeral scratch) |
+
 ## Rollout Plan
 
 Implementation proceeds in 3 phases + 1 parallel track. Phase 0 is the biggest — it creates the foundation everything else depends on.
@@ -1004,7 +1066,7 @@ Implementation proceeds in 3 phases + 1 parallel track. Phase 0 is the biggest �
 **Phase 1: Rewire Existing Skills** — All 4 must ship together to avoid inconsistent state.
 - 1.1: `/research-new` — add IDEALOG.md creation
 - 1.2: `/research-resume` — read IDEALOG, show failed approaches + direction + next step
-- 1.3: `/research-update` — route by type (findings→KNOWLEDGE, ideas/failures→IDEALOG)
+- 1.3: ~~`/research-update`~~ replaced by `/quicksave` — simple checkpoint to IDEALOG + NOTEBOOK
 - 1.4: `/research-complete` — archive IDEALOG.md with question in Complete/
 
 **Phase 2: Core New Skills** — The planning pipeline + cleanup agent + quality gate.
@@ -1035,14 +1097,14 @@ Implementation proceeds in 3 phases + 1 parallel track. Phase 0 is the biggest �
 | `/reason` uses big→middle→small zoom with organic flow | Always opens with visual big-picture map (scannable in 5 seconds). User can drill down sequentially OR jump organically — agent follows. No forcing back into hierarchy. Agent tracks settled vs open internally regardless of exploration order. |
 | `/reason` is one agent, not two modes | Structured drill-down and organic jumping are not separate modes — they're natural behaviors of the same agent. Start structured (big picture), then follow the user's lead. |
 | `/reason` can invoke `/blueprint` | When user says "let's build this" during a `/reason` session, `/reason` triggers `/blueprint` to generate PLAN.md from the settled approach. Seamless transition from thinking to execution planning. |
-| `/save-session` is a comprehensive cleanup agent | Five jobs: (1) session snapshot → IDEALOG, (2) full editorial pass on KNOWLEDGE.md, (3) cross-reference IDEALOG ↔ KNOWLEDGE, (4) condense verbose IDEALOG, (5) update MASTER_KNOWLEDGE_INDEX.md with cross-question findings and connections. Can take as long as needed. |
+| `/save-session` is a comprehensive cleanup agent | Six jobs: (1) session snapshot → IDEALOG, (2) full editorial pass on KNOWLEDGE.md, (3) cross-reference IDEALOG ↔ KNOWLEDGE, (4) condense verbose IDEALOG, (5) update MASTER_KNOWLEDGE_INDEX.md with cross-question findings and connections. Can take as long as needed. |
 | MASTER_KNOWLEDGE_INDEX.md as index book, not summary | Project-root index that points to where knowledge lives and maps connections between questions. Does NOT duplicate findings — one-liner per question + cross-reference links. Research statement lives here only. Lightweight to maintain — `/save-session` Job 5 just updates one-liners and cross-references. Avoids drift between duplicate copies. |
 | PLAN.md is machine-targeted, not human-targeted | ECC's blueprint is for human developers. Our PLAN.md is for cold-start Claude agents. Every step is self-contained with full context brief, known failures, per-step reasoning ("Why"), model/tool assignments, and domain-specific conventions. A fresh `claude -p` call can execute any step without reading prior steps or IDEALOG. |
 | Borrow ECC's vibe coding patterns for PLAN.md | Complexity tiers (trivial→large), de-sloppify cleanup pass, known failures section, author-bias elimination for /audit, architecture changes overview. Adapted from ECC's autonomous-loops and agentic-engineering skills. |
 | PLAN.md steps include full scaffolding for the agent | Each step has: Context Brief, Implementation Spec (interfaces/signatures), Pseudocode (algorithmic sketch), Test Spec (exact tests with setup/expected/tolerances), and Checklist (sequential to-do). This is more than a task list — it's everything the agent needs to write code without guessing. |
 | PLAN.md organized by phases, not flat steps | Phases are independently deliverable units with their own context, verification, exit criteria, cleanup, and commit point. Steps live within phases. Agent implements phase-by-phase: complete Phase 1 → verify → commit → Phase 2. Matches our existing engine workflow (Bidomain 6 phases, V5.4 9 phases). Phase context is shared across steps within the phase to avoid repetition. |
 | `/audit` as standalone opt-in skill (renamed from `/review`) | Adversarial Opus subagent. `/blueprint` asks "Want adversarial audit?" — user decides. Can also be used independently on any document. |
-| `/research-update` routes to correct document by type | `finding` (facts, analysis, designs) → KNOWLEDGE.md. `idea`, `failure`, `issue`, `next-step` → IDEALOG.md. |
+| ~~`/research-update`~~ replaced by `/quicksave` | `/research-update` was overengineered routing logic. `/quicksave` is simpler: dump chat summary → IDEALOG + NOTEBOOK. No KNOWLEDGE edits, no cross-referencing. `/save-session` handles the heavy editorial work. |
 
 ## Open Questions
 

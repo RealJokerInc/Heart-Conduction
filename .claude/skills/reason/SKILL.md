@@ -164,9 +164,12 @@ Flag these when spotted. Don't wait for the user to ask.
 
 ## Step 8: Mid-Session Checkpoint
 
-If the user says "save" or "checkpoint" during a long `/reason` session, invoke `/save-session`. This graduates NOTEBOOK.md findings to KNOWLEDGE.md and snapshots the session to IDEALOG.md — without ending the reasoning session. NOTEBOOK.md stays intact for continued use.
+Two checkpoint options during a `/reason` session:
 
-This is especially important before compaction risk — if context is getting large, suggest a checkpoint.
+- **Quick**: invoke `/quicksave` — dumps chat summary to IDEALOG + NOTEBOOK in 30 seconds. Use for fast captures mid-discussion.
+- **Full**: invoke `/save-session` — 6-job editorial agent that also reorganizes KNOWLEDGE and graduates NOTEBOOK findings. Use at natural breaks or before compaction risk.
+
+If context is getting large, suggest a checkpoint. Default to `/quicksave` unless the user asks for a full save.
 
 ---
 
