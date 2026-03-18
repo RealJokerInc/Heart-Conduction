@@ -1,12 +1,12 @@
 ---
 name: quicksave
-description: Quick checkpoint — summarize recent chat into IDEALOG.md + NOTEBOOK.md. No editorial pass, no KNOWLEDGE rewrite, no cross-referencing. Use mid-session when you want to capture state fast.
+description: Quick checkpoint — summarize recent chat into IDEALOG.md. No editorial pass, no KNOWLEDGE rewrite, no cross-referencing. Use mid-session when you want to capture state fast.
 argument-hint: "[optional: research question name]"
 ---
 
 # Quick Save
 
-Fast checkpoint. Summarize recent conversation into IDEALOG.md and NOTEBOOK.md. No heavy editorial work — that's `/save-session`'s job.
+Fast checkpoint. Summarize recent conversation into IDEALOG.md. No heavy editorial work — that's `/save-session`'s job.
 
 Input: $ARGUMENTS
 
@@ -39,20 +39,11 @@ Update **Next Step** if the conversation changed what should happen next.
 
 ---
 
-## Step 2: Dump Detail → NOTEBOOK.md
-
-If technical detail was discussed (commands tested, configurations tried, error messages encountered, file paths discovered), append to `Research/Active/{question}/NOTEBOOK.md` (create if doesn't exist).
-
-No formatting pressure — raw dump is fine. Just capture the detail so `/blueprint` can use it later.
-
----
-
-## Step 3: Confirm
+## Step 2: Confirm
 
 ```
 /quicksave complete:
   IDEALOG.md — {what was added: thread entry, failed approach, next step update}
-  NOTEBOOK.md — {what was dumped, or "no technical detail to capture"}
 ```
 
 ---
@@ -63,6 +54,4 @@ No formatting pressure — raw dump is fine. Just capture the detail so `/bluepr
 - **No KNOWLEDGE.md edits.** That's `/save-session` Job 2.
 - **No cross-referencing.** That's `/save-session` Job 3.
 - **No MASTER_KNOWLEDGE_INDEX.md updates.** That's `/save-session` Job 5.
-- **No NOTEBOOK graduation.** That's `/save-session` Job 6.
 - **Derive content from conversation.** Don't ask the user to dictate.
-- **Create NOTEBOOK.md if it doesn't exist.** First quicksave in a session may need to create it.

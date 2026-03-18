@@ -117,22 +117,20 @@ Key details:
 - `sigma_to_D()` / `tau_from_D()` in `src/diffusion.py` handle LBM ↔ physical unit conversion
 - State uses `(Nx, Ny)` grid convention, matching V5.4
 
-## Three-Document Architecture
+## Document Architecture
 
-Each research question in `Research/Active/` uses three documents with distinct purposes:
+Each research question in `Research/Active/` uses these documents:
 
 | Document | Resolution | Purpose | Lifecycle |
 |----------|-----------|---------|-----------|
 | **KNOWLEDGE.md** | High | Reference: facts, analysis, designs, comparisons. Look things up. | Accumulates → promoted to `Research/Knowledge/` on completion |
-| **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log. Scan in 30s. | Living → archived with question on completion |
+| **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log, technical findings. Scan in 30s. | Living → archived with question on completion |
 | **PLAN.md** | High (structured) | Cold-start agent execution steps. Created by `/blueprint`. | Created → steps checked off → archived |
-| **NOTEBOOK.md** | Raw | Scratch pad for `/reason` — high-res technical findings, tested commands, error messages. | Created by `/reason` → graduated to KNOWLEDGE by `/save-session` → wiped by `/reason-end` |
 | **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables. Visible in tmux viewer pane. | Ephemeral — overwritten per diagram, wiped by `/reason-end`. Gitignored. |
 
 **When to write where:**
 - Findings, analysis, designs, decisions with rationale → **KNOWLEDGE.md**
-- Ideas, failures, "oh wait" moments, session snapshots, next steps → **IDEALOG.md**
-- Raw technical detail during reasoning (commands, configs, errors) → **NOTEBOOK.md**
+- Ideas, failures, "oh wait" moments, session snapshots, next steps, raw technical detail → **IDEALOG.md**
 - Implementation steps for agent execution → **PLAN.md** (via `/blueprint`)
 - Visual diagrams during reasoning → **WHITEBOARD.md**
 
@@ -166,17 +164,17 @@ Custom skills are available for research, planning, and engineering work (define
 | **Research lifecycle** | |
 | `/research-new` | Create new research question (README + KNOWLEDGE + IDEALOG + dirs). Updates MASTER.md. |
 | `/research-resume` | Resume work — loads KNOWLEDGE + IDEALOG, shows current direction, next step, what NOT to retry |
-| `/quicksave` | Quick checkpoint — summarize chat into IDEALOG + NOTEBOOK. No editorial pass. |
+| `/quicksave` | Quick checkpoint — summarize chat into IDEALOG.md. No editorial pass. |
 | `/research-status` | Staleness audit across all active questions |
 | `/research-complete` | Active/ → Complete/, promote KNOWLEDGE to Knowledge/, archive IDEALOG |
 | `/research` | Full PubMed pipeline: search → screen → acquire → summarize → file |
 | `/summarize-paper` | Quick-summarize a single local PDF (stages 4-5 of `/research` only) |
 | **Planning & reasoning** | |
-| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions, dumps detail to NOTEBOOK |
+| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions |
 | `/blueprint` | Generates machine-targeted PLAN.md from IDEALOG + codebase |
 | `/audit` | Adversarial review via Opus subagent (opt-in) |
-| `/save-session` | Session cleanup (6 jobs): snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, condense, update index, graduate NOTEBOOK→KNOWLEDGE |
-| `/reason-end` | End reasoning session: calls `/save-session` (graduates NOTEBOOK→KNOWLEDGE), wipes NOTEBOOK + WHITEBOARD, kills tmux panes |
+| `/save-session` | Session cleanup (5 jobs): snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, condense, update index |
+| `/reason-end` | End reasoning session: calls `/save-session`, wipes WHITEBOARD, kills tmux panes |
 | `/quick-implement` | Skip planning pipeline — present fix list, get approval, implement, verify, log to IDEALOG |
 | **Engineering** | |
 | `/verify` | Auto-detect engine, run test suite, produce pass/fail report |

@@ -57,8 +57,28 @@ Zellij uses different pane commands than tmux: `zellij action new-pane --directi
 ### 2026-03-17: tmux workspace design finalized
 Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
 
+### 2026-03-18: NOTEBOOK.md merged back into IDEALOG.md — single log file
+The IDEALOG/NOTEBOOK split caused routing friction. The rule "strategic insight → IDEALOG, technical detail → NOTEBOOK" required constant judgment calls that faded from context in long conversations, leading to everything defaulting to IDEALOG anyway. Solution: merge into one file. No routing decision needed — just write everything to IDEALOG.md. `/reason` writes here, `/quicksave` writes here, `/save-session` reads and organizes from here. NOTEBOOK.md dropped as a separate document. IDEALOG.md now holds both the thinking trail AND raw technical findings.
+
+### 2026-03-17: Memory.md role undefined in our architecture
+Discovered that MEMORY.md (always loaded every session) is not integrated into our document workflow. Our entire architecture (KNOWLEDGE, IDEALOG, NOTEBOOK, PLAN, WHITEBOARD, MASTER_KNOWLEDGE_INDEX) never reads or writes to it. But it's free always-loaded context — currently holds stale project facts and one feedback entry. Gap: KNOWLEDGE.md is per-question and only loaded on demand. Some cross-cutting facts need to be in every session (API conventions, environment setup, key gotchas). Memory.md could serve as the "always-loaded cheat sheet" but we haven't designed that role. Also raised: skill guardrails (like "never implement during /reason") only apply when the skill is actively invoked — they don't persist as global rules. Memory.md or CLAUDE.md could hold global behavioral rules. Needs further design.
+
 ### 2026-03-17: Workspace ownership clarified — /reason owns panes, not /research-resume
 `/research-resume` is about documents (loads KNOWLEDGE, IDEALOG, README, presents briefing). `/reason` is the workspace owner — creates tmux panes with glow viewers when active reasoning starts, because that's when you need the side panels. `/reason-end` tears them down. Also: `/reason` with no argument should auto-resume from IDEALOG.md of the most recent `/research-resume` question, not ask for a topic. Decided: tmux only, drop zellij support.
+
+### 2026-03-17: Technical findings (merged from NOTEBOOK.md)
+
+**Zellij pane commands**: `new-pane --direction right`, `write-chars` + `write 10` (Enter), `write 3` (Ctrl-C), `move-focus {direction}`, `close-pane` (focused only — dangerous). Gotcha: `move-focus right` lands on nearest right pane, need `right` then `up` for top-right.
+
+**Glow rendering**: `watch --color` strips glow ANSI codes in both tmux AND zellij. Fix: shell loop with md5sum change detection (`H=""; while true; do N=$(md5sum FILE | cut -d" " -f1); [ "$N" != "$H" ] && clear && glow -s .glow-style.json -w 70 FILE && H=$N; sleep 2; done`). Works because glow sees a real TTY in a shell loop but not in `watch` subprocess.
+
+**tmux pane ratio**: 50-25-25 chosen. At 216x72: Claude=107x72, KNOWLEDGE=108x35, WHITEBOARD=108x36. Commands: `tmux split-window -h -l ${HALF_W} -d` then `tmux split-window -v -t 1 -l ${HALF_H} -d`.
+
+**tmux vs zellij**: tmux wins — pane targeting by index (safe), `capture-pane` for reading, `kill-pane -t N` (safe close). Zellij is focus-based (risky), no capture, needs zjctl for pane ID targeting. Decided: tmux only.
+
+**Multiplexer detection**: `if [ -n "$TMUX" ]; then echo "tmux"; elif [ -n "$ZELLIJ" ]; then echo "zellij"; fi`
+
+**Zellij pane cwd**: New panes do NOT inherit Claude's cwd. Must `cd` explicitly. Snap glow can't access `/tmp` or `~/.config/` — style file must be in project dir.
 
 ## Failed Approaches
 - **WORKLOG.md as separate document** (2026-03-17) — failed because: tactical session details (failures, snapshots) are part of the thinking trail and belong in IDEALOG.md. A fourth document fragments context without adding value. Three documents is the right number.

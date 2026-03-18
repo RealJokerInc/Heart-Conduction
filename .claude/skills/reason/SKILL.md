@@ -43,22 +43,23 @@ If the topic involves engine work, also read in parallel:
 
 If no research question maps to the topic, skip research files and work from the user's input + codebase.
 
-**NOTEBOOK.md location:**
-- If a research question is active: `Research/Active/{question}/NOTEBOOK.md`
-- If no research question (engine-only work): `NOTEBOOK.md` in project root (same as WHITEBOARD.md)
-
 ### 1b. Set Up tmux Workspace
 
 Check if running inside tmux (`$TMUX` environment variable). If yes AND only 1 pane exists, create the research workspace:
 
 ```bash
 if [ -n "$TMUX" ] && [ "$(tmux list-panes | wc -l)" -eq 1 ]; then
-  tmux split-window -h -l 75 -d
-  tmux split-window -v -t 1 -l 20 -d
-  tmux send-keys -t 1 "watch -n 2 -t --color glow -s $(pwd)/.glow-style.json -w 70 Research/Active/{question}/KNOWLEDGE.md" Enter
-  tmux send-keys -t 2 "watch -n 1 -t --color glow -s $(pwd)/.glow-style.json -w 70 $(pwd)/WHITEBOARD.md" Enter
+  HALF_W=$(( $(tmux display-message -p '#{window_width}') / 2 ))
+  HALF_H=$(( $(tmux display-message -p '#{window_height}') / 2 ))
+  tmux split-window -h -l ${HALF_W} -d
+  tmux split-window -v -t 1 -l ${HALF_H} -d
+  # Shell loop with md5sum change detection — preserves glow colors + allows scrolling
+  tmux send-keys -t 1 'H=""; while true; do N=$(md5sum Research/Active/{question}/KNOWLEDGE.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w 70 Research/Active/{question}/KNOWLEDGE.md; H=$N; fi; sleep 2; done' Enter
+  tmux send-keys -t 2 'H=""; while true; do N=$(md5sum WHITEBOARD.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w 70 WHITEBOARD.md; H=$N; fi; sleep 1; done' Enter
 fi
 ```
+
+Uses shell loop instead of `watch` because `watch --color` strips glow's ANSI codes. The md5sum check prevents flicker — only re-renders when file content changes. Scrolling works via tmux copy mode (`Ctrl+B, [`).
 
 Replace `{question}` with the active question folder name. If not in tmux, skip silently. If panes already exist, skip.
 
@@ -143,9 +144,7 @@ Route writes to the appropriate file and section:
 |---------|------|---------|
 | Decisions, direction changes | IDEALOG.md | Thread (current entry) |
 | Failed approaches | IDEALOG.md | Failed Approaches |
-| High-res technical findings (exact commands, configs, test results, file paths, error messages) | NOTEBOOK.md | Append freely — no formatting pressure |
-
-NOTEBOOK.md is scratch paper. Dump raw findings without worrying about polish. `/blueprint` reads it for detail. `/save-session` graduates worthy findings to KNOWLEDGE.md (but does NOT delete NOTEBOOK.md). Only `/reason-end` wipes NOTEBOOK.md (after calling `/save-session` first).
+| High-res technical findings (exact commands, configs, test results, file paths, error messages) | IDEALOG.md | Thread (current entry) |
 
 ---
 
@@ -193,8 +192,8 @@ Flag these when spotted. Don't wait for the user to ask.
 
 Two checkpoint options during a `/reason` session:
 
-- **Quick**: invoke `/quicksave` — dumps chat summary to IDEALOG + NOTEBOOK in 30 seconds. Use for fast captures mid-discussion.
-- **Full**: invoke `/save-session` — 6-job editorial agent that also reorganizes KNOWLEDGE and graduates NOTEBOOK findings. Use at natural breaks or before compaction risk.
+- **Quick**: invoke `/quicksave` — dumps chat summary to IDEALOG in 30 seconds. Use for fast captures mid-discussion.
+- **Full**: invoke `/save-session` — 6-job editorial agent that also reorganizes KNOWLEDGE. Use at natural breaks or before compaction risk.
 
 If context is getting large, suggest a checkpoint. Default to `/quicksave` unless the user asks for a full save.
 
@@ -241,7 +240,7 @@ Overwrite the file each time (it's ephemeral, not accumulated). The current visu
 
 ## Rules
 
-- **NEVER implement during /reason.** No creating files (except IDEALOG.md, NOTEBOOK.md, and WHITEBOARD.md writes). No editing source code or skill files. No `pip install`. No `mkdir` for new components. No writing PLAN.md. /reason is ONLY for thinking and discussion. Implementation requires `/blueprint` → user approval → execute. This is a hard gate, not a suggestion.
+- **NEVER implement during /reason.** No creating files (except IDEALOG.md and WHITEBOARD.md writes). No editing source code or skill files. No `pip install`. No `mkdir` for new components. No writing PLAN.md. /reason is ONLY for thinking and discussion. Implementation requires `/blueprint` → user approval → execute. This is a hard gate, not a suggestion.
 - **NEVER invoke /blueprint without explicit user approval.** The user must say "let's build this" or equivalent. Do not auto-trigger /blueprint because the design "looks ready."
 - **Always open with the big picture.** Never start at detail level.
 - **Follow the user's thinking.** Don't force hierarchy or sequential exploration.
@@ -251,5 +250,4 @@ Overwrite the file each time (it's ephemeral, not accumulated). The current visu
 - **Keep ASCII maps compact.** 15 lines max for big picture. Scannable in 5 seconds.
 - **Reference, don't inline.** Point to KNOWLEDGE.md sections and IMPLEMENTATION.md rather than copying content.
 - **Visualize on WHITEBOARD.md.** Write diagrams and maps there so they persist in the tmux viewer pane.
-- **Allowed tools during /reason:** Read, Grep, Glob (for codebase exploration), Edit/Write (ONLY to IDEALOG.md, NOTEBOOK.md, and WHITEBOARD.md), Bash (ONLY for reading — `cat`, `ls`, `wc`, `git log`, tmux pane setup. NEVER for installing, creating, or modifying code).
-- **NOTEBOOK.md is owned by /reason.** Created on first technical finding, wiped by `/reason-end`. Dump raw findings freely — no formatting pressure. `/save-session` graduates worthy findings to KNOWLEDGE.md but does not delete NOTEBOOK.md.
+- **Allowed tools during /reason:** Read, Grep, Glob (for codebase exploration), Edit/Write (ONLY to IDEALOG.md and WHITEBOARD.md), Bash (ONLY for reading — `cat`, `ls`, `wc`, `git log`, tmux pane setup. NEVER for installing, creating, or modifying code).

@@ -7,7 +7,7 @@
 
 Analyzed `everything-claude-code` (github.com/affaan-m/everything-claude-code), the most popular open-source Claude Code configuration framework. Key takeaway: **context is the scarcest resource** — every optimization should reduce wasted tokens and improve session continuity.
 
-Audited our own skills and identified zero engineering workflow coverage. **Implementation now complete**: 17 total skills (9 original research/textbook + 8 new: reason, reason-end, blueprint, save-session, audit, verify, build-fix, strategic-compact). Three-document architecture (KNOWLEDGE + IDEALOG + PLAN) + NOTEBOOK.md (scratch) + WHITEBOARD.md (visual) live across all 6 active research questions. MASTER_KNOWLEDGE_INDEX.md created, PreCompact hook active, CLAUDE.md updated. Tmux and zellij workspace integration tested — tmux has better native pane control. The skill gap analysis below is historical (pre-implementation state) and kept for reference.
+Audited our own skills and identified zero engineering workflow coverage. **Implementation now complete**: 17 total skills (9 original research/textbook + 8 new: reason, reason-end, blueprint, save-session, audit, verify, build-fix, strategic-compact). Document architecture (KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD) live across all 6 active research questions. NOTEBOOK.md was tried as a separate scratch pad but merged back into IDEALOG.md (routing friction). MASTER_KNOWLEDGE_INDEX.md created, PreCompact hook active, CLAUDE.md updated. Tmux and zellij workspace integration tested — tmux has better native pane control. The skill gap analysis below is historical (pre-implementation state) and kept for reference.
 
 ## ECC Analysis
 
@@ -160,7 +160,7 @@ plans/{project}-{objective}.md    Single plan file (blueprint)
   ↓
 [work: experiments, papers, implementation]
   ↓
-/quicksave             → quick checkpoint: chat summary → IDEALOG + NOTEBOOK
+/quicksave             → quick checkpoint: chat summary → IDEALOG
 /save-session          → session snapshot to IDEALOG Session Log
   ↓
 /verify                → auto-detect engine, run tests
@@ -175,7 +175,7 @@ plans/{project}-{objective}.md    Single plan file (blueprint)
 - `/research-resume`: Reads README, KNOWLEDGE, IDEALOG. Briefing shows: Current Direction, Next Step, What NOT to Retry.
 - `/reason`: Reads KNOWLEDGE + IDEALOG + engine files. Writes to IDEALOG.md on transitions (decisions, rejections, topic shifts).
 - `/blueprint`: Reads IDEALOG (settled approach) + codebase. Creates PLAN.md.
-- `/quicksave`: Quick checkpoint — summarize chat into IDEALOG + NOTEBOOK. No editorial pass.
+- `/quicksave`: Quick checkpoint — summarize chat into IDEALOG. No editorial pass.
 - `/save-session`: (1) Session snapshot → IDEALOG Session Log, (2) Organize KNOWLEDGE.md, (3) Cross-reference IDEALOG ↔ KNOWLEDGE.
 - `/research-complete`: Moves folder Active/ → Complete/. Copies KNOWLEDGE.md → Knowledge/. IDEALOG.md archived with question. Updates MASTER.md.
 
@@ -390,7 +390,7 @@ Research/Active/{question}/
 **Extend existing skills:**
 1. **Extend `/research-new`** — Create IDEALOG.md with template. KNOWLEDGE.md keeps high resolution (analysis, designs, comparisons) but narrative process stuff moves to IDEALOG.
 2. **Extend `/research-resume`** — Read IDEALOG.md in addition to KNOWLEDGE.md. Briefing includes: "Current Direction" + "Next Step" (from IDEALOG), "What NOT to retry" (from IDEALOG Failed Approaches).
-3. **~~`/research-update`~~ → replaced by `/quicksave`** — Simpler mid-session checkpoint that dumps chat summary to IDEALOG + NOTEBOOK. No routing logic, no KNOWLEDGE edits.
+3. **~~`/research-update`~~ → replaced by `/quicksave`** — Simpler mid-session checkpoint that dumps chat summary to IDEALOG. No routing logic, no KNOWLEDGE edits.
 4. **Extend `/research-complete`** — Archive IDEALOG.md with the question folder in Complete/ (not promoted to Research/Knowledge/).
 
 **New skills:**
@@ -1003,7 +1003,7 @@ Without this cleanup step, KNOWLEDGE.md slowly degrades into a chronological dum
 │                  │  (glow)      │
 └──────────────────┴──────────────┘
 ```
-Setup triggered lazily by `/research-resume` when a question is selected. Teardown by `/reason-end`.
+Setup triggered lazily by `/reason` when a reasoning session starts. Teardown by `/reason-end`. Uses shell loop with md5sum change detection (not `watch --color` — that strips glow's ANSI codes). Scrolling via tmux copy mode (`Ctrl+B, [`).
 
 ### Renderer: glow with custom style
 - Installed via `sudo snap install glow`
@@ -1039,19 +1039,9 @@ elif [ -n "$ZELLIJ" ]; then echo "zellij"
 else echo "none"; fi
 ```
 
-### NOTEBOOK.md Design
+### NOTEBOOK.md Design (HISTORICAL — merged into IDEALOG.md on 2026-03-18)
 
-Scratch pad owned by `/reason`. High-resolution technical findings dumped freely without formatting pressure.
-
-| Aspect | Detail |
-|--------|--------|
-| Created by | `/reason` (first technical finding) |
-| Written to by | `/reason` (raw findings, commands, configs, errors) |
-| Read by | `/blueprint` (primary source for implementation detail) |
-| Graduated by | `/save-session` Job 6 (polishes into KNOWLEDGE.md, does NOT delete) |
-| Wiped by | `/reason-end` (after calling `/save-session` first) |
-| Location | `Research/Active/{question}/NOTEBOOK.md` or project root (engine-only work) |
-| Git | Gitignored (ephemeral scratch) |
+NOTEBOOK.md was a separate scratch pad for raw technical findings. Dropped because the routing rule (strategic → IDEALOG, technical → NOTEBOOK) required constant judgment calls that faded from context in long conversations. All content now goes to IDEALOG.md. See IDEALOG.md thread entry "2026-03-18: NOTEBOOK.md merged back into IDEALOG.md".
 
 ## Rollout Plan
 
@@ -1066,7 +1056,7 @@ Implementation proceeds in 3 phases + 1 parallel track. Phase 0 is the biggest �
 **Phase 1: Rewire Existing Skills** — All 4 must ship together to avoid inconsistent state.
 - 1.1: `/research-new` — add IDEALOG.md creation
 - 1.2: `/research-resume` — read IDEALOG, show failed approaches + direction + next step
-- 1.3: ~~`/research-update`~~ replaced by `/quicksave` — simple checkpoint to IDEALOG + NOTEBOOK
+- 1.3: ~~`/research-update`~~ replaced by `/quicksave` — simple checkpoint to IDEALOG
 - 1.4: `/research-complete` — archive IDEALOG.md with question in Complete/
 
 **Phase 2: Core New Skills** — The planning pipeline + cleanup agent + quality gate.
@@ -1104,7 +1094,7 @@ Implementation proceeds in 3 phases + 1 parallel track. Phase 0 is the biggest �
 | PLAN.md steps include full scaffolding for the agent | Each step has: Context Brief, Implementation Spec (interfaces/signatures), Pseudocode (algorithmic sketch), Test Spec (exact tests with setup/expected/tolerances), and Checklist (sequential to-do). This is more than a task list — it's everything the agent needs to write code without guessing. |
 | PLAN.md organized by phases, not flat steps | Phases are independently deliverable units with their own context, verification, exit criteria, cleanup, and commit point. Steps live within phases. Agent implements phase-by-phase: complete Phase 1 → verify → commit → Phase 2. Matches our existing engine workflow (Bidomain 6 phases, V5.4 9 phases). Phase context is shared across steps within the phase to avoid repetition. |
 | `/audit` as standalone opt-in skill (renamed from `/review`) | Adversarial Opus subagent. `/blueprint` asks "Want adversarial audit?" — user decides. Can also be used independently on any document. |
-| ~~`/research-update`~~ replaced by `/quicksave` | `/research-update` was overengineered routing logic. `/quicksave` is simpler: dump chat summary → IDEALOG + NOTEBOOK. No KNOWLEDGE edits, no cross-referencing. `/save-session` handles the heavy editorial work. |
+| ~~`/research-update`~~ replaced by `/quicksave` | `/research-update` was overengineered routing logic. `/quicksave` is simpler: dump chat summary → IDEALOG. No KNOWLEDGE edits, no cross-referencing. `/save-session` handles the heavy editorial work. |
 
 ## Open Questions
 

@@ -23,7 +23,7 @@ Read `Research/Active/{question}/IDEALOG.md`. Verify:
 If IDEALOG.md is missing or has no settled decisions, stop and tell the user:
 > "No settled approach found in IDEALOG.md. Use `/reason` first to explore the design space, then run `/blueprint` when you have a settled direction."
 
-If IDEALOG.md has a Current Direction but the Thread is sparse, check NOTEBOOK.md — it may have rich technical detail from `/reason` sessions even when IDEALOG is sparse. Proceed with a warning noting which sources are available.
+If IDEALOG.md has a Current Direction but the Thread is sparse, proceed with a warning noting that IDEALOG content is limited.
 
 ---
 
@@ -33,20 +33,15 @@ Read these sources in parallel:
 
 ### 1a. IDEALOG.md (required)
 - **Current Direction** — the settled approach
-- **Thread** — settled decisions with rationale
+- **Thread** — settled decisions with rationale, plus raw technical findings (exact commands, tested configurations, error messages, file paths)
 - **Failed Approaches** — approaches already tried and failed (agent MUST NOT retry these)
 - **Next Step** — what the user expects to happen next
 
-### 1b. NOTEBOOK.md (if exists)
-- `Research/Active/{question}/NOTEBOOK.md` — high-resolution scratch from `/reason` sessions
-- Contains raw technical findings: exact commands that work, tested configurations, error messages, file paths with line numbers
-- This is the primary source for implementation detail — more granular than KNOWLEDGE.md
-
-### 1c. KNOWLEDGE.md (if exists)
+### 1b. KNOWLEDGE.md (if exists)
 - `Research/Active/{question}/KNOWLEDGE.md` — polished reference findings, analysis, designs
 - Extract anything load-bearing for implementation: algorithms, parameter values, validated results
 
-### 1d. Codebase analysis
+### 1c. Codebase analysis
 Read the files that will be affected. Determine:
 - Existing file structure and interfaces
 - Current test suite and how tests are run
@@ -54,7 +49,7 @@ Read the files that will be affected. Determine:
 - PROGRESS.md (if exists — for current state, do not modify)
 - Related code in other engines (to avoid duplication)
 
-### 1e. README.md
+### 1d. README.md
 - `Research/Active/{question}/README.md` — completion criteria (PLAN.md Success Criteria should mirror these)
 
 ---
