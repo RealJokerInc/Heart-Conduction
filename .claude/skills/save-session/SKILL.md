@@ -6,7 +6,7 @@ argument-hint: "[optional: research question name]"
 
 # Save Session
 
-Session-end cleanup agent. Runs five editorial jobs to keep research documents healthy.
+Session cleanup agent. Runs six editorial jobs to keep research documents healthy.
 
 Input: $ARGUMENTS
 

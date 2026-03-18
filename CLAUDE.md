@@ -57,7 +57,7 @@ Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — 
 | **Builder** | `Builder/` | Image-to-mesh conversion (PNG/SVG → StructuredGrid + stimulus). Integrated with V5.4. `Builder/MeshLibrary/` has geometry assets. |
 | **Optimizer** | `Optimizer/` | Engine Tuner: BayesOpt pipeline for tuning ionic model parameters (TTP06/ORd) to target CV, APD, and restitution. V1 targets Monodomain V5.4 only. |
 | **Surrogate** | `Surrogate/` | Neural operator pipeline (Ionic Transformer + Diffusion ResNet) replacing Bidomain V1 solver. Planning phase. |
-| **Research** | `Research/` | Literature reviews organized by question (Q1–Q8). `Research/INDEX.md` is the entry point. Papers in `Research/papers/`. |
+| **Research** | `Research/` | Literature reviews organized by question. `Research/INDEX.md` is the entry point. Papers in each question's `papers/` folder. |
 | **ResearchStatement** | `ResearchStatement/` | Grant materials. |
 | **Images** | `Images/` | Centralized copies of all project images, organized by source (see subdirectories below). Originals remain in place. |
 | **Videos** | `Videos/` | Centralized copies of all project videos, organized by source. |
@@ -187,7 +187,7 @@ Custom skills are available for research, planning, and engineering work (define
 
 **Key entry point**: `Research/INDEX.md` — master question map, debugging quick-reference, and citation registry. Read this first when doing any research-related work.
 
-Research is organized by question (`Research/Active/` for in-progress, `Research/Complete/` for finished). Each question folder has README.md (status/criteria), KNOWLEDGE.md (reference), and IDEALOG.md (thinking trail). Papers live in `Research/papers/`. The textbook is in `Research/textbook/`.
+Research is organized by question (`Research/Active/` for in-progress, `Research/Complete/` for finished). Each question folder has README.md (status/criteria), KNOWLEDGE.md (reference), and IDEALOG.md (thinking trail). Papers live in each question's `papers/` folder (the flat `Research/papers/` is deprecated). The textbook is in `Research/textbook/`.
 
 ---
 

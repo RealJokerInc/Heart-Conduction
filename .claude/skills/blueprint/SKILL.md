@@ -23,7 +23,7 @@ Read `Research/Active/{question}/IDEALOG.md`. Verify:
 If IDEALOG.md is missing or has no settled decisions, stop and tell the user:
 > "No settled approach found in IDEALOG.md. Use `/reason` first to explore the design space, then run `/blueprint` when you have a settled direction."
 
-If IDEALOG.md has a Current Direction but the Thread is sparse, proceed with a warning — the plan will be based primarily on codebase analysis.
+If IDEALOG.md has a Current Direction but the Thread is sparse, check NOTEBOOK.md — it may have rich technical detail from `/reason` sessions even when IDEALOG is sparse. Proceed with a warning noting which sources are available.
 
 ---
 

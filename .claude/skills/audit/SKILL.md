@@ -70,8 +70,8 @@ Output a severity-sorted list. Under each level, list issues as "- [description]
 
 **PLAN.md addendum** (include only when document type is PLAN.md, otherwise omit):
 ```
-5. PLAN.md STRUCTURE — each step requires these 7 sections:
-   Context Brief, Implementation Spec, Pseudocode, Test Spec, Checklist, Verify command, Exit Criteria.
+5. PLAN.md STRUCTURE — each step requires these 9 sections:
+   Read First, Why, Implementation Spec, Pseudocode, Test Spec, Checklist, Verify, Exit Criteria, Risk.
    Flag any step missing any section.
 ```
 

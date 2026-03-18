@@ -49,7 +49,7 @@ Before compacting, complete every item:
 | PROGRESS.md (if you re-read it) | Error messages and stack traces |
 | IDEALOG.md (if you re-read it) | The "why" behind decisions (unless in MEMORY.md) |
 | KNOWLEDGE.md (if you re-read it) | Detailed analysis you walked through in conversation |
-| NOTEBOOK.md (on disk, re-readable) | Raw scratch context not yet in NOTEBOOK.md |
+| NOTEBOOK.md (on disk, re-readable) | Raw scratch context not yet saved to NOTEBOOK.md. **Note**: NOTEBOOK.md survives compaction but is wiped by `/reason-end`. Use `/save-session` (not `/reason-end`) before compacting to keep NOTEBOOK.md intact. |
 | PLAN.md (on disk, re-readable) | Which step you were mid-way through |
 | WHITEBOARD.md (on disk, visible in tmux) | Mental model of diagrams (but WHITEBOARD persists) |
 | Git commits and their messages | Hypotheses you tried and rejected |
@@ -62,7 +62,7 @@ Before compacting, complete every item:
 |----------|----------|----------|
 | KNOWLEDGE.md | `Research/Active/{question}/` | Already on disk — re-read after compaction |
 | IDEALOG.md | `Research/Active/{question}/` | Run `/save-session` to checkpoint |
-| NOTEBOOK.md | `Research/Active/{question}/` | On disk — raw scratch survives compaction |
+| NOTEBOOK.md | `Research/Active/{question}/` | On disk — survives compaction. Run `/save-session` to graduate findings to KNOWLEDGE. Do NOT run `/reason-end` before compacting (it wipes NOTEBOOK). |
 | PLAN.md | `Research/Active/{question}/` | On disk — execution state survives |
 | WHITEBOARD.md | Project root | On disk — visible in tmux pane |
 
