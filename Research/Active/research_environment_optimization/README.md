@@ -172,6 +172,7 @@ THEIR STRUCTURE                          OUR STRUCTURE
 - Skill guardrail persistence (rules that survive beyond skill invocation)
 - IDEALOG.md format improvement (richer entries without losing scannability)
 - WHITEBOARD.md persistent sections (Current Focus + To-Do above divider, variable Scratch below)
+- Split oversized skills: `/research` (287), `/reason` (254), `/research-new` (221), `/blueprint` (210) — all over 150-line threshold
 
 ## Literature
 | Paper | Summary | Key Insight |

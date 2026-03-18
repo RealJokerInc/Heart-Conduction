@@ -66,6 +66,9 @@ Currently `/blueprint` always creates a fresh PLAN.md. Should be recursive: if P
 ### 2026-03-18: README.md gets "Future Work" section for deferred items
 Deferred patterns (tmux layout hook, cost tracking, /draw skill) don't fit KNOWLEDGE (not validated), IDEALOG (gets condensed), or Open Questions (they're proposals, not unknowns). README.md is per-question, persistent, never purged — natural home. Dependency chain: `/reason` reads Future Work when no topic given, `/research-new` includes empty section in template, `/research-resume` shows in briefing, `/research-complete` warns about unfinished items.
 
+### 2026-03-18: Skill file length correlates with instruction compliance
+Long skill files (200+ lines) cause instructions to fade from active context, especially in long conversations. Observed: NOTEBOOK.md routing rules ignored, implementation guardrails violated, per-topic structure guidance not followed by /save-session. The /blueprint skill was already 210 lines and would have hit 250+ with iterative mode — split into /blueprint + /blueprint-revise instead. Rule of thumb: keep skills under 150 lines. If a skill needs more, split it or reference KNOWLEDGE.md for detail instead of inlining.
+
 ### 2026-03-18: Comprehensive session — architecture refinements + implementation planning
 Key decisions and technical detail from this session:
 

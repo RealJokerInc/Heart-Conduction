@@ -147,6 +147,20 @@ Research/Active/{question}/
 
 **Hook:** PreCompact — logs compaction event, triggers emergency IDEALOG dump if `/reason` is active.
 
+**Skill length risk** — instructions in long skill files fade from active context in long conversations. Observed threshold: ~150 lines. Above 200 lines, instruction compliance degrades significantly.
+
+| Risk | Skill | Lines | Mitigation |
+|------|-------|-------|------------|
+| HIGH | `/research` | 287 | Consider splitting into sub-skills (discover, screen, acquire, summarize, file) |
+| HIGH | `/reason` | 254 | Was split from `/blueprint`; could move examples to KNOWLEDGE.md |
+| HIGH | `/research-new` | 221 | Template-heavy; could reference KNOWLEDGE.md for templates instead of inlining |
+| HIGH | `/blueprint` | 210 | Already split `/blueprint-revise` out to avoid growth |
+| MED | `/research-status` | 171 | Monitor |
+| MED | `/save-session` | 169 | Monitor |
+| OK | All others | <150 | Within threshold |
+
+Rule: keep skills under 150 lines. If a skill needs more, split it or reference KNOWLEDGE.md for detailed templates/examples instead of inlining them.
+
 **Planning pipeline:**
 
 ```
