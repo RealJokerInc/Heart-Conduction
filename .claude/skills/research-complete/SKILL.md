@@ -117,7 +117,7 @@ Check if any Active questions reference this one in their KNOWLEDGE.md or README
 
 ## Step 9: Update Skills (if needed)
 
-If this completion changes how `/research-debug` should route symptoms → questions, note the change for the user to update the skill.
+If this completion affects other Active questions (e.g., removes a dependency or changes shared assumptions), note the impact for the user.
 
 ## Step 10: Report
 

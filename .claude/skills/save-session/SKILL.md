@@ -121,10 +121,10 @@ Read `MASTER_KNOWLEDGE_INDEX.md` from the project root. If it does not exist, cr
 
 Then apply two checks:
 
-1. **One-liner accuracy**: Does this question's row still accurately describe its current state? If not, update the one-liner. If the question has no row, add one.
+1. **Table of contents**: Does this question have a row in the Knowledge Files table? If not, add one (topic name + link to KNOWLEDGE.md). No status, no one-liners — just the link.
 2. **New cross-references**: Did this session reveal connections to other questions that are not yet indexed? If so, add them to the Cross-References section with links to both KNOWLEDGE.md files.
 
-Keep edits lightweight — update pointers and connections, do not duplicate findings.
+Keep edits lightweight — update links and connections only. MASTER_KNOWLEDGE_INDEX.md is a table of contents, not a summary. Status tracking belongs in MASTER.md.
 
 ---
 
