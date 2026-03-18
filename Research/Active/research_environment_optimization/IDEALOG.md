@@ -45,6 +45,12 @@ Tested tmux control from Claude Code's Bash tool. Despite earlier research sayin
 ### 2026-03-17: Rollout dependency analysis
 Identified the core implementation tension: skills reference document templates, documents reference skills, CLAUDE.md references both. Cannot implement one at a time without intermediate broken states. Requires careful batching — retroactive IDEALOGs first (Phase 0), then skill extensions, then new skills, then hook, then CLAUDE.md rewrite.
 
+### 2026-03-17: NOTEBOOK.md as scratch pad between /reason and /blueprint
+During tmux workspace testing, discovered a resolution gap: `/reason` generates high-res technical detail (exact commands, configurations, error messages, tested paths) that `/blueprint` needs for good PLAN.md steps. But IDEALOG is too low-res (narrative) and KNOWLEDGE is too permanent (reference). NOTEBOOK.md is scratch paper — `/reason` dumps freely without formatting pressure, `/blueprint` reads it for detail, wiped clean after implementation. Key difference from dropped WORKLOG: NOTEBOOK is explicitly scratch (wiped, not archived). Also keeps the KNOWLEDGE.md tmux viewer pane clean — raw dumps don't pollute the reference you're looking at mid-session.
+
+### 2026-03-17: Implementation guardrails added to /reason and /blueprint
+Caught that `/reason` had no explicit rule preventing implementation. Added hard gates: /reason NEVER implements (no file creation except IDEALOG/WHITEBOARD/NOTEBOOK writes), /blueprint STOPS after writing PLAN.md (waits for user "go"). Also renamed /end-session to /reason-end (counterpart to workspace setup, not generic).
+
 ### 2026-03-17: tmux workspace design finalized
 Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
 
@@ -52,6 +58,7 @@ Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Gl
 - **WORKLOG.md as separate document** (2026-03-17) — failed because: tactical session details (failures, snapshots) are part of the thinking trail and belong in IDEALOG.md. A fourth document fragments context without adding value. Three documents is the right number.
 - **/aside skill for sidebar conversations** (2026-03-17) — failed because: the disappearing-from-transcript behavior needed for a true sidebar is hardcoded into Claude Code's `/btw` UI overlay and not exposed to the extensibility system. Cannot replicate without Claude Code source changes.
 - **Scaffolding research folders early** (2026-03-17) — failed because: premature folder/file creation before the document architecture was settled led to a partial revert. Design first, then scaffold.
+- **Implementing during /reason without approval** (2026-03-17) — failed because: jumped from `/reason` discussion straight to writing code (tmux workspace, /end-session skill, glow install) without calling `/blueprint` or getting user approval. The workflow is: `/reason` (discuss) → user says "let's build this" → `/blueprint` (generates PLAN.md) → user approves → implement. Never skip the approval gate.
 
 ## Session Log
 

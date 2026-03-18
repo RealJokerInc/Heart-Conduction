@@ -1,35 +1,51 @@
 ---
 name: reason-end
-description: Tear down tmux research workspace. Kills viewer panes, cleans up WHITEBOARD.md. Counterpart to /research-resume workspace setup.
+description: Tear down reasoning workspace. Calls /save-session (graduates NOTEBOOK to KNOWLEDGE), then wipes NOTEBOOK.md + WHITEBOARD.md, kills tmux viewer panes.
 argument-hint: ""
 ---
 
 # Reason End — Workspace Teardown
 
-Tears down the tmux research workspace created by `/research-resume`. This is separate from `/save-session` — save is a checkpoint (keep working), reason-end is a teardown (done for now).
+Tears down the reasoning workspace created by `/research-resume`. Calls `/save-session` first to graduate NOTEBOOK.md findings to KNOWLEDGE.md, then wipes scratch files and kills viewer panes.
 
 ---
 
-## Step 1: Offer Save
+## Step 1: Run /save-session
 
-Ask the user:
-> "Want to run `/save-session` first before tearing down?"
+Automatically invoke `/save-session` for the active research question. This ensures:
+- NOTEBOOK.md findings are graduated to KNOWLEDGE.md (Job 6)
+- Session snapshot is written to IDEALOG.md (Job 1)
+- KNOWLEDGE.md is reorganized (Job 2)
+- Cross-references are checked (Jobs 3, 4, 5)
 
-If yes, invoke `/save-session` and wait for it to complete before proceeding.
-If no (or user says "just end"), proceed directly to teardown.
+Wait for `/save-session` to complete before proceeding.
 
 ---
 
-## Step 2: Kill Viewer Panes
+## Step 2: Wipe NOTEBOOK.md
+
+NOTEBOOK.md is owned by `/reason`. Now that `/save-session` has graduated findings to KNOWLEDGE.md, wipe it:
 
 ```bash
-# Check if in tmux
+rm -f Research/Active/*/NOTEBOOK.md
+```
+
+---
+
+## Step 3: Wipe WHITEBOARD.md
+
+```bash
+rm -f WHITEBOARD.md
+```
+
+---
+
+## Step 4: Kill Viewer Panes
+
+```bash
 if [ -n "$TMUX" ]; then
-  # Kill viewer panes (panes 1 and 2, if they exist)
-  # Count panes first — only kill if more than 1
   PANE_COUNT=$(tmux list-panes | wc -l)
   if [ "$PANE_COUNT" -gt 1 ]; then
-    # Kill from highest index down to avoid renumbering issues
     for i in $(seq $((PANE_COUNT - 1)) -1 1); do
       tmux kill-pane -t "$i"
     done
@@ -39,30 +55,21 @@ fi
 
 ---
 
-## Step 3: Clean Up WHITEBOARD.md
+## Step 5: Confirm
 
-Delete the ephemeral whiteboard file:
-
-```bash
-rm -f WHITEBOARD.md
 ```
-
----
-
-## Step 4: Confirm
-
-Report:
-```
-Session ended.
-  Panes killed: {count}
+/reason-end complete:
+  /save-session: {summary from save-session}
+  NOTEBOOK.md: wiped (findings graduated to KNOWLEDGE.md)
   WHITEBOARD.md: removed
+  Panes killed: {count}
 ```
 
 ---
 
 ## Rules
 
-- Always offer `/save-session` first — but don't force it.
-- Only kill panes if in tmux and panes exist. If not in tmux, just clean up WHITEBOARD.md.
+- **Always run /save-session first.** This is not optional — NOTEBOOK.md findings must be graduated before wiping.
+- Only kill panes if in tmux and panes exist. If not in tmux, just clean up files.
 - Never kill pane 0 — that's Claude Code itself.
-- This skill does NOT modify KNOWLEDGE.md, IDEALOG.md, or any research documents. That's `/save-session`'s job.
+- This skill wipes NOTEBOOK.md and WHITEBOARD.md. All other document modifications are `/save-session`'s job.

@@ -106,10 +106,15 @@ Do NOT write after every exchange. Accumulate in context, batch write on transit
 
 **Target: ~3-4 writes per 30-minute session**, not 15-20.
 
-Write to the appropriate IDEALOG.md section:
-- Decisions and direction changes go under the current thread/entry
-- Failed approaches go under `## Failed Approaches`
-- Use the existing document structure; append, don't reorganize
+Route writes to the appropriate file and section:
+
+| Content | File | Section |
+|---------|------|---------|
+| Decisions, direction changes | IDEALOG.md | Thread (current entry) |
+| Failed approaches | IDEALOG.md | Failed Approaches |
+| High-res technical findings (exact commands, configs, test results, file paths, error messages) | NOTEBOOK.md | Append freely — no formatting pressure |
+
+NOTEBOOK.md is scratch paper. Dump raw findings without worrying about polish. `/blueprint` reads it for detail; `/save-session` graduates worthy findings to KNOWLEDGE.md before wiping.
 
 ---
 
@@ -194,7 +199,7 @@ Overwrite the file each time (it's ephemeral, not accumulated). The current visu
 
 ## Rules
 
-- **NEVER implement during /reason.** No creating files (except IDEALOG.md and WHITEBOARD.md writes). No editing source code or skill files. No `pip install`. No `mkdir` for new components. No writing PLAN.md. /reason is ONLY for thinking and discussion. Implementation requires `/blueprint` → user approval → execute. This is a hard gate, not a suggestion.
+- **NEVER implement during /reason.** No creating files (except IDEALOG.md, NOTEBOOK.md, and WHITEBOARD.md writes). No editing source code or skill files. No `pip install`. No `mkdir` for new components. No writing PLAN.md. /reason is ONLY for thinking and discussion. Implementation requires `/blueprint` → user approval → execute. This is a hard gate, not a suggestion.
 - **NEVER invoke /blueprint without explicit user approval.** The user must say "let's build this" or equivalent. Do not auto-trigger /blueprint because the design "looks ready."
 - **Always open with the big picture.** Never start at detail level.
 - **Follow the user's thinking.** Don't force hierarchy or sequential exploration.
@@ -204,4 +209,5 @@ Overwrite the file each time (it's ephemeral, not accumulated). The current visu
 - **Keep ASCII maps compact.** 15 lines max for big picture. Scannable in 5 seconds.
 - **Reference, don't inline.** Point to KNOWLEDGE.md sections and IMPLEMENTATION.md rather than copying content.
 - **Visualize on WHITEBOARD.md.** Write diagrams and maps there so they persist in the tmux viewer pane.
-- **Allowed tools during /reason:** Read, Grep, Glob (for codebase exploration), Edit/Write (ONLY to IDEALOG.md and WHITEBOARD.md), Bash (ONLY for reading — `cat`, `ls`, `wc`, `git log`, tmux pane setup. NEVER for installing, creating, or modifying code).
+- **Allowed tools during /reason:** Read, Grep, Glob (for codebase exploration), Edit/Write (ONLY to IDEALOG.md, NOTEBOOK.md, and WHITEBOARD.md), Bash (ONLY for reading — `cat`, `ls`, `wc`, `git log`, tmux pane setup. NEVER for installing, creating, or modifying code).
+- **NOTEBOOK.md is owned by /reason.** Created on first technical finding, wiped by `/reason-end`. Dump raw findings freely — no formatting pressure. `/save-session` graduates worthy findings to KNOWLEDGE.md but does not delete NOTEBOOK.md.

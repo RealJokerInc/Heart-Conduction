@@ -37,11 +37,16 @@ Read these sources in parallel:
 - **Failed Approaches** — approaches already tried and failed (agent MUST NOT retry these)
 - **Next Step** — what the user expects to happen next
 
-### 1b. KNOWLEDGE.md (if exists)
-- `Research/Active/{question}/KNOWLEDGE.md` — reference findings, analysis, designs
+### 1b. NOTEBOOK.md (if exists)
+- `Research/Active/{question}/NOTEBOOK.md` — high-resolution scratch from `/reason` sessions
+- Contains raw technical findings: exact commands that work, tested configurations, error messages, file paths with line numbers
+- This is the primary source for implementation detail — more granular than KNOWLEDGE.md
+
+### 1c. KNOWLEDGE.md (if exists)
+- `Research/Active/{question}/KNOWLEDGE.md` — polished reference findings, analysis, designs
 - Extract anything load-bearing for implementation: algorithms, parameter values, validated results
 
-### 1c. Codebase analysis
+### 1d. Codebase analysis
 Read the files that will be affected. Determine:
 - Existing file structure and interfaces
 - Current test suite and how tests are run
@@ -49,7 +54,7 @@ Read the files that will be affected. Determine:
 - PROGRESS.md (if exists — for current state, do not modify)
 - Related code in other engines (to avoid duplication)
 
-### 1d. README.md
+### 1e. README.md
 - `Research/Active/{question}/README.md` — completion criteria (PLAN.md Success Criteria should mirror these)
 
 ---

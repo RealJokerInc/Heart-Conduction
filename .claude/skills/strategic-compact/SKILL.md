@@ -48,9 +48,23 @@ Before compacting, complete every item:
 | MEMORY.md (always loaded) | Variable names, tensor shapes, intermediate values |
 | PROGRESS.md (if you re-read it) | Error messages and stack traces |
 | IDEALOG.md (if you re-read it) | The "why" behind decisions (unless in MEMORY.md) |
+| KNOWLEDGE.md (if you re-read it) | Detailed analysis you walked through in conversation |
+| NOTEBOOK.md (on disk, re-readable) | Raw scratch context not yet in NOTEBOOK.md |
+| PLAN.md (on disk, re-readable) | Which step you were mid-way through |
+| WHITEBOARD.md (on disk, visible in tmux) | Mental model of diagrams (but WHITEBOARD persists) |
 | Git commits and their messages | Hypotheses you tried and rejected |
 | The compact summary itself | Code structure you mapped out mentally |
 | Files on disk | Which files you already read vs need to re-read |
+
+### Per-question documents to save before compacting
+
+| Document | Location | Save how |
+|----------|----------|----------|
+| KNOWLEDGE.md | `Research/Active/{question}/` | Already on disk — re-read after compaction |
+| IDEALOG.md | `Research/Active/{question}/` | Run `/save-session` to checkpoint |
+| NOTEBOOK.md | `Research/Active/{question}/` | On disk — raw scratch survives compaction |
+| PLAN.md | `Research/Active/{question}/` | On disk — execution state survives |
+| WHITEBOARD.md | Project root | On disk — visible in tmux pane |
 
 ## Step 4: Post-Compact Recovery
 

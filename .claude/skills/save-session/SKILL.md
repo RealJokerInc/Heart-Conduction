@@ -1,6 +1,6 @@
 ---
 name: save-session
-description: Session-end cleanup agent. 5 jobs — snapshot to IDEALOG, reorganize KNOWLEDGE, cross-reference IDEALOG↔KNOWLEDGE, condense IDEALOG, update MASTER_KNOWLEDGE_INDEX. Comprehensive rewrite allowed.
+description: Session cleanup agent. 6 jobs — snapshot to IDEALOG, reorganize KNOWLEDGE, cross-reference IDEALOG↔KNOWLEDGE, condense IDEALOG, update MASTER_KNOWLEDGE_INDEX, graduate NOTEBOOK findings to KNOWLEDGE. Comprehensive rewrite allowed.
 argument-hint: "[optional: research question name]"
 ---
 
@@ -12,8 +12,9 @@ Input: $ARGUMENTS
 
 ### Project Structure Reference
 ```
-Research/Active/{question}/KNOWLEDGE.md   — polished reference (Job 2)
+Research/Active/{question}/KNOWLEDGE.md   — polished reference (Jobs 2, 6)
 Research/Active/{question}/IDEALOG.md     — thinking trail (Jobs 1, 3, 4)
+Research/Active/{question}/NOTEBOOK.md    — scratch pad from /reason (Job 6 graduates, does NOT delete)
 MASTER_KNOWLEDGE_INDEX.md                 — project-root index book (Job 5)
 ```
 
@@ -127,9 +128,29 @@ Keep edits lightweight — update pointers and connections, do not duplicate fin
 
 ---
 
+## Job 6: Graduate NOTEBOOK.md Findings to KNOWLEDGE.md
+
+Check if `Research/Active/{question}/NOTEBOOK.md` exists. If not, skip this job.
+
+If it exists, read it and identify high-resolution technical findings worth keeping permanently:
+- Validated configurations (exact commands, flags, settings that work)
+- Technical discoveries (library behaviors, API quirks, performance measurements)
+- Architecture decisions with technical detail (why approach A works, exact error from approach B)
+- Tested file paths, line numbers, function signatures
+
+For each finding worth keeping:
+1. Polish it into reference-quality prose
+2. Merge into the appropriate section of KNOWLEDGE.md (may already exist from Job 2 — deduplicate)
+
+**Do NOT delete NOTEBOOK.md.** This job graduates findings, it does not wipe the file. Wiping is `/reason-end`'s job — it calls `/save-session` first to ensure graduation, then wipes.
+
+If called mid-session (checkpoint), NOTEBOOK.md stays intact with all content. The graduated findings now exist in both places — that's fine. NOTEBOOK.md is scratch.
+
+---
+
 ## Step Final: Report
 
-Output a summary of what changed across all five jobs:
+Output a summary of what changed across all six jobs:
 
 ```
 /save-session complete:
@@ -137,6 +158,7 @@ Output a summary of what changed across all five jobs:
   KNOWLEDGE.md — {what changed: sections reorganized, entries merged, new findings added, etc.}
   Cross-reference — {what was graduated, flagged, or updated}
   MASTER_KNOWLEDGE_INDEX.md — {what changed: one-liner updated, cross-references added, etc.}
+  NOTEBOOK.md — {what was graduated to KNOWLEDGE, or "not present / skipped"}
 ```
 
 If any inconsistencies were flagged in Job 3, list them separately with recommended actions.
@@ -151,4 +173,5 @@ If any inconsistencies were flagged in Job 3, list them separately with recommen
 - **IDEALOG narrative stays intact.** Condense prose, but preserve the chain of reasoning and all decisions.
 - **MASTER_KNOWLEDGE_INDEX.md is an index, not a summary.** One-liners and cross-reference links only. Do not duplicate findings.
 - **No fallback question guessing.** If the question cannot be identified, offer Job 5 only. Do not guess.
+- **NOTEBOOK.md: graduate, never delete.** `/save-session` extracts findings from NOTEBOOK.md into KNOWLEDGE.md but does NOT delete NOTEBOOK.md. Only `/reason-end` deletes it (after calling `/save-session` first).
 - **Date all session log entries.** Use YYYY-MM-DD format.
