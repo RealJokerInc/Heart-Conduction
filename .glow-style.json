@@ -1,0 +1,50 @@
+{
+  "document": {
+    "margin": 2
+  },
+  "heading": {
+    "bold": true,
+    "prefix": ""
+  },
+  "h1": {
+    "bold": true,
+    "prefix": "",
+    "suffix": "",
+    "upper": true,
+    "color": "99"
+  },
+  "h2": {
+    "bold": true,
+    "prefix": "",
+    "color": "39"
+  },
+  "h3": {
+    "bold": true,
+    "prefix": "",
+    "color": "208"
+  },
+  "h4": {
+    "bold": true,
+    "prefix": "",
+    "color": "178"
+  },
+  "code_block": {
+    "theme": "dracula",
+    "margin": 2
+  },
+  "table": {
+    "center_separator": "┼",
+    "column_separator": "│",
+    "row_separator": "─"
+  },
+  "link": {
+    "color": "39",
+    "underline": true
+  },
+  "emph": {
+    "italic": true
+  },
+  "strong": {
+    "bold": true
+  }
+}

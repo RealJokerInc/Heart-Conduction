@@ -48,6 +48,29 @@ Which question do you want to work on?
 
 ---
 
+## Step 1b: Set Up tmux Workspace (if in tmux)
+
+Check if running inside tmux (`$TMUX` environment variable). If yes AND only 1 pane exists (no workspace yet), create the research workspace:
+
+```bash
+# Only set up if in tmux and no viewer panes exist yet
+if [ -n "$TMUX" ] && [ "$(tmux list-panes | wc -l)" -eq 1 ]; then
+  # Create right column (35% width)
+  tmux split-window -h -l 75 -d
+  # Split right column: top for KNOWLEDGE, bottom for WHITEBOARD
+  tmux split-window -v -t 1 -l 20 -d
+  # Start glow watchers with custom style
+  tmux send-keys -t 1 "watch -n 2 -t --color glow -s $(pwd)/.glow-style.json -w 70 Research/Active/{question}/KNOWLEDGE.md" Enter
+  tmux send-keys -t 2 "watch -n 1 -t --color glow -s $(pwd)/.glow-style.json -w 70 $(pwd)/WHITEBOARD.md" Enter
+fi
+```
+
+Replace `{question}` with the actual question folder name selected in Step 1.
+
+If not in tmux, skip this step silently. If panes already exist (workspace already set up), skip to avoid duplicating.
+
+---
+
 ## Step 2: Read Context for the Chosen Question
 
 Read these files (use parallel reads):

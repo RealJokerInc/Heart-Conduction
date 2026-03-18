@@ -178,6 +178,20 @@ Phases should be independently deliverable where possible. Each phase has its ow
 
 ---
 
+## Step 9: Visualize on WHITEBOARD.md
+
+When presenting diagrams, architecture maps, trade-off tables, or any visual that benefits from a persistent view, write them to `WHITEBOARD.md` in the project root. If a tmux workspace is active (set up by `/research-resume`), the bottom-right pane auto-refreshes with glow rendering.
+
+Write to WHITEBOARD.md when:
+- Presenting the big-picture ASCII map (Step 2)
+- Showing trade-off comparison tables (Step 6)
+- Drawing architecture diagrams during middle/small-level discussion
+- Any visual the user might want to reference while talking
+
+Overwrite the file each time (it's ephemeral, not accumulated). The current visual replaces the previous one.
+
+---
+
 ## Rules
 
 - **Always open with the big picture.** Never start at detail level.
@@ -187,3 +201,4 @@ Phases should be independently deliverable where possible. Each phase has its ow
 - **Read IDEALOG.md failed approaches before proposing plans.** Never re-suggest a known dead end.
 - **Keep ASCII maps compact.** 15 lines max for big picture. Scannable in 5 seconds.
 - **Reference, don't inline.** Point to KNOWLEDGE.md sections and IMPLEMENTATION.md rather than copying content.
+- **Visualize on WHITEBOARD.md.** Write diagrams and maps there so they persist in the tmux viewer pane.

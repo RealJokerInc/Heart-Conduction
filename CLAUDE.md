@@ -172,6 +172,7 @@ Custom skills are available for research, planning, and engineering work (define
 | `/blueprint` | Generates machine-targeted PLAN.md from IDEALOG + codebase |
 | `/audit` | Adversarial review via Opus subagent (opt-in) |
 | `/save-session` | Session-end cleanup: snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, update index |
+| `/end-session` | Tear down tmux workspace (kill viewer panes, clean WHITEBOARD.md) |
 | **Engineering** | |
 | `/verify` | Auto-detect engine, run test suite, produce pass/fail report |
 | `/build-fix` | Systematic one-at-a-time error resolution with guardrails |

@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Three-document architecture finalized (KNOWLEDGE + IDEALOG + PLAN). Skill pipeline designed: 4 existing skill extensions + 7 new skills + 1 PreCompact hook + CLAUDE.md rewrite. Implementation phase is next — the design is settled but nothing is built yet. Retroactive IDEALOGs being created for all 6 active research questions as part of rollout Phase 0.
+Implementation complete. All 16 skills operational, PreCompact hook active, three-document architecture live across all 6 active research questions. Moving to real-world testing — use the new skills in actual research sessions to validate the workflow.
 
 ## Next Step
-Execute the implementation rollout: extend `/research-new`, `/research-resume`, `/research-update`, and `/research-complete` skills. Then build new skills (`/reason`, `/blueprint`, `/save-session`, `/audit`, `/verify`, `/build-fix`, `/strategic-compact`) and the PreCompact hook. Dependency order matters — skills reference document templates, documents reference skills, CLAUDE.md references both.
+Test the new skills in a real research session: `/research-resume` a question, use `/reason` to plan, `/blueprint` to generate PLAN.md, `/save-session` at end of day. Then update README.md completion criteria to check off all implemented items. Consider `/research-complete` if all criteria are met.
 
 ## Thread
 
@@ -39,8 +39,14 @@ Audit found a contradiction: KNOWLEDGE.md said plans live in `./plans/` at proje
 ### 2026-03-17: Skills plan evolved through three iterations
 Originally planned 6 new skills directly borrowed from ECC. After discovering the design conflicts with our existing architecture, revised to: extend 3 existing skills + add 3 new ones. After the three-document architecture crystallized, the plan settled on its final form: extend 4 existing research skills (new/resume/update/complete) + 7 new skills (/reason, /blueprint, /save-session, /audit, /verify, /build-fix, /strategic-compact) + 1 PreCompact hook. The key insight was that extending existing skills to handle IDEALOG routing was more natural than creating parallel skill trees.
 
+### 2026-03-17: tmux integration works — lazy setup is viable
+Tested tmux control from Claude Code's Bash tool. Despite earlier research saying it was impossible, `tmux split-window`, `tmux send-keys`, `tmux capture-pane`, and `tmux kill-pane` all work from within a Claude session. This enables Option B (lazy setup on `/research-resume`) — panes created when we know which question is active, not at SessionStart. Layout: Option A (2-column, Claude left, KNOWLEDGE + WHITEBOARD right). Renderer: glow (snap) with custom style at `.glow-style.json` (removes `#` prefix from headers). Auto-refresh via `watch --color`. Files must be in project directory, not `/tmp` (snap sandboxing). Style file must also be in project dir (snap can't read `~/.config/`). Tested rich-cli as alternative — inferior table rendering, no markdown tables at all. Glow is the winner.
+
 ### 2026-03-17: Rollout dependency analysis
 Identified the core implementation tension: skills reference document templates, documents reference skills, CLAUDE.md references both. Cannot implement one at a time without intermediate broken states. Requires careful batching — retroactive IDEALOGs first (Phase 0), then skill extensions, then new skills, then hook, then CLAUDE.md rewrite.
+
+### 2026-03-17: tmux workspace design finalized
+Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
 
 ## Failed Approaches
 - **WORKLOG.md as separate document** (2026-03-17) — failed because: tactical session details (failures, snapshots) are part of the thinking trail and belong in IDEALOG.md. A fourth document fragments context without adding value. Three documents is the right number.
@@ -50,3 +56,15 @@ Identified the core implementation tension: skills reference document templates,
 ## Session Log
 
 Pre-IDEALOG history — thinking trail started 2026-03-17.
+
+### 2026-03-17 Session
+**Worked on**: Full implementation of the research environment optimization — from design through rollout of all skills, documents, and hooks.
+**Accomplished**:
+- Designed three-document architecture (KNOWLEDGE + IDEALOG + PLAN) through iterative discussion
+- Designed 7 new skills (/reason, /blueprint, /save-session, /audit, /verify, /build-fix, /strategic-compact) with detailed specs
+- Designed PreCompact hook
+- Ran two audit passes (Opus adversarial review) on PLAN.md — fixed 2 Critical, 5 High, 7 Medium issues
+- Executed full PLAN.md rollout: Phase 0 (6 IDEALOGs created via chat log backtrace, 6 KNOWLEDGE.md files audited, MASTER_KNOWLEDGE_INDEX.md created, CLAUDE.md updated), Phase 1 (4 skills extended), Phase 2+2b (7 skills created), Phase 3 (hook + settings.json)
+- 6 commits total covering the implementation
+- 16 skills operational (9 existing + 7 new), all under 210 lines
+**Next**: Test the new skills in real research sessions — try `/reason` on an actual research question, then `/blueprint` to generate a PLAN.md, then `/save-session` at end of day. Update README.md completion criteria to reflect implementation done.
