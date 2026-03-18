@@ -177,6 +177,7 @@ Custom skills are available for research, planning, and engineering work (define
 | `/audit` | Adversarial review via Opus subagent (opt-in) |
 | `/save-session` | Session cleanup (6 jobs): snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, condense, update index, graduate NOTEBOOK→KNOWLEDGE |
 | `/reason-end` | End reasoning session: calls `/save-session` (graduates NOTEBOOK→KNOWLEDGE), wipes NOTEBOOK + WHITEBOARD, kills tmux panes |
+| `/quick-implement` | Skip planning pipeline — present fix list, get approval, implement, verify, log to IDEALOG |
 | **Engineering** | |
 | `/verify` | Auto-detect engine, run test suite, produce pass/fail report |
 | `/build-fix` | Systematic one-at-a-time error resolution with guardrails |

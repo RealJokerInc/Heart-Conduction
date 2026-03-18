@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Implementation complete. All 16 skills operational, PreCompact hook active, three-document architecture live across all 6 active research questions. Moving to real-world testing — use the new skills in actual research sessions to validate the workflow.
+Implementation complete (17 skills + NOTEBOOK.md integration). Testing phase: tmux vs zellij workspace comparison done — tmux has better native pane control. Remaining: finalize multiplexer choice, update skills with multiplexer-aware commands, test the full `/reason` → `/blueprint` → `/audit` pipeline on a real research question.
 
 ## Next Step
-Test the new skills in a real research session: `/research-resume` a question, use `/reason` to plan, `/blueprint` to generate PLAN.md, `/save-session` at end of day. Then update README.md completion criteria to check off all implemented items. Consider `/research-complete` if all criteria are met.
+Decide tmux vs zellij (or zjctl). Update `/research-resume` and `/reason-end` with multiplexer detection + correct commands. Then test the full workflow on a real question (e.g., `boundary_conduction_speedup` anisotropic study).
 
 ## Thread
 
@@ -51,8 +51,14 @@ During tmux workspace testing, discovered a resolution gap: `/reason` generates 
 ### 2026-03-17: Implementation guardrails added to /reason and /blueprint
 Caught that `/reason` had no explicit rule preventing implementation. Added hard gates: /reason NEVER implements (no file creation except IDEALOG/WHITEBOARD/NOTEBOOK writes), /blueprint STOPS after writing PLAN.md (waits for user "go"). Also renamed /end-session to /reason-end (counterpart to workspace setup, not generic).
 
+### 2026-03-17: Zellij workspace tested — different commands, same result
+Zellij uses different pane commands than tmux: `zellij action new-pane --direction right`, `zellij action write-chars` + `zellij action write 10` (Enter), `zellij action move-focus left/right/up/down`, `zellij action close-pane`. Key differences from tmux: (1) `watch --color` does NOT pass through glow colors in zellij — must use shell loop `while true; do clear; glow ...; sleep N; done` instead. (2) Navigation is trickier — `move-focus right` lands on the nearest right pane, not necessarily the top one. Need `move-focus right` then `move-focus up` to reach top-right. (3) Must `cd` to project dir in each new pane — they don't inherit Claude's cwd. (4) md5sum change detection prevents flicker: only re-render when file content actually changes. (5) `close-pane` closes whichever pane has focus — dangerous if focus is on Claude's pane. Must be careful in `/reason-end`.
+
 ### 2026-03-17: tmux workspace design finalized
 Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
+
+### 2026-03-17: Workspace ownership clarified — /reason owns panes, not /research-resume
+`/research-resume` is about documents (loads KNOWLEDGE, IDEALOG, README, presents briefing). `/reason` is the workspace owner — creates tmux panes with glow viewers when active reasoning starts, because that's when you need the side panels. `/reason-end` tears them down. Also: `/reason` with no argument should auto-resume from IDEALOG.md of the most recent `/research-resume` question, not ask for a topic. Decided: tmux only, drop zellij support.
 
 ## Failed Approaches
 - **WORKLOG.md as separate document** (2026-03-17) — failed because: tactical session details (failures, snapshots) are part of the thinking trail and belong in IDEALOG.md. A fourth document fragments context without adding value. Three documents is the right number.
@@ -75,3 +81,23 @@ Pre-IDEALOG history — thinking trail started 2026-03-17.
 - 6 commits total covering the implementation
 - 16 skills operational (9 existing + 7 new), all under 210 lines
 **Next**: Test the new skills in real research sessions — try `/reason` on an actual research question, then `/blueprint` to generate a PLAN.md, then `/save-session` at end of day. Update README.md completion criteria to reflect implementation done.
+
+### 2026-03-17 Session (continued)
+**Worked on**: Post-implementation testing — tmux/zellij workspace integration, audit fixes, NOTEBOOK.md design, skill guardrails.
+**Accomplished**:
+- Tested `/save-session` successfully (first real use)
+- Tested `/research-resume` successfully (question selection + briefing)
+- Tested `/reason` invocation (missing topic handling, with-topic handling)
+- Tested tmux pane control from Claude's Bash tool — all commands work (split, send-keys, capture-pane, kill-pane)
+- Tested zellij pane control — works but with limitations (focus-based, no pane ID targeting, no capture-pane)
+- Installed glow (snap) for markdown rendering in viewer panes
+- Created custom `.glow-style.json` (removes # prefix from headers)
+- Discovered: `watch --color` works in tmux but NOT in zellij — need shell loop with md5sum change detection
+- Discovered: snap glow can't access `/tmp` or `~/.config/` — style file must be in project dir
+- Created `/reason-end` skill (renamed from `/end-session`)
+- Added implementation guardrails to `/reason` (NEVER implement) and `/blueprint` (STOP after PLAN.md)
+- Designed NOTEBOOK.md as scratch pad between `/reason` and `/blueprint` — owned by `/reason`, graduated by `/save-session` Job 6, wiped by `/reason-end`
+- Ran full `/audit` — found and fixed 2 Critical + 5 High + 7 Medium + 2 Low issues
+- Tested zellij workspace with glow color rendering — shell loop with md5sum works, `watch` doesn't
+- Researched zellij vs tmux for pane management — tmux has better native support, zellij needs zjctl for pane ID targeting
+**Next**: Decide tmux vs zellij for workspace. Update `/research-resume` and `/reason-end` to support the chosen multiplexer. Consider zjctl if staying with zellij.

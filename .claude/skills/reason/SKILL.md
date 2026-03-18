@@ -12,7 +12,19 @@ Input: $ARGUMENTS
 
 ---
 
-## Step 1: Load Context
+## Step 0: Determine Topic
+
+**If argument provided**: Use it as the reasoning topic.
+
+**If no argument provided (or "continue")**: Check conversation history for a recent `/research-resume` session. If one exists, auto-resume that question — read its IDEALOG.md Current Direction and Next Step as the topic. Do NOT ask "what topic?" — just pick up where we left off.
+
+**If no argument AND no recent `/research-resume`**: Ask which question to reason about.
+
+---
+
+## Step 1: Load Context + Set Up Workspace
+
+### 1a. Load Context
 
 Read these files in parallel (skip any that don't exist):
 
@@ -34,6 +46,21 @@ If no research question maps to the topic, skip research files and work from the
 **NOTEBOOK.md location:**
 - If a research question is active: `Research/Active/{question}/NOTEBOOK.md`
 - If no research question (engine-only work): `NOTEBOOK.md` in project root (same as WHITEBOARD.md)
+
+### 1b. Set Up tmux Workspace
+
+Check if running inside tmux (`$TMUX` environment variable). If yes AND only 1 pane exists, create the research workspace:
+
+```bash
+if [ -n "$TMUX" ] && [ "$(tmux list-panes | wc -l)" -eq 1 ]; then
+  tmux split-window -h -l 75 -d
+  tmux split-window -v -t 1 -l 20 -d
+  tmux send-keys -t 1 "watch -n 2 -t --color glow -s $(pwd)/.glow-style.json -w 70 Research/Active/{question}/KNOWLEDGE.md" Enter
+  tmux send-keys -t 2 "watch -n 1 -t --color glow -s $(pwd)/.glow-style.json -w 70 $(pwd)/WHITEBOARD.md" Enter
+fi
+```
+
+Replace `{question}` with the active question folder name. If not in tmux, skip silently. If panes already exist, skip.
 
 ---
 
