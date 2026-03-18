@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Implementation complete (17 skills + NOTEBOOK.md integration). Testing phase: tmux vs zellij workspace comparison done — tmux has better native pane control. Remaining: finalize multiplexer choice, update skills with multiplexer-aware commands, test the full `/reason` → `/blueprint` → `/audit` pipeline on a real research question.
+Architecture stabilized. NOTEBOOK.md merged back into IDEALOG.md (routing friction eliminated). 18 skills total, tmux workspace with glow rendering operational. Document architecture: KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD. Ready for real-world use on actual research questions.
 
 ## Next Step
-Decide tmux vs zellij (or zjctl). Update `/research-resume` and `/reason-end` with multiplexer detection + correct commands. Then test the full workflow on a real question (e.g., `boundary_conduction_speedup` anisotropic study).
+Test the full workflow on a real research question (e.g., `boundary_conduction_speedup` anisotropic study): `/research-resume` → `/reason` (with tmux panes) → `/blueprint` → `/audit` → implement → `/save-session` → `/reason-end`.
 
 ## Thread
 
@@ -56,6 +56,9 @@ Zellij uses different pane commands than tmux: `zellij action new-pane --directi
 
 ### 2026-03-17: tmux workspace design finalized
 Layout: Option A (Claude left, KNOWLEDGE top-right, WHITEBOARD bottom-right). Glow with custom `.glow-style.json` as renderer (tested rich-cli — inferior tables). Setup triggered lazily by `/research-resume`. WHITEBOARD.md is ephemeral (gitignored), lives in project root. `/reason` writes to WHITEBOARD.md for visualizations (no separate `/draw` skill). `/save-session` does NOT kill panes. New `/end-session` skill tears down workspace (kill panes, delete WHITEBOARD.md). Separate from `/save-session` because save is a checkpoint, end is a teardown — and sometimes you save mid-design without ending.
+
+### 2026-03-18: Quick implement — dynamic glow width for tmux panes
+Changed `-w 70` to `-w $(tput cols)` in `/reason` skill tmux pane setup. Panes are 108 cols wide but glow was rendering at 70, wasting 38 columns. Now captures pane width dynamically at loop start.
 
 ### 2026-03-18: NOTEBOOK.md merged back into IDEALOG.md — single log file
 The IDEALOG/NOTEBOOK split caused routing friction. The rule "strategic insight → IDEALOG, technical detail → NOTEBOOK" required constant judgment calls that faded from context in long conversations, leading to everything defaulting to IDEALOG anyway. Solution: merge into one file. No routing decision needed — just write everything to IDEALOG.md. `/reason` writes here, `/quicksave` writes here, `/save-session` reads and organizes from here. NOTEBOOK.md dropped as a separate document. IDEALOG.md now holds both the thinking trail AND raw technical findings.
@@ -121,3 +124,18 @@ Pre-IDEALOG history — thinking trail started 2026-03-17.
 - Tested zellij workspace with glow color rendering — shell loop with md5sum works, `watch` doesn't
 - Researched zellij vs tmux for pane management — tmux has better native support, zellij needs zjctl for pane ID targeting
 **Next**: Decide tmux vs zellij for workspace. Update `/research-resume` and `/reason-end` to support the chosen multiplexer. Consider zjctl if staying with zellij.
+
+### 2026-03-18 Session
+**Worked on**: Finalized architecture decisions — tmux only, NOTEBOOK merge, workspace ownership, `/quick-implement` skill, `/reason` auto-resume.
+**Accomplished**:
+- Decided tmux only (dropped zellij support)
+- Clarified workspace ownership: `/reason` creates panes, `/reason-end` kills them (not `/research-resume`)
+- Created `/quick-implement` skill (bypasses full planning pipeline for small changes)
+- Added `/reason` auto-resume from active question when no argument provided
+- Discovered and documented: skill guardrails fade from context in long conversations (CLAUDE.md routing rules don't prevent violations)
+- Discovered: NOTEBOOK.md routing friction — the IDEALOG/NOTEBOOK split caused everything to default to IDEALOG anyway
+- Merged NOTEBOOK.md into IDEALOG.md — single log file, no routing decisions needed
+- Blueprint + audit cycle on the NOTEBOOK merge (0 critical, 3 high, 6 medium, 4 low — all addressed)
+- Updated all 10 files (6 skills + CLAUDE.md + .gitignore + KNOWLEDGE.md + IDEALOG.md) to remove 69 NOTEBOOK references
+- 18 skills total, document architecture finalized: KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD
+**Next**: Test full workflow on a real research question (boundary_conduction_speedup anisotropic study).

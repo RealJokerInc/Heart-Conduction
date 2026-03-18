@@ -54,8 +54,9 @@ if [ -n "$TMUX" ] && [ "$(tmux list-panes | wc -l)" -eq 1 ]; then
   tmux split-window -h -l ${HALF_W} -d
   tmux split-window -v -t 1 -l ${HALF_H} -d
   # Shell loop with md5sum change detection — preserves glow colors + allows scrolling
-  tmux send-keys -t 1 'H=""; while true; do N=$(md5sum Research/Active/{question}/KNOWLEDGE.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w 70 Research/Active/{question}/KNOWLEDGE.md; H=$N; fi; sleep 2; done' Enter
-  tmux send-keys -t 2 'H=""; while true; do N=$(md5sum WHITEBOARD.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w 70 WHITEBOARD.md; H=$N; fi; sleep 1; done' Enter
+  # W=$(tput cols) captures pane width dynamically instead of hardcoding
+  tmux send-keys -t 1 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/KNOWLEDGE.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/KNOWLEDGE.md; H=$N; fi; sleep 2; done' Enter
+  tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum WHITEBOARD.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W WHITEBOARD.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter
 fi
 ```
 
