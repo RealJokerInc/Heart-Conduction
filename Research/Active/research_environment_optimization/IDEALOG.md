@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Architecture stabilized. NOTEBOOK.md merged back into IDEALOG.md (routing friction eliminated). 18 skills total, tmux workspace with glow rendering operational. Document architecture: KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD. Ready for real-world use on actual research questions.
+Architecture fully implemented. 19 skills (added `/blueprint-revise`), KNOWLEDGE.md restructured to per-topic format (304 lines from 1109), Future Work sections in all 6 README.md files, `/save-session` Job 2 has per-topic structure guidance. Remaining work is in README.md Future Work (10 deferred items including skill splitting, WHITEBOARD persistent sections, Memory.md role).
 
 ## Next Step
-Update PLAN.md with all pending changes (KNOWLEDGE.md restructure across all 6 questions, README.md Future Work section, `/blueprint` iterative mode, `/save-session` Job 2 structure guidance, `/reason` + `/research-new` + `/research-resume` + `/research-complete` dependency chain updates). Then implement.
+Test the full workflow on a real research question (e.g., `boundary_conduction_speedup` anisotropic study). Then tackle Future Work items starting with splitting oversized skills.
 
 ## Thread
 
@@ -176,3 +176,17 @@ Pre-IDEALOG history — thinking trail started 2026-03-17.
 - Updated all 10 files (6 skills + CLAUDE.md + .gitignore + KNOWLEDGE.md + IDEALOG.md) to remove 69 NOTEBOOK references
 - 18 skills total, document architecture finalized: KNOWLEDGE + IDEALOG + PLAN + WHITEBOARD
 **Next**: Test full workflow on a real research question (boundary_conduction_speedup anisotropic study).
+
+### 2026-03-18 Session (continued)
+**Worked on**: KNOWLEDGE.md restructure, Future Work system, /blueprint-revise, skill dependency chain, skill length audit.
+**Accomplished**:
+- Restructured KNOWLEDGE.md from 1109 → 304 lines (73% reduction) with per-topic sections (Findings/Design/Reference/Decisions)
+- Added Future Work section to all 6 active README.md files — persistent home for deferred items
+- Created `/blueprint-revise` skill (107 lines) — update existing PLAN.md without overwriting
+- Updated 5 skills for Future Work dependency chain (save-session, reason, research-new, research-resume, research-complete)
+- `/save-session` Job 2 now has per-topic structure guidance
+- Documented skill length risk: instructions fade above ~150 lines. 4 skills over 200 lines flagged for future splitting
+- Dynamic glow width fix (`-w $(tput cols)` instead of hardcoded `-w 70`)
+- Ran 2 blueprint + audit cycles (NOTEBOOK merge plan, architecture refinements plan)
+- 19 skills total
+**Next**: Test full workflow on real research question. Then tackle Future Work (split oversized skills, WHITEBOARD persistent sections, Memory.md role).
