@@ -126,11 +126,15 @@ Each research question in `Research/Active/` uses three documents with distinct 
 | **KNOWLEDGE.md** | High | Reference: facts, analysis, designs, comparisons. Look things up. | Accumulates → promoted to `Research/Knowledge/` on completion |
 | **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log. Scan in 30s. | Living → archived with question on completion |
 | **PLAN.md** | High (structured) | Cold-start agent execution steps. Created by `/blueprint`. | Created → steps checked off → archived |
+| **NOTEBOOK.md** | Raw | Scratch pad for `/reason` — high-res technical findings, tested commands, error messages. | Created by `/reason` → graduated to KNOWLEDGE by `/save-session` → wiped by `/reason-end` |
+| **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables. Visible in tmux viewer pane. | Ephemeral — overwritten per diagram, wiped by `/reason-end`. Gitignored. |
 
 **When to write where:**
 - Findings, analysis, designs, decisions with rationale → **KNOWLEDGE.md**
 - Ideas, failures, "oh wait" moments, session snapshots, next steps → **IDEALOG.md**
+- Raw technical detail during reasoning (commands, configs, errors) → **NOTEBOOK.md**
 - Implementation steps for agent execution → **PLAN.md** (via `/blueprint`)
+- Visual diagrams during reasoning → **WHITEBOARD.md**
 
 **`MASTER_KNOWLEDGE_INDEX.md`** at project root indexes all research questions and their KNOWLEDGE files.
 
@@ -168,11 +172,11 @@ Custom skills are available for research, planning, and engineering work (define
 | `/research` | Full PubMed pipeline: search → screen → acquire → summarize → file |
 | `/summarize-paper` | Quick-summarize a single local PDF (stages 4-5 of `/research` only) |
 | **Planning & reasoning** | |
-| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions |
+| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions, dumps detail to NOTEBOOK |
 | `/blueprint` | Generates machine-targeted PLAN.md from IDEALOG + codebase |
 | `/audit` | Adversarial review via Opus subagent (opt-in) |
-| `/save-session` | Session-end cleanup: snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, update index |
-| `/reason-end` | Tear down tmux workspace (kill viewer panes, clean WHITEBOARD.md) |
+| `/save-session` | Session cleanup (6 jobs): snapshot→IDEALOG, organize KNOWLEDGE, cross-reference, condense, update index, graduate NOTEBOOK→KNOWLEDGE |
+| `/reason-end` | End reasoning session: calls `/save-session` (graduates NOTEBOOK→KNOWLEDGE), wipes NOTEBOOK + WHITEBOARD, kills tmux panes |
 | **Engineering** | |
 | `/verify` | Auto-detect engine, run test suite, produce pass/fail report |
 | `/build-fix` | Systematic one-at-a-time error resolution with guardrails |

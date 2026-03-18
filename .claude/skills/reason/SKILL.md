@@ -31,6 +31,10 @@ If the topic involves engine work, also read in parallel:
 
 If no research question maps to the topic, skip research files and work from the user's input + codebase.
 
+**NOTEBOOK.md location:**
+- If a research question is active: `Research/Active/{question}/NOTEBOOK.md`
+- If no research question (engine-only work): `NOTEBOOK.md` in project root (same as WHITEBOARD.md)
+
 ---
 
 ## Step 2: Present Big Picture
@@ -114,7 +118,7 @@ Route writes to the appropriate file and section:
 | Failed approaches | IDEALOG.md | Failed Approaches |
 | High-res technical findings (exact commands, configs, test results, file paths, error messages) | NOTEBOOK.md | Append freely — no formatting pressure |
 
-NOTEBOOK.md is scratch paper. Dump raw findings without worrying about polish. `/blueprint` reads it for detail; `/save-session` graduates worthy findings to KNOWLEDGE.md before wiping.
+NOTEBOOK.md is scratch paper. Dump raw findings without worrying about polish. `/blueprint` reads it for detail. `/save-session` graduates worthy findings to KNOWLEDGE.md (but does NOT delete NOTEBOOK.md). Only `/reason-end` wipes NOTEBOOK.md (after calling `/save-session` first).
 
 ---
 
@@ -158,7 +162,15 @@ Flag these when spotted. Don't wait for the user to ask.
 
 ---
 
-## Step 8: Handoff to /blueprint
+## Step 8: Mid-Session Checkpoint
+
+If the user says "save" or "checkpoint" during a long `/reason` session, invoke `/save-session`. This graduates NOTEBOOK.md findings to KNOWLEDGE.md and snapshots the session to IDEALOG.md — without ending the reasoning session. NOTEBOOK.md stays intact for continued use.
+
+This is especially important before compaction risk — if context is getting large, suggest a checkpoint.
+
+---
+
+## Step 9a: Handoff to /blueprint
 
 When the user says "let's build this" (or equivalent):
 
@@ -183,7 +195,7 @@ Phases should be independently deliverable where possible. Each phase has its ow
 
 ---
 
-## Step 9: Visualize on WHITEBOARD.md
+## Step 10: Visualize on WHITEBOARD.md
 
 When presenting diagrams, architecture maps, trade-off tables, or any visual that benefits from a persistent view, write them to `WHITEBOARD.md` in the project root. If a tmux workspace is active (set up by `/research-resume`), the bottom-right pane auto-refreshes with glow rendering.
 
