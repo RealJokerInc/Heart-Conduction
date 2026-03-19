@@ -126,7 +126,7 @@ Each research question in `Research/Active/` uses these documents:
 | **KNOWLEDGE.md** | High | Reference: facts, analysis, designs, comparisons. Look things up. | Accumulates → promoted to `Research/Knowledge/` on completion |
 | **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log, technical findings. Scan in 30s. | Living → archived with question on completion |
 | **PLAN.md** | High (structured) | Cold-start agent execution steps. Created by `/blueprint`. | Created → steps checked off → archived |
-| **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables. Visible in tmux viewer pane. | Ephemeral — overwritten per diagram, wiped by `/reason-end`. Gitignored. |
+| **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables. Visible in tmux viewer pane. | Per-question (`Research/Active/{question}/`). Ephemeral — overwritten per diagram, wiped by `/reason-end`. Gitignored. |
 
 **When to write where:**
 - Findings, analysis, designs, decisions with rationale → **KNOWLEDGE.md**

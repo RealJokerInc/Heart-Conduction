@@ -24,8 +24,10 @@ Wait for `/save-session` to complete before proceeding.
 ## Step 2: Wipe WHITEBOARD.md
 
 ```bash
-rm -f WHITEBOARD.md
+rm -f "Research/Active/{question}/WHITEBOARD.md"
 ```
+
+Note: `{question}` is determined from the same question context used for `/save-session` in Step 1.
 
 ---
 

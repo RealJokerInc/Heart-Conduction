@@ -61,6 +61,7 @@ Research/Active/{question_name}/
 ├── README.md
 ├── KNOWLEDGE.md
 ├── IDEALOG.md
+├── WHITEBOARD.md        # Ephemeral diagrams for tmux workspace
 ├── literature/          # Paper summaries go here
 ├── papers/              # PDFs go here
 ├── code_examples/       # Reference implementations (if any)

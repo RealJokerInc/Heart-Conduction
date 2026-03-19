@@ -62,7 +62,7 @@ Before compacting, complete every item:
 | KNOWLEDGE.md | `Research/Active/{question}/` | Already on disk — re-read after compaction |
 | IDEALOG.md | `Research/Active/{question}/` | Run `/save-session` to checkpoint |
 | PLAN.md | `Research/Active/{question}/` | On disk — execution state survives |
-| WHITEBOARD.md | Project root | On disk — visible in tmux pane |
+| WHITEBOARD.md | `Research/Active/{question}/` | On disk — visible in tmux pane |
 
 ## Step 4: Post-Compact Recovery
 

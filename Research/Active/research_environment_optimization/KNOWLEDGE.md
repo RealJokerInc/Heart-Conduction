@@ -78,7 +78,7 @@ KNOWLEDGE.md was overloaded — it held reference material, process narrative, a
 | **KNOWLEDGE.md** | High | Reference: facts, analysis, designs, comparisons | Accumulates, promoted to `Research/Knowledge/` on completion |
 | **IDEALOG.md** | Low | Thinking trail: insights, failed approaches, session log | Living, archived on completion |
 | **PLAN.md** | High (structured) | Cold-start agent execution steps | Created by `/blueprint`, steps checked off, archived |
-| **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables | Ephemeral, wiped by `/reason-end`, gitignored |
+| **WHITEBOARD.md** | Visual | ASCII diagrams, trade-off tables | Per-question (`Research/Active/{question}/`). Ephemeral, wiped by `/reason-end`, gitignored |
 
 **Research question folder structure:**
 
@@ -87,6 +87,7 @@ Research/Active/{question}/
 ├── README.md           Status, criteria, sub-questions, literature, experiments
 ├── KNOWLEDGE.md        Reference (promoted on completion)
 ├── IDEALOG.md          Thinking trail (archived on completion)
+├── WHITEBOARD.md       Ephemeral diagrams for tmux workspace (gitignored)
 ├── PLAN.md             Agent execution steps (created by /blueprint)
 ├── literature/         Paper summaries
 ├── papers/             PDFs

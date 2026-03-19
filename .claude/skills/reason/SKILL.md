@@ -56,7 +56,7 @@ if [ -n "$TMUX" ] && [ "$(tmux list-panes | wc -l)" -eq 1 ]; then
   # Shell loop with md5sum change detection — preserves glow colors + allows scrolling
   # W=$(tput cols) captures pane width dynamically instead of hardcoding
   tmux send-keys -t 1 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/KNOWLEDGE.md | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/KNOWLEDGE.md; H=$N; fi; sleep 2; done' Enter
-  tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum WHITEBOARD.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W WHITEBOARD.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter
+  tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/WHITEBOARD.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/WHITEBOARD.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter
 fi
 ```
 
@@ -227,7 +227,7 @@ Phases should be independently deliverable where possible. Each phase has its ow
 
 ## Step 10: Visualize on WHITEBOARD.md
 
-When presenting diagrams, architecture maps, trade-off tables, or any visual that benefits from a persistent view, write them to `WHITEBOARD.md` in the project root. If a tmux workspace is active (set up by `/research-resume`), the bottom-right pane auto-refreshes with glow rendering.
+When presenting diagrams, architecture maps, trade-off tables, or any visual that benefits from a persistent view, write them to `Research/Active/{question}/WHITEBOARD.md` in the active question's folder. If a tmux workspace is active (set up by `/research-resume`), the bottom-right pane auto-refreshes with glow rendering.
 
 Write to WHITEBOARD.md when:
 - Presenting the big-picture ASCII map (Step 2)
