@@ -71,6 +71,18 @@ Every change gets a dated entry:
 - Use today's date for all mutations in this revision pass.
 - Reference the specific IDEALOG thread entry or audit finding that drives each change.
 
+### 6b. Switch Bottom Pane to PLAN.md
+
+After writing the revised PLAN.md, switch the bottom tmux pane to show it:
+
+```bash
+tmux send-keys -t 2 C-c 2>/dev/null
+sleep 0.3
+tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/PLAN.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/PLAN.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter 2>/dev/null
+```
+
+If not in tmux, skip silently.
+
 ### 7. Present Summary
 
 Output a clear summary to the user:

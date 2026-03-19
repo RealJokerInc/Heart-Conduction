@@ -66,6 +66,9 @@ Currently `/blueprint` always creates a fresh PLAN.md. Should be recursive: if P
 ### 2026-03-18: README.md gets "Future Work" section for deferred items
 Deferred patterns (tmux layout hook, cost tracking, /draw skill) don't fit KNOWLEDGE (not validated), IDEALOG (gets condensed), or Open Questions (they're proposals, not unknowns). README.md is per-question, persistent, never purged — natural home. Dependency chain: `/reason` reads Future Work when no topic given, `/research-new` includes empty section in template, `/research-resume` shows in briefing, `/research-complete` warns about unfinished items.
 
+### 2026-03-19: Quick implement — /blueprint auto-switches bottom pane to PLAN.md
+`/blueprint` Step 3b switches bottom tmux pane to show PLAN.md after writing it. `/blueprint-revise` Step 6b does the same after revision. The generated PLAN.md's Final Cleanup section includes a revert step that switches back to WHITEBOARD.md after implementation is complete. The plan carries its own revert instruction — any executing agent will hit it.
+
 ### 2026-03-19: Per-question maintenance instructions in KNOWLEDGE.md
 `/save-session` Job 2 is generic — it can't have project-specific checks hardcoded (checking skill catalog only matters for research_environment_optimization, not boundary_conduction_speedup). Solution: each KNOWLEDGE.md has a `## Maintenance` section with question-specific verification rules that Job 2 reads naturally during its editorial pass. Self-referential — the rules about maintaining KNOWLEDGE.md live inside KNOWLEDGE.md. No new files, no skill modification needed, `/save-session` Job 2 already reads the full file. Examples: "verify skill catalog matches .claude/skills/", "verify CV values match experiment outputs", "verify parameter tables match optimizer results."
 
