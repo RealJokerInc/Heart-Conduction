@@ -78,6 +78,12 @@ Research/Active/{parent}/{sub_question_name}/
 
 Sub-questions are lightweight. They share the parent's `literature/`, `papers/`, and `code_examples/` unless they grow large enough to need their own.
 
+After creating the folder, rename the tmux window to the question's readable title:
+```bash
+tmux rename-window "{Question Title}" 2>/dev/null
+```
+(Capitalize each word, e.g., "Boundary Conduction Speedup".) For sub-questions, use the sub-question title.
+
 ## Step 5: Write README.md
 
 ### Top-level README:

@@ -16,25 +16,25 @@ Input: $ARGUMENTS
 
 **If argument provided**: Use it as the reasoning topic.
 
-**If no argument provided (or "continue")**: Check conversation history for a recent `/research-resume` session. If one exists, auto-resume that question — read its IDEALOG.md Current Direction and Next Step as the topic. Also read `Research/Active/{question}/README.md` for the **Future Work** section. If it has items, mention them: "Also pending in Future Work: {brief list}." Do NOT ask "what topic?" — just pick up where we left off.
-
-**If no argument AND no recent `/research-resume`**: Ask which question to reason about.
+**If no argument**: Try these in order:
+1. Check conversation history for a recent `/research-resume`. If found, use that question.
+2. Check tmux window name: `tmux display-message -p '#{window_name}' 2>/dev/null`. If the result is not "claude" or "bash" (default names), convert to folder name (lowercase, replace spaces with underscores) and check if `Research/Active/{folder}/IDEALOG.md` exists. If yes, auto-resume that question. Also read `Research/Active/{folder}/README.md` for the **Future Work** section — mention pending items.
+3. If neither works, ask the user which question to reason about.
 
 ---
 
 ## Step 1: Load Context + Set Up Workspace
 
-### 1a. Load Context
+**After Step 0 determines the question**, execute ALL of the following in a SINGLE message as parallel tool calls:
 
-Read these files in parallel (skip any that don't exist):
+1. `Read` — Research/Active/{question}/IDEALOG.md
+2. `Read` — Research/Active/{question}/KNOWLEDGE.md
+3. `Read` — Research/Active/{question}/README.md
+4. `Bash` — tmux pane setup + window rename (if in tmux and panes don't exist yet)
 
-| File | Purpose |
-|------|---------|
-| `Research/Active/{question}/IDEALOG.md` | Current direction, failed approaches, session log |
-| `Research/Active/{question}/KNOWLEDGE.md` | Settled knowledge, open questions |
-| `Research/Active/{question}/README.md` | Status, completion criteria, engine references |
+Do NOT read files sequentially. All 4 calls go out in one turn. Step 0 must complete first (it determines {question}).
 
-If the topic involves engine work, also read in parallel:
+If the topic involves engine work, also include in the parallel batch:
 
 | File | Purpose |
 |------|---------|
@@ -42,6 +42,10 @@ If the topic involves engine work, also read in parallel:
 | `{Engine}/IMPLEMENTATION.md` (relevant section only) | Phase specs, validation criteria |
 
 If no research question maps to the topic, skip research files and work from the user's input + codebase.
+
+### 1a. Load Context
+
+The parallel reads above cover context loading. Skip any files that don't exist.
 
 ### 1b. Set Up tmux Workspace
 
@@ -147,6 +151,13 @@ Route writes to the appropriate file and section:
 | Failed approaches | IDEALOG.md | Failed Approaches |
 | High-res technical findings (exact commands, configs, test results, file paths, error messages) | IDEALOG.md | Thread (current entry) |
 
+**Use background agents for writes when possible.** When writing to IDEALOG.md on a transition, spawn a background Agent to do the write so the conversation is not interrupted:
+- Agent prompt: "Append to Research/Active/{question}/IDEALOG.md under the Thread section: ### {date}: {title}\n{content}"
+- Set `run_in_background: true`
+- Continue the conversation immediately — do not wait for the write to complete
+
+This is optional — if the write is small or the conversation is at a natural pause, a direct Edit is fine. Background agents are for maintaining flow during active discussion.
+
 ---
 
 ## Step 6: Trade-Off Analysis
@@ -198,6 +209,8 @@ Two checkpoint options during a `/reason` session:
 
 If context is getting large, suggest a checkpoint. Default to `/quicksave` unless the user asks for a full save.
 
+When invoking `/quicksave` during active discussion, consider spawning it as a background agent (`run_in_background: true`) so the conversation is not interrupted.
+
 ---
 
 ## Step 9a: Handoff to /blueprint
@@ -236,6 +249,8 @@ Write to WHITEBOARD.md when:
 - Any visual the user might want to reference while talking
 
 Overwrite the file each time (it's ephemeral, not accumulated). The current visual replaces the previous one.
+
+**Use background agents for WHITEBOARD writes when in active discussion.** Spawn a background Agent to write the file so the conversation continues uninterrupted. For the initial big-picture map (Step 2), a direct Write is fine since the user is waiting for it.
 
 ---
 

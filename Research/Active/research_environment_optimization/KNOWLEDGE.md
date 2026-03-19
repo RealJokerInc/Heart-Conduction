@@ -137,14 +137,33 @@ Research/Active/{question}/
 
 ### Design
 
-**18 skills by category:**
+**19 skills by category:**
 
-| Category | Skills |
-|----------|--------|
-| Research lifecycle | `/research-new`, `/research-resume`, `/quicksave`, `/research-status`, `/research-complete`, `/research`, `/summarize-paper` |
-| Planning & reasoning | `/reason`, `/blueprint`, `/blueprint-revise`, `/audit`, `/save-session`, `/reason-end`, `/quick-implement` |
-| Engineering | `/verify`, `/build-fix`, `/strategic-compact` |
-| Textbook | `/textbook-edit`, `/textbook-compile` |
+| Skill | Purpose | Lines |
+|-------|---------|-------|
+| **Research lifecycle** | | |
+| `/research-new` | Scaffold new question (README + KNOWLEDGE + IDEALOG + WHITEBOARD) | 222 |
+| `/research-resume` | Resume question, load context, present briefing, set tmux window name | 158 |
+| `/quicksave` | Quick checkpoint — summarize chat into IDEALOG | 57 |
+| `/research-status` | Project-wide dashboard, staleness audit | 171 |
+| `/research-complete` | Active→Complete, promote KNOWLEDGE, archive IDEALOG, warn about Future Work | 144 |
+| `/research` | Full PubMed pipeline: search→screen→acquire→summarize→file | 287 |
+| `/summarize-paper` | Quick-summarize a single local PDF | 52 |
+| **Planning & reasoning** | | |
+| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions | 254 |
+| `/blueprint` | Generate machine-targeted PLAN.md from IDEALOG + codebase | 210 |
+| `/blueprint-revise` | Update existing PLAN.md — preserve completed steps, incorporate new IDEALOG, log mutations | 107 |
+| `/audit` | Adversarial review via Opus subagent (opt-in) | 97 |
+| `/save-session` | Session cleanup (5 jobs): snapshot, organize KNOWLEDGE, cross-reference, condense, update index | 169 |
+| `/reason-end` | End reasoning session: /save-session, wipe WHITEBOARD, kill tmux panes, reset window name | 68 |
+| `/quick-implement` | Skip planning pipeline — present fix list, get approval, implement, verify, log | 68 |
+| **Engineering** | | |
+| `/verify` | Auto-detect engine, run test suite, produce pass/fail report | 77 |
+| `/build-fix` | Systematic one-at-a-time error resolution with guardrails | 114 |
+| `/strategic-compact` | Compaction decision table + pre-compact checklist | 86 |
+| **Textbook** | | |
+| `/textbook-edit` | Write or revise textbook content (Feynman-style) | 69 |
+| `/textbook-compile` | Build textbook PDF from HTML via Playwright | 84 |
 
 **Hook:** PreCompact — logs compaction event, triggers emergency IDEALOG dump if `/reason` is active.
 
@@ -154,7 +173,7 @@ Research/Active/{question}/
 |------|-------|-------|------------|
 | HIGH | `/research` | 287 | Consider splitting into sub-skills (discover, screen, acquire, summarize, file) |
 | HIGH | `/reason` | 254 | Was split from `/blueprint`; could move examples to KNOWLEDGE.md |
-| HIGH | `/research-new` | 221 | Template-heavy; could reference KNOWLEDGE.md for templates instead of inlining |
+| HIGH | `/research-new` | 222 | Template-heavy; could reference KNOWLEDGE.md for templates instead of inlining |
 | HIGH | `/blueprint` | 210 | Already split `/blueprint-revise` out to avoid growth |
 | MED | `/research-status` | 171 | Monitor |
 | MED | `/save-session` | 169 | Monitor |
@@ -304,6 +323,14 @@ else echo "none"; fi
 | tmux only | Precise pane targeting by index, safe `kill-pane -t N`, native `capture-pane` |
 | Dynamic glow width | Adapts to terminal size |
 | `/reason` owns pane lifecycle | Setup on start, teardown on `/reason-end` |
+
+## Maintenance
+
+When `/save-session` Job 2 edits this file, also verify:
+- Skill catalog matches actual `.claude/skills/` directory (count, names, line counts)
+- Skill line counts are current (re-check with `wc -l`)
+- Future Work items in README.md are reflected if relevant
+- Per-topic subsections follow Findings/Design/Reference/Decisions order
 
 ## Open Questions
 

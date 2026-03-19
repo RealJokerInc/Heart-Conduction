@@ -31,7 +31,7 @@ Note: `{question}` is determined from the same question context used for `/save-
 
 ---
 
-## Step 3: Kill Viewer Panes
+## Step 3: Kill Viewer Panes + Reset Window Name
 
 ```bash
 if [ -n "$TMUX" ]; then
@@ -41,6 +41,7 @@ if [ -n "$TMUX" ]; then
       tmux kill-pane -t "$i"
     done
   fi
+  tmux rename-window "claude" 2>/dev/null
 fi
 ```
 

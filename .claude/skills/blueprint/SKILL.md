@@ -64,9 +64,9 @@ Assign each step a complexity tier:
 
 | Tier | Pipeline | Model |
 |------|----------|-------|
-| **trivial** | implement, verify | haiku/sonnet |
-| **small** | implement, verify, self-review | sonnet |
-| **medium** | read context, implement, verify, cleanup | sonnet |
+| **trivial** | implement, verify | sonnet |
+| **small** | implement, verify, self-review | opus |
+| **medium** | read context, implement, verify, cleanup | opus |
 | **large** | read context, implement, verify, cleanup, /audit | opus |
 
 ---
@@ -121,7 +121,7 @@ Every step must include ALL sections below. A cold-start agent executes with zer
 
 ```markdown
 ### Step N.M: {title}
-**Model**: sonnet | opus
+**Model**: opus (default) | sonnet (for trivial tier only)
 
 #### Read First
 - `{path}:{lines}` — {what to look for}

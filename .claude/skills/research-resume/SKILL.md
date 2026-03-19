@@ -24,7 +24,11 @@ Research/ = writing only. Engines/ = code + outputs.
 
 ## Step 1: Select the Research Question
 
-**If argument provided**: Find the matching folder in `Research/Active/`. Go to Step 2.
+**If argument provided**: Find the matching folder in `Research/Active/`. Then rename the tmux window:
+```bash
+tmux rename-window "{Question Title}" 2>/dev/null
+```
+(Capitalize each word, e.g., "Boundary Conduction Speedup".) Go to Step 2.
 
 **If no argument provided**: You MUST do the following steps in order. Do NOT skip ahead.
 
@@ -44,7 +48,11 @@ Which question do you want to work on?
 
 4. **STOP HERE. Ask the user and WAIT for their response.** Do NOT read KNOWLEDGE.md, experiments, literature, or any other files until the user has chosen a question. Reading everything upfront wastes context window on questions the user isn't working on.
 
-5. Once the user responds with their choice, proceed to Step 2.
+5. Once the user responds with their choice, rename the tmux window:
+```bash
+tmux rename-window "{Question Title}" 2>/dev/null
+```
+(Capitalize each word, e.g., "Boundary Conduction Speedup".) Then proceed to Step 2.
 
 ---
 
