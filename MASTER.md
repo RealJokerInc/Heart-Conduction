@@ -1,6 +1,6 @@
 # Heart-Conduction — Master Progress
 
-Last updated: 2026-03-17
+Last updated: 2026-03-18
 
 ## Active Research
 
@@ -11,7 +11,9 @@ Last updated: 2026-03-17
 | [Mature hiPSC-CM models](Research/Active/mature_hipsc_cm_models/) | V5.4, Bidomain | MHAS13 complete (quiescent, V_rest=-83.7mV) | Tissue validation, ORd-based variant |
 | [Engine consolidation](Research/Active/engine_consolidation/) | All | **Phase 0 DONE**: unified file format + `monodomain()`/`bidomain()`/`lbm()` API (34 tests) | Phase 1: extract shared ionic/mesh |
 | [Geometry-induced pacemaking](Research/Active/geometry_induced_pacemaking/) | V5.4, LBM, Bidomain | Just started | Literature review + PHAS13 baseline |
-| [Research environment optimization](Research/Active/research_environment_optimization/) | All (meta) | 3-doc architecture finalized (KNOWLEDGE + IDEALOG + PLAN) | Implement: extend 3 skills, add 7 new (reason, blueprint, save-session, audit, verify, build-fix, strategic-compact) |
+| [Research environment optimization](Research/Active/research_environment_optimization/) | All (meta) | **Implementation complete**: 16 skills, 3-doc architecture, PreCompact hook | Real-world testing of new workflow |
+| [Surrogate pipeline](Research/Active/surrogate_pipeline/) | Bidomain V1, V5.4 | Docs done, no code yet | Phase 1A: single-cell data generation |
+| [Bidomain parabolic-parabolic](Research/Active/bidomain_parabolic_parabolic/) | Bidomain V1 | Just started | Literature review of PP formulation |
 
 ## Complete Research
 

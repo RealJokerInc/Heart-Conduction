@@ -17,6 +17,7 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 | Geometry-Induced Pacemaking | [KNOWLEDGE](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) |
 | Mature hiPSC-CM Models | [KNOWLEDGE](Research/Active/mature_hipsc_cm_models/KNOWLEDGE.md) |
 | Research Environment Optimization | [KNOWLEDGE](Research/Active/research_environment_optimization/KNOWLEDGE.md) |
+| Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) |
 | Bidomain Simulation | [KNOWLEDGE](Research/Knowledge/bidomain_simulation.md) |
 | LBM Cardiac | [KNOWLEDGE](Research/Knowledge/lbm_cardiac.md) |
 | Scar BC Validity | [KNOWLEDGE](Research/Knowledge/scar_bc_validity.md) |
@@ -33,3 +34,7 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 - **LBM ↔ Scar BC**: Bounce-back = Neumann (scar), anti-bounce-back = Dirichlet (bath). [LBM](Research/Knowledge/lbm_cardiac.md) | [Scar](Research/Knowledge/scar_bc_validity.md)
 - **Pacemaking ↔ Optimization**: PHAS13 may need optimizer tuning to match experimental beating rates. [Pacemaking](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) | [Optimization](Research/Active/ionic_model_optimization/KNOWLEDGE.md)
 - **Environment ↔ Consolidation**: Engineering workflow gaps most felt during multi-session engine work. [Environment](Research/Active/research_environment_optimization/KNOWLEDGE.md) | [Consolidation](Research/Active/engine_consolidation/KNOWLEDGE.md)
+- **Surrogate ↔ Bidomain**: Surrogate trained on Bidomain V1 output; must reproduce Kleber boundary speedup. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Bidomain](Research/Knowledge/bidomain_simulation.md)
+- **Surrogate ↔ Boundary Speedup**: Surrogate validation target — CV_ratio within 10% of simulator. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Boundary](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md)
+- **Surrogate ↔ Optimization**: Trained surrogate replaces simulator in optimization loop for fast parameter sweeps. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Optimization](Research/Active/ionic_model_optimization/KNOWLEDGE.md)
+- **Surrogate ↔ Consolidation**: Unified engine API simplifies training data generation across engines. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Consolidation](Research/Active/engine_consolidation/KNOWLEDGE.md)
