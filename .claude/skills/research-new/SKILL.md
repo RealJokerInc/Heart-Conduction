@@ -65,7 +65,8 @@ Research/Active/{question_name}/
 ├── literature/          # Paper summaries go here
 ├── papers/              # PDFs go here
 ├── code_examples/       # Reference implementations (if any)
-└── results/             # Simulation outputs, data, plots
+├── results/             # Simulation outputs, data, plots
+└── plans/               # Archived completed PLAN.md files
 ```
 
 ### For a sub-question:

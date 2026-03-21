@@ -73,15 +73,13 @@ Every change gets a dated entry:
 
 ### 6b. Switch Bottom Pane to PLAN.md
 
-After writing the revised PLAN.md, switch the bottom tmux pane to show it:
-
-```bash
-tmux send-keys -t 2 C-c 2>/dev/null
-sleep 0.3
-tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/PLAN.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/PLAN.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter 2>/dev/null
-```
+**IMMEDIATELY after writing the revised PLAN.md**, switch the bottom pane. Do BOTH:
+1. Direct Bash call to switch pane 2 to show PLAN.md with glow shell loop
+2. Spawn a background Agent as safety net (same switch command, `run_in_background: true`)
 
 If not in tmux, skip silently.
+
+**Also**: when revising, preserve the archive step in Final Cleanup. If the original PLAN.md had an archive instruction, ensure it survives the revision.
 
 ### 7. Present Summary
 

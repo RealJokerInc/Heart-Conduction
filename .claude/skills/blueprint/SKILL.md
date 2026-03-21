@@ -71,9 +71,15 @@ Assign each step a complexity tier:
 
 ---
 
-## Step 3: Write PLAN.md
+## Step 3: Write PLAN.md + Switch Pane
 
 Write the plan to `Research/Active/{question}/PLAN.md`.
+
+**IMMEDIATELY after writing PLAN.md**, switch the bottom tmux pane to show it. Do BOTH:
+1. Direct Bash call to switch the pane (immediate)
+2. Spawn a background Agent to verify the switch happened (safety net — if the direct call was skipped, the agent catches it)
+
+The background agent prompt: "Switch tmux pane 2 to show Research/Active/{question}/PLAN.md using the glow shell loop with md5sum change detection. Use `tmux send-keys -t 2`." Set `run_in_background: true`.
 
 ### Header
 
@@ -174,7 +180,16 @@ Every step must include ALL sections below. A cold-start agent executes with zer
 
 Include `## Final Cleanup` (cross-phase de-sloppify) and `## Mutation Log` (initially empty — populated during execution with `**MUTATED {date}**: Step X.Y {SKIPPED|SPLIT|INSERTED} — {reason}`).
 
-**Always include in Final Cleanup**: Revert the bottom tmux pane from PLAN.md back to WHITEBOARD.md:
+**Always include in Final Cleanup** (in this order):
+
+1. Archive the completed plan:
+```bash
+mkdir -p Research/Active/{question}/plans
+cp Research/Active/{question}/PLAN.md "Research/Active/{question}/plans/$(date +%Y-%m-%d)_{plan-slug}.md"
+```
+Where `{plan-slug}` is derived from the PLAN.md title (lowercase, spaces/special chars → hyphens, max 60 chars).
+
+2. Revert the bottom tmux pane from PLAN.md back to WHITEBOARD.md:
 ```bash
 tmux send-keys -t 2 C-c
 sleep 0.3
@@ -188,20 +203,6 @@ Include in every Phase Cleanup and Final Cleanup:
 - V5.3 not modified — `Monodomain/Engine_V5.3/` is read-only
 - EXPERIMENT.md backlinks exist for new experiments in engine folders
 - No code duplication across engines — shared logic belongs in `cardiac_core/`
-
----
-
-## Step 3b: Switch Bottom Pane to PLAN.md
-
-After writing PLAN.md, switch the bottom tmux pane to show it (so the user can review the plan visually):
-
-```bash
-tmux send-keys -t 2 C-c 2>/dev/null
-sleep 0.3
-tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/{question}/PLAN.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/{question}/PLAN.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter 2>/dev/null
-```
-
-If not in tmux, skip silently.
 
 ---
 
