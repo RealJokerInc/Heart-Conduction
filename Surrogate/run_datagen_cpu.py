@@ -111,18 +111,34 @@ def build_tier(tier, dt=0.01):
     return protos
 
 
-def run_batch_cpu(protos, model, dt=0.01):
+def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
+                  chunk_steps=500000, cell_type='EPI'):
     """Run batchable protocols as parallel cells on CPU.
 
-    All protos must be simple (not ConcentrationPerturbation/CorruptionRecovery/Stitched).
-    Pre-computes vectorized I_stim schedule, runs batched model.step().
-    Post-hoc gate_inf/tau computation.
+    Processes in time chunks to avoid OOM on long protocols.
+    Each chunk: simulate → record → compute gate_inf/tau → write to HDF5.
+    RAM usage: chunk_steps × n × 47 × 8 bytes (e.g., 500K × 200 × 47 × 8 = 35GB).
+
+    Args:
+        protos: list of Protocol objects (not ConcentrationPerturbation/CorruptionRecovery/Stitched)
+        model: TTP06Model instance
+        dt: timestep in ms
+        storage: TraceStorage for incremental HDF5 writes (if None, returns TraceData list)
+        tier: tier number for storage
+        chunk_steps: max steps per chunk (~35GB RAM at n=200)
+        cell_type: cell type string for metadata
     """
     n = len(protos)
     max_dur = max(p.duration_ms for p in protos)
     n_steps = int(max_dur / dt)
 
-    # Vectorized I_stim schedule
+    # Memory estimate
+    mem_gb = n_steps * n * 47 * 8 / 1e9
+    n_chunks = max(1, (n_steps + chunk_steps - 1) // chunk_steps)
+    chunk_mem_gb = min(n_steps, chunk_steps) * n * 47 * 8 / 1e9
+    print(f'    Full buffer: {mem_gb:.1f}GB → chunked: {n_chunks} chunks × {chunk_mem_gb:.1f}GB')
+
+    # Vectorized I_stim schedule (this is just n_steps × n floats, ~25MB for 16M×200)
     t_all = torch.arange(n_steps, dtype=torch.float64) * dt
     stim = torch.zeros((n_steps, n), dtype=torch.float64)
     for i, p in enumerate(protos):
@@ -169,80 +185,120 @@ def run_batch_cpu(protos, model, dt=0.01):
                     clamp_mask[step, i] = 1.0
                     clamp_v[step, i] = p.get_clamp_voltage(step * dt)
 
-    # Active mask
     active_steps = torch.tensor([int(p.duration_ms / dt) for p in protos], dtype=torch.long)
 
-    # Run
+    # Per-protocol accumulators (list of chunk tensors per protocol)
+    proto_chunks = {i: [] for i in range(n)}
+
     V = torch.full((n,), V_REST, dtype=torch.float64)
     states = model.get_initial_state(n_cells=n)
 
-    all_Vm = torch.zeros((n_steps, n), dtype=torch.float64)
-    all_stim_rec = torch.zeros((n_steps, n), dtype=torch.float64)
-    all_states = torch.zeros((n_steps, n, 18), dtype=torch.float64)
-    all_Iion = torch.zeros((n_steps, n), dtype=torch.float64)
-    all_clamp_rec = torch.zeros((n_steps, n), dtype=torch.float64)
-
     t0 = time.time()
     last_prog = t0
-    for step in range(n_steps):
-        I_s = stim[step]
-        I_e = ext[step]
+    global_step = 0
 
-        I_ion = model.compute_Iion(V, states)
+    for chunk_idx in range(n_chunks):
+        chunk_start = chunk_idx * chunk_steps
+        chunk_end = min(chunk_start + chunk_steps, n_steps)
+        cs = chunk_end - chunk_start
 
-        all_Vm[step] = V
-        all_stim_rec[step] = -(I_s + I_e)
-        all_states[step] = states
-        all_Iion[step] = I_ion
-        all_clamp_rec[step] = clamp_mask[step]
+        # Allocate chunk buffers
+        c_Vm = torch.zeros((cs, n), dtype=torch.float64)
+        c_stim_rec = torch.zeros((cs, n), dtype=torch.float64)
+        c_states = torch.zeros((cs, n, 18), dtype=torch.float64)
+        c_Iion = torch.zeros((cs, n), dtype=torch.float64)
+        c_clamp_rec = torch.zeros((cs, n), dtype=torch.float64)
 
-        total = I_s + I_e
-        V_new, states_new = model.step(V, states, dt, I_stim=total)
+        for local_step in range(cs):
+            step = chunk_start + local_step
+            I_s = stim[step]
+            I_e = ext[step]
 
-        if has_clamp:
-            cm = clamp_mask[step] > 0.5
-            if cm.any():
-                V_new = torch.where(cm, clamp_v[step], V_new)
+            I_ion = model.compute_Iion(V, states)
 
-        active = step < active_steps
-        V = torch.where(active, V_new, V)
-        states = torch.where(active.unsqueeze(1), states_new, states)
+            c_Vm[local_step] = V
+            c_stim_rec[local_step] = -(I_s + I_e)
+            c_states[local_step] = states
+            c_Iion[local_step] = I_ion
+            c_clamp_rec[local_step] = clamp_mask[step]
 
-        now = time.time()
-        if now - last_prog > 15:
-            pct = (step+1)/n_steps*100
-            rate = (step+1)*n/(now-t0)
-            print(f'    {pct:.0f}% ({step+1}/{n_steps}, {rate/1e3:.0f}K cell-steps/s)')
-            last_prog = now
+            total = I_s + I_e
+            V_new, states_new = model.step(V, states, dt, I_stim=total)
+
+            if has_clamp:
+                cm = clamp_mask[step] > 0.5
+                if cm.any():
+                    V_new = torch.where(cm, clamp_v[step], V_new)
+
+            active = step < active_steps
+            V = torch.where(active, V_new, V)
+            states = torch.where(active.unsqueeze(1), states_new, states)
+
+            now = time.time()
+            if now - last_prog > 15:
+                pct = (step+1)/n_steps*100
+                rate = (step+1)*n/(now-t0)
+                print(f'    {pct:.0f}% ({step+1}/{n_steps}, {rate/1e3:.0f}K cell-steps/s)')
+                last_prog = now
+
+        # Post-hoc gate_inf/tau for this chunk
+        Vm_flat = c_Vm.reshape(-1)
+        states_flat = c_states.reshape(-1, 18)
+        gate_inf = model.compute_gate_steady_states(Vm_flat, states_flat).reshape(cs, n, 12)
+        gate_tau = model.compute_gate_time_constants(Vm_flat, states_flat).reshape(cs, n, 12)
+
+        # Build per-protocol chunk data and accumulate
+        for i in range(n):
+            p_steps_total = int(protos[i].duration_ms / dt)
+            # How many steps of this chunk belong to protocol i?
+            p_start = max(0, chunk_start)
+            p_end = min(chunk_end, p_steps_total)
+            if p_start >= p_end:
+                continue
+            local_start = p_start - chunk_start
+            local_end = p_end - chunk_start
+            sl = slice(local_start, local_end)
+            chunk_data = torch.cat([
+                c_Vm[sl, i].unsqueeze(1),
+                c_stim_rec[sl, i].unsqueeze(1),
+                torch.full((local_end - local_start, 1), dt, dtype=torch.float64),
+                c_states[sl, i],
+                c_Iion[sl, i].unsqueeze(1),
+                c_clamp_rec[sl, i].unsqueeze(1),
+                gate_inf[sl, i],
+                gate_tau[sl, i],
+            ], dim=1)  # (chunk_len, 47)
+            proto_chunks[i].append(chunk_data)
+
+        # Free chunk buffers
+        del c_Vm, c_stim_rec, c_states, c_Iion, c_clamp_rec, gate_inf, gate_tau
+
+        print(f'    Chunk {chunk_idx+1}/{n_chunks} done')
 
     elapsed = time.time() - t0
     print(f'    Sim done: {n}×{n_steps} in {elapsed:.0f}s ({n_steps*n/elapsed/1e3:.0f}K cell-steps/s)')
 
-    # Post-hoc gate_inf/tau (vectorized)
-    Vm_flat = all_Vm.reshape(-1)
-    states_flat = all_states.reshape(-1, 18)
-    gate_inf = model.compute_gate_steady_states(Vm_flat, states_flat).reshape(n_steps, n, 12)
-    gate_tau = model.compute_gate_time_constants(Vm_flat, states_flat).reshape(n_steps, n, 12)
-
-    # Build TraceData per protocol
+    # Assemble and return/save
     traces = []
     for i, p in enumerate(protos):
-        ps = min(n_steps, int(p.duration_ms / dt))
-        data = torch.cat([
-            all_Vm[:ps, i].unsqueeze(1),
-            all_stim_rec[:ps, i].unsqueeze(1),
-            torch.full((ps, 1), dt, dtype=torch.float64),
-            all_states[:ps, i],
-            all_Iion[:ps, i].unsqueeze(1),
-            all_clamp_rec[:ps, i].unsqueeze(1),
-            gate_inf[:ps, i],
-            gate_tau[:ps, i],
-        ], dim=1)
-        traces.append(TraceData(data=data, metadata={
+        if not proto_chunks[i]:
+            continue
+        data = torch.cat(proto_chunks[i], dim=0)  # (T_i, 47)
+        meta = {
             'protocol_name': p.name, 'protocol_tier': p.tier,
-            'cell_type': 'EPI', 'duration_ms': p.duration_ms,
-            'dt_default': dt, 'n_timesteps': ps,
-        }))
+            'cell_type': cell_type, 'duration_ms': p.duration_ms,
+            'dt_default': dt, 'n_timesteps': data.shape[0],
+        }
+        if storage and tier is not None:
+            storage.save_trace(TraceData(data=data, metadata=meta),
+                               tier, f'{p.name}_dt{dt}')
+            del data  # free after write
+        else:
+            traces.append(TraceData(data=data, metadata=meta))
+
+    if storage and tier is not None:
+        print(f'    Saved {n} traces to tier {tier}')
+        return []
     return traces
 
 
@@ -291,10 +347,7 @@ def main():
             t0 = time.time()
 
             if batchable:
-                traces = run_batch_cpu(batchable, model)
-                for trace in traces:
-                    storage.save_trace(trace, tier, f'{trace.metadata["protocol_name"]}_dt0.01')
-                print(f'    Saved {len(traces)} batch traces')
+                run_batch_cpu(batchable, model, storage=storage, tier=tier, cell_type=ct)
 
             for i, p in enumerate(sequential):
                 trace = run_sequential_cpu(p, model, cell_type=ct)
@@ -313,12 +366,8 @@ def main():
                 model2 = TTP06Model(cell_type=CellType[ct2], device=torch.device('cpu'))
                 for tier in [1, 2, 3]:
                     protos = build_tier(tier)
-                    traces = run_batch_cpu(protos, model2)
-                    for trace in traces:
-                        trace.metadata['cell_type'] = ct2
-                        storage.save_trace(trace, tier,
-                                           f'{trace.metadata["protocol_name"]}_{ct2}_dt0.01')
-                    print(f'  T12/{ct2}/T{tier}: {len(traces)} traces')
+                    run_batch_cpu(protos, model2, storage=storage, tier=tier, cell_type=ct2)
+                    print(f'  T12/{ct2}/T{tier}: done')
 
     elapsed = time.time() - t_total
     total_size = sum(f.stat().st_size for f in Path(args.raw_dir).glob('*.h5'))
