@@ -116,8 +116,7 @@ class BatchGenerator:
         all_states = torch.zeros((n_records, n, 18), dtype=torch.float64, device=self.device)
         all_Iion = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
         all_clamp = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
-        all_gate_inf = torch.zeros((n_records, n, 12), dtype=torch.float64, device=self.device)
-        all_gate_tau = torch.zeros((n_records, n, 12), dtype=torch.float64, device=self.device)
+        # gate_inf and gate_tau computed post-hoc (vectorized, ~0% overhead)
 
         t_start = time.time()
         last_progress = t_start
@@ -130,8 +129,6 @@ class BatchGenerator:
 
             if step % record_every == 0:
                 I_ion = self.model.compute_Iion(V, states)
-                gate_inf = self.model.compute_gate_steady_states(V, states)  # (n, 12)
-                gate_tau = self.model.compute_gate_time_constants(V, states)  # (n, 12)
                 recorded_stim = -(I_stim + I_ext)
 
                 all_Vm[record_idx] = V
@@ -139,8 +136,6 @@ class BatchGenerator:
                 all_states[record_idx] = states
                 all_Iion[record_idx] = I_ion
                 all_clamp[record_idx] = clamp_mask_gpu[step]
-                all_gate_inf[record_idx] = gate_inf
-                all_gate_tau[record_idx] = gate_tau
                 record_idx += 1
 
             # Advance state
@@ -170,6 +165,18 @@ class BatchGenerator:
         elapsed = time.time() - t_start
         print(f'  Done: {n}×{n_steps} steps in {elapsed:.1f}s '
               f'({n_steps*n/elapsed/1e6:.1f}M cell-steps/s)')
+
+        # Post-hoc: compute gate_inf and gate_tau vectorized on GPU
+        print(f'  Computing gate_inf/tau post-hoc...')
+        t_ph = time.time()
+        # Reshape for vectorized computation: (n_records, n, ...) → (n_records*n, ...)
+        Vm_flat = all_Vm[:record_idx].reshape(-1)  # (n_records*n,)
+        states_flat = all_states[:record_idx].reshape(-1, 18)  # (n_records*n, 18)
+        gate_inf_flat = self.model.compute_gate_steady_states(Vm_flat, states_flat)  # (n_records*n, 12)
+        gate_tau_flat = self.model.compute_gate_time_constants(Vm_flat, states_flat)  # (n_records*n, 12)
+        all_gate_inf = gate_inf_flat.reshape(record_idx, n, 12)
+        all_gate_tau = gate_tau_flat.reshape(record_idx, n, 12)
+        print(f'  Post-hoc done in {time.time()-t_ph:.1f}s')
 
         # Transfer all recordings to CPU once
         all_Vm = all_Vm.cpu()

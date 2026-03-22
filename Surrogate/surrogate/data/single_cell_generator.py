@@ -182,16 +182,11 @@ class SingleCellGenerator:
             # Pure ionic current (no stimulus)
             I_ion = model.compute_Iion(V, states)
 
-            # Gate steady-states and time constants (12 each, in gate_indices order)
-            gate_inf = model.compute_gate_steady_states(V, states)  # (1, 12) or (12,)
-            gate_tau = model.compute_gate_time_constants(V, states)  # (1, 12) or (12,)
-            gate_inf_flat = gate_inf.squeeze(0) if gate_inf.dim() > 1 else gate_inf
-            gate_tau_flat = gate_tau.squeeze(0) if gate_tau.dim() > 1 else gate_tau
-
             # Sign flip for surrogate convention: negate TTP06 stimulus
             recorded_stim = -(I_stim + I_ext)
 
-            # Record: [Vm, recorded_stim, dt, 18 states, I_ion, clamp_mask, 12 gate_inf, 12 gate_tau]
+            # Record: [Vm, recorded_stim, dt, 18 states, I_ion, clamp_mask]
+            # gate_inf and gate_tau are computed post-hoc (vectorized, ~0% overhead)
             state_flat = states.squeeze(0) if states.dim() > 1 else states
             record = torch.cat([
                 V.reshape(1),
@@ -199,8 +194,6 @@ class SingleCellGenerator:
                 state_flat,
                 I_ion.reshape(1),
                 torch.tensor([clamped], dtype=torch.float64, device=self.device),
-                gate_inf_flat,
-                gate_tau_flat,
             ])
             records.append(record)
 
@@ -232,7 +225,16 @@ class SingleCellGenerator:
             if hasattr(protocol, '_last_dvdt'):
                 protocol._last_dvdt = float((V - records[-1][0]) / dt)
 
-        data = torch.stack(records)  # (T, 23)
+        data_core = torch.stack(records)  # (T, 23)
+
+        # Post-hoc: compute gate_inf and gate_tau vectorized (~0% overhead)
+        Vm_all = data_core[:, TraceData.VM]  # (T,)
+        states_all = data_core[:, TraceData.STATES_START:TraceData.STATES_END]  # (T, 18)
+        gate_inf = model.compute_gate_steady_states(Vm_all, states_all)  # (T, 12)
+        gate_tau = model.compute_gate_time_constants(Vm_all, states_all)  # (T, 12)
+
+        data = torch.cat([data_core, gate_inf, gate_tau], dim=1)  # (T, 47)
+
         metadata = {
             'protocol_name': protocol.name,
             'protocol_tier': protocol.tier,
