@@ -110,13 +110,14 @@ class BatchGenerator:
         states = self.model.get_initial_state(n_cells=n).to(self.device)
 
         # Pre-allocate recording ON GPU (transfer to CPU once at end)
-        # 9 protos × 4M steps × 23 cols × 8 bytes ≈ 6.6GB — fits in 32GB VRAM
         n_records = (n_steps + record_every - 1) // record_every
         all_Vm = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
         all_stim = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
         all_states = torch.zeros((n_records, n, 18), dtype=torch.float64, device=self.device)
         all_Iion = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
         all_clamp = torch.zeros((n_records, n), dtype=torch.float64, device=self.device)
+        all_gate_inf = torch.zeros((n_records, n, 12), dtype=torch.float64, device=self.device)
+        all_gate_tau = torch.zeros((n_records, n, 12), dtype=torch.float64, device=self.device)
 
         t_start = time.time()
         last_progress = t_start
@@ -129,6 +130,8 @@ class BatchGenerator:
 
             if step % record_every == 0:
                 I_ion = self.model.compute_Iion(V, states)
+                gate_inf = self.model.compute_gate_steady_states(V, states)  # (n, 12)
+                gate_tau = self.model.compute_gate_time_constants(V, states)  # (n, 12)
                 recorded_stim = -(I_stim + I_ext)
 
                 all_Vm[record_idx] = V
@@ -136,6 +139,8 @@ class BatchGenerator:
                 all_states[record_idx] = states
                 all_Iion[record_idx] = I_ion
                 all_clamp[record_idx] = clamp_mask_gpu[step]
+                all_gate_inf[record_idx] = gate_inf
+                all_gate_tau[record_idx] = gate_tau
                 record_idx += 1
 
             # Advance state
@@ -172,6 +177,8 @@ class BatchGenerator:
         all_states = all_states.cpu()
         all_Iion = all_Iion.cpu()
         all_clamp = all_clamp.cpu()
+        all_gate_inf = all_gate_inf.cpu()
+        all_gate_tau = all_gate_tau.cpu()
 
         # Assemble per-protocol TraceData
         traces = []
@@ -179,15 +186,17 @@ class BatchGenerator:
             proto_steps = int(proto.duration_ms / dt)
             proto_records = (proto_steps + record_every - 1) // record_every
 
-            # Build (T, 23) tensor
+            # Build (T, 47) tensor
             data = torch.cat([
-                all_Vm[:proto_records, i].unsqueeze(1),
-                all_stim[:proto_records, i].unsqueeze(1),
-                torch.full((proto_records, 1), dt, dtype=torch.float64),
-                all_states[:proto_records, i],
-                all_Iion[:proto_records, i].unsqueeze(1),
-                all_clamp[:proto_records, i].unsqueeze(1),
-            ], dim=1)  # (T, 23)
+                all_Vm[:proto_records, i].unsqueeze(1),        # col 0
+                all_stim[:proto_records, i].unsqueeze(1),      # col 1
+                torch.full((proto_records, 1), dt, dtype=torch.float64),  # col 2
+                all_states[:proto_records, i],                  # cols 3-20
+                all_Iion[:proto_records, i].unsqueeze(1),      # col 21
+                all_clamp[:proto_records, i].unsqueeze(1),     # col 22
+                all_gate_inf[:proto_records, i],                # cols 23-34
+                all_gate_tau[:proto_records, i],                # cols 35-46
+            ], dim=1)  # (T, 47)
 
             metadata = {
                 'protocol_name': proto.name,

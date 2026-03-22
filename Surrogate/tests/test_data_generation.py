@@ -28,7 +28,7 @@ def test_generator_creates_trace():
     proto.duration_ms = 100.0
     trace = gen.run_protocol(proto)
 
-    assert trace.data.shape[1] == TraceData.N_COLUMNS  # 23 columns
+    assert trace.data.shape[1] == TraceData.N_COLUMNS  # 47 columns
     expected_steps = int(100.0 / 0.01)
     assert trace.data.shape[0] == expected_steps
     assert trace.data[0, TraceData.VM].item() == pytest.approx(-85.23, abs=1.0)
@@ -99,7 +99,7 @@ def test_tier1_protocols():
     for proto in [protocols[0], protocols[-1]]:
         proto.duration_ms = min(proto.duration_ms, 1000.0)  # cap for speed
         trace = gen.run_protocol(proto)
-        assert trace.data.shape[1] == 23
+        assert trace.data.shape[1] == TraceData.N_COLUMNS
         Vm = trace.data[:, TraceData.VM]
         assert Vm.max() > -20.0, f"BCL={proto.bcl}: should produce AP"
 
@@ -426,7 +426,7 @@ def test_boundary_cell():
     boundary = InjectedPacing(base, SustainedOffset(amplitude=2.0),
                                name_suffix='_boundary')
     trace = gen.run_protocol(boundary)
-    assert trace.data.shape[1] == 23
+    assert trace.data.shape[1] == TraceData.N_COLUMNS
     assert len(trace.data) > 0
 
 
@@ -549,7 +549,7 @@ def test_shard_segment_shape(tmp_path):
     segments = processor.process_tier(1)
     assert len(segments) > 0
     for seg in segments:
-        assert seg.shape == (200, 23), f"Expected (200, 23), got {seg.shape}"
+        assert seg.shape == (200, TraceData.N_COLUMNS), f"Expected (200, TraceData.N_COLUMNS), got {seg.shape}"
 
 
 def test_shard_roundtrip_accuracy(tmp_path):
@@ -630,7 +630,7 @@ def test_full_pipeline_tier1(tmp_path):
     assert len(shard_files) > 0
     shard = torch.load(shard_files[0], weights_only=True)
     assert shard.dtype == torch.float32
-    assert shard.shape[-1] == 23
+    assert shard.shape[-1] == TraceData.N_COLUMNS
 
 
 def test_ap_shape_validation():

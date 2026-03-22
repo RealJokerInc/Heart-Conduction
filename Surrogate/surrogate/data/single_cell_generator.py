@@ -33,13 +33,15 @@ class TraceData:
     """Container for recorded single-cell trace data.
 
     Attributes:
-        data: (T, 23) float64 tensor with columns:
+        data: (T, 47) float64 tensor with columns:
             0: Vm (mV)
             1: I_stim (sign-flipped: positive = depolarizing)
             2: dt (ms)
             3-20: 18 ionic states [Ki, Nai, Cai, CaSR, CaSS, m, h, j, r, s, d, f, f2, fCass, Xr1, Xr2, Xs, RR]
             21: I_ion (pure ionic current from compute_Iion, no stimulus)
             22: clamp_mask (0.0 = free-running, 1.0 = voltage clamped)
+            23-34: 12 gate_inf values (steady-state at current Vm, gate_indices order)
+            35-46: 12 gate_tau values (time constants at current Vm, gate_indices order, ms)
         metadata: dict with protocol info, cell_type, conductances, etc.
     """
     data: torch.Tensor
@@ -53,7 +55,11 @@ class TraceData:
     STATES_END = 21    # exclusive end (Python convention): states are columns 3..20
     I_ION = 21
     CLAMP_MASK = 22
-    N_COLUMNS = 23
+    GATE_INF_START = 23
+    GATE_INF_END = 35   # exclusive: 12 gates in gate_indices order
+    GATE_TAU_START = 35
+    GATE_TAU_END = 47   # exclusive: 12 gate taus in gate_indices order
+    N_COLUMNS = 47
 
 
 class SingleCellGenerator:
@@ -176,10 +182,16 @@ class SingleCellGenerator:
             # Pure ionic current (no stimulus)
             I_ion = model.compute_Iion(V, states)
 
+            # Gate steady-states and time constants (12 each, in gate_indices order)
+            gate_inf = model.compute_gate_steady_states(V, states)  # (1, 12) or (12,)
+            gate_tau = model.compute_gate_time_constants(V, states)  # (1, 12) or (12,)
+            gate_inf_flat = gate_inf.squeeze(0) if gate_inf.dim() > 1 else gate_inf
+            gate_tau_flat = gate_tau.squeeze(0) if gate_tau.dim() > 1 else gate_tau
+
             # Sign flip for surrogate convention: negate TTP06 stimulus
             recorded_stim = -(I_stim + I_ext)
 
-            # Record: [Vm, recorded_stim, dt, 18 states, I_ion, clamp_mask]
+            # Record: [Vm, recorded_stim, dt, 18 states, I_ion, clamp_mask, 12 gate_inf, 12 gate_tau]
             state_flat = states.squeeze(0) if states.dim() > 1 else states
             record = torch.cat([
                 V.reshape(1),
@@ -187,6 +199,8 @@ class SingleCellGenerator:
                 state_flat,
                 I_ion.reshape(1),
                 torch.tensor([clamped], dtype=torch.float64, device=self.device),
+                gate_inf_flat,
+                gate_tau_flat,
             ])
             records.append(record)
 
