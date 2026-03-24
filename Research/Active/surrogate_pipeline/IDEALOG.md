@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Ionic surrogate architecture settled: n×1 cross-attention + split GELU cross-channel + linear readout. 705 FLOPs, 2.9× Rush-Larsen, 466 params. Pure autoregressive latent (no Vm history). Strategy: start at scalar HH (Level 0), iterate up. Next: training data generation and training strategy.
+Architecture v2 settled: n×1 cross-attention + two-round split GELU + KAN Chebyshev readout. 886 FLOPs, 3.7× Rush-Larsen, 642 params. I_stim removed from model input. Data generation T1-T11 complete, T12 running.
 
 ## Next Step
-Design training data generator (TTP06 single-cell trajectories with varied pacing protocols) and training strategy (curriculum, scaffold annealing, rollout schedule).
+Implement PLAN.md: Phase 1 (ChebyshevReadout, 8 tests) → Phase 2 (IonicSurrogate, 10 tests). Then Phase A autoencoder blueprint.
 
 ## Thread
 
@@ -88,7 +88,57 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | 2026-03-19 | 6 | Competitive landscape survey — 5 papers, no bidomain surrogates |
 | 2026-03-19 | 7 | Major ionic architecture pivot: Transformer → carried latent with n×1 cross-attention. Explored 12 architectures. Settled: 673 FLOPs, 2.8× RL. Adversarial review done. |
 | 2026-03-20 | 8 | Training data (12 tiers), training strategy (4 phases), pipeline audit (12 issues found and fixed — W_out dims, parallel scan, gate decoder FLOPs, voltage clamp timing, spectral norm) |
-| 2026-03-21 | 9 | Blueprint for data generation (4 phases, 32 tests). Two audit rounds (34 fixes total). Began implementation: Phase 1 Steps 1.1-1.3 done (package scaffold, SingleCellGenerator, protocols). 10/10 tests passing. Continuing through all phases. |
+| 2026-03-21 | 9 | Full implementation + benchmarking. 8 source files, 32/32 tests, committed. BatchGenerator with torch.compile: 77.9M cell-steps/s at n=10K (47,227× vs CPU sequential). Padding strategy validated: replicate unique protos to fill batch, copies match bitwise. |
+| 2026-03-22 | 10 | Added gate_inf + gate_tau columns (23→47 cols). Per-step computation was 40% overhead — fixed to post-hoc vectorized (0% overhead). Ran T1+T2 generation (8.6GB on HDD). T3-12 still needed. Current run_datagen.py doesn't use padding → small batches run at CPU-equivalent speed (~500 steps/s/cell instead of ~7800). Need padding optimization before T4 (200 protos would take 12+ hours without it). |
+| 2026-03-22 | 11 | Overnight T4-12 generation crashed (OOM: 1.2TB buffer for 200 protos × 16M steps). Fixed with chunked processing (500K steps/chunk, ~0.9GB each). Verified chunking works — T4 test running at 23% (6/29 chunks done, no OOM, 6K cell-steps/s at n=5). MASTER.md updated with bidomain_parabolic_parabolic question. |
+| 2026-03-23 | 12 | Architecture v2: I_stim removed, Stage 2 doubled (two-round split GELU), Stage 3 KAN Chebyshev K=3. Data gen fixes (searchsorted, incremental HDF5, naming). T1-T11 complete, T12 running. |
+| 2026-03-24 | 13 | Architecture deep-dive: attention math walkthrough, GPU friendliness analysis (kernel launch overhead, torch.compile fusion, teacher-forced temporal parallelism). Blueprint for model impl (2 phases, 18 tests). Audited twice — fixed spectral_norm init ordering (CRITICAL), KNOWLEDGE.md column layout 18+6→12+12 (CRITICAL), 4 high issues. Clean re-audit: 0 critical. |
+
+### 2026-03-23 — Session 12: Architecture v2 + T4-T12 data generation
+
+**Data generation fixes and completion:**
+- searchsorted fix for RandomIntervalPacing schedule: O(n_steps × log(n_beats)) instead of O(n_steps × n_beats). Schedule computation dropped from 13+ min to <10s for 200 protocols.
+- Lazy ext/clamp tensor allocation: only allocate when protocols actually use I_ext or clamp. Saves 78GB for T4.
+- Incremental HDF5 writes: per-protocol chunk data written immediately via resizable datasets instead of accumulating in memory. Peak RAM ~42GB instead of 1.2TB.
+- Sequential protocol naming bug fix: all 50 stitched protocols were saving as 'stitched_dt0.01', overwriting each other. Fixed with index suffix.
+- T12 tier bug: was writing to tier01/02/03 instead of tier12. Fixed.
+- T1-T10 complete (569GB). T11 complete (18GB, 50/50 stitched protocols). T12 running (ENDO/M_CELL celltypes).
+
+**Architecture v2 decisions:**
+1. **I_stim removed from model input**: Gates respond to Vm only (biophysically correct). Matches operator splitting (ionic step sees only Vm). I_stim applied externally in Vm update. W_k, W_v: (3,8)→(2,8), -16 params.
+2. **Stage 2 doubled to two rounds**: Two sequential split GELU rounds. Round 1 produces pairwise products (m·h), Round 2 produces products of products (m·h·j). Both W_cc spectral-normed. +144 params, +176 FLOPs.
+3. **Stage 3 upgraded to KAN Chebyshev K=3**: Per-dim learned 1D functions via Chebyshev polynomial basis (T₀ through T₃). Captures per-dim nonlinearity (m³, Xs²) that linear readout can't. 16 dims × 4 coefficients = 64 params + b_vm + b = 66 total.
+4. **Design principle settled**: "Biophysics-inspired, not biophysics-prescribed. Provide learnability, let the optimizer decide." Rejected Nernst-structured readout as over-prescriptive for first pass.
+
+**Updated totals**: 642 inference params, 886 FLOPs (3.7× Rush-Larsen). Training: 948 params, 1210 FLOPs.
+
+**Training concerns noted:**
+- **Temporal imbalance**: ~70% of timesteps are diastole (I_ion≈0). MSE dominated by trivial resting-state prediction. Fix: phase-weighted loss (weight by |dVm/dt|) — implement in training loop.
+- **Tier imbalance**: T4 is 90% of data by size. Mitigated by curriculum (Phase B=T1 only, C=T1-T4, D=all). Sharding normalizes across tiers.
+- **Stiffness**: 1000× timescale ratio (m gate τ≈0.1ms vs I_Ks τ≈100ms). Per-dim gating handles this naturally (gate≈0.1 for fast, ≈0.0001 for slow — same principle as Rush-Larsen). Concern: sigmoid must span 1000× range, small weight changes flip between frozen and snapping. Gradient signal temporally mismatched in rollout training. Manageable because: 16 dims > 12 gates (room for timescale separation), dt as input, ZOH upgrade available if needed.
+- **T1-T12 data generation complete**: 608GB total. T4=551GB (200 random protocols), T12=22GB (ENDO/M_CELL).
+
+### 2026-03-24 — Session 13: Architecture deep-dive + blueprint
+
+**Architecture discussions:**
+- Walked through cross-attention math step-by-step (per-dim query broadcast, shared K/V, sigmoid gate, contraction toward target).
+- W_q per-dim projection: each latent scalar × one row of W_q → 8-dim query. NOT a standard nn.Linear.
+- Attention dim d=8: √8=2.83 scaling, 4× expansion from 2 inputs, balances capacity vs cost.
+- GPU analysis: ~25-30 kernel launches per forward pass. torch.compile fuses to ~5-8. Teacher-forced training parallelizes across time (reshape T×B into single batch). Rollout and inference must stay sequential — not a bottleneck for tiny model. All ops are GPU-native, no CPU-only ops.
+- Chebyshev recurrence Python loop (2 iterations) is NOT a CPU-GPU sync issue — PyTorch ops are async, torch.compile unrolls it.
+- Inference in tissue: batch size = mesh size (10K+), kernel launch overhead amortized. Real speedup comes from replacing diffusion solve (94% of cost), not ionic step (6%).
+
+**Blueprint created:** `PLAN.md` — 2 phases (ChebyshevReadout + IonicSurrogate), 18 tests total.
+
+**Audit fixes (2 rounds):**
+- CRITICAL: spectral_norm init must happen BEFORE wrapping (weight_orig gotcha). Fixed pseudocode.
+- CRITICAL: KNOWLEDGE.md column layout was 18+6, actual code is 12+12. Fixed.
+- HIGH: contractivity test renamed to Stage 1 only, full-model contractivity noted as open risk.
+- HIGH: import cascade prevention — do NOT modify top-level surrogate/__init__.py.
+- Added tests: set_bounds, constant_dim, out_of_bounds, import cascade, dtype assertions, idempotent remove_scaffold.
+- Re-audit: 0 critical, 3 high (all "be aware" notes).
+
+**Next**: Implement PLAN.md Phase 1 (ChebyshevReadout) then Phase 2 (IonicSurrogate).
 
 ### 2026-03-19 Session 7 Snapshot
 **Worked on**: Ionic surrogate ML architecture — detailed design from first principles
@@ -181,4 +231,4 @@ Full audit of KNOWLEDGE.md found 12 issues (2 critical, 3 high, 5 medium, 2 low)
 2. Training data: 12-tier protocol hierarchy + augmentation + .pt shard storage
 3. Training strategy: 4-phase curriculum (bootstrap → simple → full → robust)
 
-**Next**: Complete Phase 1 (HDF5 storage), then Phases 2-4 of data generation PLAN.md.
+**Next**: Implement padding strategy in run_datagen.py (pad small batches to n=10K, use unique schedule + repeat). Regenerate T3-12. T1+T2 already on disk (8.6GB).

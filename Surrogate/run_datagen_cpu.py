@@ -117,7 +117,7 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
 
     Processes in time chunks to avoid OOM on long protocols.
     Each chunk: simulate → record → compute gate_inf/tau → write to HDF5.
-    RAM usage: chunk_steps × n × 47 × 8 bytes (e.g., 500K × 200 × 47 × 8 = 35GB).
+    Writes per-protocol data to HDF5 immediately per chunk (no accumulation).
 
     Args:
         protos: list of Protocol objects (not ConcentrationPerturbation/CorruptionRecovery/Stitched)
@@ -125,20 +125,20 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
         dt: timestep in ms
         storage: TraceStorage for incremental HDF5 writes (if None, returns TraceData list)
         tier: tier number for storage
-        chunk_steps: max steps per chunk (~35GB RAM at n=200)
+        chunk_steps: max steps per chunk
         cell_type: cell type string for metadata
     """
     n = len(protos)
     max_dur = max(p.duration_ms for p in protos)
     n_steps = int(max_dur / dt)
 
-    # Memory estimate
-    mem_gb = n_steps * n * 47 * 8 / 1e9
     n_chunks = max(1, (n_steps + chunk_steps - 1) // chunk_steps)
-    chunk_mem_gb = min(n_steps, chunk_steps) * n * 47 * 8 / 1e9
-    print(f'    Full buffer: {mem_gb:.1f}GB → chunked: {n_chunks} chunks × {chunk_mem_gb:.1f}GB')
+    sched_gb = n_steps * n * 8 / 1e9
+    chunk_buf_gb = min(n_steps, chunk_steps) * n * (18 + 4) * 8 / 1e9
+    print(f'    {n} protos × {n_steps} steps, {n_chunks} chunks')
+    print(f'    Schedule: {sched_gb:.1f}GB, chunk buffers: ~{chunk_buf_gb:.1f}GB')
 
-    # Vectorized I_stim schedule (this is just n_steps × n floats, ~25MB for 16M×200)
+    # Vectorized I_stim schedule: (n_steps, n) — ~26GB for 16M×200
     t_all = torch.arange(n_steps, dtype=torch.float64) * dt
     stim = torch.zeros((n_steps, n), dtype=torch.float64)
     for i, p in enumerate(protos):
@@ -154,29 +154,37 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
             s2_stim = (t >= p._s2_onset) & (t < p._s2_onset + p.stim_duration)
             stim[:p_steps, i] = torch.where(s1_stim | s2_stim, p.stim_amplitude, 0.0)
         elif isinstance(p, RandomIntervalPacing):
-            for bi in range(p.n_beats):
-                onset = 0.0 if bi == 0 else float(p.cumulative[bi - 1])
-                m = (t >= onset) & (t < onset + p.stim_duration)
-                stim[:p_steps, i] = torch.where(m, p.stim_amplitude, stim[:p_steps, i])
+            # Vectorized via searchsorted: O(n_steps * log(n_beats)) not O(n_steps * n_beats)
+            onsets = torch.zeros(p.n_beats, dtype=torch.float64)
+            if p.n_beats > 1:
+                onsets[1:] = torch.tensor(p.cumulative[:p.n_beats-1].copy(), dtype=torch.float64)
+            beat_idx = torch.searchsorted(onsets, t, right=True) - 1
+            beat_idx = beat_idx.clamp(0, p.n_beats - 1)
+            time_in_beat = t - onsets[beat_idx]
+            mask = time_in_beat < p.stim_duration
+            stim[:p_steps, i] = torch.where(mask, p.stim_amplitude, 0.0)
         else:
             for step in range(p_steps):
                 stim[step, i] = p.get_I_stim(step * dt)
 
-    # I_ext schedule
+    # I_ext schedule — only allocate if needed
     has_ext = any(p.__class__.get_I_ext is not Protocol.get_I_ext for p in protos)
-    ext = torch.zeros((n_steps, n), dtype=torch.float64)
+    ext = None
     if has_ext:
+        ext = torch.zeros((n_steps, n), dtype=torch.float64)
         for i, p in enumerate(protos):
             if p.__class__.get_I_ext is Protocol.get_I_ext: continue
             p_steps = min(n_steps, int(p.duration_ms / dt))
             for step in range(p_steps):
                 ext[step, i] = p.get_I_ext(step * dt)
 
-    # Clamp
+    # Clamp — only allocate if needed
     has_clamp = any(p.__class__.is_clamped is not Protocol.is_clamped for p in protos)
-    clamp_mask = torch.zeros((n_steps, n), dtype=torch.float64)
-    clamp_v = torch.full((n_steps, n), V_REST, dtype=torch.float64)
+    clamp_mask = None
+    clamp_v = None
     if has_clamp:
+        clamp_mask = torch.zeros((n_steps, n), dtype=torch.float64)
+        clamp_v = torch.full((n_steps, n), V_REST, dtype=torch.float64)
         for i, p in enumerate(protos):
             if p.__class__.is_clamped is Protocol.is_clamped: continue
             p_steps = min(n_steps, int(p.duration_ms / dt))
@@ -187,15 +195,17 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
 
     active_steps = torch.tensor([int(p.duration_ms / dt) for p in protos], dtype=torch.long)
 
-    # Per-protocol accumulators (list of chunk tensors per protocol)
-    proto_chunks = {i: [] for i in range(n)}
+    # For non-storage mode, accumulate per-protocol chunks in memory
+    proto_chunks = {i: [] for i in range(n)} if storage is None else None
+
+    # Track per-protocol total steps written (for HDF5 incremental writes)
+    proto_steps_written = [0] * n
 
     V = torch.full((n,), V_REST, dtype=torch.float64)
     states = model.get_initial_state(n_cells=n)
 
     t0 = time.time()
     last_prog = t0
-    global_step = 0
 
     for chunk_idx in range(n_chunks):
         chunk_start = chunk_idx * chunk_steps
@@ -209,10 +219,13 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
         c_Iion = torch.zeros((cs, n), dtype=torch.float64)
         c_clamp_rec = torch.zeros((cs, n), dtype=torch.float64)
 
+        # Zero tensors for when ext/clamp not used
+        zero_n = torch.zeros(n, dtype=torch.float64)
+
         for local_step in range(cs):
             step = chunk_start + local_step
             I_s = stim[step]
-            I_e = ext[step]
+            I_e = ext[step] if has_ext else zero_n
 
             I_ion = model.compute_Iion(V, states)
 
@@ -220,7 +233,8 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
             c_stim_rec[local_step] = -(I_s + I_e)
             c_states[local_step] = states
             c_Iion[local_step] = I_ion
-            c_clamp_rec[local_step] = clamp_mask[step]
+            if has_clamp:
+                c_clamp_rec[local_step] = clamp_mask[step]
 
             total = I_s + I_e
             V_new, states_new = model.step(V, states, dt, I_stim=total)
@@ -247,15 +261,13 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
         gate_inf = model.compute_gate_steady_states(Vm_flat, states_flat).reshape(cs, n, 12)
         gate_tau = model.compute_gate_time_constants(Vm_flat, states_flat).reshape(cs, n, 12)
 
-        # Build per-protocol chunk data and accumulate
+        # Build per-protocol data and write/accumulate immediately
         for i in range(n):
             p_steps_total = int(protos[i].duration_ms / dt)
-            # How many steps of this chunk belong to protocol i?
-            p_start = max(0, chunk_start)
             p_end = min(chunk_end, p_steps_total)
-            if p_start >= p_end:
+            if chunk_start >= p_end:
                 continue
-            local_start = p_start - chunk_start
+            local_start = 0
             local_end = p_end - chunk_start
             sl = slice(local_start, local_end)
             chunk_data = torch.cat([
@@ -268,7 +280,14 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
                 gate_inf[sl, i],
                 gate_tau[sl, i],
             ], dim=1)  # (chunk_len, 47)
-            proto_chunks[i].append(chunk_data)
+
+            if storage is not None and tier is not None:
+                # Write immediately to HDF5, append to existing dataset
+                _append_to_h5(storage, tier, protos[i], chunk_data, dt, cell_type,
+                              proto_steps_written[i])
+                proto_steps_written[i] += chunk_data.shape[0]
+            else:
+                proto_chunks[i].append(chunk_data)
 
         # Free chunk buffers
         del c_Vm, c_stim_rec, c_states, c_Iion, c_clamp_rec, gate_inf, gate_tau
@@ -278,28 +297,55 @@ def run_batch_cpu(protos, model, dt=0.01, storage=None, tier=None,
     elapsed = time.time() - t0
     print(f'    Sim done: {n}×{n_steps} in {elapsed:.0f}s ({n_steps*n/elapsed/1e3:.0f}K cell-steps/s)')
 
-    # Assemble and return/save
+    if storage is not None and tier is not None:
+        print(f'    Saved {n} traces to tier {tier}')
+        return []
+
+    # Non-storage mode: assemble and return
     traces = []
     for i, p in enumerate(protos):
         if not proto_chunks[i]:
             continue
-        data = torch.cat(proto_chunks[i], dim=0)  # (T_i, 47)
+        data = torch.cat(proto_chunks[i], dim=0)
         meta = {
             'protocol_name': p.name, 'protocol_tier': p.tier,
             'cell_type': cell_type, 'duration_ms': p.duration_ms,
             'dt_default': dt, 'n_timesteps': data.shape[0],
         }
-        if storage and tier is not None:
-            storage.save_trace(TraceData(data=data, metadata=meta),
-                               tier, f'{p.name}_dt{dt}')
-            del data  # free after write
-        else:
-            traces.append(TraceData(data=data, metadata=meta))
-
-    if storage and tier is not None:
-        print(f'    Saved {n} traces to tier {tier}')
-        return []
+        traces.append(TraceData(data=data, metadata=meta))
     return traces
+
+
+def _append_to_h5(storage, tier, proto, chunk_data, dt, cell_type, offset):
+    """Append chunk data to HDF5 dataset, creating or resizing as needed."""
+    import h5py
+    path = Path(storage.base_dir) / f'tier{tier:02d}.h5'
+    name = f'{proto.name}_dt{dt}'
+    chunk_len = chunk_data.shape[0]
+
+    with h5py.File(path, 'a') as f:
+        if name not in f:
+            # First chunk: create group + resizable dataset
+            grp = f.create_group(name)
+            maxshape = (None, 47)  # unlimited first dim
+            grp.create_dataset('data', data=chunk_data.numpy(),
+                               dtype='float64', maxshape=maxshape,
+                               chunks=(min(chunk_len, 10000), 47))
+            # Write metadata
+            grp.attrs['protocol_name'] = proto.name
+            grp.attrs['protocol_tier'] = proto.tier
+            grp.attrs['cell_type'] = cell_type
+            grp.attrs['duration_ms'] = proto.duration_ms
+            grp.attrs['dt_default'] = dt
+        else:
+            # Subsequent chunks: resize and append
+            ds = f[name]['data']
+            old_len = ds.shape[0]
+            ds.resize(old_len + chunk_len, axis=0)
+            ds[old_len:old_len + chunk_len] = chunk_data.numpy()
+
+        # Update n_timesteps
+        f[name].attrs['n_timesteps'] = offset + chunk_len
 
 
 def run_sequential_cpu(proto, model, cell_type='EPI', dt=0.01):
@@ -351,7 +397,7 @@ def main():
 
             for i, p in enumerate(sequential):
                 trace = run_sequential_cpu(p, model, cell_type=ct)
-                storage.save_trace(trace, tier, f'{trace.metadata["protocol_name"]}_dt0.01')
+                storage.save_trace(trace, tier, f'{trace.metadata["protocol_name"]}_{i:03d}_dt0.01')
                 if (i+1) % 5 == 0:
                     print(f'    Sequential: {i+1}/{len(sequential)}')
             if sequential:
@@ -359,15 +405,15 @@ def main():
 
             print(f'  Tier {tier} done in {time.time()-t0:.0f}s')
 
-        # Tier 12: other celltypes
+        # Tier 12: other celltypes — all written to tier12.h5
         if 12 in args.tiers and ct == args.celltypes[0]:
             for ct2 in ['ENDO', 'M_CELL']:
                 print(f'\n=== Tier 12: {ct2} ===')
                 model2 = TTP06Model(cell_type=CellType[ct2], device=torch.device('cpu'))
-                for tier in [1, 2, 3]:
-                    protos = build_tier(tier)
-                    run_batch_cpu(protos, model2, storage=storage, tier=tier, cell_type=ct2)
-                    print(f'  T12/{ct2}/T{tier}: done')
+                for sub_tier in [1, 2, 3]:
+                    protos = build_tier(sub_tier)
+                    run_batch_cpu(protos, model2, storage=storage, tier=12, cell_type=ct2)
+                    print(f'  T12/{ct2}/T{sub_tier}: done')
 
     elapsed = time.time() - t_total
     total_size = sum(f.stat().st_size for f in Path(args.raw_dir).glob('*.h5'))
