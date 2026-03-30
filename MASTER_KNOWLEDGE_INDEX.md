@@ -9,18 +9,19 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 
 ## Knowledge Files
 
-| Topic | Knowledge |
-|-------|-----------|
-| Boundary Conduction Speedup | [KNOWLEDGE](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md) |
-| Ionic Model Optimization | [KNOWLEDGE](Research/Active/ionic_model_optimization/KNOWLEDGE.md) |
-| Engine Consolidation | [KNOWLEDGE](Research/Active/engine_consolidation/KNOWLEDGE.md) |
-| Geometry-Induced Pacemaking | [KNOWLEDGE](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) |
-| Mature hiPSC-CM Models | [KNOWLEDGE](Research/Active/mature_hipsc_cm_models/KNOWLEDGE.md) |
-| Research Environment Optimization | [KNOWLEDGE](Research/Active/research_environment_optimization/KNOWLEDGE.md) |
-| Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) |
-| Bidomain Simulation | [KNOWLEDGE](Research/Knowledge/bidomain_simulation.md) |
-| LBM Cardiac | [KNOWLEDGE](Research/Knowledge/lbm_cardiac.md) |
-| Scar BC Validity | [KNOWLEDGE](Research/Knowledge/scar_bc_validity.md) |
+| Topic | Knowledge | Status |
+|-------|-----------|--------|
+| Boundary Conduction Speedup | [KNOWLEDGE](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md) | Active |
+| Ionic Model Optimization | [KNOWLEDGE](Research/Active/ionic_model_optimization/KNOWLEDGE.md) | Active |
+| Engine Consolidation | [KNOWLEDGE](Research/Active/engine_consolidation/KNOWLEDGE.md) | Active |
+| Geometry-Induced Pacemaking | [KNOWLEDGE](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) | Active |
+| Mature hiPSC-CM Models | [KNOWLEDGE](Research/Active/mature_hipsc_cm_models/KNOWLEDGE.md) | Active |
+| Research Environment Optimization | [KNOWLEDGE](Research/Active/research_environment_optimization/KNOWLEDGE.md) | Active |
+| Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | Active — model implemented (642 params, 50 tests), data gen done (608GB), training next |
+| Bidomain Parabolic-Parabolic | [KNOWLEDGE](Research/Active/bidomain_parabolic_parabolic/KNOWLEDGE.md) | Active |
+| Bidomain Simulation | [KNOWLEDGE](Research/Knowledge/bidomain_simulation.md) | Promoted |
+| LBM Cardiac | [KNOWLEDGE](Research/Knowledge/lbm_cardiac.md) | Promoted |
+| Scar BC Validity | [KNOWLEDGE](Research/Knowledge/scar_bc_validity.md) | Promoted |
 
 ## Cross-References
 

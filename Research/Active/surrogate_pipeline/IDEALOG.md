@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Architecture v2 settled: n×1 cross-attention + two-round split GELU + KAN Chebyshev readout. 886 FLOPs, 3.7× Rush-Larsen, 642 params. I_stim removed from model input. Data generation T1-T11 complete, T12 running.
+Architecture v2 settled and implemented: n×1 cross-attention + two-round split GELU (with RMSNorm) + KAN Chebyshev readout. 886 FLOPs, 3.7× Rush-Larsen, 642 params. I_stim removed from model input. Data generation T1-T12 complete. Model code (ChebyshevReadout + IonicSurrogate) implemented with 50/50 tests passing. RMSNorm added to Stage 2 corrections (both rounds) for stability. ARCHITECTURE_v2.md written as detailed design document.
 
 ## Next Step
-Implement PLAN.md: Phase 1 (ChebyshevReadout, 8 tests) → Phase 2 (IonicSurrogate, 10 tests). Then Phase A autoencoder blueprint.
+Update PLAN.md to reflect RMSNorm addition and update IonicSurrogate tests for RMSNorm behavior. Then Phase A autoencoder training blueprint.
 
 ## Thread
 
@@ -93,6 +93,7 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | 2026-03-22 | 11 | Overnight T4-12 generation crashed (OOM: 1.2TB buffer for 200 protos × 16M steps). Fixed with chunked processing (500K steps/chunk, ~0.9GB each). Verified chunking works — T4 test running at 23% (6/29 chunks done, no OOM, 6K cell-steps/s at n=5). MASTER.md updated with bidomain_parabolic_parabolic question. |
 | 2026-03-23 | 12 | Architecture v2: I_stim removed, Stage 2 doubled (two-round split GELU), Stage 3 KAN Chebyshev K=3. Data gen fixes (searchsorted, incremental HDF5, naming). T1-T11 complete, T12 running. |
 | 2026-03-24 | 13 | Architecture deep-dive: attention math walkthrough, GPU friendliness analysis (kernel launch overhead, torch.compile fusion, teacher-forced temporal parallelism). Blueprint for model impl (2 phases, 18 tests). Audited twice — fixed spectral_norm init ordering (CRITICAL), KNOWLEDGE.md column layout 18+6→12+12 (CRITICAL), 4 high issues. Clean re-audit: 0 critical. |
+| 2026-03-26–30 | 14 | Model implementation: ChebyshevReadout (66 params) + IonicSurrogate (642/948 params). 18 model tests + 32 data gen tests = 50/50 passing. RMSNorm added to Stage 2. TikZ architecture diagram (ionic_surrogate_v2.tex). ARCHITECTURE_v2.md written. Rejected sigmoid output bounding, LayerNorm, BatchNorm. Keras deemed unsuitable. |
 
 ### 2026-03-23 — Session 12: Architecture v2 + T4-T12 data generation
 
@@ -140,6 +141,56 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 
 **Next**: Implement PLAN.md Phase 1 (ChebyshevReadout) then Phase 2 (IonicSurrogate).
 
+### 2026-03-26–30 — Sessions 14: Model implementation + architecture refinement
+
+**Model implementation (Phase 1 + Phase 2):**
+- Implemented ChebyshevReadout (`chebyshev.py`): Chebyshev polynomial readout with set_bounds(), normalize-to-[-1,1], recurrence loop, b_vm and b terms. 66 params.
+- Implemented IonicSurrogate (`ionic_surrogate.py`): Full 3-stage model. spectral_norm applied BEFORE any weight wrapping (critical ordering). remove_scaffold() strips decoder and latent→weight hooks for production. 642 inference / 948 training params.
+- 18 model tests all pass: shape, contractivity (Stage 1), spectral norm, gradient flow, remove_scaffold idempotency, set_bounds, dtype assertions, constant dim, out-of-bounds, import cascade.
+- 32 data generation tests still pass (50/50 total).
+
+**RMSNorm addition to Stage 2:**
+- Added inline RMSNorm after W_cc output in both Stage 2 rounds. Normalizes the correction to consistent RMS before residual add. Prevents quadratic blowup from split GELU product.
+- Implementation: `corr = corr / (corr.pow(2).mean(-1, keepdim=True).sqrt() + 1e-8)` — inline, no learnable params, no module.
+- Spectral norm + RMSNorm together: "belt and suspenders." SN bounds the operator (||W||_2 <= 1), RMSNorm bounds the input scale. Hard guarantee: ||correction|| <= sqrt(16) + ||b||.
+- Zero additional parameters. 18/18 tests still pass after addition.
+
+**Architecture decisions (rejected alternatives):**
+- **Sigmoid output bounding rejected**: Vanishing gradients at saturation, breaks residual identity at initialization, triple sigmoid path (Stage 1 gate + sigmoid + sigmoid = three chained sigmoids), concentration variables not bounded in [0,1]. Stability comes from architecture (spectral norm + RMSNorm + contractive Stage 1) instead.
+- **LayerNorm in attention rejected**: Single attention step (not stacked transformer), per-dim magnitude IS information for state-dependent gating (removing it defeats the purpose of per-dim query), 1/sqrt(8) scaling sufficient.
+- **No LayerNorm replacing W_cc**: W_cc is needed for 8->16 dimension expansion. LayerNorm adds centering (unneeded) and learnable params (unneeded). RMSNorm after W_cc is cleaner.
+- **BatchNorm rejected**: Batch statistics unstable for autoregressive inference (batch=1 during tissue simulation). RMSNorm is instance-level.
+- **Chebyshev normalization vs RMSNorm**: Different purposes. Chebyshev normalization maps to [-1,1] for polynomial stability (interval mapping). RMSNorm normalizes scale (prevents quadratic blowup). Both needed.
+
+**TikZ architecture diagram:**
+- Publication-quality TikZ/LaTeX diagram of full 3-stage pipeline.
+- Horizontal (left-to-right) flow with Stage 1 columns, Stage 2/3 top-to-bottom.
+- Merge convention: two lines -> vertical/horizontal bar -> single arrow.
+- Residual skip connections branch from inter-stage routing junctions.
+- Symbols: circled-asterisk for concatenation, circled-plus for add, circled-times for Hadamard.
+- Rush-Larsen equivalence boxes below each stage.
+- Source: `Images/ionic_surrogate_v2.tex`, rendered: `Images/ionic_surrogate_v2-1.png`.
+
+**ARCHITECTURE_v2.md:**
+- Nature-style detailed writeup of full architecture with biophysical reasoning for every design decision.
+- Covers: problem formulation, Stage 1 (cross-attention), Stage 2 (split GELU + RMSNorm + spectral norm), Stage 3 (Chebyshev), scaffold, stability analysis.
+- Located at `Research/Active/surrogate_pipeline/ARCHITECTURE_v2.md`.
+
+**Keras compatibility assessment:**
+- Concluded Keras is not suitable for this model. Raw nn.Parameters (W_q is not a layer), spectral_norm hooks, inline RMSNorm, remove_scaffold() all fight Keras's layer-oriented API. Staying with pure PyTorch.
+
+**Files created/modified:**
+- NEW: `Surrogate/surrogate/model/__init__.py`
+- NEW: `Surrogate/surrogate/model/chebyshev.py`
+- NEW: `Surrogate/surrogate/model/ionic_surrogate.py` (updated with RMSNorm)
+- NEW: `Surrogate/tests/test_model.py` (18 tests)
+- NEW: `Images/ionic_surrogate_v2.tex` (TikZ source)
+- NEW: `Images/ionic_surrogate_v2-1.png` (rendered diagram)
+- NEW: `Research/Active/surrogate_pipeline/ARCHITECTURE_v2.md`
+- NEW: `Surrogate/TIKZ_REFERENCE.md`
+
+**Next**: Update PLAN.md for RMSNorm, then Phase A autoencoder training blueprint.
+
 ### 2026-03-19 Session 7 Snapshot
 **Worked on**: Ionic surrogate ML architecture — detailed design from first principles
 **Accomplished**: Complete architecture pivot from Transformer to carried-latent cross-attention. Explored 12 candidate architectures with cost analysis. Settled on 3-stage design (n×1 cross-attn + split GELU + linear readout) at 673 FLOPs / 2.8× RL. Defined simplification spectrum (Levels 0-3) and modification menu (accuracy/speed upgrades). Conducted adversarial review (math + neuro critiques). All documented in WHITEBOARD.
@@ -148,87 +199,14 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 - KAN readout: replace linear w·z with learned splines φ_k(z_k). Captures m³·h·j without hidden layer (+47 FLOPs).
 - MoE: 4 phase-specialized experts with top-1 routing. 4× capacity at +8 FLOPs (router only). Each expert learns one AP phase.
 
-### 2026-03-20 — Session 8: Training data generation plan
+### 2026-03-20 — Session 8: Training data + strategy + pipeline audit
 
-Designed 7-tier training data hierarchy for TTP06 single-cell:
-- Tiers 1-4: standard pacing protocols (steady-state, S1-S2, dynamic, random intervals)
-- Tier 5: tissue-mimicking current injection (OU noise, ramps, sub-threshold blips, biphasic, random telegraph, real I_diff extracted from Bidomain V1 runs). Key insight: in tissue, cells don't see clean pacing pulses — they see smooth diffusion current from neighbors. Must train on these profiles for tissue generalization.
-- Tier 6: voltage clamp (step, ramp, staircase, AP clamp, partial clamp). Uniquely valuable because I_ion errors don't propagate through Vm (voltage is fixed) → clean gradients. Gate decoder gets exact supervision targets (gate_inf at clamp voltage).
-- Tier 7: concentration perturbation (K_o, Na_i, Ca_i variations). Simulates tissue concentration variability.
+**Training data**: Designed 12-tier hierarchy (T1-T12) covering steady-state, S1-S2, dynamic, random intervals, tissue-mimicking injection, voltage clamp, concentration perturbation, long-duration stability, corruption recovery, tissue-specific scenarios, combined stressors, and celltype variants. Key insight: tissue cells see smooth diffusion current, not clean pacing pulses. Variable dt, on-the-fly augmentation. Storage: HDF5 raw + .pt shards for training. Full details in KNOWLEDGE.md.
 
-Variable dt: train with dt ∈ {0.005-0.1ms}, feed dt as 3rd input to model K = W_k·[Vm, I_stim, dt]. With ZOH discretization, dt is explicit in formula.
+**Training strategy**: 4-phase curriculum (A: autoencoder bootstrap, B: simple dynamics, C: full dynamics, D: robustness). AdamW, scheduled sampling, gradual data mixing, double rollout length. ~40 GPU-hours estimated. Full details in KNOWLEDGE.md.
 
-Data augmentation (on-the-fly): Vm noise, conductance scaling, stimulus variation, random initial conditions, multi-scale dt within traces.
-
-Advanced: phase space coverage monitor, curriculum over complexity, adversarial protocol generation, interpolation ground truth.
-
-Gap analysis revealed 8 coverage holes. Added 5 new tiers:
-- Tier 8: Long-duration stability (200+ beats, 5-30s quiescence, long blank→burst, variable-length traces)
-- Tier 9: Recovery from corruption (random gate perturbation, sudden Vm jumps → record recovery)
-- Tier 10: Tissue-specific scenarios (boundary cells, infarct border, inert tissue interface, stimulus site, spiral wave tip). Key: these simulate reduced/asymmetric electrotonic loading.
-- Tier 11: Combined stressors (random pacing + OU noise + hyperkalemia simultaneously)
-- Tier 12: Celltype variants (TTP06 epi/endo/M, ×3 all Tier 1-3 protocols)
-
-Increased Tier 4 random protocols from 10 → 200 with varying trace lengths (5-200 beats).
-
-Added stitched protocol augmentation to Tier 11 (random protocols concatenated with LogUniform(1-30s) rest breaks, 500+ traces).
-
-Data storage format settled:
-- Raw: HDF5 per tier (float64, full metadata, archival)
-- Training: pre-chunked .pt shard files (~200MB each, float32, pre-shuffled). Segments of (N, seg_len, 22) loaded directly to GPU. Zero parsing overhead.
-- float32 for training (2× savings vs float64, ML doesn't need the precision)
-- Train/val split by protocol (unseen pacing patterns), not by timestep
-- Augmentation: conductance/stitching/dt offline, Vm noise on-the-fly
-- ~500GB total dataset, loads 1-2 shards at a time into GPU
-
-### 2026-03-20 — Session 8 (continued): Training strategy
-
-Settled 4-phase training curriculum:
-- Phase A: Gate autoencoder bootstrap (encoder+decoder on gate snapshots, establishes latent coordinate system, trains in minutes)
-- Phase B: Simple dynamics (Tier 1 only, decoder frozen, teacher forcing → N=10 → N=100 rollout, λ_gate dominant)
-- Phase C: Full dynamics (Tiers 1-4, decoder unfrozen, N=1000→100000 rollout, λ_gate annealed to 0, all celltypes + dt values)
-- Phase D: Robustness (Tiers 5-12, scaffold removed, tissue injection + clamp + stress testing, 5-beat rollout)
-
-Key decisions:
-- AdamW with variable weight decay: 1e-5 (Phase A) → 1e-3 (Phase D). Increase when overfitting detected.
-- Scheduled sampling to bridge teacher forcing → autoregressive gap (10%→100% model predictions)
-- Gradual data mixing at phase transitions (90/10 ratio to avoid destabilization)
-- Double rollout length each time (not 10× jumps) to manage error accumulation
-- Cosine LR decay within phases, reset at transitions
-- Checkpoint best model per phase
-
-Estimated ~40 GPU-hours total on Blackwell.
-
-### 2026-03-20 — Session 8 (continued): Pipeline audit
-
-Full audit of KNOWLEDGE.md found 12 issues (2 critical, 3 high, 5 medium, 2 low). All fixed:
-
-**Critical fixes:**
-- W_out must be (8,16) not (8,1) — all dims need per-dim targets. Params: 466 (not 418). FLOPs: 705 (not 673).
-- Parallel scan incompatible with Stage 2 (GELU is nonlinear, breaks affine recurrence). Sequential backprop feasible for tiny model + gradient checkpointing.
-
-**High fixes:**
-- dt added to K/V input: W_k, W_v now (3,8) not (2,8).
-- Gate decoder FLOPs corrected: 324 (not 1,088). Was stale from old 3-layer MLP.
-- Voltage clamp moved from Phase D to Phase C (scaffold still active → maximizes gate supervision).
-
-**Medium fixes:**
-- Training loop needs clamp mask for mixed free/clamped batches.
-- I_stim input flagged as biophysically questionable — keep for now, evaluate in Phase B.
-- Spectral norm chosen over ε-scaling for Stage 2 stability (Lipschitz bound, not output scaling).
-- Added overfitting risk in Phase B (466 params vs ~180 training APs).
-- Added encoder-dynamics latent mismatch monitoring.
-
-**Downstream consequences:**
-- No parallel scan → gradient checkpointing for long rollouts (O(√N) memory, 2× compute). Feasible.
-- Larger W_out → 29% more params → overfitting risk in Phase B. Monitor train/val gap.
-- Voltage clamp in Phase C → need clamp data earlier, training loop more complex in Phase C.
-
-**Corrected numbers:** 705 FLOPs inference (2.9× RL), 1,029 FLOPs training (4.3× RL), 466/772 params.
-
-**All three questions settled:**
-1. ML structure: n×1 cross-attention + split GELU + linear readout (705 FLOPs, 2.9× RL, 466 params)
-2. Training data: 12-tier protocol hierarchy + augmentation + .pt shard storage
-3. Training strategy: 4-phase curriculum (bootstrap → simple → full → robust)
-
-**Next**: Implement padding strategy in run_datagen.py (pad small batches to n=10K, use unique schedule + repeat). Regenerate T3-12. T1+T2 already on disk (8.6GB).
+**Pipeline audit** (12 issues found, all fixed):
+- CRITICAL: W_out must be (8,16) not (8,1); parallel scan incompatible with Stage 2
+- HIGH: dt added to K/V input; gate decoder FLOPs corrected; voltage clamp moved to Phase C
+- MEDIUM: clamp mask, I_stim biophysics concern, spectral norm > epsilon-scaling, overfitting risk, encoder-dynamics mismatch
+- Post-audit numbers (v1): 705 FLOPs, 2.9x RL, 466/772 params (later updated to v2: 886 FLOPs, 3.7x RL, 642/948 params)

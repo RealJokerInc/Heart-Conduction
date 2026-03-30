@@ -12,6 +12,8 @@ Two-component autoregressive surrogate mirroring the bidomain simulator's operat
 
 Per-step inference: `Rush-Larsen(or ionic surrogate) → Vm_post_ionic → ResNet → (Vm_next, phi_e_next)`
 
+**Detailed design document**: [ARCHITECTURE_v2.md](ARCHITECTURE_v2.md) — Nature-style writeup with complete biophysical reasoning for every architectural decision, mathematical derivations, and stability analysis.
+
 ## Ionic Surrogate — Design
 
 ### Architecture (3 stages, 886 FLOPs, 3.7× Rush-Larsen)
@@ -28,19 +30,21 @@ latent_mid = latent_prev + delta
 ```
 Note: W_out is (8, 16) — each latent dim gets its OWN target. Without per-dim targets, all dims converge to the same equilibrium (useless).
 
-**Stage 2 — Split GELU Cross-Channel (×2 rounds)** (~352 FLOPs): Two rounds of split GELU gating, each with its own spectrally-normalized linear projection. Captures Ca↔CaL and other inter-channel coupling. Rank-8 bottleneck matches real coupling rank (~3 concentration variables).
+**Stage 2 — Split GELU Cross-Channel (×2 rounds)** (~352 FLOPs): Two rounds of split GELU gating, each with its own spectrally-normalized linear projection plus RMSNorm. Captures Ca↔CaL and other inter-channel coupling. Rank-8 bottleneck matches real coupling rank (~3 concentration variables).
 ```
 Round 1:
   gated_1 = GELU(latent_mid[:8]) ⊙ latent_mid[8:]       (8,)
   correction_1 = spectral_norm(W_cc1) · gated_1 + b_1    (16,)    Lipschitz-bounded
+  correction_1 = RMSNorm(correction_1)                    (16,)    scale-normalized
   latent_r1 = latent_mid + correction_1
 
 Round 2:
   gated_2 = GELU(latent_r1[:8]) ⊙ latent_r1[8:]         (8,)
   correction_2 = spectral_norm(W_cc2) · gated_2 + b_2    (16,)    Lipschitz-bounded
+  correction_2 = RMSNorm(correction_2)                    (16,)    scale-normalized
   latent_new = latent_r1 + correction_2
 ```
-Spectral normalization constrains ||W_cc1||₂ ≤ 1 and ||W_cc2||₂ ≤ 1, bounding the correction magnitude and preserving Stage 1 contractivity. Implementation: `torch.nn.utils.spectral_norm()`.
+**Dual stability mechanism**: Spectral normalization constrains ||W_cc||₂ ≤ 1 (bounds the operator). RMSNorm normalizes the correction to consistent RMS (bounds the input scale). Together they provide a hard guarantee: ||correction|| ≤ √16 + ||b|| ≈ 4 + ||b||. Neither can be "learned away" during training. Implementation: `torch.nn.utils.spectral_norm()` for SN; inline `corr / (corr.pow(2).mean(-1, keepdim=True).sqrt() + 1e-8)` for RMSNorm (zero learnable params).
 
 **Stage 3 — KAN Chebyshev Current Readout (K=3)** (~70 FLOPs): Per-dimension Chebyshev polynomial (degree 3) maps each latent dim to a current contribution. Captures the multiplicative gate structure (m³·h·j) that linear readout cannot, without adding a hidden layer. I_ion is unbounded (~-10 to +50 µA/cm²) via the unconstrained Chebyshev coefficients.
 ```
@@ -84,9 +88,7 @@ I_stim has been removed from model inputs. The model receives only [Vm, dt]. Thr
 | 2: + coupling | 416 | 1.7× | + split GELU cross-channel |
 | 3: Full design | 886 | 3.7× | n×1 cross-attn + 2× split GELU + KAN Chebyshev readout |
 
-Strategy: start Level 0, see what breaks. When upgrading levels, restart from Phase B (Phase A autoencoder checkpoint is shared). Save per-phase-per-level checkpoints.
-
-Strategy: start Level 0, see what breaks (restitution? calcium? APD accuracy?), add features from the modification menu.
+Strategy: start Level 0, see what breaks (restitution? calcium? APD accuracy?). When upgrading levels, restart from Phase B (Phase A autoencoder checkpoint is shared). Save per-phase-per-level checkpoints. Add features from the modification menu as needed.
 
 ### Modification Menu
 
@@ -95,6 +97,27 @@ Strategy: start Level 0, see what breaks (restitution? calcium? APD accuracy?), 
 **Accuracy upgrades**: A1 multi-head (+200), A2 stacked attention (+464/layer), A3 nonlinear MLP readout (+300, replaces KAN), A5 explicit concentrations (+100), A6 structured Nernst current (+50), A7 higher-degree KAN K=5 (+32 params).
 
 **Speed downgrades**: S1 remove one cross-channel round (-176), S2 scalar attention (-350), S3 smaller latent d=8 (~half), S4 linear readout (replace KAN, -37 FLOPs), S6 drop to scalar HH (-497).
+
+### Normalization Strategy
+
+The model uses a carefully chosen combination of normalization techniques, each addressing a specific failure mode:
+
+| Technique | Where | Purpose | Params |
+|-----------|-------|---------|--------|
+| 1/√8 scaling | Stage 1 attention score | Prevents score saturation | 0 |
+| Sigmoid gate | Stage 1 update | Bounds update rate to (0,1), guarantees contraction | 0 |
+| Spectral norm | Stage 2 W_cc1, W_cc2 | Bounds operator norm ||W||₂ ≤ 1 | 0 |
+| RMSNorm | Stage 2 corrections (both rounds) | Normalizes correction scale, prevents quadratic blowup | 0 |
+| Chebyshev normalization | Stage 3 input | Maps latent to [-1,1] for polynomial stability | 0 (uses learned bounds) |
+
+**Rejected alternatives and rationale:**
+
+- **Sigmoid output bounding**: Vanishing gradients at saturation. Breaks residual identity at initialization (sigmoid(0)=0.5, not passthrough). Triple sigmoid path (Stage 1 gate + two Stage 2 sigmoids) would chain three saturating nonlinearities. Concentration-like variables are not bounded in [0,1]. Stability is better achieved structurally (spectral norm + RMSNorm + contraction) than by clamping outputs.
+- **LayerNorm in Stage 1 attention**: Single attention step (not stacked transformer), so no layer-stacking instability to address. Per-dimension magnitude IS information for the state-dependent query mechanism (a dimension far from equilibrium should produce a large query). LayerNorm would remove this signal. The 1/√8 scaling is sufficient.
+- **LayerNorm replacing W_cc in Stage 2**: W_cc performs 8→16 dimension expansion, which LayerNorm cannot replace. RMSNorm after W_cc is cleaner than LayerNorm: no centering (the correction should be able to shift the latent mean), no learnable params (nothing to overfit).
+- **BatchNorm**: Batch statistics are unstable for autoregressive inference where batch=1 (single cell during tissue simulation). RMSNorm operates per-instance, no batch dependency.
+
+**RMSNorm + spectral norm synergy**: These address orthogonal failure modes. Spectral norm bounds what the operator *does* (output/input ratio ≤ 1). RMSNorm bounds what the operator *sees* (input scale normalized to RMS=1). Without RMSNorm, the split GELU product is quadratic in latent magnitude — if latent values grow, the correction grows faster, creating a positive feedback loop even with ||W||₂ ≤ 1. Without spectral norm, RMSNorm only normalizes the input but the linear map could still amplify arbitrarily.
 
 ### Losses and Regularization
 
@@ -453,8 +476,12 @@ Trade-off: chunking adds disk I/O overhead but eliminates OOM. At n=5 (test), th
 |------|--------|------|-------|
 | T1 (steady-state) | Done | ~3.5GB | On HDD |
 | T2 (S1-S2) | Done | ~5.1GB | On HDD |
-| T3 (dynamic) | Regenerated | ~2.3GB | 47-col format |
-| T4-T12 | Pending | — | Chunked generator ready |
+| T3 (dynamic) | Done | ~2.3GB | 47-col format |
+| T4 (random intervals) | Done | ~551GB | 200 protocols, chunked |
+| T5-T10 | Done | ~15GB | Various tiers |
+| T11 (combined/stitched) | Done | ~18GB | 50 stitched protocols |
+| T12 (celltypes) | Done | ~22GB | ENDO/M_CELL variants |
+| **Total** | **Done** | **~608GB** | All tiers complete on HDD |
 
 ### 47-Column Format
 
@@ -462,7 +489,7 @@ gate_inf and gate_tau columns added post-hoc after full trace generation (vector
 
 ## Diffusion Component — Cross-Skip Coupled ResNet
 
-Architecture unchanged from original design (not yet revisited this session):
+Architecture unchanged from original design (not yet revisited — focus has been on ionic surrogate):
 - Dual conv paths (Vm, phi_e) with bidirectional 1×1 cross-skip connections at each block
 - Monodomain single-path baseline first, then bidomain upgrade
 - Upgrade path if phi_e accuracy insufficient: dilated conv → U-Net → local Transformer → FNO
@@ -471,7 +498,7 @@ Architecture unchanged from original design (not yet revisited this session):
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Stage 2 breaks Stage 1 contractivity | HIGH | Spectral normalization on W_cc (||W_cc||₂ ≤ 1) |
+| Stage 2 breaks Stage 1 contractivity | HIGH | Spectral normalization on W_cc (||W_cc||₂ ≤ 1) + RMSNorm on corrections. Hard bound: ||correction|| ≤ √16 + ||b|| |
 | Error accumulation over 100K+ autoregressive steps | HIGH | Gate decoder scaffold per-step; gradient checkpointing for memory; validate with 5000ms+ rollouts |
 | Parallel scan incompatible with Stage 2 | HIGH | Sequential backprop feasible for tiny model; or train Stage 1 with scan, fine-tune Stage 2 |
 | Ca handling is compartmental, not gate-like | MEDIUM | Monitor Ca-related gate predictions; add explicit Ca dims (mod A5) if needed |
@@ -504,6 +531,20 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 - Will cross-skip 1×1 convolutions suffice for Vm↔phi_e coupling?
 - What pacing protocols are needed in training data for robust restitution?
 - Is the monodomain → bidomain transfer (reusing Vm path weights) effective?
+
+## Implementation Status
+
+| Component | Code Location | Tests | Status |
+|-----------|--------------|-------|--------|
+| ChebyshevReadout | `Surrogate/surrogate/model/chebyshev.py` | 8 tests in `test_model.py` | Done |
+| IonicSurrogate | `Surrogate/surrogate/model/ionic_surrogate.py` | 10 tests in `test_model.py` | Done (with RMSNorm) |
+| Data generation | `Surrogate/surrogate/data/` | 32 tests in `test_datagen.py` | Done |
+| Architecture diagram | `Images/ionic_surrogate_v2.tex` / `.png` | — | Done |
+| Architecture document | `Research/Active/surrogate_pipeline/ARCHITECTURE_v2.md` | — | Done |
+| Training pipeline | — | — | Not started |
+| Phase A autoencoder | — | — | Not started (next) |
+
+**Test summary**: 50/50 passing (18 model + 32 data generation).
 
 ## Connections
 - **Engines**: Bidomain V1 (training data source), Monodomain V5.4 (monodomain baseline)
