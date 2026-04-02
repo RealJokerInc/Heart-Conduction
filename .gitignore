@@ -1,1 +1,3 @@
 **/WHITEBOARD.md
+__pycache__/
+*.pyc
