@@ -17,7 +17,7 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 | Geometry-Induced Pacemaking | [KNOWLEDGE](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) | Active |
 | Mature hiPSC-CM Models | [KNOWLEDGE](Research/Active/mature_hipsc_cm_models/KNOWLEDGE.md) | Active |
 | Research Environment Optimization | [KNOWLEDGE](Research/Active/research_environment_optimization/KNOWLEDGE.md) | Active |
-| Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | Active — model implemented (642 params, 50 tests), data gen done (608GB), training next |
+| Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | Active — v3 model implemented (75/75 tests), data gen done (608GB), preprocessor + training next |
 | Bidomain Parabolic-Parabolic | [KNOWLEDGE](Research/Active/bidomain_parabolic_parabolic/KNOWLEDGE.md) | Active |
 | Bidomain Simulation | [KNOWLEDGE](Research/Knowledge/bidomain_simulation.md) | Promoted |
 | LBM Cardiac | [KNOWLEDGE](Research/Knowledge/lbm_cardiac.md) | Promoted |

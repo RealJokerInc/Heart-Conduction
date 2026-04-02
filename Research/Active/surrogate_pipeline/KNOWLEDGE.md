@@ -1,61 +1,420 @@
-# Surrogate Pipeline — Knowledge File
+# Surrogate Pipeline -- Knowledge File
 
-> This file is a running synthesis. Updated as findings accumulate.
+> Reference document. Updated as findings accumulate.
 > When the question is complete, a copy is promoted to `Research/Knowledge/`.
 
-## Overall Architecture
+---
+
+## 1. Overall Architecture
 
 Two-component autoregressive surrogate mirroring the bidomain simulator's operator splitting:
 
-1. **Ionic Surrogate** (per-node, local): pure autoregressive latent — carried latent state updated each step via n×1 cross-attention to Vm. Predicts I_ion from latent + Vm. No Vm history buffer.
-2. **Cross-Skip Coupled ResNet** (spatial, global): dual conv paths for Vm and phi_e with bidirectional 1×1 cross-skip connections. Replaces the elliptic solve (PCG/GMG) which dominates 94% of bidomain wall time.
+1. **Ionic Surrogate** (per-node, local): pure autoregressive latent -- carried state updated each step via n x 1 cross-attention to Vm. Predicts I_ion from latent + Vm + reversal potentials + concentrations. No Vm history buffer.
+2. **Cross-Skip Coupled ResNet** (spatial, global): dual conv paths for Vm and phi_e with bidirectional 1x1 cross-skip connections. Replaces the elliptic solve (PCG/GMG) which dominates 94% of bidomain wall time.
 
-Per-step inference: `Rush-Larsen(or ionic surrogate) → Vm_post_ionic → ResNet → (Vm_next, phi_e_next)`
+Per-step inference: `IonicSurrogate (or Rush-Larsen) -> Vm_post_ionic -> ResNet -> (Vm_next, phi_e_next)`
 
-**Detailed design document**: [ARCHITECTURE_v2.md](ARCHITECTURE_v2.md) — Nature-style writeup with complete biophysical reasoning for every architectural decision, mathematical derivations, and stability analysis.
+### Compute Insight -- Critical Path vs Background
 
-## Ionic Surrogate — Design
+The diffusion step (94% of wall time) only needs I_ion. Stage 1 outputs (updated latent, compressed conductance) are needed at the NEXT timestep. On GPU, Stage 1 runs on a separate CUDA stream in parallel with the diffusion solve -- effectively free compute. Only Stage 2 (current readout) is on the critical path.
 
-### Architecture (3 stages, 886 FLOPs, 3.7× Rush-Larsen)
-
-**Stage 1 — n×1 Cross-Attention** (~464 FLOPs): Each of 16 latent dimensions independently queries the voltage. Produces a per-dimension gate (how much to update) and per-dimension target (where to move toward). Contractive by construction.
 ```
-Q = W_q · latent_prev            (16, 8)     per-dim query (state-dependent)
-K = W_k · [Vm, dt]              (1, 8)      voltage key (shared)
-V = W_v · [Vm, dt]              (1, 8)      voltage value (shared)
-gate = σ(Q · K^T / √8)          (16, 1)     per-dim attention score
-target = V · W_out               (16,)       per-dim voltage-dependent target
-delta = gate · (target - latent_prev)         contraction toward target
-latent_mid = latent_prev + delta
+carried_state(t), Vm, dt
+  |-> Stage 1 (off critical path): state evolution -> carried_state(t+1), conductance_latent(t+1)
+  |                                  Nernst -> reversal_potentials(t+1)
+  |                                  [runs during diffusion step]
+  |
+  +-> Stage 2 (ON critical path):  current readout -> I_ion(t)
+                                    [must complete before diffusion step begins]
 ```
-Note: W_out is (8, 16) — each latent dim gets its OWN target. Without per-dim targets, all dims converge to the same equilibrium (useless).
 
-**Stage 2 — Split GELU Cross-Channel (×2 rounds)** (~352 FLOPs): Two rounds of split GELU gating, each with its own spectrally-normalized linear projection plus RMSNorm. Captures Ca↔CaL and other inter-channel coupling. Rank-8 bottleneck matches real coupling rank (~3 concentration variables).
-```
-Round 1:
-  gated_1 = GELU(latent_mid[:8]) ⊙ latent_mid[8:]       (8,)
-  correction_1 = spectral_norm(W_cc1) · gated_1 + b_1    (16,)    Lipschitz-bounded
-  correction_1 = RMSNorm(correction_1)                    (16,)    scale-normalized
-  latent_r1 = latent_mid + correction_1
+Stage 1 design prioritizes accuracy (can be as expressive as needed). Stage 2 design prioritizes speed.
 
-Round 2:
-  gated_2 = GELU(latent_r1[:8]) ⊙ latent_r1[8:]         (8,)
-  correction_2 = spectral_norm(W_cc2) · gated_2 + b_2    (16,)    Lipschitz-bounded
-  correction_2 = RMSNorm(correction_2)                    (16,)    scale-normalized
-  latent_new = latent_r1 + correction_2
-```
-**Dual stability mechanism**: Spectral normalization constrains ||W_cc||₂ ≤ 1 (bounds the operator). RMSNorm normalizes the correction to consistent RMS (bounds the input scale). Together they provide a hard guarantee: ||correction|| ≤ √16 + ||b|| ≈ 4 + ||b||. Neither can be "learned away" during training. Implementation: `torch.nn.utils.spectral_norm()` for SN; inline `corr / (corr.pow(2).mean(-1, keepdim=True).sqrt() + 1e-8)` for RMSNorm (zero learnable params).
+---
 
-**Stage 3 — KAN Chebyshev Current Readout (K=3)** (~70 FLOPs): Per-dimension Chebyshev polynomial (degree 3) maps each latent dim to a current contribution. Captures the multiplicative gate structure (m³·h·j) that linear readout cannot, without adding a hidden layer. I_ion is unbounded (~-10 to +50 µA/cm²) via the unconstrained Chebyshev coefficients.
-```
-Normalize: z̃_k = 2·(z_k - z_min)/(z_max - z_min) - 1
-Chebyshev basis: T₀=1, T₁=z̃, T₂=2z̃T₁-T₀, T₃=2z̃T₂-T₁
-Per-dim: φ_k(z_k) = C_k · [T₀, T₁, T₂, T₃]
-I_ion = Σ φ_k(z_k) + b_vm·Vm + b
-```
-C (16,4)=64 params + b_vm(1) + b(1) = 66 params.
+## 2. Design Philosophy
 
-**Scaffold — Gate Decoder** (training only, ~324 FLOPs): Single linear (16→18) + sigmoid → 18 TTP06 gates. Forces latent to encode physically meaningful ionic state. Removed for production inference. If linear decoder is insufficient, upgrade to MLP (16→32→18).
+### Layer 0 Reasoning Framework
+
+Architectural decisions are derived from three layers, prioritized top-down:
+
+**Layer 0 -- Physical reality (neurophysiology):** What actually happens at the cardiac membrane. Ground truth. The architecture must capture these truths. Future goal: train from real arc light (optical mapping) data, so the architecture must not be locked to simulator assumptions.
+
+**Layer 1 -- Biophysics models (TTP06, ORd):** Human-constructed theories explaining Layer 0. Useful, validated, contain assumptions. HH gating, independent gates, compartmental Ca cycling, specific Markov state diagrams -- all are modeling choices, not measured physics.
+
+**Layer 2 -- Neural architecture:** Should be inspired by what Layer 1 got right about Layer 0, but not enslaved to Layer 1's specific formulations. Where a neural network can learn the relationship more naturally than the biophysics equation prescribes, let it.
+
+### Design Maxims
+
+- "Ground truth is reality, not models" -- don't bake in TTP06/ORd assumptions
+- "Physics provides the skeleton, ML fills the flesh"
+- Physics-informed elements: Nernst equation (fixed), operator splitting structure, explicit concentrations, Kirchhoff's law (I_ion = sum of channel contributions)
+- ML-learned elements: attention dynamics, MLP coupling, compression, readout routing
+
+### Layer 0 Physical Truths
+
+| Reality | What biophysics models say | Assessment |
+|---------|---------------------------|------------|
+| Channels respond to voltage (conformational changes) | HH: dg/dt = (g_inf(V)-g)/tau(V). Markov: rate matrix. | Good pattern (relax toward equilibrium), but independence of gates and specific kinetics are assumptions |
+| Current = conductance x driving force | I = g_max x P_open x (V-E) | Solid physics (Ohm's law). But P_open = m^3*h*j is HH-specific; Markov uses state occupancy |
+| Concentrations change slowly, creating memory | dCa/dt = -I_Ca/(2FV_cell) + fluxes | Physics is right, compartment structure is assumed. TTP06: 3 Ca compartments. ORd: 4. Reality: continuous gradients |
+| Multi-timescale dynamics | Separate tau per gate (0.1ms to 100ms+) | Real phenomenon, but clean separation into named gates is artificial |
+| Cross-channel coupling | Hardcoded equations (I_CaL->Ca_i->fCa, CaMKII) | Coupling exists, but wiring diagram differs between models. All coupling is SLOW (timescale >> dt) |
+
+### Physical Task Decomposition
+
+| Physical task | What happens | Timescale within 1 dt (0.01ms) | Architecture |
+|---------------|-------------|-------------------------------|--------------|
+| A: Conformational dynamics | Channel proteins change shape in response to Vm | Per-state, independent within dt | Stage 1 (per-dim cross-attention) |
+| B: Cross-state coupling | Ca cycling, CaMKII, concentration feedback | Negligible within dt (~0.0001% change). All coupling is TEMPORAL -- accumulates over many steps | Stage 1 latent memory (no dedicated stage) |
+| C: Current summation | Static function: state + Vm -> I_ion. Cross-dim products for open probability | Instantaneous (no dynamics) | Stage 2 (readout with cross-dim interaction) |
+
+---
+
+## 3. v3 Stage 1 -- State Evolution (off critical path)
+
+### Carried State
+
+```
+carried_state = [ionic_state(32), Na_i, K_i, Ca_i, Ca_ss] = (36,)
+                 |-- latent ---|  |---- explicit, named ---|
+```
+
+- **ionic_state** (32 dims): latent, learned, encodes channel conformational states (gates, Markov occupancies)
+- **concentrations** (4 dims): explicit named variables [Na_i, K_i, Ca_i, Ca_ss]
+- Ca_SR dropped -- purely internal SR variable, not used in any reversal potential or readout feature. SR calcium load tracked implicitly by ionic_state.
+- **Working dim = 32**: TTP06 has 18 states, ORd has 41. Working dim must accommodate both. 32 is comfortable for TTP06, sufficient for ORd with learned compression. Increase to 48+ for ORd if needed -- cost stays in background.
+
+### Full Pipeline
+
+```
+carried_state(t) = [ionic_state(32), concentrations(4)]     (36,)
+  -> n x 1 cross-attention to [Vm, dt], attn_dim=4          per-dim voltage response (contractive)
+      36 dims all attend to Vm; concentration dims learn slow tracking
+  -> SPLIT after attention:
+      ionic_mid = z_mid[:32]                                 (32,) -> continues to MLP
+      conc(t+1) = z_mid[32:36]                               (4,) -> DONE (attention only, no MLP)
+
+  ionic_mid:
+  -> Pre-RMSNorm                                             stabilize MLP input scale (0 params)
+  -> learned-mix MLP + GELU (32->32->32), 1 hidden layer     cross-dim Markov correction
+      correction = W2 @ GELU(W1 @ RMSNorm(ionic_mid) + b1) + b2
+      alpha = sigmoid(w)                                     per-dim mixing weight (32 params)
+      ionic(t+1) = (1 - alpha) * ionic_mid + alpha * correction
+
+  carried_state(t+1) = [ionic(t+1), conc(t+1)]             (36,)
+
+  -> learned-mix compression (ionic_state only):
+      linear_path = W_lin @ ionic_state                      (32->16)
+      nonlinear_path = MLP(ionic_state)                      (32->24->24->16) gate products
+      beta = sigmoid(w_beta)                                 per-dim mixing weight (16 params)
+      conductance_latent = (1-beta) * linear_path + beta * nonlinear_path
+  -> conductance_latent(t+1)                                 (16,)
+
+  -> Nernst equation (fixed physics, 0 learned params):
+      concentrations(t+1) -> [E_Na, E_K, E_Ca, E_Ks]       (4,) reversal potentials
+
+Scaffold decoders (training only, all annealed to zero in Phase D):
+  ionic_state(t+1)        -> full gate decoder (32->12) -> gate predictions (12 HH gates only)
+  conductance_latent(t+1) -> compressed gate decoder (16->12) -> gate predictions
+  concentrations(t+1)     -> direct MSE vs true concentrations (no decoder needed)
+  Losses:
+    L_gate_full = MSE(full_decoder(ionic_state), true_gates)
+    L_gate_comp = MSE(comp_decoder(conductance_latent), true_gates)
+    L_conc = MSE(concentrations, true_concentrations)     <- direct, no decoder
+```
+
+### Design Rationale
+
+**n x 1 cross-attention:**
+- Each of 36 carried_state dims independently queries the voltage [Vm, dt]. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
+- Mathematically equivalent to learned Rush-Larsen but with state-dependent gating (the attention score depends on BOTH Vm AND the current latent value, while RL's rate depends on Vm only).
+- **attn_dim = 4** (down from 8 in v2): Gate is one scalar from 2 inputs (Vm, dt). Smooth sigmoid-like function -- 4 basis functions suffice.
+- **1 attention layer**: One voltage response per dt is physically correct. Stacking applies contraction twice to same Vm -- numerically redundant.
+
+**Concentrations split off after attention, before MLP:**
+- The MLP handles intra-protein Markov corrections between ionic dims only.
+- Passing concentrations through the MLP would create artificial ionic<->concentration coupling that doesn't exist within one dt.
+- Attention is sufficient for concentration tracking: Vm strongly correlates with gate state during normal pacing, concentration changes are ~0.0001% per step, self-regulation via own-value feedback, end-to-end training through I_ion -> Nernst catches systematic errors.
+
+**Markov MLP (32->32->32, 1 hidden layer, 1 GELU):**
+- Cross-dim correction over ionic_state dims only (32 dims). No bottleneck -- architecture ALLOWS coupling but does not FORCE it.
+- HH gates that need no coupling pass through residual unchanged.
+- Pre-RMSNorm on MLP input stabilizes input scale across 100K+ recurrent steps.
+- One hidden layer captures pairwise interactions. Add second layer if insufficient.
+
+**Learned residual mixing (inspired by DeepSeek hyper-connections):**
+
+```python
+alpha = sigmoid(w)                         # w learned per-dim (32,), alpha in (0,1)
+correction = MLP(RMSNorm(ionic_mid))
+ionic_new = (1 - alpha) * ionic_mid + alpha * correction   # convex combination
+```
+
+No amplification by construction (convex combination bounded between inputs). Each ionic dim learns how much MLP correction to accept: alpha->0 for HH dims (pure residual), alpha>0 for Markov-coupled dims. Init: w = large negative -> alpha~0 -> starts as near-pure residual. 32 learned params.
+
+Replaces three mechanisms from earlier design iterations:
+- ~~Spectral norm on MLP weights~~ -- not needed, convex combination can't amplify
+- ~~Zero-init of MLP output~~ -- not needed, alpha init handles it
+- ~~Gate-modulated correction~~ -- not needed, per-dim alpha is the learned gate
+
+**Compression MLP (CARRIED_DIM->COMP_H1->COMP_H2->COND_DIM, 2 hidden layers, 2 GELUs):**
+- Takes FULL carried_state (ionic + concentrations) as input, NOT just ionic_state. Gives compression access to concentration context (e.g., Ca_ss for fCass-dependent conductances). Recomputed every step because gate products change and attention cannot compute cross-dim products (structural limitation).
+- Two hidden layers: layer 1 computes pairwise products (m*h), layer 2 composes into triple products (m*h*j).
+- Residual compression with learned mixing: `compressed = (1-beta) * W_lin @ carried + beta * MLP(carried)`. Linear path for direct projection, nonlinear path for gate products. Per-dim beta (COND_DIM params) controls linear vs nonlinear.
+- Total GELUs in Stage 1 pipeline: 3 (1 in Markov MLP + 2 in compression MLP). Sufficient for triple product composition.
+
+**Dual scaffold decoders (training only):**
+- Full decoder (32->12): ensures full latent encodes HH gate information (12 gates: m,h,j,r,s,d,f,f2,fCass,Xr1,Xr2,Xs). NOT 18 — RR has no gate_inf/tau, concentrations have their own direct MSE loss.
+- Compressed decoder (16->12): ensures compression preserves gate information.
+- Both use L_gate = MSE(gates_pred, gates_true), annealed to zero in Phase D.
+- Both removed for production inference.
+
+### Nernst Computation (fixed physics, 0 learned params)
+
+Reads concentration dims directly from carried_state. No learned components.
+
+```
+concentrations(t+1) = carried_state(t+1)[32:36]             (4,) [Na_i, K_i, Ca_i, Ca_ss]
+  -> Nernst equation:
+      E_Na = (RT/F) x ln(Na_o / Na_i)                       Na_o = 140 mM
+      E_K  = (RT/F) x ln(K_o / K_i)                         K_o = 5.4 mM
+      E_Ca = (RT/(2F)) x ln(Ca_o / Ca_i)                    Ca_o = 2.0 mM
+      E_Ks = (RT/F) x ln((K_o + P*Na_o)/(K_i + P*Na_i))    mixed permeability
+  -> [E_Na, E_K, E_Ca, E_Ks]                                (4,) reversal potentials
+```
+
+Differentiable (log and division). Gradients flow: I_ion -> readout -> E -> Nernst -> concentration dims -> attention.
+
+**Why both E and raw concentrations feed Stage 2:**
+
+| Current type | What it needs | Example |
+|---|---|---|
+| Ohmic channels | E (reversal potential) | I_Na uses Vm - E_Na |
+| GHK (I_CaL) | Raw Ca_ss + Vm | Nonlinear flux equation |
+| Pumps/exchangers | Raw Na_i, Ca_i + Vm | I_NaCa, I_NaK |
+
+### Effective Variables for I_ion Computation
+
+| Ionic model | State variables | Effective I_ion inputs | Compression ratio |
+|---|---|---|---|
+| TTP06 | 18 (13 gates + 5 concentrations) | ~11 (5 conductance products + 5 concentrations + Vm) | 1.6x |
+| ORd | 41 (20 gates + 11 Markov + 9 concentrations + CaMKII) | ~13 (6 conductance terms + 6 concentrations + Vm) | 3.2x |
+
+16 compressed dims comfortably exceeds both models' effective input requirements.
+
+### Information Flow
+
+- Only `carried_state` (36 values) is carried forward between timesteps
+- `conductance_latent` (16 values) is derived each step as the last part of Stage 1 pipeline
+- Stage 2 reads `conductance_latent(t)` (the OLD compressed, before this step's Stage 1 updates)
+- Reversal potentials are derived, not carried
+
+---
+
+## 4. v3 Stage 2 -- Current Readout (ON critical path)
+
+### Inputs
+
+```
+conductance_latent(t) + Vm + reversal_potentials(t) + concentrations(t) -> readout -> I_ion(t)
+        (16,)          (1,)         (4,)                   (4,)                       (1,)
+```
+
+25 inputs total: 16 conductance tokens (queries) + 9 environment tokens (keys/values).
+
+### Architecture: Cross-Attention + MLP
+
+**Cross-attention (no softmax):** Each conductance dim queries the environment to determine its current contribution. No softmax because I_ion is unbounded and negative scores are physically meaningful (the E term in Vm - E is subtracted).
+
+```
+Q_k = conductance_k × e_q[k]       # 16 queries, each d-dim (d=4)
+K_j = environment_j × e_k[j]       # 9 keys, each d-dim
+V_j = environment_j × e_v[j]       # 9 values, each d_v-dim (d_v=1)
+
+scores = Q @ K^T / sqrt(d)          # (16, 9) attention matrix
+attended = scores @ V                # (16,) per-channel current contributions
+```
+
+**Output MLP:** 16 → h → GELU → 1 (h=4). Allows nonlinear channel interactions beyond pure Kirchhoff summation.
+
+```
+I_ion = W2 @ GELU(W1 @ attended + b1) + b2     # scalar
+```
+
+**Physical interpretation:**
+- Each conductance token "asks" the environment: what driving force should I apply?
+- Na conductance attends strongly to Vm and E_Na → learns (Vm - E_Na)
+- CaL conductance attends to Vm, Ca_ss → learns GHK-like nonlinear flux
+- Pump conductance attends to Na_i, Vm → learns I_NaK dependence
+- The MLP combines the 16 per-channel contributions, allowing interactions (e.g., I_NaCa involves both Na and Ca)
+
+### Parameters and FLOPs
+
+| Component | Params | FLOPs |
+|---|---|---|
+| Q embeddings e_q (16, 4) | 64 | 64 |
+| K embeddings e_k (9, 4) | 36 | 36 |
+| V embeddings e_v (9, 1) | 9 | 9 |
+| Q @ K^T (16×9, d=4) | -- | 1152 |
+| Scale 1/√4 | -- | 144 |
+| scores @ V (16×9, d_v=1) | -- | 288 |
+| MLP W1 (16→4) + b1 | 68 | 128 |
+| GELU (4) | -- | 20 |
+| MLP W2 (4→1) + b2 | 5 | 9 |
+| **Total** | **182** | **~1850** |
+
+### Comparison to Ionic Model Steps
+
+| | Total FLOPs | vs TTP06 (~600) | vs ORd (~1700) |
+|---|---|---|---|
+| Stage 2 readout | ~1850 | 3.1× | 1.1× |
+| TTP06 full step | ~600 | 1× | -- |
+| ORd full step | ~1700 | -- | 1× |
+
+Total FLOPs are ~1× ORd. Acceptable because Stage 2 is the ONLY thing on the critical path (Stage 1 is free).
+
+**Optional optimization (defer to later):** Queries and 8/9 of keys/values can be precomputed off critical path (only Vm is new each step). Reduces critical path to ~330 FLOPs (0.55× TTP06). Implement if readout becomes the actual bottleneck after diffusion surrogate is built.
+
+### Design Decisions
+
+- **d=4 (attention dim):** 16 queries attending to 9 keys. Each dot product is 4-dimensional -- enough to learn channel-to-environment routing. Larger d adds capacity for diminishing returns.
+- **d_v=1 (value dim):** Each environment token provides one scalar value. Sufficient for single-output (I_ion). Upgrade to d_v=2-4 if training shows limitation.
+- **h=4 (MLP hidden):** Conservative. Start small, upgrade to h=8 if channel interactions need more capacity (~120 extra FLOPs).
+- **No softmax:** I_ion is unbounded. Negative attention scores are physically meaningful (subtraction in driving force). Softmax would force positive weights and add ~1600 FLOPs (144 exp operations).
+- **GELU in output MLP:** Allows nonlinear channel interaction. Kirchhoff says currents sum linearly, but our 16 conductance dims are learned (not literal channels) -- their combination may benefit from nonlinearity.
+- **Input normalization (required):** Environment tokens have wildly different scales (K_i ~ 138 mM vs Ca_i ~ 0.0001 mM -- six orders of magnitude). Without normalization, low-magnitude tokens (Ca_i, Ca_ss) are invisible to attention (key magnitude ≈ 0). All 9 environment inputs normalized to ~[-1, 1] using known physiological ranges before embedding. 18 fixed constants (9 shifts + 9 scales), not learned. Conductance latent scale is controlled by compression -- normalize if needed.
+
+### Training Strategy
+
+Train Stage 1 and Stage 2 separately, then fine-tune jointly:
+- **Phase 1:** Train Stage 1 in isolation using scaffold losses (Phases A-D curriculum). No Stage 2.
+- **Phase 2:** Freeze Stage 1. Train Stage 2 as supervised regression (25 precomputed inputs → I_ion). Trains in minutes, no rollout needed.
+- **Phase 3:** Unfreeze Stage 1. End-to-end fine-tuning with I_ion loss + reduced scaffolds. Autoregressive rollout here.
+
+### Multi-Model Conditioning (planned)
+
+One model learns both TTP06 and ORd, conditioned on a model ID label token fed to the attention. TTP06 uses ~18 of 32 ionic dims; ORd uses all 32. Shared structure (attention, compression, readout) is identical -- only latent usage differs. Benefits: richer latent for arc light fine-tuning, single architecture, natural curriculum (TTP06 first, add ORd later).
+
+### First Training Run (TTP06, small dims)
+
+| Hyperparameter | Full (ORd-ready) | First run (TTP06) |
+|---|---|---|
+| ionic_state | 32 | 16 |
+| conductance_latent | 16 | 8 |
+| MLP | 32→32 | 16→16 |
+| Compression | 32→24→24→16 | 16→12→12→8 |
+| Stage 2 queries | 16 | 8 |
+| Total inference params | ~4,950 | ~1,200 |
+
+Same architecture, smaller hyperparameters. Validate that the design trains and reproduces TTP06 I_ion before scaling up.
+
+### Approaches Explored Then Scrapped
+
+**Bilinear form with hand-crafted features:** `phi = C @ [1,Vm,Vm^2,Vm^3,E,conc]`, then `I_ion = (conductance * phi).sum()`. Psi factorization moved matmul off critical path (8 FLOPs on path), but the feature vector is arbitrary and the pipeline overly complex.
+
+**Ohmic/non-Ohmic split:** Scrapped because Ohm's law is a Layer 1 model assumption, not Layer 0 ground truth. Rectification, voltage-dependent conductance, surface charge effects all violate Ohm's law.
+
+**KAN Chebyshev readout (v2):** Per-dim Chebyshev on the latent -- wrong place. Compression handles state nonlinearity. Readout's job is driving force, not state transformation.
+
+**Eight ML architectures surveyed:** MLP, two-tower, bilinear, FiLM, hypernetwork, gated two-pathway, cross-attention, Chebyshev. Cross-attention selected for learned routing, physical interpretability, factorizability, and FLOP budget.
+
+---
+
+## 5. Naming Convention
+
+| Name | Dims | What it encodes | Type |
+|---|---|---|---|
+| **carried_state** | 36 | Full state: ionic + concentrations | Carried between timesteps |
+| **ionic_state** | 32 | Channel conformational states (gates, Markov occupancies) | Latent, learned |
+| **concentrations** | 4 | [Na_i, K_i, Ca_i, Ca_ss] -- dims 32-35 of carried_state | Explicit, physically named |
+| **conductance_latent** | 16 | Effective conductances (gate products) | Latent, compressed from ionic_state |
+| **reversal_potentials** | 4 | [E_Na, E_K, E_Ca, E_Ks] | Derived from concentrations via Nernst (fixed physics) |
+
+---
+
+## 6. Normalization and Regularization
+
+### v3 Strategy
+
+| Technique | Where | Purpose | Params |
+|-----------|-------|---------|--------|
+| 1/sqrt(4) scaling | Attention score | Prevents score saturation (attn_dim=4) | 0 |
+| Sigmoid gate | Attention update | Bounds update rate to (0,1), guarantees contraction | 0 |
+| Pre-RMSNorm | Before Markov MLP input | Stabilizes MLP input scale across 100K+ recurrent steps | 0 |
+| Learned residual mixing (alpha) | Markov MLP residual (ionic dims only) | Per-dim alpha=sigmoid(w), convex combination. No amplification by construction. | 32 |
+| Learned compression mixing (beta) | Compression residual | Per-dim beta=sigmoid(w), controls linear vs nonlinear path per compressed dim. | 16 |
+| Weight decay | All parameters (AdamW) | Soft regularization, pushes unused coupling toward zero | 0 |
+| Gradient clipping | Training | max_norm=1.0, prevents gradient explosions during rollout | 0 |
+
+### Rejected Techniques
+
+- **Spectral norm** (was in v2 and early v3): superseded by learned residual mixing. Convex combination provides a harder guarantee (output bounded between inputs) than spectral norm (bounds amplification ratio but allows growth).
+- **RMSNorm on MLP corrections** (was in v2 for split GELU): v3's MLP+GELU has no quadratic blowup risk, and learned mixing alpha already bounds the correction's influence.
+- **LayerNorm**: removes per-dim magnitude, which IS information (state distance from equilibrium).
+- **BatchNorm**: unstable for autoregressive inference (batch=1 during tissue simulation).
+- **Dropout**: injects noise that compounds over 100K+ autoregressive steps. Train/inference mismatch.
+- **MLP bottleneck as regularizer**: forces coupling on HH dims that should remain independent. Full-rank 32->32 with learned alpha provides constraint through learning, not geometry.
+- **Sigmoid output bounding** (evaluated in v2): vanishing gradients at saturation, breaks residual identity at initialization, triple sigmoid path.
+
+---
+
+## 7. Cross-State Coupling Analysis
+
+### Within One dt (0.01ms)
+
+| Coupling mechanism | Physical timescale | Change within 0.01ms | Conclusion |
+|-------------------|-------------------|---------------------|------------|
+| Ion concentration changes | Ca_i: 10-100ms, Na_i: minutes | ~0.0001% | Negligible -- temporal, handled by latent memory |
+| Ca-induced Ca release (CICR) | RyR activation: 1-2ms | ~0.5-1% | Fast but not instantaneous -- temporal |
+| CaMKII phosphorylation | Seconds | ~0.001% | Negligible -- temporal |
+| Direct channel-channel interaction | No evidence for conformational coupling | Zero | Non-existent |
+
+**Conclusion**: All cross-state coupling is temporal (many-step accumulation), not instantaneous. No physical basis for a dedicated per-step coupling stage. Coupling emerges naturally through the carried latent's temporal memory.
+
+### Markov Chain Coupling
+
+| Coupling mechanism | Operates through | Timescale | Within one dt | Architecture handles via |
+|---|---|---|---|---|
+| Intra-protein Markov transitions | Voltage + own conformational state | 0.01-10ms | YES -- primary dynamics | n x 1 attention (voltage) + MLP (cross-dim correction) |
+| Inter-channel via Vm | Shared membrane voltage | Instantaneous | YES -- but already captured | Vm as model input |
+| Inter-channel via dyadic Ca | Local nanodomain concentration | 10-100us | Comparable to dt | Latent memory + MLP correction |
+| Inter-channel via bulk [Ca], [Na], [K] | Cytoplasmic concentration | 10-100ms | Negligible (~0.0001%) | Latent temporal memory |
+| CaMKII / phosphorylation | Enzyme kinetics | Seconds | Negligible | Latent temporal memory |
+| Direct conformational coupling | None known | N/A | Non-existent | N/A |
+
+**Key finding**: No physical mechanism exists for one channel type's conformational state to directly affect another channel type's transition rates. All inter-channel coupling is mediated through shared variables (Vm, concentrations).
+
+### n x 1 Attention + MLP Is Sufficient for Markov Dynamics
+
+For the Markov update S_new = expm(Q(V)*dt)*S, first-order Taylor expansion gives:
+
+```
+S_new ~ S + [D(V) + C(V)]*dt*S = [I + D(V)*dt]*S + C(V)*dt*S
+          per-dim voltage (attn)    cross-dim correction (MLP)
+```
+
+Splitting error is O(dt^2) ~ 10^-8 at dt=0.01ms. Full self-attention would capture higher-order terms but they are physically negligible.
+
+### Honest Unknowns
+
+- Whether discrete Markov states are the right description (single-channel recordings show fractal gating, memory effects inconsistent with Markov)
+- Whether real conformational landscapes are continuous rather than discrete
+- Whether macroscopic whole-cell behavior requires Markov-level pathway detail or can be captured by simpler learned dynamics
+- Whether undiscovered fast inter-channel coupling mechanisms exist
+
+These unknowns reinforce the design philosophy: provide capacity and inductive bias, but let the data teach the model the actual dynamics.
+
+### Ionic Model Complexity
+
+| Model | State variables | HH gates | Markov states | Concentrations | Other |
+|-------|----------------|----------|--------------|----------------|-------|
+| TTP06 | 18 | 13 (0-1 bounded) | 0 | 5 (unbounded) | -- |
+| ORd | 41 | ~20 | 11 (Na Markov) | 9 | 1 (CaMKII) |
+
+---
+
+## 8. Foundational Design Decisions
 
 ### Why Carried Latent (Not Vm History)
 
@@ -64,242 +423,184 @@ The ionic surrogate uses pure autoregressive latent with no Vm history buffer. T
 2. **Rush-Larsen doesn't use history either**: The real simulator carries 18 gate states forward. Our latent is the learned analog.
 3. **No buffer management**: No non-uniform temporal schedule, no resampling, no variable-dt issues.
 
-### Why n×1 Cross-Attention (Not Full Transformer)
+### Why n x 1 Cross-Attention (Not Full Transformer)
 
-The n×1 cross-attention IS a 1D hybrid Transformer: Q=latent dims, K=V=voltage, no self-attention between dims. Mathematically equivalent to learned Rush-Larsen but with state-dependent gating (the attention score depends on BOTH Vm AND the current latent value, while RL's rate depends on Vm only). Cost: 464 FLOPs vs 200M for a temporal Transformer.
+The n x 1 cross-attention IS a 1D hybrid Transformer: Q=latent dims, K=V=voltage, no self-attention between dims. Cost: ~464 FLOPs vs 200M for a temporal Transformer. Mathematically equivalent to learned Rush-Larsen but with state-dependent gating.
 
-### I_stim Removed — Design Note
+### I_stim Removed
 
 I_stim has been removed from model inputs. The model receives only [Vm, dt]. Three reasons:
-1. **Biophysically correct**: real ion channel gates respond to Vm only — they have no mechanism to sense I_stim.
-2. **Matches operator splitting**: in the simulator, the ionic step sees only Vm. I_stim is applied externally in the Vm update equation (Vm_next = Vm + dt·(-I_ion + I_stim)/Cm), not inside the ionic computation.
-3. **Simpler model**: W_k and W_v are (2,8) instead of (3,8), saving 16 params with no loss of information the ionic model should have access to.
+1. **Biophysically correct**: real ion channel gates respond to Vm only -- they have no mechanism to sense I_stim.
+2. **Matches operator splitting**: in the simulator, the ionic step sees only Vm. I_stim is applied externally in the Vm update equation.
+3. **Simpler model**: W_k and W_v are (2, attn_dim) instead of (3, attn_dim).
 
 ### Initialization
 
-`latent(0) = zeros` or `V·W_out evaluated at Vm_rest`. Self-corrects in ~1 step: gate ≈ 1 when latent is far from target, delta → (target - latent), latent snaps to equilibrium.
+`latent(0) = zeros` or `V*W_out evaluated at Vm_rest`. Self-corrects in ~1 step: gate ~ 1 when latent is far from target, delta -> (target - latent), latent snaps to equilibrium.
 
-### Simplification Spectrum
+---
 
-| Level | FLOPs | vs RL | Description |
-|-------|-------|-------|-------------|
-| 0: Scalar HH | 176 | 0.7× | σ(wV+b) target, const rate, Nernst current. Start here. |
-| 1: + Vm rates | 240 | 1.0× | Sigmoid rate |
-| 2: + coupling | 416 | 1.7× | + split GELU cross-channel |
-| 3: Full design | 886 | 3.7× | n×1 cross-attn + 2× split GELU + KAN Chebyshev readout |
+## 9. Losses and Training
 
-Strategy: start Level 0, see what breaks (restitution? calcium? APD accuracy?). When upgrading levels, restart from Phase B (Phase A autoencoder checkpoint is shared). Save per-phase-per-level checkpoints. Add features from the modification menu as needed.
+### Loss Functions
 
-### Modification Menu
-
-**Base design includes**: KAN Chebyshev K=3 readout (was upgrade A4), I_stim removed (gates see only Vm), 2× split GELU rounds.
-
-**Accuracy upgrades**: A1 multi-head (+200), A2 stacked attention (+464/layer), A3 nonlinear MLP readout (+300, replaces KAN), A5 explicit concentrations (+100), A6 structured Nernst current (+50), A7 higher-degree KAN K=5 (+32 params).
-
-**Speed downgrades**: S1 remove one cross-channel round (-176), S2 scalar attention (-350), S3 smaller latent d=8 (~half), S4 linear readout (replace KAN, -37 FLOPs), S6 drop to scalar HH (-497).
-
-### Normalization Strategy
-
-The model uses a carefully chosen combination of normalization techniques, each addressing a specific failure mode:
-
-| Technique | Where | Purpose | Params |
-|-----------|-------|---------|--------|
-| 1/√8 scaling | Stage 1 attention score | Prevents score saturation | 0 |
-| Sigmoid gate | Stage 1 update | Bounds update rate to (0,1), guarantees contraction | 0 |
-| Spectral norm | Stage 2 W_cc1, W_cc2 | Bounds operator norm ||W||₂ ≤ 1 | 0 |
-| RMSNorm | Stage 2 corrections (both rounds) | Normalizes correction scale, prevents quadratic blowup | 0 |
-| Chebyshev normalization | Stage 3 input | Maps latent to [-1,1] for polynomial stability | 0 (uses learned bounds) |
-
-**Rejected alternatives and rationale:**
-
-- **Sigmoid output bounding**: Vanishing gradients at saturation. Breaks residual identity at initialization (sigmoid(0)=0.5, not passthrough). Triple sigmoid path (Stage 1 gate + two Stage 2 sigmoids) would chain three saturating nonlinearities. Concentration-like variables are not bounded in [0,1]. Stability is better achieved structurally (spectral norm + RMSNorm + contraction) than by clamping outputs.
-- **LayerNorm in Stage 1 attention**: Single attention step (not stacked transformer), so no layer-stacking instability to address. Per-dimension magnitude IS information for the state-dependent query mechanism (a dimension far from equilibrium should produce a large query). LayerNorm would remove this signal. The 1/√8 scaling is sufficient.
-- **LayerNorm replacing W_cc in Stage 2**: W_cc performs 8→16 dimension expansion, which LayerNorm cannot replace. RMSNorm after W_cc is cleaner than LayerNorm: no centering (the correction should be able to shift the latent mean), no learnable params (nothing to overfit).
-- **BatchNorm**: Batch statistics are unstable for autoregressive inference where batch=1 (single cell during tissue simulation). RMSNorm operates per-instance, no batch dependency.
-
-**RMSNorm + spectral norm synergy**: These address orthogonal failure modes. Spectral norm bounds what the operator *does* (output/input ratio ≤ 1). RMSNorm bounds what the operator *sees* (input scale normalized to RMS=1). Without RMSNorm, the split GELU product is quadratic in latent magnitude — if latent values grow, the correction grows faster, creating a positive feedback loop even with ||W||₂ ≤ 1. Without spectral norm, RMSNorm only normalizes the input but the linear map could still amplify arbitrarily.
-
-### Losses and Regularization
-
-- `L_ion = MSE(I_ion_pred, I_ion_true)` — weight 1.0, always active
-- `L_gate = MSE(gates_pred, gates_true)` — weight λ_gate, annealed to 0 over training curriculum
-- `L_roll = (1/T) Σ_t MSE(Vm_pred(t), Vm_true(t))` — weight λ_roll, introduced in rollout phases
+- `L_ion = MSE(I_ion_pred, I_ion_true)` -- weight 1.0, always active
+- `L_gate_full = MSE(full_decoder(ionic_state), true_gates)` -- weight lambda_gate, annealed to 0
+- `L_gate_comp = MSE(comp_decoder(conductance_latent), true_gates)` -- weight lambda_gate, annealed to 0
+- `L_conc = MSE(concentrations, true_concentrations)` -- direct, no decoder
+- `L_roll = (1/T) sum_t MSE(Vm_pred(t), Vm_true(t))` -- weight lambda_roll, introduced in rollout phases
 - Weight decay 1e-4 (AdamW), gradient clipping max_norm=1.0
 
-### Parameters
+### Training Strategy
 
-| Component | Detail | Params (inference) | Params (training) |
-|-----------|--------|-------------------|-------------------|
-| Stage 1: W_q | (16, 8) per-dim query | 128 | 128 |
-| Stage 1: W_k | (2, 8) voltage key | 16 | 16 |
-| Stage 1: W_v | (2, 8) voltage value | 16 | 16 |
-| Stage 1: W_out | (8, 16) per-dim target | 128 | 128 |
-| Stage 2a: W_cc1 + b_1 | (8, 16) + (16,) | 144 | 144 |
-| Stage 2b: W_cc2 + b_2 | (8, 16) + (16,) | 144 | 144 |
-| Stage 3: C + b_vm + b | (16, 4) + (1,) + (1,) | 66 | 66 |
-| Scaffold: W_dec + b_dec | (18, 16) + (18,) | — | 306 |
-| **Total** | | **642** | **948** |
+Bootstrap the latent space first (clean data, autoencoder), then teach dynamics (simple -> complex data, teacher forcing -> rollout), then stress-test (noise, tissue, corruption). The latent must be well-structured before dynamics training begins.
 
-Note: Stage 1 W_out was originally documented as (8,1)=8 params — this was wrong. Must be (8,16)=128 for per-dim targets. Without per-dim targets, all latent dims converge to the same equilibrium.
+**Phase A -- Latent Space Bootstrap:**
+Train a standalone gate autoencoder (encoder: 12 HH gates -> ionic_dim latent, decoder: ionic_dim latent -> 12 HH gates). Data: gate state vectors from Tier 1 (steady-state pacing). Decoder weights transfer to scaffold. Encoder used for initial latent computation in Phase B. Cheap (trains in minutes). Note: 12 gates (not 18) — RR excluded (no gate_inf/tau), concentrations excluded (separate explicit dims with direct MSE loss).
 
-## Advanced Upgrades — Ideas from Modern ML
+**Phase B -- Simple Dynamics:**
+Train dynamics on Tier 1 only (steady-state, single celltype, single dt). Three sub-phases: B1 teacher forcing (single-step) -> B2 short rollout (N=10) -> B3 medium rollout (N=100). Scheduled sampling (gradually replace ground-truth latent with model prediction). Lambda_gate=1.0 initially.
 
-### Connection to State Space Models (Mamba)
+**Phase C -- Full Dynamics:**
+Add Tiers 2-4 (S1-S2, dynamic, random intervals). All celltypes. Multiple dt values. Gradual data mixing (90% T1 -> 50/50 -> 10% T1). Unfreeze decoder. Sub-phases: C1 long rollout (N=1000) -> C2 very long rollout (N=10,000) -> C3 full beat (N=100,000). Lambda_gate annealed from 0.3 to 0. Add voltage clamp protocols.
 
-Our ionic surrogate IS a selective SSM — independently derived but structurally identical. The n×1 cross-attention produces input-dependent state transitions (gate and target depend on Vm), which is Mamba's core "selectivity" mechanism. Mapping: latent=state x, [Vm,dt]=input u, I_ion=output y, cross-attention=selective A(u)·x + B(u)·u dynamics.
+**Phase D -- Robustness:**
+Add Tiers 5-12. Scaffold removed (lambda_gate=0). Sub-phases: D1 tissue-mimicking -> D2 stress testing (5-beat rollout, 5000ms). Validation: restitution curve correct, recovery from perturbation within 1 beat.
 
-Two borrowable techniques:
+### Training Timeline
 
-**Parallel scan for training**: Mamba trains over sequences in O(N) using parallel prefix scan instead of sequential rollout. Stage 1 alone is an affine recurrence (z = (1-gate)·z + gate·target) which supports associative scan. **However, Stage 2 (split GELU) is nonlinear and breaks the affine structure required for parallel scan.** Options: (1) apply Stage 2 every K steps, not every step; (2) train Stage 1 with scan, fine-tune with Stage 2 sequentially; (3) accept sequential backprop. For our tiny model (886 FLOPs), sequential backprop through 100K steps is feasible: ~240MB memory per sample (gradient checkpointing reduces to O(√N)), ~210M FLOPs backward per sample. Not a bottleneck on Blackwell GPU.
+| Phase | Step | Data | Rollout | lambda_gate | lambda_roll | LR | Weight Decay | Batch |
+|-------|------|------|---------|-------------|-------------|-------|-------------|-------|
+| A | -- | gate states | -- | -- | -- | 1e-3 | 1e-5 | 4096 |
+| B | B1 | Tier 1 | 1 | 1.0 | 0 | 1e-3 | 1e-4 | 1024 |
+| B | B2 | Tier 1 | 10 | 1.0 | 0.1 | 1e-3 | 1e-4 | 512 |
+| B | B3 | Tier 1 | 100 | 0.5 | 0.5 | 5e-4 | 1e-4 | 256 |
+| C | C1 | Tier 1-4 + clamp | 1000 | 0.3->0.1 | 1.0 | 5e-4 | 5e-4 | 128 |
+| C | C2 | Tier 1-4 + clamp | 10000 | 0.1->0.01 | 1.0 | 2e-4 | 5e-4 | 64 |
+| C | C3 | Tier 1-4 + clamp | 100000 | 0.01->0 | 1.0 | 1e-4 | 5e-4 | 32 |
+| D | D1 | Tier 1-12 | 100000 | 0 | 1.0 | 5e-5 | 1e-3 | 32 |
+| D | D2 | + stress | 500000 | 0 | 1.0 | 2e-5 | 1e-3 | 8 |
 
-**Zero-order hold discretization**: Replace our Euler update `latent += delta` with the exact exponential discretization `latent = exp(A·dt)·latent + (exp(A·dt)-1)·A⁻¹·B·u`. Unconditionally stable for any dt (matches Rush-Larsen's exponential exactness). Cost: +16 FLOPs (one exp per dim). Enables variable dt with guaranteed stability.
+Estimated total: ~40 GPU-hours on Blackwell.
 
-### KAN (Kolmogorov-Arnold Networks) — Now in Base Design
+### Optimizer
 
-KAN Chebyshev K=3 readout is now the default Stage 3 (see Architecture section above). The per-dimension Chebyshev polynomials capture the multiplicative gate structure (m³·h·j) that linear readout cannot, without adding a hidden layer. Cost: ~70 FLOPs (vs 33 linear, vs 320 MLP with hidden).
+- **AdamW** with variable weight decay (1e-5 -> 1e-3 across phases)
+- **LR schedule**: cosine decay within each phase, reset at phase transitions
+- **Gradient clipping**: max_norm=1.0
+- **Batch size**: decreases as rollout length increases (memory-bound)
+- **Early stopping**: per-phase, based on validation I_ion error
+- **Checkpointing**: save best model per phase, resume from best if training destabilizes
 
-Further KAN applications still available as upgrades: apply KAN to Stage 2 cross-channel (replace the linear W_cc with spline-parameterized edges) to capture nonlinear coupling (Ca²⁺-dependent CaL inactivation) more efficiently than split GELU.
+### Transition Risks and Mitigations
 
-### Mixture of Experts (MoE) — AP Phase Specialization
+| Risk | Mitigation |
+|------|------------|
+| Phase B->C: complex data destabilizes latent | Gradual data mixing (90/10 -> 50/50 -> 10/90) |
+| Scaffold removal: latent drifts without gate loss | Monitor gate reconstruction passively; re-enable at low weight if divergent |
+| Rollout length jumps: error accumulation spikes | Double rollout length each time, not 10x jumps |
+| Teacher forcing -> autoregressive gap (exposure bias) | Scheduled sampling: mix ground-truth and predicted latent inputs |
+| Overfitting at any phase | Increase weight decay 2-3x; add data or reduce model capacity |
 
-Different AP phases have fundamentally different dominant dynamics (upstroke: I_Na, 0.1ms; plateau: I_CaL vs I_Kr, 100ms; repolarization: I_Kr/I_Ks, 50ms; diastole: I_K1/recovery, 500ms). A single weight set handling all four phases is a compromise.
+### Training Loop (rollout detail)
 
-MoE solution: 4 tiny expert copies of Stage 1, each specialized for one phase. A router (single linear layer on [Vm, dt], ~8 FLOPs) selects top-1 expert per step. Only one expert runs per step → zero extra inference cost, 4× effective model capacity. Each expert learns its phase's dynamics without interference from other phases.
+```
+For each step in rollout:
+  I_ion_pred = model(latent, Vm, dt)
+  if clamp_mask[t]:
+    Vm_next = V_clamp[t+1]           # voltage clamp: override Vm
+  else:
+    Vm_next = Vm + dt*(-I_ion_pred + I_stim)/Cm   # free-running: Vm update
+  latent = model.latent_new           # carry latent forward
+```
 
-The router naturally learns phase boundaries (Vm thresholds correspond to AP phase transitions). During training, load balancing ensures all experts get used.
+L_roll only applies to free-running segments (clamped Vm is externally set, not predicted).
 
-### Summary of Advanced Upgrades
+---
 
-| Upgrade | Cost Impact | Training Impact | What It Gives |
-|---------|-------------|-----------------|---------------|
-| Mamba parallel scan | 0 inference | O(log N) vs O(N) | Train over full traces without sequential rollout |
-| Mamba ZOH discretization | +16 FLOPs | — | Exact exponential update, stable any dt |
-| KAN readout | *In base design* | — | Per-dim nonlinearity (m³·h·j) without hidden layer |
-| MoE (4 experts) | +8 FLOPs | ~4× data needed | 4× capacity, phase-specialized, zero cost |
+## 10. Training Data
 
-## Training Data Generation
+### Protocol Hierarchy (12 Tiers)
 
-### Protocol Hierarchy
+Data generated from TTP06 single-cell ODE. All protocols produce (Vm, 18 gates, I_ion) at each timestep. dt fed as 2nd input to model: K = W_k * [Vm, dt].
 
-Data generated from TTP06 single-cell ODE. All protocols produce (Vm, 18 gates, I_ion) at each timestep. dt fed as 2nd input to model: K = W_k · [Vm, dt].
+**Tier 1 -- Steady-state pacing**: BCL in {300, 400, 500, 600, 700, 800, 1000, 1500, 2000} ms. 20 beats each (10 warmup + 10 training). Baseline AP morphology at each rate.
 
-**Tier 1 — Steady-state pacing**: BCL ∈ {300, 400, 500, 600, 700, 800, 1000, 1500, 2000} ms. 20 beats each (10 warmup + 10 training). Baseline AP morphology at each rate.
+**Tier 2 -- S1-S2 restitution**: S1=1000ms x 10 beats, S2 at DI in {50, 75, 100, 150, 200, 300, 500, 800} ms. Includes sub-ERP DIs (failed captures). Maps restitution curve.
 
-**Tier 2 — S1-S2 restitution**: S1=1000ms × 10 beats, S2 at DI ∈ {50, 75, 100, 150, 200, 300, 500, 800} ms. Includes sub-ERP DIs (failed captures). Maps restitution curve.
+**Tier 3 -- Dynamic protocols**: BCL ramp down (1000->300ms/30 beats), ramp up (300->1000ms), burst (5@300ms + 2000ms pause x5), alternans (20 beats @ BCL=330ms).
 
-**Tier 3 — Dynamic protocols**: BCL ramp down (1000→300ms/30 beats), ramp up (300→1000ms), burst (5@300ms + 2000ms pause ×5), alternans (20 beats @ BCL=330ms).
+**Tier 4 -- Random intervals**: Inter-beat interval ~ LogUniform(200, 2000) ms. 5-200 beats/protocol (variable length) x 200 protocols. Tests arbitrary pacing and generalization.
 
-**Tier 4 — Random intervals**: Inter-beat interval ~ LogUniform(200, 2000) ms. 5-200 beats/protocol (variable length) × 200 protocols. Tests arbitrary pacing and generalization to arbitrary trace lengths.
+**Tier 5 -- Tissue-mimicking current injection**: Simulates what a cell experiences in tissue.
+- Ornstein-Uhlenbeck noise: dI/dt = -I/tau + sigma*dW, tau in {1, 2, 5, 10, 20} ms, sigma in {5, 10, 20} uA/cm2.
+- Smooth depolarizing ramp, sub-threshold blips, sustained current offsets, biphasic pulses, random telegraph.
+- **Real tissue profiles**: Extract I_diff(t) = D*nabla^2 Vm from actual Bidomain V1 runs.
 
-**Tier 5 — Tissue-mimicking current injection**: Simulates what a cell experiences in tissue (diffusion current from neighbors), without running full tissue simulation.
-- Ornstein-Uhlenbeck noise: dI/dt = -I/τ + σ·dW, τ ∈ {1, 2, 5, 10, 20} ms, σ ∈ {5, 10, 20} µA/cm². Smooth random current mimicking fluctuating neighbor voltages.
-- Smooth depolarizing ramp: 0 → -30 µA/cm² over 2-5ms, then decay. Mimics approaching wavefront.
-- Sub-threshold blips: -10 to -20 µA/cm² for 1-3ms at random times. Model learns "don't fire."
-- Sustained current offsets: constant ±5 µA/cm² for 10-100ms. Shifts resting potential.
-- Biphasic pulses: depolarizing then hyperpolarizing. Mimics wavefront passage.
-- Random telegraph: I switches between 0 and -I_max at Poisson times (λ ~ 1-10/ms). Irregular neighbor activity.
-- **Real tissue profiles**: Extract I_diff(t) = D·∇²Vm from actual Bidomain V1 runs at representative nodes. Most realistic injection profiles.
+**Tier 6 -- Voltage clamp**: Vm externally controlled.
+- Step clamp, ramp clamp, staircase clamp, AP clamp, partial clamp.
+- Uniquely valuable: errors in I_ion don't propagate back through Vm, giving clean gradients.
 
-**Tier 6 — Voltage clamp**: Vm is externally controlled, model must predict correct I_ion and update latent.
-- Step clamp: hold -80mV → step to V_test ∈ {-60,-40,-20,0,+20,+40}mV → hold 500ms. Gates converge to gate_inf(V_test) — exact supervision target.
-- Ramp clamp: linear -80→+40mV over 100-500ms. Continuous I-V curve.
-- Staircase clamp: -80→-60→-40→-20→0→+20→+40mV, hold 50-200ms each step.
-- AP clamp: play back recorded AP waveform as Vm command. Decouples ionic prediction from voltage evolution — clean gradient signal.
-- Partial clamp: Vm = α·V_command + (1-α)·V_free, α ∈ {0.3, 0.5, 0.7}. Mimics electrotonic coupling.
+**Tier 7 -- Concentration perturbation**: Perturb initial ionic concentrations (K_o, Na_i, Ca_i). ~20 combos x Tier 1 protocols.
 
-Voltage clamp is uniquely valuable: errors in I_ion don't propagate back through Vm (voltage is fixed), giving clean gradients. Gate decoder gets exact targets (gate_inf at clamp voltage).
+**Tier 8 -- Long-duration stability**: 200+ beat pacing, 5-30s quiescence, long blank -> burst. Tests slow drift (Na_i/K_o accumulation).
 
-**Tier 7 — Concentration perturbation**: Perturb initial ionic concentrations to simulate tissue variability.
-- K_o ∈ {4.0, 5.0, 5.4, 6.0, 8.0, 10.0} mM (normal=5.4). Hyperkalemia shifts resting Vm.
-- Na_i ∈ {6, 8, 10, 12, 15} mM. Affects E_Na and Na current amplitude.
-- Ca_i ∈ {0.5×, 1×, 1.5×, 2×} baseline. Affects I_CaL, contractility.
-- ~20 representative combos × Tier 1 protocols.
+**Tier 9 -- Recovery from corruption**: Deliberate non-physiological gate states. Teaches self-correction if latent drifts during tissue inference.
 
-**Tier 8 — Long-duration stability**: Tests that the model doesn't drift over extended simulation.
-- Very long steady pacing: 200+ beats at constant BCL (1000ms). Track slow APD drift from Na_i/K_o accumulation. Model must capture this cumulative effect.
-- Very long quiescence: 5-30 seconds of rest (no pacing). Latent must hold resting state without drift. Then stimulus → AP must still be correct.
-- Long blank → burst: 5-10s rest → sudden fast pacing (BCL=300ms). Tests cold-start after extended quiescence.
-- Variable-length traces: same protocol at 10, 50, 100, 200, 500 beats. Model must work at any trace length.
+**Tier 10 -- Tissue-specific scenarios**: Boundary cells, infarct border zone, inert tissue interface, stimulus site, wavefront tip (spiral).
 
-**Tier 9 — Recovery from corruption**: Deliberately push TTP06 into non-physiological gate states.
-- Perturb individual gates to random values (e.g., set m=0.9 during diastole, or h=0.0 during rest).
-- Run TTP06 forward and record recovery trajectory back to physiological state.
-- Teaches self-correction: if the latent drifts to a weird state during tissue inference, the model has seen recovery from similar states.
-- Also: sudden Vm jumps (e.g., -86 → -20 mV without stimulus) — what do the gates do? The model must handle this because tissue diffusion can impose arbitrary Vm changes.
+**Tier 11 -- Combined stressors and stitched protocols**: Multiple simultaneous effects. Stitched traces with variable-length rest. 500+ protocols.
 
-**Tier 10 — Tissue-specific scenarios**: Conditions experienced by cells at special tissue locations.
-- **Boundary cells**: Reduced electrotonic load (fewer neighbors). Simulate by reducing injection current magnitude by 50%. Longer APD, slightly different repolarization. Relates to Kleber boundary speedup.
-- **Infarct border zone**: Cells adjacent to non-conducting scar. Zero current from one side, normal from others. Asymmetric loading. Simulate by injecting current from only one direction (half the normal magnitude).
-- **Inert tissue interface**: Cells next to non-excitable tissue. Electrotonic sink during plateau (current drains into inert region). Simulate by adding a sustained small positive (repolarizing) current during plateau phase.
-- **Stimulus site**: Cells at the pacing electrode receive strong I_stim AND strong electrotonic current from freshly activated neighbors. Double depolarization. Simulate by combining sharp I_stim pulse with smooth ramp injection.
-- **Wavefront tip (spiral)**: Very short DI, rapid re-excitation, curved wavefront. Simulate by pacing at DI=30-80ms (near and below ERP) with varying I_stim amplitude.
+**Tier 12 -- Celltype variants**: TTP06 epi, endo, and M cell configurations across Tier 1-3 protocols.
 
-**Tier 11 — Combined stressors and stitched protocols**: Real tissue conditions involve multiple simultaneous effects. Also, stitching different protocol segments with variable-length rest periods creates diverse training sequences from existing data.
-- Random pacing + OU noise + hyperkalemia (K_o=8mM) in the same trace.
-- Fast pacing (BCL=350ms) + sustained depolarizing current (-3 µA/cm²) + elevated Ca_i.
-- S1-S2 protocol + tissue injection noise + concentration perturbation.
-- **Stitched traces**: Random protocols concatenated with variable-length rest breaks. E.g., [10 beats BCL=1000] → [3-15s rest] → [S1-S2] → [5-20s rest] → [burst pacing]. Breaks ∈ LogUniform(1s, 30s). Tests latent stability through long quiescence then correct response to new protocol.
-- Generate 500+ combined/stitched protocols from random combinations.
-
-**Tier 12 — Celltype variants**: TTP06 epi, endo, and M cell configurations.
-- Different I_to, I_Ks, I_CaL conductances per celltype.
-- Run all Tier 1-3 protocols for each celltype (×3 data).
-- In tissue, these celltypes are adjacent — surrogate must handle all three.
-
-### Identified Coverage Gaps and Mitigations
+### Coverage Gaps and Mitigations
 
 | Gap | Risk | Mitigation |
 |-----|------|------------|
-| Celltype variants (epi/endo/M) | Model fails on specific celltype in tissue | Tier 12: run protocols for all 3 celltypes |
-| Recovery from weird states | Latent drift during tissue inference | Tier 9: corruption → recovery trajectories |
-| Wavefront-specific Vm shapes | Model fails at spiral tips, boundaries | Tier 10 + AP clamp from Bidomain V1 node traces |
-| Very long simulations | Slow Na_i/K_o drift over minutes | Tier 8: 200+ beat protocols + long quiescence |
-| Not enough random protocols | Poor generalization to arbitrary pacing | Tier 4: increased to 200 protocols |
-| Partial depolarization zones | Cells near block at intermediate Vm | Tier 10 (infarct border) + Tier 5 (sustained current) |
-| Boundary/inert tissue effects | Reduced loading, APD changes | Tier 10: boundary, infarct, inert tissue scenarios |
-| Simultaneous effects | Individual tiers tested in isolation | Tier 11: combined stressor protocols |
+| Celltype variants (epi/endo/M) | Model fails on specific celltype | Tier 12 |
+| Recovery from weird states | Latent drift during tissue inference | Tier 9 |
+| Wavefront-specific Vm shapes | Model fails at spiral tips, boundaries | Tier 10 + AP clamp |
+| Very long simulations | Slow Na_i/K_o drift | Tier 8 |
+| Partial depolarization zones | Cells near block at intermediate Vm | Tier 10 + Tier 5 |
+| Simultaneous effects | Individual tiers in isolation | Tier 11 |
 
 ### Variable dt
 
-Train with dt ∈ {0.005, 0.01, 0.02, 0.05, 0.1} ms. Each protocol run at all 5 dt values. With ZOH discretization (z_new = z·exp(-gate·dt) + target·(1-exp(-gate·dt))), dt is explicit in the formula — exact for any value.
-
-Multi-scale dt within traces: dt=0.005ms during upstroke, dt=0.1ms during diastole. Model must handle dt transitions mid-simulation.
+Train with dt in {0.005, 0.01, 0.02, 0.05, 0.1} ms. Each protocol run at all 5 dt values. Multi-scale dt within traces: dt=0.005ms during upstroke, dt=0.1ms during diastole.
 
 ### Data Augmentation (on-the-fly during training)
 
-- **Vm noise injection**: ε ~ N(0, σ²), σ ∈ {0.1, 0.5, 1.0} mV. Teaches robustness to autoregressive prediction errors.
-- **Conductance scaling**: g_X × U(0.5, 2.0) for each major current. Simulates biological variability. Directly useful for Optimizer pipeline.
-- **Stimulus variation**: amplitude ∈ {-30, -40, -52, -70, -100} µA/cm², duration ∈ {0.5, 1, 2, 5} ms. Include sub-threshold.
-- **Random initial conditions**: gate_k ~ N(gate_k_rest, 0.1·gate_k_rest). Non-equilibrium starts.
+- **Vm noise injection**: epsilon ~ N(0, sigma^2), sigma in {0.1, 0.5, 1.0} mV. Robustness to autoregressive errors.
+- **Conductance scaling**: g_X x U(0.5, 2.0) for each major current. Biological variability.
+- **Stimulus variation**: amplitude in {-30, -40, -52, -70, -100} uA/cm2, duration in {0.5, 1, 2, 5} ms.
+- **Random initial conditions**: gate_k ~ N(gate_k_rest, 0.1*gate_k_rest).
 
 ### Data Storage Format
 
 Two-layer storage: raw HDF5 for reproducibility, pre-chunked .pt shards for training speed.
 
-**Storage location**: External HDD `/media/norepinephrine/Elements-ext4/` (5.5TB ext4, ~1.1TB needed). Too large for NVMe root partition (244GB).
+**Storage location**: External HDD `/media/HDD/` (5.5TB ext4).
 
 **Generation layer (source of truth):**
 ```
-/media/norepinephrine/Elements-ext4/surrogate_data/raw/
-├── tier01_steady_state.h5       one file per tier
-├── tier02_s1s2.h5               full metadata per protocol
-├── ...                          float64 (simulator precision)
-└── tier12_celltypes.h5
+/media/HDD/surrogate_data/raw/
+  tier01_steady_state.h5       one file per tier
+  tier02_s1s2.h5               full metadata per protocol
+  ...                          float64 (simulator precision)
+  tier12_celltypes.h5
 ```
-HDF5 stores complete traces with metadata (BCL, celltype, conductances, protocol type, tier). This is the archival format — never deleted, always reproducible.
 
 **Training layer (optimized for speed):**
 ```
-/media/norepinephrine/Elements-ext4/surrogate_data/train/
-├── shard_0000.pt                ~200MB each
-├── shard_0001.pt                pre-shuffled
-├── ...                          float32 (ML precision)
-└── shard_NNNN.pt
-
-/media/norepinephrine/Elements-ext4/surrogate_data/val/
-└── ...                          split by PROTOCOL, not timestep
+/media/HDD/surrogate_data/train/
+  shard_0000.pt                ~200MB each, pre-shuffled
+  shard_0001.pt                float32 (ML precision)
+  ...
+/media/HDD/surrogate_data/val/
+  ...                          split by PROTOCOL, not timestep
 ```
-Each shard is a single PyTorch tensor: `(N_segments, segment_length, 47)` at float32. Loads directly to GPU via `torch.load(map_location='cuda')` — zero parsing, zero dtype conversion.
+
+Each shard: `(N_segments, segment_length, 47)` at float32. Loads directly to GPU.
 
 **Segment format (47 columns):**
 
@@ -311,243 +612,217 @@ Each shard is a single PyTorch tensor: `(N_segments, segment_length, 47)` at flo
 | 3-20 | 18 gate states | gate decoder target |
 | 21 | I_ion | primary prediction target |
 | 22 | clamp_mask | 0.0 = free-running, 1.0 = voltage clamped |
-| 23-34 | 12 gate_inf values | steady-state gate targets (gate_indices order, computed post-hoc from Vm) |
-| 35-46 | 12 gate_tau values | time constants (gate_indices order, computed post-hoc from Vm, ms) |
+| 23-34 | 12 gate_inf values | steady-state gate targets (computed post-hoc from Vm) |
+| 35-46 | 12 gate_tau values | time constants (computed post-hoc from Vm, ms) |
 
-Note: gate_inf (12 cols) and gate_tau (12 cols) for the voltage-dependent gates are computed post-hoc after trace generation — vectorized over the full trace in one pass. This adds 0% overhead to the generation step (vs 40% overhead if computed per-step inside the time loop). Column indices match `TraceData` constants in `single_cell_generator.py`: GATE_INF_START=23, GATE_INF_END=35, GATE_TAU_START=35, GATE_TAU_END=47.
-
-Segment lengths: 100, 500, 1000, 5000 steps (matching rollout curriculum stages).
-
-**Speed decisions:**
-
-| Decision | Rationale |
-|----------|-----------|
-| float32 not float64 | 2× memory, 2× compute. ML doesn't need float64. Generate at float64, convert during pre-processing. |
-| Pre-chunk segments offline | No windowing/slicing during training. Segment lengths match curriculum. |
-| Shard size ~200MB | Fits CPU page cache. Fast sequential read. ~2000 segments of 1000 steps per shard. |
-| Pre-shuffle within shards | No shuffling overhead in DataLoader. |
-| Split train/val by protocol | Val sees unseen pacing patterns, not unseen timesteps from seen patterns. |
-| Augmentation: hybrid | Conductance scaling, stitching, dt variation → offline (need ODE re-run). Vm noise → on-the-fly (just add N(0,σ²), trivial). |
-
-**Estimated dataset size:** ~1TB at float64 raw across all tiers (47-col format, ~2× the original 23-col estimate). T1+T2 measured at 8.6GB, T3 at 2.3GB. Float32 training shards ~500GB. Fits on external HDD (5.5TB). Training loads 1-2 shards into GPU at a time (~400MB). Blackwell GPU has ample memory for model + data + gradients.
-
-## Training Strategy
-
-### Principle
-
-Bootstrap the latent space first (clean data, autoencoder), then teach dynamics (simple → complex data, teacher forcing → rollout), then stress-test (noise, tissue, corruption). The latent must be well-structured before dynamics training begins.
-
-### Phase A — Latent Space Bootstrap
-
-Train a standalone gate autoencoder to establish a meaningful latent coordinate system before any dynamics training.
-
-```
-encoder: (18 gates) → (16 latent)     temporary, discarded after Phase A
-decoder: (16 latent) → (18 gates)     becomes scaffold decoder
-```
-
-Data: gate state vectors from Tier 1 (steady-state pacing at all BCLs). Each timestep gives one (18,) vector. No dynamics, no Vm, no I_stim — just gate snapshots.
-
-Loss: MSE(decoder(encoder(gates)), gates)
-
-After Phase A: decoder weights transfer to scaffold. Encoder used for initial latent computation and as a training target reference in Phase B. Latent space is a PCA-like compression of gate states — well-structured and interpretable.
-
-**Why Phase A matters**: Without it, Phase B starts with random decoder AND random dynamics weights. The latent could collapse to something that minimizes I_ion but doesn't encode meaningful ionic state. Phase A anchors the latent space first. Cheap (trains in minutes on 18-dim vectors).
-
-### Phase B — Simple Dynamics
-
-Train the dynamics model (Stages 1-2-3) on clean, simple data with pre-trained decoder frozen.
-
-**Data**: Tier 1 only (steady-state pacing). Single celltype (epi). Single dt=0.01ms. Clean, no noise.
-
-**B1 — Teacher forcing (single-step)**: At each step, provide TRUE latent from encoder(true_gates) as latent_prev. Model predicts latent_new and I_ion. No error accumulation. λ_gate=1.0 (dominant), L_ion secondary. Until gate reconstruction error < threshold.
-
-**B2 — Short rollout (N=10)**: Model uses own predictions as input for 10 steps, then resets to ground truth. Introduce scheduled sampling: randomly replace ground-truth latent with model prediction (start 10% → increase). λ_gate=1.0, λ_roll=0.1. Until 10-step rollout stable.
-
-**B3 — Medium rollout (N=100 = 1ms)**: Autoregressive for 100 steps. λ_gate=0.5 (start annealing), λ_roll=0.5. Until 100-step rollout stable.
-
-### Phase C — Full Dynamics
-
-Add complex data, anneal scaffold, increase rollout.
-
-**Data**: Add Tiers 2-4 (S1-S2, dynamic, random intervals). Add all celltypes. Add multiple dt values. Gradual data mixing: start 90% Tier 1 + 10% new tiers, increase new tier fraction over epochs.
-
-**Unfreeze decoder** — fine-tune jointly with dynamics. The decoder adapts as latent space evolves.
-
-**C1 — Long rollout (N=1000 = 10ms)**: λ_gate=0.3→0.1. λ_roll=1.0. LR reduced. Add voltage clamp protocols (scaffold still active — clamp gives exact gate targets at clamped Vm, maximizing scaffold value).
-
-**C2 — Very long rollout (N=10000 = 100ms)**: λ_gate=0.1→0.01. Covers full upstroke + plateau. Mixed free-running + clamped batches (use clamp mask per segment).
-
-**C3 — Full beat rollout (N=100000 = 1000ms)**: λ_gate=0.01→0.0 (scaffold effectively removed). Model must reproduce complete AP autoregressively. Validation: APD error < 5ms, dVm/dt_max within 10%.
-
-**Training loop detail for rollout**: Model predicts I_ion, not Vm. To compute L_roll and autoregressive Vm:
-```
-For each step in rollout:
-  I_ion_pred = model(latent, Vm, dt)
-  if clamp_mask[t]:
-    Vm_next = V_clamp[t+1]           # voltage clamp: override Vm
-  else:
-    Vm_next = Vm + dt·(-I_ion_pred + I_stim)/Cm   # free-running: Vm update
-  latent = model.latent_new           # carry latent forward
-```
-L_roll only applies to free-running segments (clamped Vm is externally set, not predicted).
-
-### Phase D — Robustness
-
-Hard data, no scaffold, stress testing.
-
-**Data**: Add Tiers 5-12 (tissue injection, voltage clamp, concentrations, long-duration, corruption recovery, tissue-specific, combined stressors, stitched protocols).
-
-**Scaffold removed** (λ_gate=0). Monitor gate reconstruction error passively — if it diverges, re-enable scaffold at low weight.
-
-**D1 — Tissue-mimicking**: OU noise, sustained currents, biphasic pulses. Full-beat rollout.
-
-**D2 — Stress testing**: Corruption recovery, combined stressors, stitched protocols. 5-beat rollout (5000ms). Validation: 5-beat rollout stable, restitution curve correct, recovery from perturbation within 1 beat.
-
-### Training Timeline
-
-| Phase | Step | Data | Rollout | λ_gate | λ_roll | LR | Weight Decay | Batch |
-|-------|------|------|---------|--------|--------|-------|-------------|-------|
-| A | — | gate states | — | — | — | 1e-3 | 1e-5 | 4096 |
-| B | B1 | Tier 1 | 1 | 1.0 | 0 | 1e-3 | 1e-4 | 1024 |
-| B | B2 | Tier 1 | 10 | 1.0 | 0.1 | 1e-3 | 1e-4 | 512 |
-| B | B3 | Tier 1 | 100 | 0.5 | 0.5 | 5e-4 | 1e-4 | 256 |
-| C | C1 | Tier 1-4 + clamp | 1000 | 0.3→0.1 | 1.0 | 5e-4 | 5e-4 | 128 |
-| C | C2 | Tier 1-4 + clamp | 10000 | 0.1→0.01 | 1.0 | 2e-4 | 5e-4 | 64 |
-| C | C3 | Tier 1-4 + clamp | 100000 | 0.01→0 | 1.0 | 1e-4 | 5e-4 | 32 |
-| D | D1 | Tier 1-12 | 100000 | 0 | 1.0 | 5e-5 | 1e-3 | 32 |
-| D | D2 | + stress | 500000 | 0 | 1.0 | 2e-5 | 1e-3 | 8 |
-
-Estimated total: ~40 GPU-hours on Blackwell.
-
-### Optimizer
-
-- **AdamW** with variable weight decay (1e-5 → 1e-3 across phases, increase when overfitting detected)
-- **LR schedule**: cosine decay within each phase, reset at phase transitions
-- **Gradient clipping**: max_norm=1.0
-- **Batch size**: decreases as rollout length increases (memory-bound)
-- **Early stopping**: per-phase, based on validation I_ion error
-- **Checkpointing**: save best model per phase, resume from best if training destabilizes
-
-### Transition Risks and Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| Phase B→C: complex data destabilizes latent | Gradual data mixing (90/10 → 50/50 → 10/90) |
-| Scaffold removal: latent drifts without gate loss | Monitor gate reconstruction passively; re-enable at low weight if divergent |
-| Rollout length jumps: error accumulation spikes | Double rollout length each time (100→200→400→800→1000), not 10× jumps |
-| Teacher forcing → autoregressive gap (exposure bias) | Scheduled sampling: mix ground-truth and predicted latent inputs (10%→100% model predictions) |
-| Overfitting at any phase | Increase weight decay 2-3×; if persistent, add data or reduce model capacity |
-
-### Advanced Data Strategies
-
-- **Phase space coverage monitor**: Track (Vm, dVm/dt, Ca_i) coverage. Add protocols for uncovered regions.
-- **Curriculum over complexity**: Train Tier 1 → add Tier 2 when loss plateaus → Tier 3 → etc.
-- **Adversarial protocol generation**: After initial training, gradient-search for pacing patterns that maximize model error. Generate those protocols, retrain.
-- **Interpolation ground truth**: Generate at dt=0.001ms (gold standard), subsample to training dt values. Validates dt-invariance.
-
-### Data Budget
-
-All single-cell ODE — runs in seconds per protocol on GPU. Estimated ~50,000 AP beats across all tiers and augmentations. Fits in memory trivially. Bidomain V1 tissue profiles (Tier 5) require a few tissue runs (~minutes each).
-
-## Data Generation Performance
-
-### Benchmarks
-
-| Mode | Throughput | Per-beat time | Speedup vs CPU single |
-|------|-----------|---------------|----------------------|
-| CPU single-cell sequential | 1,637 steps/s | 61 s/beat | 1× |
-| CPU batch (n=200) | 269,806 steps/s | 0.36 s/beat/proto | 171× |
-| GPU torch.compile (n=10K) | 77.5M steps/s | 0.0013 s/beat/proto | 47,227× |
-
-GPU batch requires large n (>=1000) to overcome kernel launch overhead. Below n~50, GPU is slower than CPU batch due to launch latency dominating the tiny per-step compute.
-
-### Chunked Processing for Long Protocols
-
-Tier 4 (200 protocols x 163s at dt=0.01ms = 16.3M steps each) produces a 1.2TB output buffer when allocated monolithically. This causes OOM on 123GB RAM systems.
-
-Solution: chunk_steps=500K. Each chunk processes 500K timesteps across all protocols, writes results to disk, then releases memory. At n=200, each chunk is ~0.9GB — fits comfortably in RAM.
-
-Trade-off: chunking adds disk I/O overhead but eliminates OOM. At n=5 (test), throughput is ~6K cell-steps/s. At n=200 (production), throughput matches the CPU batch benchmark (~270K cell-steps/s).
+Column indices match `TraceData` constants in `single_cell_generator.py`: GATE_INF_START=23, GATE_INF_END=35, GATE_TAU_START=35, GATE_TAU_END=47.
 
 ### Generation Status
 
 | Tier | Status | Size | Notes |
 |------|--------|------|-------|
-| T1 (steady-state) | Done | ~3.5GB | On HDD |
-| T2 (S1-S2) | Done | ~5.1GB | On HDD |
+| T1 (steady-state) | Done | ~3.5GB | |
+| T2 (S1-S2) | Done | ~5.1GB | |
 | T3 (dynamic) | Done | ~2.3GB | 47-col format |
 | T4 (random intervals) | Done | ~551GB | 200 protocols, chunked |
-| T5-T10 | Done | ~15GB | Various tiers |
+| T5-T10 | Done | ~15GB | |
 | T11 (combined/stitched) | Done | ~18GB | 50 stitched protocols |
 | T12 (celltypes) | Done | ~22GB | ENDO/M_CELL variants |
 | **Total** | **Done** | **~608GB** | All tiers complete on HDD |
 
-### 47-Column Format
+### Generation Benchmarks
 
-gate_inf and gate_tau columns added post-hoc after full trace generation (vectorized over entire trace at once). This avoids the 40% per-step overhead of computing them inside the time loop. The post-hoc approach has 0% overhead on the generation step since gate_inf/gate_tau are pure functions of Vm.
+| Mode | Throughput | Per-beat time | Speedup vs CPU single |
+|------|-----------|---------------|----------------------|
+| CPU single-cell sequential | 1,637 steps/s | 61 s/beat | 1x |
+| CPU batch (n=200) | 269,806 steps/s | 0.36 s/beat/proto | 171x |
+| GPU torch.compile (n=10K) | 77.5M steps/s | 0.0013 s/beat/proto | 47,227x |
 
-## Diffusion Component — Cross-Skip Coupled ResNet
+GPU batch requires large n (>=1000) to overcome kernel launch overhead.
 
-Architecture unchanged from original design (not yet revisited — focus has been on ionic surrogate):
-- Dual conv paths (Vm, phi_e) with bidirectional 1×1 cross-skip connections at each block
+**Chunked processing for long protocols:** Tier 4 (200 protocols x 16.3M steps each) produces 1.2TB monolithically. Solution: chunk_steps=500K. Each chunk ~0.9GB. Eliminates OOM.
+
+---
+
+## 11. Advanced Upgrades
+
+### Connection to State Space Models (Mamba)
+
+Our ionic surrogate IS a selective SSM -- independently derived but structurally identical. The n x 1 cross-attention produces input-dependent state transitions, which is Mamba's core "selectivity" mechanism.
+
+**Parallel scan for training**: Stage 1 alone is an affine recurrence that supports associative scan. For our tiny model, sequential backprop through 100K steps is feasible (~240MB memory per sample with gradient checkpointing). Not a bottleneck on Blackwell GPU.
+
+**Zero-order hold discretization**: Replace Euler update with exact exponential: unconditionally stable for any dt. Cost: +16 FLOPs (one exp per dim). Enables variable dt with guaranteed stability.
+
+### Mixture of Experts (MoE)
+
+4 tiny expert copies of Stage 1, each specialized for one AP phase. Router (single linear on [Vm, dt], ~8 FLOPs) selects top-1 per step. Zero extra inference cost, 4x effective capacity.
+
+### Summary of Advanced Upgrades
+
+| Upgrade | Cost Impact | Training Impact | What It Gives |
+|---------|-------------|-----------------|---------------|
+| Mamba parallel scan | 0 inference | O(log N) vs O(N) | Train over full traces without sequential rollout |
+| Mamba ZOH discretization | +16 FLOPs | -- | Exact exponential update, stable any dt |
+| MoE (4 experts) | +8 FLOPs | ~4x data needed | 4x capacity, phase-specialized, zero cost |
+
+---
+
+## 12. Diffusion Component -- Cross-Skip Coupled ResNet
+
+Architecture unchanged from original design (not yet revisited -- focus has been on ionic surrogate):
+- Dual conv paths (Vm, phi_e) with bidirectional 1x1 cross-skip connections at each block
 - Monodomain single-path baseline first, then bidomain upgrade
-- Upgrade path if phi_e accuracy insufficient: dilated conv → U-Net → local Transformer → FNO
+- Upgrade path if phi_e accuracy insufficient: dilated conv -> U-Net -> local Transformer -> FNO
 
-## Known Risks
+---
+
+## 13. Known Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Stage 2 breaks Stage 1 contractivity | HIGH | Spectral normalization on W_cc (||W_cc||₂ ≤ 1) + RMSNorm on corrections. Hard bound: ||correction|| ≤ √16 + ||b|| |
-| Error accumulation over 100K+ autoregressive steps | HIGH | Gate decoder scaffold per-step; gradient checkpointing for memory; validate with 5000ms+ rollouts |
-| Parallel scan incompatible with Stage 2 | HIGH | Sequential backprop feasible for tiny model; or train Stage 1 with scan, fine-tune Stage 2 |
-| Ca handling is compartmental, not gate-like | MEDIUM | Monitor Ca-related gate predictions; add explicit Ca dims (mod A5) if needed |
-| Charge/concentration drift | MEDIUM | Monitor Na/K/Ca equivalents; add conservation penalty if needed |
-| Overfitting in Phase B (642 params, ~180 APs) | MEDIUM | Weight decay, extend Tier 1 data, monitor train/val gap |
-| Encoder-dynamics latent mismatch | MEDIUM | Monitor encoder(gates) vs dynamics latent in Phase B validation; gate decoder loss ensures functional equivalence |
-| Concentration tracking implicit | MEDIUM | Model infers concentrations from AP shape; if fails, add explicit inputs (mod A5) |
-| KAN Chebyshev K=3 readout insufficient | LOW | Base design uses KAN Chebyshev (K=3). If still insufficient, upgrade to higher degree (K=5, +32 params) or nonlinear MLP (+300 FLOPs) |
-| Linear gate decoder insufficient | LOW | Upgrade to MLP decoder (16→32→18) if reconstruction error high |
+| Error accumulation over 100K+ autoregressive steps | HIGH | Gate decoder scaffold per-step; gradient checkpointing; validate with 5000ms+ rollouts |
+| Stage 2 readout insufficient for cross-dim products | HIGH | Start with cross-attention, add GELU/MLP if needed. This is where all cross-dim interaction lives now |
+| Ca handling is compartmental, not gate-like | MEDIUM | Monitor Ca-related predictions; explicit concentrations help |
+| Charge/concentration drift | MEDIUM | Monitor Na/K/Ca; add conservation penalty if needed |
+| Encoder-dynamics latent mismatch | MEDIUM | Monitor encoder(gates) vs dynamics latent in Phase B; gate decoder loss ensures functional equivalence |
+| Stage 1 too slow even with diffusion hiding | LOW | Stage 1 has entire diffusion step (~ms of GPU time). Only a risk if extremely deep |
+| Linear gate decoder insufficient | LOW | Upgrade to MLP decoder if reconstruction error high |
 
-## Competitive Landscape (as of 2026-03-18)
+---
+
+## 14. Competitive Landscape (as of 2026-03-18)
 
 No existing bidomain surrogate models. Our approach is unique.
 
 | Approach | Paper | Key difference from ours |
 |----------|-------|------------------------|
-| **AGATA** (GNN) | Morier et al., FIMH 2025 | Monodomain, Mitchell-Schaeffer (2-var), no phi_e, 12× speedup vs FEM |
+| **AGATA** (GNN) | Morier et al., FIMH 2025 | Monodomain, Mitchell-Schaeffer (2-var), no phi_e, 12x speedup vs FEM |
 | **FNO/KOL** | Centofanti et al., PLOS CB 2025 | Single-shot AT/RT maps, not timestep simulation |
-| **PINO** | Lydon et al., arXiv 2025 | PINN-adjacent, monodomain, 10× resolution generalization |
-| **LNODE** | Salvador et al., npj Dig Med 2024 | 0D hemodynamic outputs, 300× speedup, different scope |
+| **PINO** | Lydon et al., arXiv 2025 | PINN-adjacent, monodomain, 10x resolution generalization |
+| **LNODE** | Salvador et al., npj Dig Med 2024 | 0D hemodynamic outputs, 300x speedup, different scope |
 | **BLNMs** | Martinez et al., CMAME 2025 | Single-shot activation maps, geometry atlas |
 
 Our differentiators: (1) only bidomain surrogate, (2) only biophysically detailed ionic model, (3) only physics-aware architecture, (4) universal ionic latent space, (5) designed for calcium imaging transfer learning.
 
-## Open Questions
+---
 
+## 15. Open Questions
+
+### Stage 2 Readout (active design)
+- What d_model for cross-attention? Token embedding dimension?
+- How to embed scalar conductance dims as query tokens?
+- How to embed the 9 environment values as key/value tokens?
+- Output aggregation: sum of 16 attended values, or concat -> linear?
+- Should the 16->1 output projection have a GELU, or trust linear (Kirchhoff's law)?
+
+### Architecture Scaling
+- How expressive should Stage 1 be now that it's off the critical path? Multi-head? Stacked layers?
+- Does ORd (41 states) require working dim > 32?
+
+### Training
 - How does autoregressive error accumulation scale with rollout length? (empirical, no theory)
-- Is the split GELU 8/8 split optimal, or does a different ratio work better?
-- How many ResNet blocks are needed for adequate phi_e receptive field?
-- Will cross-skip 1×1 convolutions suffice for Vm↔phi_e coupling?
-- What pacing protocols are needed in training data for robust restitution?
-- Is the monodomain → bidomain transfer (reusing Vm path weights) effective?
+- Is Phase A autoencoder (designed for 16-dim latent) still the right bootstrap for 32-dim ionic_state?
 
-## Implementation Status
+### Diffusion ResNet
+- How many ResNet blocks needed for adequate phi_e receptive field?
+- Will cross-skip 1x1 convolutions suffice for Vm<->phi_e coupling?
+- Is the monodomain -> bidomain transfer (reusing Vm path weights) effective?
+
+---
+
+## 16. Implementation Status
 
 | Component | Code Location | Tests | Status |
 |-----------|--------------|-------|--------|
-| ChebyshevReadout | `Surrogate/surrogate/model/chebyshev.py` | 8 tests in `test_model.py` | Done |
-| IonicSurrogate | `Surrogate/surrogate/model/ionic_surrogate.py` | 10 tests in `test_model.py` | Done (with RMSNorm) |
 | Data generation | `Surrogate/surrogate/data/` | 32 tests in `test_datagen.py` | Done |
-| Architecture diagram | `Images/ionic_surrogate_v2.tex` / `.png` | — | Done |
-| Architecture document | `Research/Active/surrogate_pipeline/ARCHITECTURE_v2.md` | — | Done |
-| Training pipeline | — | — | Not started |
-| Phase A autoencoder | — | — | Not started (next) |
+| v3 NernstComputer | `Surrogate/surrogate/model/nernst.py` | 3 tests | Done |
+| v3 IonicStage1 | `Surrogate/surrogate/model/stage1.py` | 9 tests | Done (1,336 inference params) |
+| v3 IonicStage2 | `Surrogate/surrogate/model/stage2.py` | 6 tests | Done (118 params) |
+| v3 IonicSurrogateV3 | `Surrogate/surrogate/model/ionic_surrogate_v3.py` | 7 tests | Done (orchestrator) |
+| v3 Data preprocessor | `Surrogate/surrogate/data/preprocessor.py` | -- | Not started (PLAN Phase 2) |
+| v2 cleanup | -- | -- | Not started (PLAN Phase 3) |
+| v2 ChebyshevReadout | `Surrogate/surrogate/model/chebyshev.py` | 8 tests | Superseded, pending removal |
+| v2 IonicSurrogate | `Surrogate/surrogate/model/ionic_surrogate.py` | 10 tests | Superseded, pending removal |
+| Training pipeline | -- | -- | Not started |
+| Phase A autoencoder | -- | -- | Not started (after preprocessor) |
+| ORd data generation | -- | -- | Plan drafted, audited (3 critical to fix) |
 
-**Test summary**: 50/50 passing (18 model + 32 data generation).
+**Test summary**: 75/75 passing (43 model + 32 data generation). v3 model tests: 25 (3 Nernst + 9 Stage1 + 6 Stage2 + 7 V3). v2 model tests: 18 (coexist until Phase 3 cleanup).
 
-## Connections
+---
+
+## 17. Connections
+
 - **Engines**: Bidomain V1 (training data source), Monodomain V5.4 (monodomain baseline)
-- **Related research**: [Boundary conduction speedup](../boundary_conduction_speedup/) — surrogate must reproduce Kleber effect; [Engine consolidation](../engine_consolidation/) — unified API would simplify data generation
+- **Related research**: [Boundary conduction speedup](../boundary_conduction_speedup/) -- surrogate must reproduce Kleber effect; [Engine consolidation](../engine_consolidation/) -- unified API would simplify data generation
 - **Pipelines**: Optimizer V1 (surrogate could replace simulator in optimization loop)
-- **Future**: Calcium imaging transfer learning — fine-tune ionic surrogate on real Ca²⁺ fluorescence data
+- **Future**: Calcium imaging transfer learning -- fine-tune ionic surrogate on real Ca2+ fluorescence data
+
+---
+
+## Appendix A: v2 Architecture (reference, superseded)
+
+*The v2 design was implemented and tested (18/18 tests passing) but superseded by v3 before training began. Code exists at `Surrogate/surrogate/model/` and diagram at `Images/ionic_surrogate_v2.tex`.*
+
+### v2 Architecture Summary (3 stages, 886 FLOPs, 3.7x Rush-Larsen)
+
+**Stage 1 -- n x 1 Cross-Attention** (~464 FLOPs): 16 latent dims independently query [Vm, dt]. attn_dim=8. Per-dim gate + target. Contractive by construction.
+
+**Stage 2 -- Split GELU Cross-Channel (x2 rounds)** (~352 FLOPs): Two rounds of split GELU gating with spectrally-normalized W_cc (8->16) + RMSNorm. Captures cross-channel coupling. Rank-8 bottleneck.
+
+**Stage 3 -- KAN Chebyshev K=3** (~70 FLOPs): Per-dim Chebyshev polynomial readout. 16 dims x 4 coefficients = 64 params + b_vm + b = 66 total.
+
+**Scaffold -- Gate Decoder** (~324 FLOPs): Single linear (16->18) + sigmoid -> 18 TTP06 gates. Training only.
+
+### v2 Parameter Table
+
+| Component | Params (inference) | Params (training) |
+|-----------|-------------------|-------------------|
+| Stage 1: W_q (16,8) + W_k (2,8) + W_v (2,8) + W_out (8,16) | 288 | 288 |
+| Stage 2a: W_cc1 (8,16) + b_1 (16) | 144 | 144 |
+| Stage 2b: W_cc2 (8,16) + b_2 (16) | 144 | 144 |
+| Stage 3: C (16,4) + b_vm + b | 66 | 66 |
+| Scaffold: W_dec (18,16) + b_dec (18) | -- | 306 |
+| **Total** | **642** | **948** |
+
+### v2 Normalization Stack
+
+1/sqrt(8) attention scaling, sigmoid gate, spectral norm on W_cc, RMSNorm on split GELU corrections (inline, zero params), Chebyshev normalization on readout input.
+
+### v2 Simplification Spectrum
+
+| Level | FLOPs | vs RL | Description |
+|-------|-------|-------|-------------|
+| 0: Scalar HH | 176 | 0.7x | sigma(wV+b) target, const rate |
+| 1: + Vm rates | 240 | 1.0x | Sigmoid rate |
+| 2: + coupling | 416 | 1.7x | + split GELU cross-channel |
+| 3: Full design | 886 | 3.7x | n x 1 cross-attn + 2x split GELU + KAN Chebyshev |
+
+### v2 Modification Menu
+
+**Accuracy upgrades**: A1 multi-head (+200), A2 stacked attention (+464/layer), A3 nonlinear MLP readout (+300), A5 explicit concentrations (+100), A6 structured Nernst current (+50), A7 higher-degree KAN K=5 (+32 params).
+
+**Speed downgrades**: S1 remove one cross-channel round (-176), S2 scalar attention (-350), S3 smaller latent d=8, S4 linear readout (-37 FLOPs), S6 drop to scalar HH (-497).
+
+---
+
+## Appendix B: Failed Approaches (all versions)
+
+| Approach | Why it failed |
+|----------|---------------|
+| Temporal Transformer (300-pt history) | 200M FLOPs = 1Mx Rush-Larsen. Buffer management, resampling, variable dt issues. |
+| Vm history buffer (any size) | Stimulus artifacts contaminate history. Non-uniform schedule is a hyperparameter maze. |
+| Fourier decomposition of Vm | Sliding DFT is O(K) and clever, but unnecessary once carried latent eliminates history need. |
+| Learned Rush-Larsen | Too constrained -- forces HH exponential relaxation and independent dimensions. Can't represent Markov or Ca dynamics. |
+| Neural ODE (dz/dt = MLP(z,Vm)) | Too unconstrained -- multi-timescale learning is notoriously hard without structural priors. |
+| GRU cell | Works but gating mechanism adds cost (10x RL) without clear benefit over residual formulation. |
+| 17x17 self-attention over latent dims | 47x RL. Cross-channel coupling not worth the cost. |
+| Deep MLP for cross-channel | Overkill. Real coupling is rank-3. |
+| Dedicated cross-coupling stage (v2 Stage 2) | Cross-state coupling is temporal, not instantaneous within one dt. No physical basis for per-step coupling layer. |
+| Full self-attention for Markov | More elegant but splitting error at dt=0.01ms is negligible. Not physically justified over simpler MLP. |
+| Softmax for cross-channel gating | Conservation constraint (sum=1) doesn't match independent gate biology. |
+| Ohmic/non-Ohmic readout split | Ohmic behavior is a Layer 1 model assumption, not Layer 0 ground truth. |
+| Bilinear readout with hand-crafted features | Feature vector [1,Vm,Vm^2,...] is arbitrary. Psi factorization overly complex. Cross-attention learns routing naturally. |
+| Concentration decoder from ionic state | Replaced by explicit concentration dims. No decoder that can go wrong. |
+| Sigmoid output bounding | Vanishing gradients, breaks residual identity, triple sigmoid path. |

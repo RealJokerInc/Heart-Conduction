@@ -5,10 +5,36 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Architecture v2 settled and implemented: n×1 cross-attention + two-round split GELU (with RMSNorm) + KAN Chebyshev readout. 886 FLOPs, 3.7× Rush-Larsen, 642 params. I_stim removed from model input. Data generation T1-T12 complete. Model code (ChebyshevReadout + IonicSurrogate) implemented with 50/50 tests passing. RMSNorm added to Stage 2 corrections (both rounds) for stability. ARCHITECTURE_v2.md written as detailed design document.
+v3 model code implemented and tested (75/75). Phase 1 of PLAN.md complete: nernst.py, stage1.py, stage2.py, ionic_surrogate_v3.py. Small TTP06 config (ionic=16, cond=8, ~1454 inference params). Phase 2 (data preprocessing) and Phase 3 (v2 cleanup) remain. ORd data generation plan drafted and audited (18 issues, 3 critical — all about TTP06-hardcoded assumptions in existing code).
 
 ## Next Step
-Update PLAN.md to reflect RMSNorm addition and update IonicSurrogate tests for RMSNorm behavior. Then Phase A autoencoder training blueprint.
+Complete PLAN.md Phase 2 (data preprocessor) + Phase 3 (v2 removal). Then first TTP06 training run. ORd data gen plan needs critical fixes before implementation.
+
+### 2026-04-02 — Compression input change + architecture doc
+**Decision**: Compression takes full carried_state (36→16) instead of ionic_state only (32→16). Gives compression access to concentration context (Ca_ss for fCass-dependent conductances). +80 params (1416 vs 1336 inference). Code + tests updated, 43/43 pass.
+**Rationale**: Compression recomputes every step because attention structurally cannot compute cross-dim products (m³·h·j). The compression MLP has 2 GELU layers specifically for this. Carrying conductance_latent forward (inferring instead of recomputing) was considered and rejected — attention can't maintain accurate gate products.
+**Also**: ARCHITECTURE_v3.md written (Nature-style, 304 lines, audited 0 critical). Python TikZ generator built (generate_v3_diagram.py). ORd T1 EPI complete (9/9 protocols, 12GB).
+
+### 2026-04-01 Session 17-18
+**Worked on**: v3 model implementation (PLAN.md Phase 1) + ORd data generation planning
+**Accomplished**: Implemented all 4 v3 model files (nernst.py, stage1.py, stage2.py, ionic_surrogate_v3.py). 75/75 tests passing (43 model + 32 data gen). Blueprint with 3 phases, audited 3 rounds (17→8→3 issues, final: 0 critical). Stage 2 input normalization identified as must-fix (Ca_i vs K_i: 6 orders of magnitude). ORd data gen plan drafted (3 phases, audited: 3 critical about TTP06-hardcoded code). TTP06 column mapping confirmed: [Ki(0),Nai(1),Cai(2),CaSR(3),CaSS(4),m(5)..RR(17)]. Scaffold targets: 12 HH gates (not 13, not 18). N_GATES corrected from 13→12 (RR excluded).
+**Next**: PLAN.md Phase 2 (preprocessor) + Phase 3 (v2 cleanup) → first training run → ORd plan fixes → ORd data generation
+
+### 2026-04-01 — Session 17: Training viability + multi-model conditioning
+
+**Trainability concern**: v3 full architecture is ~4950 inference params for a 200-param system (TTP06). 25× overparameterized. Will train (scaffolds + staged training + 608GB data), but excess capacity slows convergence. MLP 32→32 (2112 params) is entirely wasted on TTP06 (no Markov states — α learns ~0 everywhere).
+
+**Resolution: start small, scale up.** Same architecture, smaller hyperparams for first run:
+- ionic_state=16, MLP 16→16, compression 16→12→12→8, conductance_latent=8, Stage 2 queries=8
+- ~1200 params total. Validate architecture works. Then scale to 32 for ORd.
+
+**Multi-model conditioning insight**: The 32-dim architecture is large enough to learn BOTH TTP06 and ORd in one model, conditioned on a label token (model ID as extra attention input). TTP06 uses ~18 of 32 ionic dims; ORd uses all 32. Shared structure (attention, compression, readout) is the same — latent usage differs. This IS the universal ionic latent space from Session 7, realized through conditioning rather than separate models.
+
+Benefits: richer latent for arc light fine-tuning (model has seen two "theories" of ionic dynamics), single architecture for all ionic models, natural curriculum (train TTP06 first, add ORd later).
+
+**Training strategy update**: Phase 1 (Stage 1 isolated) → Phase 2 (Stage 2 regression, frozen Stage 1) → Phase 3 (end-to-end fine-tune). Stage 2 trains trivially in isolation (25→1 supervised regression, no temporal dependency).
+
+**Stage 2 input normalization (must-fix):** Environment tokens have wildly different scales — K_i~138mM vs Ca_i~0.0001mM (6 orders of magnitude). Without normalization, Ca_i/Ca_ss tokens are invisible to attention (key magnitude ≈ 0). Fix: normalize all 9 environment inputs to ~[-1,1] using known physiological ranges before embedding. 9 shifts + 9 scales = 18 fixed constants from physiology, not learned params.
 
 ## Thread
 
@@ -94,6 +120,8 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | 2026-03-23 | 12 | Architecture v2: I_stim removed, Stage 2 doubled (two-round split GELU), Stage 3 KAN Chebyshev K=3. Data gen fixes (searchsorted, incremental HDF5, naming). T1-T11 complete, T12 running. |
 | 2026-03-24 | 13 | Architecture deep-dive: attention math walkthrough, GPU friendliness analysis (kernel launch overhead, torch.compile fusion, teacher-forced temporal parallelism). Blueprint for model impl (2 phases, 18 tests). Audited twice — fixed spectral_norm init ordering (CRITICAL), KNOWLEDGE.md column layout 18+6→12+12 (CRITICAL), 4 high issues. Clean re-audit: 0 critical. |
 | 2026-03-26–30 | 14 | Model implementation: ChebyshevReadout (66 params) + IonicSurrogate (642/948 params). 18 model tests + 32 data gen tests = 50/50 passing. RMSNorm added to Stage 2. TikZ architecture diagram (ionic_surrogate_v2.tex). ARCHITECTURE_v2.md written. Rejected sigmoid output bounding, LayerNorm, BatchNorm. Keras deemed unsuitable. |
+| 2026-03-30–31 | 15 | Architecture v3 redesign from Layer 0. Carried state = 36 (32 ionic + 4 explicit conc). Stage 1: attention(36)→split→ionic through MLP(32→32)+α mixing→compression(32→16)+β mixing; conc attention-only. Nernst at end of Stage 1. Learned residual mixing replaces spectral norm. Chebyshev dropped. Ca_SR dropped. |
+| 2026-03-31–04-01 | 16-18 | Stage 2 design + v3 implementation. Bilinear→ψ factorization→Ohmic split→all scrapped→cross-attention settled. Blueprint 3 phases, audited 3 rounds. Implemented: nernst.py, stage1.py, stage2.py, ionic_surrogate_v3.py. 75/75 tests. N_GATES corrected 13→12. ORd plan drafted+audited. TTP06 column mapping confirmed. Multi-model conditioning planned. |
 
 ### 2026-03-23 — Session 12: Architecture v2 + T4-T12 data generation
 
@@ -189,7 +217,50 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 - NEW: `Research/Active/surrogate_pipeline/ARCHITECTURE_v2.md`
 - NEW: `Surrogate/TIKZ_REFERENCE.md`
 
-**Next**: Update PLAN.md for RMSNorm, then Phase A autoencoder training blueprint.
+**Next**: Settle Stage 2 and Stage 3 redesign, then update model code + tests, then Phase A training blueprint.
+
+### 2026-03-30–31 — Session 15-16: Architecture v3 from Layer 0
+
+**Layer 0 reasoning framework**: Established three-layer priority: physical reality (Layer 0) → biophysics models (Layer 1) → architecture (Layer 2). Future arc light imaging goal means architecture must not be locked to TTP06/ORd assumptions.
+
+**3-stage → 2-stage pivot**: Mapped physical tasks to architecture. Cross-state coupling within one dt is negligible (all coupling is temporal, accumulates over steps). Tasks A (state evolution) and C (current readout) are parallel reads of old latent. Old Stage 2 (split GELU coupling) eliminated. Critical path insight: only readout needs to be fast; Stage 1 hides behind diffusion.
+
+**Stage 1 settled**: n×1 attention (attn_dim=4) + MLP (32→32→32) with learned α mixing (DeepSeek-inspired convex combination). Concentrations (4 explicit dims: Na_i, K_i, Ca_i, Ca_ss — Ca_SR dropped) split off AFTER attention, before MLP. Compression: 32→24→24→16 with learned β mixing. Nernst at end of pipeline. Pre-RMSNorm before MLP. GELU everywhere + residual = linear bypass.
+
+**Key design decisions with reasoning**:
+- Markov coupling: n×1 attn + MLP sufficient (splitting error O(dt²) ≈ 10⁻⁸). Full self-attention unnecessary.
+- MLP geometry: 32→32 (no bottleneck). ALLOWS coupling, doesn't FORCE it. HH dims pass through via residual.
+- Learned α replaces spectral norm + zero-init + gate-modulation. Convex combination = no amplification by construction.
+- Concentrations: attention-only (no MLP). Slow Vm-dependent tracking. Self-regulation through own-value gating.
+- Compression: 2 GELU layers for triple product composition (m·h in layer 1, m·h·j in layer 2).
+
+**Stage 2 readout exploration**: Derived bilinear form from TTP06 current equations (conductance × driving force). Explored ψ factorization (384 FLOP matmul off critical path → 8 FLOPs on critical path via Horner's method). Proposed Ohmic/non-Ohmic split then SCRAPPED (Ohm's law is a model assumption — rectification, voltage-dependent conductance violate it). Surveyed 8 ML architectures. **Settled on cross-attention**: 16 conductance queries attend to 9 environment tokens [Vm, 4 E, 4 conc]. Output 16→1 linear (Kirchhoff). Budget generous: even MLP h=32 is only 1× ORd step.
+
+**Current architecture (v3, updated dims):**
+```
+carried_state(t) = [ionic_state(32), concentrations(4)] = (36,)
+
+  ├→ Stage 1 (off critical path):
+  │    carried_state(t) → attention(Vm,dt) over 36 dims
+  │    → SPLIT: ionic(32) + conc(4)
+  │    → ionic: Pre-RMSNorm → MLP(32→32→32) → α mixing(32 params) → ionic(t+1)
+  │    → conc: pass through directly → conc(t+1)
+  │    → RECOMBINE: carried_state(t+1) (36,)
+  │    → ionic(t+1) → compression → conductance_latent(t+1) (16,)
+  │    → conc(t+1) → Nernst → reversal_potentials(t+1) (4,)
+  │
+  └→ Stage 2 (ON critical path):
+       conductance_latent(t) as queries, [Vm, E(t), conc(t)] as keys/values → cross-attention → 16→1 → I_ion(t)
+```
+
+**Failed approaches (this session):**
+- Softmax for cross-channel gating: conservation constraint doesn't match independent gate biology
+- Dedicated cross-coupling stage (old Stage 2): cross-state coupling is temporal not instantaneous, no physical basis for a per-step coupling layer
+- Full self-attention for Markov (Proposal A): more elegant but splitting error at dt=0.01ms is negligible, not physically justified over simpler MLP
+- Ohmic/non-Ohmic split readout: Ohmic behavior is a Layer 1 model assumption, not Layer 0 ground truth. Rectification, voltage-dependent conductance, surface charge effects all violate Ohm's law. Scrapped to avoid baking in model assumptions.
+- Bilinear readout with hand-crafted features: [1,Vm,Vm²,Vm³,E,conc] feature vector is arbitrary. ψ factorization was clever engineering but created an overly complex pipeline. Scrapped in favor of cross-attention which learns the routing naturally.
+- Concentration decoder from ionic state: replaced by explicit concentration dims in carried_state. No decoder that can go wrong.
+- E as separate branch: folded into Stage 1 pipeline (Nernst at end). Two branches, not three.
 
 ### 2026-03-19 Session 7 Snapshot
 **Worked on**: Ionic surrogate ML architecture — detailed design from first principles
