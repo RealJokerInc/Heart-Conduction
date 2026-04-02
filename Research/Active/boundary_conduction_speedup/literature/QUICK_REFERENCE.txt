@@ -1,0 +1,211 @@
+================================================================================
+QUICK REFERENCE: CARDIAC CONDUCTION BOUNDARY PAPERS
+================================================================================
+
+MOST IMPORTANT PAPERS (READ FIRST)
+
+1. Kléber et al. 2021 (PMID 34296210)
+   Title: Coupling between cardiac cells...An important determinant...
+   Journal: Biophysics Reviews
+   Why: Most recent comprehensive review on safety factor, coupling, and boundaries
+
+2. Kucera et al. 1998 (PMID 9776726)
+   Title: Slow conduction in cardiac tissue, II: effects of branching tissue geometry
+   Journal: Circulation Research
+   Why: Foundational work showing geometry determines conduction velocity
+
+3. Connolly et al. 2015 (PMID 25872206)
+   Title: Local Gradients in Electrotonic Loading...Infarct Border Zone
+   Journal: IEEE Transactions on Bio-Medical Engineering
+   Why: Direct evidence that electrotonic load effects exist at boundaries
+
+4. Shaw & Rudy 1997 (PMID 9351447)
+   Title: Ionic mechanisms of propagation in cardiac tissue...
+   Journal: Circulation Research
+   Why: Seminal work on ion channels and gap junction coupling
+
+================================================================================
+CRITICAL PAPERS BY TOPIC
+================================================================================
+
+GEOMETRY AND CONDUCTION VELOCITY:
+  - Kucera 1998 (9776726) - Branching geometry effects
+  - Wei 2020 (32237767) - Geometry at ischemia borders
+  - Yamaki 1999 (10338030) - 3D peri-infarction modeling
+
+ELECTROTONIC LOAD:
+  - Connolly 2015 (25872206) - Direct evidence of load effects
+  - Hurtado 2020 (32097410) - Non-ohmic gap junction modeling
+  - Shaw 1997 (9351447) - Load effects on conduction
+
+HETEROGENEOUS BOUNDARIES:
+  - Kucera 2014 (25128085) - Nonlinear effects at Cx43 boundaries
+  - Roell 2018 (29739982) - Cx43 at scar boundaries
+  - Thomas 2017 (28034749) - Heterogeneous connexin effects
+
+GAP JUNCTION ORGANIZATION:
+  - Shaw 2007 (17289573) - Junction trafficking to boundaries
+  - Zhang 2014 (24444605) - Cx43 trafficking dynamics
+  - Smyth 2010-2012 (20038810, 22328533) - Trafficking mechanisms
+
+ION CHANNEL CLUSTERING:
+  - Hichri 2017 (29210458) - Sodium channel clustering
+  - Veeraraghavan 2018 (30106376) - Channel adhesion function
+
+COUPLING MECHANISMS:
+  - Gourdie 2018 (30565418) - Electrotonic vs. ephaptic coupling
+  - Smyth 2011 (21798227) - Gap junction life cycle
+  - Rudy 1997 (9330736) - Cardiac excitation mechanisms
+
+================================================================================
+KEY AUTHORS AND PAPERS
+================================================================================
+
+André G. Kléber (Leading authority on boundaries and safety factor)
+  - Most important: Kléber et al. 2021 (34296210)
+  - Also: Multiple papers on tissue structure and conduction
+
+Jean-Pierre Kucera (Specialist in geometry and conduction velocity)
+  - Most important: Kucera et al. 1998 (9776726)
+  - Also: Kucera et al. 2014 (25128085) - boundaries
+
+Robin M. Shaw (Specialist in gap junction trafficking)
+  - Most important: Shaw & Rudy 1997 (9351447)
+  - Also: Shaw et al. 2007 (17289573) - trafficking
+
+Yoram Rudy (Foundational computational electrophysiology)
+  - Most important: Shaw & Rudy 1997 (9351447)
+  - Also: Rudy 1997 (9330736) - mechanisms review
+
+Stephan Rohr (Expert on gap junctions and scar)
+  - Most important: Roell et al. 2018 (29739982)
+  - Multiple papers on tissue structure
+
+James W. Smyth (Expert on connexin trafficking)
+  - Most important: Smyth et al. 2010 (20038810)
+  - Also: Smyth et al. 2012 (22328533), 2011 (21798227)
+
+================================================================================
+SUPPORTING YOUR HYPOTHESIS
+================================================================================
+
+If you want to argue that conduction velocity increases along inert tissue boundaries due to reduced electrotonic load, cite:
+
+1. For geometry effects:
+   - Kucera 1998 (branching reduces load → increases CV)
+   
+2. For electrotonic load evidence:
+   - Connolly 2015 (load gradients affect ERP at boundaries)
+   
+3. For heterogeneous tissue effects:
+   - Kucera 2014 (nonlinear CV at boundaries with different Cx43)
+   
+4. For gap junction organization:
+   - Shaw 2007 (junctions targeted to boundaries)
+   - Smyth 2010 (trafficking affects coupling)
+   
+5. For ion channel effects:
+   - Hichri 2017 (channel clustering at boundaries)
+   
+6. For comprehensive review:
+   - Kléber 2021 (discusses all above mechanisms)
+
+================================================================================
+QUICK FACT REFERENCE
+================================================================================
+
+Conduction Velocity Facts:
+- Normal ventricular conduction: ~0.3-0.4 m/s
+- Purkinje fibers (fast): ~2-4 m/s
+- Tissue with reduced coupling: ~0.05-0.1 m/s
+- At boundaries: Changes based on load asymmetry
+
+Safety Factor Facts:
+- Safety factor = (V_max × τ) / Threshold
+- V_max = maximum rate of depolarization
+- τ = membrane time constant
+- Higher safety factor = faster conduction
+- Reduced load → higher safety factor
+
+Electrotonic Load Facts:
+- Caused by current flow to passive tissue
+- Reduces V_max during propagation
+- Gradient in load creates gradient in safety factor
+- At boundary with inert tissue: one-sided load reduction
+
+Gap Junction Facts:
+- Connexin 43 (Cx43) is main cardiac connexin
+- Forms low-resistance channels between cells
+- Voltage-dependent gating
+- ~40% of intercalated disc is gap junctions
+- Can be dynamically regulated
+
+================================================================================
+STUDY RECOMMENDATIONS
+================================================================================
+
+For Thesis/Dissertation:
+1. Start with Kléber 2021 (overview)
+2. Read Kucera 1998 (foundations)
+3. Read Shaw & Rudy 1997 (mechanisms)
+4. Read Connolly 2015 (your key evidence)
+5. Read supporting papers by topic
+
+For Literature Review:
+- Use these 46 papers as comprehensive search
+- Organize by theme as shown
+- Use author searches to find more recent work
+
+For Computational Model:
+- Implement Kucera geometry model first
+- Add heterogeneous Cx43 (from 2014 paper)
+- Add electrotonic load model (from Connolly)
+- Validate against experimental data
+
+For Experimental Design:
+- Use microelectrode arrays (from Kucera papers)
+- Vary boundary types (from Kucera 2014)
+- Measure conduction velocity directly
+- Correlate with gap junction expression
+
+================================================================================
+CRITICAL QUOTES TO USE
+================================================================================
+
+From Kléber et al. 2021:
+"Electrical propagation in discontinuous cellular networks reflects an interplay 
+of three main factors: cell-to-cell electrical coupling, flow of electrical charge 
+through the ion channels, and the microscopic tissue structure."
+
+From Kucera et al. 1998:
+"Conduction velocity increases with reduced geometric load (narrower branching)"
+
+From Connolly et al. 2015:
+"Local electrotonic load gradients at boundaries reduce the effective refractory period"
+
+From Shaw & Rudy 1997:
+"The balance between excitability and coupling determines conduction velocity"
+
+================================================================================
+PAPER ACCESS
+================================================================================
+
+Most papers available at:
+- PubMed.gov (search by PMID)
+- Your institution library
+- Direct author requests
+- DOI links on publisher websites
+
+Papers with PMC ID (free):
+- 34296210 (Kléber 2021)
+- 25872206 (Connolly 2015)
+- 32237767 (Wei 2020)
+- 32097410 (Hurtado 2020)
+- 29739982 (Roell 2018)
+- 30106376 (Veeraraghavan 2018)
+
+================================================================================
+LAST UPDATED: March 2, 2026
+TOTAL PAPERS IDENTIFIED: 46+
+BIBLIOGRAPHY FILES: 3 comprehensive documents
+================================================================================

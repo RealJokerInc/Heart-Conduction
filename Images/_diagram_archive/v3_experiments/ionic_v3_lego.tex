@@ -1,0 +1,126 @@
+
+\documentclass[border=8pt, multi, tikz]{standalone}
+\usepackage{import}
+\subimport{Layers/}{init}
+\usetikzlibrary{positioning}
+\usetikzlibrary{3d} %for including external image
+
+\def\ConvColor{rgb:yellow,5;red,2.5;white,5}
+\def\ConvReluColor{rgb:yellow,5;red,5;white,5}
+\def\PoolColor{rgb:red,1;black,0.3}
+\def\UnpoolColor{rgb:blue,2;green,1;black,0.3}
+\def\FcColor{rgb:blue,5;red,2.5;white,5}
+\def\FcReluColor{rgb:blue,5;red,5;white,4}
+\def\SoftmaxColor{rgb:magenta,5;black,7}
+\def\SumColor{rgb:blue,5;green,15}
+
+\newcommand{\copymidarrow}{\tikz \draw[-Stealth,line width=0.8mm,draw={rgb:blue,4;red,1;green,1;black,3}] (-0.3,0) -- ++(0.3,0);}
+
+\begin{document}
+\begin{tikzpicture}
+\tikzstyle{connection}=[ultra thick,every node/.style={sloped,allow upside down},draw=\edgecolor,opacity=0.7]
+\tikzstyle{copyconnection}=[ultra thick,every node/.style={sloped,allow upside down},draw={rgb:blue,4;red,1;green,1;black,3},opacity=0.7]
+
+\pic[shift=(0,0,0)] at (0,0,0) {
+    Box={
+        name=attn,
+        caption=Attention\(20 dims, d=4),
+        xlabel={ 20, },
+        zlabel=512,
+        fill=\ConvColor,
+        height=40,
+        width=3,
+        depth=20
+    }
+};
+
+\pic[shift=(2,0,0)] at (attn-east) {
+    Box={
+        name=ionic,
+        caption=ionic\_mid\(16),
+        xlabel={ 16, },
+        zlabel=256,
+        fill=\ConvColor,
+        height=32,
+        width=2,
+        depth=16
+    }
+};
+
+\draw [connection]  (attn-east) -- node {\midarrow} (ionic-west);
+
+\pic[shift=(2,0,0)] at (ionic-east) {
+    Box={
+        name=mlp,
+        caption=MLP+GELU\(16→16),
+        xlabel={ 16, },
+        zlabel=256,
+        fill=\ConvColor,
+        height=32,
+        width=2,
+        depth=16
+    }
+};
+
+\draw [connection]  (ionic-east) -- node {\midarrow} (mlp-west);
+
+\pic[shift=(1.5,0,0)] at (mlp-east) {
+    Ball={
+        name=alpha,
+        fill=\SumColor,
+        opacity=0.6,
+        radius=2.5,
+        logo=$+$
+    }
+};
+
+\draw [connection]  (mlp-east) -- node {\midarrow} (alpha-west);
+
+\pic[shift=(2,0,0)] at (alpha-east) {
+    Box={
+        name=comp,
+        caption=Compression\(20→8),
+        xlabel={ 8, },
+        zlabel=128,
+        fill=\ConvColor,
+        height=16,
+        width=3,
+        depth=8
+    }
+};
+
+\draw [connection]  (alpha-east) -- node {\midarrow} (comp-west);
+
+\pic[shift=(2,0,0)] at (comp-east) {
+    Box={
+        name=xattn,
+        caption=Cross-Attn\(8 queries × 9 keys),
+        xlabel={ 8, },
+        zlabel=128,
+        fill=\ConvColor,
+        height=16,
+        width=3,
+        depth=8
+    }
+};
+
+\draw [connection]  (comp-east) -- node {\midarrow} (xattn-west);
+
+\pic[shift=(2,0,0)] at (xattn-east) {
+    Box={
+        name=out,
+        caption=I\_ion,
+        xlabel={" ","dummy"},
+        zlabel=1,
+        fill=\SoftmaxColor,
+        opacity=0.8,
+        height=3,
+        width=1.5,
+        depth=25
+    }
+};
+
+\draw [connection]  (xattn-east) -- node {\midarrow} (out-west);
+
+\end{tikzpicture}
+\end{document}

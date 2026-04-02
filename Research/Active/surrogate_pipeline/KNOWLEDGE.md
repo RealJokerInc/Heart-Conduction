@@ -285,12 +285,25 @@ Total FLOPs are ~1× ORd. Acceptable because Stage 2 is the ONLY thing on the cr
 - **GELU in output MLP:** Allows nonlinear channel interaction. Kirchhoff says currents sum linearly, but our 16 conductance dims are learned (not literal channels) -- their combination may benefit from nonlinearity.
 - **Input normalization (required):** Environment tokens have wildly different scales (K_i ~ 138 mM vs Ca_i ~ 0.0001 mM -- six orders of magnitude). Without normalization, low-magnitude tokens (Ca_i, Ca_ss) are invisible to attention (key magnitude ≈ 0). All 9 environment inputs normalized to ~[-1, 1] using known physiological ranges before embedding. 18 fixed constants (9 shifts + 9 scales), not learned. Conductance latent scale is controlled by compression -- normalize if needed.
 
-### Training Strategy
+### Training Strategy (v3, revised)
 
-Train Stage 1 and Stage 2 separately, then fine-tune jointly:
-- **Phase 1:** Train Stage 1 in isolation using scaffold losses (Phases A-D curriculum). No Stage 2.
-- **Phase 2:** Freeze Stage 1. Train Stage 2 as supervised regression (25 precomputed inputs → I_ion). Trains in minutes, no rollout needed.
-- **Phase 3:** Unfreeze Stage 1. End-to-end fine-tuning with I_ion loss + reduced scaffolds. Autoregressive rollout here.
+Single loss per phase, no weighting. Each phase trains one thing.
+
+| Phase | What trains | Loss | Data |
+|---|---|---|---|
+| A1 | Ionic autoencoder (encoder 14→16, decoder=ionic_state_decoder 16→14) | MSE(decoded, true_14_states) | T1 state snapshots |
+| A2 | Attention concentration tracking | MSE(conc_attention_output, true_conc_next) | T1 traces |
+| A3 | Gate conductance projection (gate_conductance_mlp + linear + logit + decoder) | MSE(decoded, true_5_products) | T1 carried_state vectors |
+| B1-B5 | Stage 1 dynamics (attention + ionic_mixing_mlp) | MSE(ionic_state_pred, true_14_states) | T1→T1+T2→T1-T3 |
+| C | Concentration dynamics added | MSE(conc, true_conc) | T1-T3 |
+| D | Stage 2 (frozen Stage 1) | MSE(I_ion_pred, I_ion_true) | T1-T4 |
+| E | End-to-end fine-tune | MSE(I_ion) | T1-T4 |
+
+Rollout curriculum in Phase B: 1→10→100→1000→10000 steps. Scheduled sampling ramps model predictions from 10%→100%. Transition when val loss plateaus.
+
+Initialization: ionic latent = zeros (model discovers own representation), concentrations = real resting values [Na_i≈10, K_i≈138, Ca_i≈0.0001, Ca_ss≈0.0002] (Layer 0 physics). Not from TTP06 encoder — avoids imprinting model assumptions on latent.
+
+Optimizer: AdamW, cosine LR decay per phase, gradient clipping max_norm=1.0. T12 (celltypes) enters at Phase B.
 
 ### Multi-Model Conditioning (planned)
 
@@ -735,20 +748,19 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 
 | Component | Code Location | Tests | Status |
 |-----------|--------------|-------|--------|
-| Data generation | `Surrogate/surrogate/data/` | 32 tests in `test_datagen.py` | Done |
-| v3 NernstComputer | `Surrogate/surrogate/model/nernst.py` | 3 tests | Done |
-| v3 IonicStage1 | `Surrogate/surrogate/model/stage1.py` | 9 tests | Done (1,336 inference params) |
-| v3 IonicStage2 | `Surrogate/surrogate/model/stage2.py` | 6 tests | Done (118 params) |
-| v3 IonicSurrogateV3 | `Surrogate/surrogate/model/ionic_surrogate_v3.py` | 7 tests | Done (orchestrator) |
-| v3 Data preprocessor | `Surrogate/surrogate/data/preprocessor.py` | -- | Not started (PLAN Phase 2) |
-| v2 cleanup | -- | -- | Not started (PLAN Phase 3) |
-| v2 ChebyshevReadout | `Surrogate/surrogate/model/chebyshev.py` | 8 tests | Superseded, pending removal |
-| v2 IonicSurrogate | `Surrogate/surrogate/model/ionic_surrogate.py` | 10 tests | Superseded, pending removal |
-| Training pipeline | -- | -- | Not started |
-| Phase A autoencoder | -- | -- | Not started (after preprocessor) |
-| ORd data generation | -- | -- | Plan drafted, audited (3 critical to fix) |
+| Data generation (TTP06) | `Surrogate/surrogate/data/` | 32 tests | Done |
+| V3Preprocessor | `Surrogate/surrogate/data/preprocessor.py` | 7 tests | Done |
+| NernstComputer | `Surrogate/surrogate/model/nernst.py` | 3 tests | Done |
+| IonicStage1 | `Surrogate/surrogate/model/stage1.py` | 9 tests | Done (1,416 inference params) |
+| IonicStage2 | `Surrogate/surrogate/model/stage2.py` | 6 tests | Done (118 params) |
+| IonicSurrogateV3 | `Surrogate/surrogate/model/ionic_surrogate_v3.py` | 7 tests | Done (1,534 total inference) |
+| ORd infrastructure | `Surrogate/surrogate/data/ord_*.py` | 19 tests | Done |
+| ORd T1 EPI data | `/media/HDD/surrogate_data/raw_ord/` | -- | Done (9/9 protocols, 12GB) |
+| v2 code | `Surrogate/surrogate/model/v2_archive/` | -- | Archived |
+| Training pipeline | -- | -- | Not started (next) |
+| ARCHITECTURE.md | `Surrogate/ARCHITECTURE.md` | -- | Done (explainer, code-consistent) |
 
-**Test summary**: 75/75 passing (43 model + 32 data generation). v3 model tests: 25 (3 Nernst + 9 Stage1 + 6 Stage2 + 7 V3). v2 model tests: 18 (coexist until Phase 3 cleanup).
+**Test summary**: 51/51 passing (25 model + 7 preprocessor + 19 ORd). v2 tests removed.
 
 ---
 

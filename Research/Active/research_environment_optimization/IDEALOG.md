@@ -5,12 +5,65 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Architecture fully implemented. 19 skills (added `/blueprint-revise`), KNOWLEDGE.md restructured to per-topic format (304 lines from 1109), Future Work sections in all 6 README.md files, `/save-session` Job 2 has per-topic structure guidance. Remaining work is in README.md Future Work (10 deferred items including skill splitting, WHITEBOARD persistent sections, Memory.md role).
+Architecture is live (19 skills, 4-doc system, tmux workspace). Real-world usage has surfaced four systemic pain points, with #4 as the root amplifier: (1) agentic tasks don't self-improve, (2) skill guidelines decay in long conversations, (3) no dedicated plan execution agent, **(4) compaction destroys half the context budget because too much state lives in conversation instead of persistent files**. Core solution direction: continuous state externalization during sessions (not just at session end), L0/L1 progressive loading for post-compaction recovery, and structured memory categories for agent behavioral learnings. OpenViking's architecture analyzed as design reference.
 
 ## Next Step
-Test the full workflow on a real research question (e.g., `boundary_conduction_speedup` anisotropic study). Then tackle Future Work items starting with splitting oversized skills.
+Design solutions for the three identified system pain points: (1) agentic task self-improvement via structured memory feedback loops, (2) skill guideline enforcement that survives context decay, (3) dedicated plan execution agent/skill with human-in-the-loop gates.
 
 ## Thread
+
+### 2026-03-30: Three systemic pain points identified from real-world usage
+
+After several weeks of daily use, three major issues have surfaced that the current architecture does not address:
+
+**Pain Point 1: Agentic tasks lack self-improvement / memory feedback loops**
+
+Agentic tasks (subagents, background agents, skill executions) keep making the same errors across sessions. The auto-memory system captures user preferences and project facts, but does not capture *agent behavioral corrections*. Example: an agent repeatedly uses the wrong API pattern, gets corrected, but the next session's agent makes the same mistake. The issue is structural — corrections during agentic work are ephemeral (live only in conversation context) and never flow back into persistent memory. OpenViking addresses this with "cases" (problem→solution pairs) and "patterns" (reusable workflows), both stored as agent-side memories with merge operations. Our `feedback` memory type captures user-stated preferences but not agent-discovered corrections from execution errors.
+
+**Pain Point 2: Skill guidelines and thresholds bypass in long conversations**
+
+Skills define rules (e.g., "/reason NEVER implements", "/blueprint STOPS after PLAN.md", format requirements, logging requirements). These rules live in SKILL.md files and are only loaded when the skill is invoked. In long conversations, the skill instructions fade from active context, and the agent reverts to default behavior — skipping format requirements, ignoring thresholds, not logging to the correct document. This was already noted (2026-03-18 thread entry on skill guardrail persistence) but no solution was implemented. The root cause: **skill instructions are ephemeral context, not persistent behavioral rules**. CLAUDE.md and MEMORY.md are always loaded, but they can't contain the full text of 19 skills. Need a mechanism to keep critical behavioral rules in always-loaded context even when the originating skill has faded.
+
+**Pain Point 3: No dedicated plan execution agent — ad-hoc plan following causes errors**
+
+After `/blueprint` generates PLAN.md and the user approves, there is no dedicated agent/skill for executing the plan. The main conversation thread just reads PLAN.md and works through steps ad-hoc. This causes multiple failure modes:
+- **Format violations**: Steps specify output formats, documentation requirements, or checklist items that get skipped.
+- **Missed logging**: Steps require updating IDEALOG.md or KNOWLEDGE.md at checkpoints, but this gets forgotten mid-implementation.
+- **Poor human-in-the-loop communication**: Steps may require user decisions (e.g., choosing between implementation alternatives, confirming a destructive action, approving a design trade-off). These decision points are not surfaced clearly — the agent either makes the decision silently or buries the question in output noise.
+- **No step-level verification**: Steps have exit criteria and verification commands, but these are often skipped or partially executed.
+- **Context drift**: In long implementations, earlier plan context (rationale, constraints, dependencies between steps) fades, leading to decisions that contradict the plan.
+
+The missing piece is a `/execute` or `/implement` skill that: reads PLAN.md step by step, enforces each step's checklist before proceeding, surfaces human-decision-required gates explicitly, logs progress to IDEALOG.md at checkpoints, and runs verification commands before marking steps complete.
+
+**Pain Point 4: Compaction destroys half the context budget**
+
+Long sessions accumulate massive conversation context. When compaction fires, the summary itself consumes ~50% of the context window, leaving far less room for actual work in the continued session. This is the **root amplifier** for all other pain points:
+- Pain Point 1 worsens: agent corrections made pre-compaction are compressed into lossy summaries, so the agent "forgets" behavioral learnings even within the same session.
+- Pain Point 2 worsens: skill guidelines loaded pre-compaction are lost entirely — post-compaction, the agent has no memory that a skill was even invoked, let alone its rules.
+- Pain Point 3 worsens: mid-plan execution context (which step we're on, decisions made, partial results) gets compressed, causing the agent to re-read files it already processed or skip steps it thinks it completed.
+
+The root cause is **too much state lives in conversation context instead of persistent files**. The current approach: accumulate everything in context → eventually /save-session or /quicksave → hope compaction doesn't hit before then. The fix: **continuously externalize state to persistent files during the session**, so the conversation context stays lean and compaction summaries are small. This is exactly what OpenViking's session compression does — extract memories *during* the session (on commit), not just at the end.
+
+Concrete symptoms observed:
+- Post-compaction, re-reading KNOWLEDGE.md + IDEALOG.md + PLAN.md to recover context already consumes significant budget
+- The compaction summary tries to preserve everything (tool outputs, code snippets, error traces, decisions) instead of just pointers to where that info is persisted
+- `/strategic-compact` checklist helps but is reactive (triggered when context is already large) — needs proactive continuous externalization
+
+**Connection to OpenViking**: Their session compression architecture directly addresses this. Phase 1 (sync): archive messages immediately. Phase 2 (async): generate L0/L1 summaries + extract memories. The key insight is **commit early and often** — don't wait for session end. Their `active_count` tracking means the system knows which memories are hot (recently used) vs cold (safe to drop from active context). Their L0/L1 layering means post-compaction recovery loads ~100 tokens (L0) per topic instead of full documents — exactly the progressive loading that would reduce our post-compaction budget consumption.
+
+### 2026-03-30: OpenViking architecture analyzed for integration patterns
+
+Cloned and analyzed `volcengine/OpenViking` (15K+ stars). Key architectural concepts:
+
+**L0/L1/L2 progressive loading**: Every directory has `.abstract.md` (~100 tokens), `.overview.md` (~2k tokens), and full files. Generated bottom-up by LLM. This is the most transferable pattern — our KNOWLEDGE.md files are always L2 (full detail) with no lighter alternatives. Adding L0/L1 frontmatter to KNOWLEDGE.md would let `/research-resume` load progressively.
+
+**6 memory categories**: profile (user identity), preferences (per-topic likes/dislikes), entities (Zettelkasten-style linked cards), events (immutable records), cases (problem→solution, agent-side), patterns (reusable workflows, agent-side). Each defined via YAML schema with field-level merge operations (patch=search/replace, sum=numeric, immutable=no-edit).
+
+**ReAct extraction loop**: Session commit → LLM with tools (read/search) → extract candidate memories → vector pre-filter → LLM dedup decision (skip/create/merge/delete) → write to filesystem. Fully automated, no human intervention.
+
+**Hotness scoring**: `sigmoid(log1p(access_count)) * exp_decay(recency, half_life=7d)`. Cold memories sink in search rankings. Simple but effective for preventing stale context pollution.
+
+**What to adopt vs skip**: L0/L1 headers (high value, low effort), structured memory categories (medium value), hotness ordering (medium value). Skip: vector DB (overkill for ~10 files), YAML schemas (over-engineered for our scale), server mode (single user), Viking URI scheme (we have file paths).
 
 ### 2026-03-17: everything-claude-code analysis reveals engineering skill gap
 Analyzed the everything-claude-code repository (50K+ stars, 25 agents, 57 commands, 108 skills, 22 MCP configs, 16 hooks). Core philosophy: "context is the scarcest resource." Audited our own 9 existing skills against their patterns. Key finding: our skills cover the research writing lifecycle comprehensively (6 skills from `/research-new` through `/research-complete`) but have zero coverage for engineering workflow — no planning, session persistence, verification, debugging, or compaction management. Recommended adopting: PreCompact hook, strategic compaction skill, cost tracking hook, model routing for subagents. Deferred: modular rules system, formalized agent library.
@@ -92,6 +145,9 @@ Biggest immediate wins: background /save-session (#7), background test runner (#
 
 ### 2026-03-19: Agentic speedup opportunities
 Beyond parallel tool calls, background Agent subagents could speed up heavy tasks: (1) `/save-session` as background agent — 5-job editorial pass blocks conversation, could run in background while user keeps working. (2) `/blueprint` codebase analysis — agent reads codebase while main thread reads IDEALOG. (3) `/reason` context loading — parallel tool calls (Read × 3 + Bash × 1) in single message, no agent needed. Biggest win: background `/save-session` — it's the slowest skill and blocks the most.
+
+### 2026-03-19: All document writes across skills could be backgrounded
+Audited all skills for main-thread document writes. `/reason` already has background agent instructions (Step 5, 8, 10). Two more candidates: (1) `/save-session` — the heaviest writer (5 jobs touching IDEALOG + KNOWLEDGE + MASTER_KNOWLEDGE_INDEX), could run entirely as a background agent when called from `/reason-end` instead of blocking teardown. (2) `/quicksave` — the whole skill is a single write to IDEALOG, could be spawned as background agent from `/reason` Step 8. Pattern: instead of calling the skill and waiting, spawn it as a background agent and continue. `/reason-end` would spawn `/save-session` in background → immediately proceed to pane teardown → user gets their terminal back faster.
 
 ### 2026-03-19: IDEALOG + WHITEBOARD writes could be background agents
 During `/reason`, the main thread pauses to write Edit calls to IDEALOG.md and WHITEBOARD.md — interrupts conversational flow. Could spawn background agents for these writes instead: main thread detects transition, spawns agent with content, continues conversation immediately. IDEALOG is append-only during /reason (no conflict), WHITEBOARD is overwrite-only (no conflict). Same pattern for /quicksave — could be a background agent that dumps to IDEALOG while user keeps talking.
@@ -226,3 +282,18 @@ Pre-IDEALOG history — thinking trail started 2026-03-17.
 - Ran 2 blueprint + audit cycles (NOTEBOOK merge plan, architecture refinements plan)
 - 19 skills total
 **Next**: Test full workflow on real research question. Then tackle Future Work (split oversized skills, WHITEBOARD persistent sections, Memory.md role).
+
+### 2026-03-19 Session (continued)
+**Worked on**: plans/ archive system, /blueprint pane switch reliability, background agent writes audit, WHITEBOARD per-question migration.
+**Accomplished**:
+- Created plans/ archive system: /blueprint Final Cleanup auto-archives completed PLAN.md to plans/{date}_{slug}.md before pane revert. /research-new creates plans/ for new questions. Bootstrapped plans/ in all 8 active question folders.
+- Fixed /blueprint pane switch: removed separate Step 3b (got forgotten in long conversations), merged into Step 3 with immediate + background agent safety net.
+- Audited all skills for document writes — identified /save-session and /quicksave as candidates for background agent execution (documented in IDEALOG).
+- WHITEBOARD.md moved to per-question folder (Research/Active/{question}/WHITEBOARD.md) — no conflicts between concurrent tmux sessions.
+- tmux window name integration: /research-resume and /research-new set window name, /reason reads it for auto-resume, /reason-end resets to "claude".
+- Parallelized /reason startup: explicit instruction for 4 parallel tool calls in single message.
+- Added full 19-skill catalog + Maintenance section to KNOWLEDGE.md.
+- Added background agent write instructions to /reason (Step 5, 8, 10).
+- Created /blueprint-revise skill for iterative plan updates.
+- Multiple blueprint → audit → revise → implement cycles tested successfully.
+**Next**: Test full pipeline on real research question. Tackle Future Work items.

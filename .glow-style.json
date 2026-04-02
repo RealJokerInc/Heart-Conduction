@@ -1,6 +1,7 @@
 {
   "document": {
-    "margin": 2
+    "margin": 2,
+    "color": "252"
   },
   "heading": {
     "bold": true,
@@ -8,43 +9,73 @@
   },
   "h1": {
     "bold": true,
-    "prefix": "",
-    "suffix": "",
+    "prefix": "▓ ",
+    "suffix": " ▓",
     "upper": true,
-    "color": "99"
+    "color": "212",
+    "background_color": "236"
   },
   "h2": {
     "bold": true,
-    "prefix": "",
-    "color": "39"
+    "prefix": "║ ",
+    "color": "81"
   },
   "h3": {
     "bold": true,
-    "prefix": "",
-    "color": "208"
+    "prefix": "│ ",
+    "color": "215"
   },
   "h4": {
     "bold": true,
-    "prefix": "",
-    "color": "178"
+    "prefix": "┊ ",
+    "color": "186"
+  },
+  "paragraph": {
+    "color": "252"
   },
   "code_block": {
     "theme": "dracula",
     "margin": 2
   },
+  "code": {
+    "color": "203",
+    "background_color": "236"
+  },
   "table": {
     "center_separator": "┼",
     "column_separator": "│",
-    "row_separator": "─"
+    "row_separator": "─",
+    "color": "252"
   },
   "link": {
     "color": "39",
     "underline": true
   },
   "emph": {
-    "italic": true
+    "italic": true,
+    "color": "223"
   },
   "strong": {
-    "bold": true
+    "bold": true,
+    "color": "230"
+  },
+  "block_quote": {
+    "color": "109",
+    "indent": 2,
+    "indent_token": "▌ "
+  },
+  "item": {
+    "color": "252"
+  },
+  "enumeration": {
+    "color": "81"
+  },
+  "task": {
+    "ticked": "✔ ",
+    "unticked": "○ "
+  },
+  "hr": {
+    "color": "240",
+    "format": "─"
   }
 }

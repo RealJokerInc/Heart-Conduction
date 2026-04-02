@@ -1,0 +1,1143 @@
+"""
+Simplified Cardiac Simulation API.
+
+Provides monodomain(), bidomain(), and lbm() functions that accept either
+a file path or CardiacMeshData and return a CardiacSimulation wrapper
+with a uniform generator interface.
+"""
+
+import sys
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Iterator, Optional, Union
+
+import numpy as np
+import torch
+
+from .file_format import CardiacMeshData, load_cardiac_mesh
+
+_project_root = Path(__file__).resolve().parent.parent
+_V54_PATH = str(_project_root / "Monodomain" / "Engine_V5.4")
+_BIDOMAIN_PATH = str(_project_root / "Bidomain" / "Engine_V1")
+_LBM_PATH = str(_project_root / "Monodomain" / "LBM_V1")
+
+
+def _prepare_engine(engine_path: str):
+    """Clear cached cardiac_sim modules and set correct engine path first.
+
+    Both V5.4 and Bidomain V1 use 'cardiac_sim' as their package name.
+    Before importing from either, we must flush the module cache so Python
+    picks up the correct package.
+    """
+    to_remove = [k for k in sys.modules if k == 'cardiac_sim' or k.startswith('cardiac_sim.')]
+    for k in to_remove:
+        del sys.modules[k]
+    if engine_path in sys.path:
+        sys.path.remove(engine_path)
+    sys.path.insert(0, engine_path)
+
+
+@dataclass
+class Distribution:
+    """Per-node stochastic parameter specification.
+
+    Used anywhere a scalar parameter can instead be drawn per-node from a
+    probability distribution. The simulation generates (Nx, Ny) samples at
+    apply time and stores them as a frozen field.
+
+    Parameters
+    ----------
+    kind : str
+        Distribution type: 'constant', 'gaussian', 'uniform', 'lognormal'.
+    kwargs : dict
+        Distribution parameters:
+        - constant:  {value: float}
+        - gaussian:  {mean: float, sigma: float}
+        - uniform:   {lower: float, upper: float}
+        - lognormal: {mean: float, sigma: float}  (of underlying normal)
+
+    Examples
+    --------
+    >>> Distribution('gaussian', mean=1.0, sigma=0.1)
+    >>> Distribution('uniform', lower=0.0005, upper=0.0015)
+    >>> Distribution('constant', value=0.001)
+    >>> Distribution('lognormal', mean=0.0, sigma=0.3)
+    """
+    kind: str
+    kwargs: dict
+
+    def __init__(self, kind: str, **kwargs):
+        self.kind = kind
+        self.kwargs = kwargs
+
+    def sample(self, shape: tuple, device: str = 'cpu', dtype=torch.float64) -> torch.Tensor:
+        """Draw samples of given shape.
+
+        Parameters
+        ----------
+        shape : tuple
+            Output shape, typically (Nx, Ny).
+        device : str
+            Torch device.
+        dtype : torch.dtype
+            Output dtype.
+
+        Returns
+        -------
+        torch.Tensor
+            Sampled values.
+        """
+        if self.kind == 'constant':
+            return torch.full(shape, self.kwargs['value'], device=device, dtype=dtype)
+        elif self.kind == 'gaussian':
+            mean = self.kwargs['mean']
+            sigma = self.kwargs['sigma']
+            return torch.normal(mean, sigma, size=shape, device=device, dtype=dtype)
+        elif self.kind == 'uniform':
+            lo = self.kwargs['lower']
+            hi = self.kwargs['upper']
+            return torch.empty(shape, device=device, dtype=dtype).uniform_(lo, hi)
+        elif self.kind == 'lognormal':
+            mean = self.kwargs['mean']
+            sigma = self.kwargs['sigma']
+            normal = torch.normal(mean, sigma, size=shape, device=device, dtype=dtype)
+            return normal.exp()
+        else:
+            raise ValueError(f"Unknown distribution: {self.kind}")
+
+
+@dataclass
+class SimulationSnapshot:
+    """Uniform return type from all simulation engines.
+
+    Attributes
+    ----------
+    t : float
+        Current simulation time (ms).
+    V : torch.Tensor
+        Membrane potential, shape (Nx, Ny).
+    phi_e : torch.Tensor | None
+        Extracellular potential (Nx, Ny), bidomain only.
+    Nx, Ny : int
+        Grid dimensions.
+    dx, dy : float
+        Grid spacing (cm).
+    """
+    t: float
+    V: torch.Tensor
+    phi_e: Optional[torch.Tensor]
+    Nx: int
+    Ny: int
+    dx: float
+    dy: float
+
+
+class CardiacSimulation:
+    """Uniform wrapper around all cardiac simulation engines.
+
+    Parameters
+    ----------
+    engine : object
+        The underlying engine (MonodomainSimulation, BidomainSimulation, or LBMSimulation).
+    engine_type : str
+        'monodomain', 'bidomain', or 'lbm'.
+    grid : object
+        StructuredGrid (for monodomain/bidomain) or None (for LBM).
+    data : CardiacMeshData
+        The mesh data used to construct this simulation.
+    """
+
+    def __init__(self, engine, engine_type: str, grid, data: CardiacMeshData):
+        self._engine = engine
+        self._engine_type = engine_type
+        self._grid = grid
+        self._data = data
+        self._Nx = data.mask.shape[0]
+        self._Ny = data.mask.shape[1]
+        self._probes: dict[str, dict] = {}   # name → {x, y, ix, iy, t[], V[]}
+        self._clamp_mask: Optional[torch.Tensor] = None  # (Nx, Ny) bool
+        self._clamp_voltage: Optional[float] = None
+
+    # ========================================================================
+    # Core simulation control
+    # ========================================================================
+
+    def run(self, t_end: float, save_every: float = 1.0) -> Iterator[SimulationSnapshot]:
+        """Run simulation to t_end, yielding SimulationSnapshot at intervals.
+
+        Parameters
+        ----------
+        t_end : float
+            End time (ms).
+        save_every : float
+            Save interval (ms).
+        """
+        if self._engine_type == 'monodomain':
+            yield from self._run_monodomain(t_end, save_every)
+        elif self._engine_type == 'bidomain':
+            yield from self._run_bidomain(t_end, save_every)
+        elif self._engine_type == 'lbm':
+            yield from self._run_lbm(t_end, save_every)
+
+    def step(self):
+        """Advance simulation by one time step."""
+        if self._engine_type == 'lbm':
+            self._engine.step()
+        else:
+            self._engine.step()
+
+    def reset(self):
+        """Reset simulation to t=0 with initial conditions."""
+        raise NotImplementedError
+
+    # ========================================================================
+    # State access — read
+    # ========================================================================
+
+    @property
+    def V(self) -> torch.Tensor:
+        """Current membrane potential as (Nx, Ny) grid."""
+        if self._engine_type == 'lbm':
+            return self._engine.V
+        V_flat = self._engine.state.V
+        return self._grid.flat_to_grid(V_flat)
+
+    @property
+    def phi_e(self) -> Optional[torch.Tensor]:
+        """Current extracellular potential as (Nx, Ny) grid. Bidomain only."""
+        if self._engine_type == 'bidomain':
+            return self._grid.flat_to_grid(self._engine.state.phi_e)
+        return None
+
+    @property
+    def t(self) -> float:
+        """Current simulation time (ms)."""
+        if self._engine_type == 'lbm':
+            return self._engine.t
+        return self._engine.state.t
+
+    @property
+    def ionic_states(self) -> torch.Tensor:
+        """All ionic state variables as (Nx, Ny, n_states) grid."""
+        raise NotImplementedError
+
+    def get_state(self, name: str) -> torch.Tensor:
+        """Get a single ionic state variable by name as (Nx, Ny) grid.
+
+        Parameters
+        ----------
+        name : str
+            State variable name (e.g. 'Ca_i', 'Na_i', 'm', 'h', 'j').
+        """
+        raise NotImplementedError
+
+    @property
+    def state_names(self) -> list[str]:
+        """Names of all ionic state variables."""
+        raise NotImplementedError
+
+    # ========================================================================
+    # State access — write
+    # ========================================================================
+
+    def set_voltage(self, V: torch.Tensor):
+        """Override membrane potential everywhere.
+
+        Parameters
+        ----------
+        V : torch.Tensor
+            (Nx, Ny) voltage field.
+        """
+        raise NotImplementedError
+
+    def set_state(self, name: str, values: torch.Tensor):
+        """Override a single ionic state variable.
+
+        Parameters
+        ----------
+        name : str
+            State variable name.
+        values : torch.Tensor
+            (Nx, Ny) field.
+        """
+        raise NotImplementedError
+
+    # ========================================================================
+    # Stimulus / current injection
+    # ========================================================================
+
+    def add_stimulus(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        start_time: float,
+        duration: float,
+        amplitude: float = -80.0,
+    ):
+        """Add a stimulus region to the simulation.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Where to apply stimulus.
+        start_time : float
+            When stimulus begins (ms).
+        duration : float
+            How long stimulus lasts (ms).
+        amplitude : float
+            Stimulus current (µA/µF).
+        """
+        raise NotImplementedError
+
+    def add_pacing(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        bcl: float = 1000.0,
+        n_beats: int = 10,
+        start_time: float = 0.0,
+        duration: float = 2.0,
+        amplitude: float = -80.0,
+    ):
+        """Add a regular pacing protocol.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Pacing site.
+        bcl : float
+            Basic cycle length (ms).
+        n_beats : int
+            Number of beats.
+        start_time : float
+            First beat time (ms).
+        duration : float
+            Each stimulus duration (ms).
+        amplitude : float
+            Stimulus current (µA/µF).
+        """
+        raise NotImplementedError
+
+    def inject_current(self, mask: 'np.ndarray | torch.Tensor', amplitude: float):
+        """Inject current for one time step at the masked nodes.
+
+        Applied immediately at the next step(), then removed.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Where to inject.
+        amplitude : float
+            Current (µA/µF).
+        """
+        raise NotImplementedError
+
+    # ========================================================================
+    # Voltage clamp
+    # ========================================================================
+
+    def clamp_voltage(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        voltage: float,
+        start_time: Optional[float] = None,
+        duration: Optional[float] = None,
+    ):
+        """Hold nodes at fixed voltage. Ionic currents still computed.
+
+        Clamped nodes have their V reset to `voltage` after every step.
+        Use for patch-clamp-like experiments (study ionic currents in isolation).
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Nodes to clamp.
+        voltage : float
+            Clamp voltage (mV).
+        start_time : float, optional
+            When clamp activates (ms). None = immediately.
+        duration : float, optional
+            How long clamp lasts (ms). None = until release_clamp().
+        """
+        raise NotImplementedError
+
+    def add_clamp_protocol(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        steps: list[tuple[float, float]],
+        start_time: float = 0.0,
+    ):
+        """Add a multi-step voltage clamp protocol.
+
+        Applies a sequence of (voltage, duration) steps. Classic
+        electrophysiology protocol for studying ionic current kinetics.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Nodes to clamp.
+        steps : list of (voltage_mV, duration_ms)
+            Sequential clamp steps. e.g.:
+            [(-80, 500), (-40, 200), (-80, 500)]  # hold → step → hold
+        start_time : float
+            When the first step begins (ms).
+
+        Example
+        -------
+        >>> # Classic INa activation protocol
+        >>> sim.add_clamp_protocol(
+        ...     mask, steps=[(-80, 500), (-20, 50), (-80, 500)], start_time=0
+        ... )
+        """
+        raise NotImplementedError
+
+    def release_clamp(self):
+        """Release all voltage clamps. Nodes resume normal dynamics."""
+        raise NotImplementedError
+
+    # ========================================================================
+    # Conductivity / drug block
+    # ========================================================================
+
+    def scale_conductance(
+        self,
+        current_name: str,
+        factor: 'float | Distribution',
+        mask: 'np.ndarray | torch.Tensor | None' = None,
+    ):
+        """Scale an ionic current's maximal conductance.
+
+        Simulates drug block (factor < 1.0) or upregulation (factor > 1.0).
+        Accepts a Distribution for per-node stochastic scaling (cell-to-cell
+        variability in ion channel expression).
+
+        Parameters
+        ----------
+        current_name : str
+            Ionic current name (e.g. 'IKr', 'INa', 'ICaL', 'IK1').
+        factor : float or Distribution
+            Multiplicative factor. float → uniform everywhere.
+            Distribution → per-node sampling (e.g. gaussian(1.0, 0.1)).
+        mask : (Nx, Ny) bool, optional
+            Apply only in region. None = everywhere.
+
+        Examples
+        --------
+        >>> sim.scale_conductance('IKr', 0.5)                         # 50% block everywhere
+        >>> sim.scale_conductance('INa', Distribution('gaussian', mean=1.0, sigma=0.1))  # ±10% per node
+        >>> sim.scale_conductance('ICaL', 0.0, mask=scar_mask)        # full block in scar only
+        """
+        raise NotImplementedError
+
+    def set_conductivity(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        D: 'float | Distribution',
+    ):
+        """Set diffusion coefficient in a region.
+
+        Creates scar (D=0), slow conduction zones, or heterogeneous tissue.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Region to modify.
+        D : float or Distribution
+            New diffusion coefficient (cm²/ms). 0 = no conduction.
+            Distribution → per-node sampling.
+
+        Examples
+        --------
+        >>> sim.set_conductivity(scar_mask, D=0.0)                          # scar
+        >>> sim.set_conductivity(border_mask, Distribution('uniform', lower=0.0003, upper=0.0008))
+        """
+        raise NotImplementedError
+
+    def scale_conductivity(
+        self,
+        mask: 'np.ndarray | torch.Tensor',
+        factor: 'float | Distribution',
+    ):
+        """Scale diffusion coefficient in a region.
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool
+            Region to modify.
+        factor : float or Distribution
+            Multiplicative factor.
+
+        Examples
+        --------
+        >>> sim.scale_conductivity(fibrotic_mask, Distribution('lognormal', mean=0.0, sigma=0.5))
+        """
+        raise NotImplementedError
+
+    # ========================================================================
+    # Per-node stochastic parameters
+    # ========================================================================
+
+    def set_parameter(
+        self,
+        name: str,
+        value: 'float | Distribution',
+        mask: 'np.ndarray | torch.Tensor | None' = None,
+    ):
+        """Set any named model parameter, optionally with per-node distribution.
+
+        This is the general-purpose interface for introducing heterogeneity.
+        Specific methods (scale_conductance, set_conductivity) are convenience
+        wrappers around this.
+
+        Parameters
+        ----------
+        name : str
+            Parameter name. Engine-specific, but common ones include:
+            - Ionic conductances: 'GNa', 'GKr', 'GCaL', 'GK1', 'Gto', ...
+            - Ionic concentrations: 'Na_o', 'K_o', 'Ca_o'
+            - Tissue: 'D', 'chi', 'Cm'
+        value : float or Distribution
+            Scalar → uniform. Distribution → per-node sampling.
+        mask : (Nx, Ny) bool, optional
+            Apply only in region. None = everywhere.
+
+        Examples
+        --------
+        >>> # Heterogeneous GNa (±15% per cell)
+        >>> sim.set_parameter('GNa', Distribution('gaussian', mean=14.838, sigma=2.2))
+        >>> # Elevated extracellular potassium in ischemic zone
+        >>> sim.set_parameter('K_o', 8.0, mask=ischemia_mask)
+        >>> # Random Cm variation
+        >>> sim.set_parameter('Cm', Distribution('uniform', lower=0.8, upper=1.2))
+        """
+        raise NotImplementedError
+
+    def get_parameter_field(self, name: str) -> torch.Tensor:
+        """Get the current per-node values of a parameter as (Nx, Ny) grid.
+
+        After set_parameter with a Distribution, this returns the frozen
+        sampled values (what each node actually got).
+
+        Parameters
+        ----------
+        name : str
+            Parameter name.
+
+        Returns
+        -------
+        torch.Tensor
+            (Nx, Ny) current values.
+        """
+        raise NotImplementedError
+
+    # ========================================================================
+    # Probes / recording
+    # ========================================================================
+
+    def add_probe(self, name: str, x: float, y: float):
+        """Register a probe point for time-series recording.
+
+        Probes record V (and phi_e for bidomain) at every step during run().
+
+        Parameters
+        ----------
+        name : str
+            Probe identifier (e.g. 'apex', 'base', 'scar_border').
+        x, y : float
+            Physical coordinates (cm).
+        """
+        raise NotImplementedError
+
+    def get_traces(self) -> dict:
+        """Return recorded probe traces.
+
+        Returns
+        -------
+        dict
+            {name: {'t': np.ndarray, 'V': np.ndarray, 'phi_e': np.ndarray | None}}
+        """
+        raise NotImplementedError
+
+    def clear_traces(self):
+        """Clear all recorded probe data (keeps probe locations)."""
+        raise NotImplementedError
+
+    # ========================================================================
+    # Analysis
+    # ========================================================================
+
+    def compute_activation_time(self, threshold: float = -20.0) -> torch.Tensor:
+        """Compute activation time map from last run().
+
+        Parameters
+        ----------
+        threshold : float
+            Voltage threshold for activation (mV).
+
+        Returns
+        -------
+        torch.Tensor
+            (Nx, Ny) activation times (ms). NaN where not activated.
+        """
+        raise NotImplementedError
+
+    def compute_cv(
+        self,
+        x1: float, x2: float, y: float,
+        threshold: float = -20.0,
+    ) -> float:
+        """Measure conduction velocity between two x-positions.
+
+        Parameters
+        ----------
+        x1, x2 : float
+            Measurement points (cm). x2 > x1.
+        y : float
+            Row position (cm).
+        threshold : float
+            Activation threshold (mV).
+
+        Returns
+        -------
+        float
+            Conduction velocity (cm/s). NaN if activation not detected.
+        """
+        raise NotImplementedError
+
+    def compute_apd(
+        self,
+        x: float, y: float,
+        repol: float = 0.9,
+    ) -> float:
+        """Compute action potential duration at a point.
+
+        Parameters
+        ----------
+        x, y : float
+            Measurement point (cm).
+        repol : float
+            Repolarization fraction (0.9 = APD90, 0.5 = APD50).
+
+        Returns
+        -------
+        float
+            APD (ms). NaN if no complete AP detected.
+        """
+        raise NotImplementedError
+
+    # ========================================================================
+    # Metadata
+    # ========================================================================
+
+    @property
+    def Nx(self) -> int:
+        """Grid dimension in x."""
+        return self._Nx
+
+    @property
+    def Ny(self) -> int:
+        """Grid dimension in y."""
+        return self._Ny
+
+    @property
+    def dx(self) -> float:
+        """Grid spacing in x (cm)."""
+        return self._data.dx
+
+    @property
+    def dy(self) -> float:
+        """Grid spacing in y (cm)."""
+        return self._data.dy
+
+    @property
+    def mask(self) -> np.ndarray:
+        """Domain mask (Nx, Ny) bool."""
+        return self._data.mask
+
+    @property
+    def engine_type(self) -> str:
+        """Engine type: 'monodomain', 'bidomain', or 'lbm'."""
+        return self._engine_type
+
+    # --- Private generators ---
+
+    def _run_monodomain(self, t_end, save_every):
+        for state in self._engine.run(t_end, save_every):
+            V_grid = self._grid.flat_to_grid(state.V)
+            yield SimulationSnapshot(
+                t=state.t,
+                V=V_grid,
+                phi_e=None,
+                Nx=self._Nx,
+                Ny=self._Ny,
+                dx=self._data.dx,
+                dy=self._data.dy,
+            )
+
+    def _run_bidomain(self, t_end, save_every):
+        for state in self._engine.run(t_end, save_every):
+            V_grid = self._grid.flat_to_grid(state.Vm)
+            phi_e_grid = self._grid.flat_to_grid(state.phi_e)
+            yield SimulationSnapshot(
+                t=state.t,
+                V=V_grid,
+                phi_e=phi_e_grid,
+                Nx=self._Nx,
+                Ny=self._Ny,
+                dx=self._data.dx,
+                dy=self._data.dy,
+            )
+
+    def _run_lbm(self, t_end, save_every):
+        dt = self._engine.dt
+        save_interval = max(1, int(round(save_every / dt)))
+        step_count = 0
+        while self._engine.t < t_end - 1e-12:
+            self._engine.step()
+            step_count += 1
+            if step_count % save_interval == 0:
+                yield SimulationSnapshot(
+                    t=self._engine.t,
+                    V=self._engine.V.clone(),
+                    phi_e=None,
+                    Nx=self._Nx,
+                    Ny=self._Ny,
+                    dx=self._data.dx,
+                    dy=self._data.dy,
+                )
+
+
+def _resolve_mesh(mesh: Union[str, CardiacMeshData]) -> CardiacMeshData:
+    """Accept path or CardiacMeshData, return CardiacMeshData."""
+    if isinstance(mesh, (str, Path)):
+        return load_cardiac_mesh(str(mesh))
+    return mesh
+
+
+def _build_stimulus_protocol_v54(data: CardiacMeshData, grid, device, dtype):
+    """Build V5.4 StimulusProtocol from mesh data stimuli."""
+    from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+
+    protocol = StimulusProtocol()
+    mask_np = data.mask  # (Nx, Ny) bool
+
+    for stim in data.stimuli:
+        # Intersect stimulus mask with tissue mask, flatten to active DOFs
+        stim_grid = stim['mask'] & mask_np
+        stim_flat = torch.tensor(
+            stim_grid[mask_np] if grid.domain_mask is not None else stim_grid.flatten(),
+            dtype=torch.bool,
+            device=device,
+        )
+
+        bcl = stim.get('bcl', 0.0)
+        num_pulses = stim.get('num_pulses', 1)
+
+        if bcl > 0 and num_pulses > 1:
+            # Multiple pulses → add each as separate stimulus
+            for p in range(num_pulses):
+                t_start = stim['start_time'] + p * bcl
+                protocol.add_stimulus(
+                    region=stim_flat,
+                    start_time=t_start,
+                    duration=stim['duration'],
+                    amplitude=stim['amplitude'],
+                )
+        else:
+            protocol.add_stimulus(
+                region=stim_flat,
+                start_time=stim['start_time'],
+                duration=stim['duration'],
+                amplitude=stim['amplitude'],
+            )
+
+    return protocol
+
+
+def _build_stimulus_protocol_bidomain(data: CardiacMeshData, grid, device, dtype):
+    """Build bidomain StimulusProtocol from mesh data stimuli.
+
+    Bidomain uses the same StimulusProtocol pattern — import from bidomain engine.
+    """
+    # Bidomain's stimulus protocol has the same API
+    from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+
+    protocol = StimulusProtocol()
+    mask_np = data.mask
+
+    for stim in data.stimuli:
+        stim_grid = stim['mask'] & mask_np
+        stim_flat = torch.tensor(
+            stim_grid[mask_np] if grid.domain_mask is not None else stim_grid.flatten(),
+            dtype=torch.bool,
+            device=device,
+        )
+
+        bcl = stim.get('bcl', 0.0)
+        num_pulses = stim.get('num_pulses', 1)
+
+        if bcl > 0 and num_pulses > 1:
+            for p in range(num_pulses):
+                t_start = stim['start_time'] + p * bcl
+                protocol.add_stimulus(
+                    region=stim_flat,
+                    start_time=t_start,
+                    duration=stim['duration'],
+                    amplitude=stim['amplitude'],
+                )
+        else:
+            protocol.add_stimulus(
+                region=stim_flat,
+                start_time=stim['start_time'],
+                duration=stim['duration'],
+                amplitude=stim['amplitude'],
+            )
+
+    return protocol
+
+
+# ============================================================================
+# Public API functions
+# ============================================================================
+
+
+def monodomain(
+    mesh: Union[str, CardiacMeshData],
+    *,
+    ionic_model: Optional[str] = None,
+    dt: Optional[float] = None,
+    splitting: str = 'strang',
+    diffusion_solver: str = 'crank_nicolson',
+    linear_solver: str = 'pcg',
+    device: str = 'cpu',
+) -> CardiacSimulation:
+    """Create a monodomain simulation from a cardiac mesh.
+
+    Parameters
+    ----------
+    mesh : str or CardiacMeshData
+        Path to .npz file or CardiacMeshData object.
+    ionic_model : str, optional
+        Override ionic model from file.
+    dt : float, optional
+        Override time step from file.
+    splitting : str
+        Splitting strategy ('strang' or 'godunov').
+    diffusion_solver : str
+        Diffusion solver ('crank_nicolson', 'forward_euler', etc.).
+    linear_solver : str
+        Linear solver for implicit methods ('pcg', 'dct', etc.).
+    device : str
+        Compute device ('cpu' or 'cuda').
+
+    Returns
+    -------
+    CardiacSimulation
+        Wrapper with .run() generator interface.
+    """
+    data = _resolve_mesh(mesh)
+    ionic = ionic_model or data.ionic_model
+    timestep = dt or data.dt
+
+    # Import V5.4 engine (clear module cache to avoid collision with bidomain)
+    _prepare_engine(_V54_PATH)
+    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
+    from cardiac_sim.simulation.classical.discretization_scheme import FDMDiscretization
+    from cardiac_sim.simulation.classical import MonodomainSimulation
+
+    # Build grid
+    mask_tensor = torch.tensor(data.mask, dtype=torch.bool)
+    grid = StructuredGrid.from_mask(mask_tensor, data.dx, data.dy, device=device)
+
+    # Build FDM discretization
+    is_isotropic = (
+        np.allclose(data.D_xx, data.D_xx.flat[0])
+        and np.allclose(data.D_yy, data.D_yy.flat[0])
+        and np.allclose(data.D_xy, 0.0)
+        and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
+    )
+
+    if is_isotropic:
+        spatial = FDMDiscretization(
+            grid=grid,
+            D=float(data.D_xx.flat[0]),
+            chi=data.chi,
+            Cm=data.Cm,
+        )
+    else:
+        dev = torch.device(device)
+        D_field = (
+            torch.tensor(data.D_xx, dtype=torch.float64, device=dev),
+            torch.tensor(data.D_xy, dtype=torch.float64, device=dev),
+            torch.tensor(data.D_yy, dtype=torch.float64, device=dev),
+        )
+        spatial = FDMDiscretization(
+            grid=grid,
+            chi=data.chi,
+            Cm=data.Cm,
+            D_field=D_field,
+        )
+
+    # Build stimulus
+    dev = torch.device(device)
+    stimulus = _build_stimulus_protocol_v54(data, grid, dev, torch.float64)
+
+    # Cell type from first group
+    cell_type = data.group_cell_types[0] if data.group_cell_types else 'ENDO'
+
+    # Build simulation
+    sim = MonodomainSimulation(
+        spatial=spatial,
+        ionic_model=ionic,
+        stimulus=stimulus,
+        dt=timestep,
+        splitting=splitting,
+        diffusion_solver=diffusion_solver,
+        linear_solver=linear_solver,
+        cell_type=cell_type,
+    )
+
+    return CardiacSimulation(sim, 'monodomain', grid, data)
+
+
+def bidomain(
+    mesh: Union[str, CardiacMeshData],
+    *,
+    ionic_model: Optional[str] = None,
+    dt: Optional[float] = None,
+    sigma_ratio: float = 3.59,
+    boundary: Optional[str] = None,
+    elliptic_solver: str = 'auto',
+    theta: float = 0.5,
+    device: str = 'cpu',
+) -> CardiacSimulation:
+    """Create a bidomain simulation from a cardiac mesh.
+
+    Parameters
+    ----------
+    mesh : str or CardiacMeshData
+        Path to .npz file or CardiacMeshData object.
+    ionic_model : str, optional
+        Override ionic model from file.
+    dt : float, optional
+        Override time step from file.
+    sigma_ratio : float
+        Ratio sigma_e/sigma_i for deriving bidomain D_i/D_e from effective D.
+        Only used when file lacks sigma_i/sigma_e.
+    boundary : str, optional
+        Override: 'insulated' or 'bath'.
+    elliptic_solver : str
+        Elliptic solver ('auto', 'spectral', 'pcg', etc.).
+    theta : float
+        Implicitness parameter (0.5 = Crank-Nicolson).
+    device : str
+        Compute device ('cpu' or 'cuda').
+
+    Returns
+    -------
+    CardiacSimulation
+        Wrapper with .run() generator interface.
+    """
+    data = _resolve_mesh(mesh)
+    ionic = ionic_model or data.ionic_model
+    timestep = dt or data.dt
+    bc_type = boundary or data.boundary
+
+    # Import Bidomain V1 engine (clear module cache to avoid collision with V5.4)
+    _prepare_engine(_BIDOMAIN_PATH)
+    from cardiac_sim.simulation.classical import BidomainSimulation
+    from cardiac_sim.simulation.classical.discretization import BidomainFDMDiscretization
+    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
+    from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
+    from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
+
+    # Build grid with boundary spec
+    mask_tensor = torch.tensor(data.mask, dtype=torch.bool)
+    grid = StructuredGrid.from_mask(mask_tensor, data.dx, data.dy, device=device)
+
+    if bc_type == 'bath':
+        grid.boundary_spec = BoundarySpec.bath_coupled()
+    else:
+        grid.boundary_spec = BoundarySpec.insulated()
+
+    # Build conductivity
+    if data.sigma_i is not None and data.sigma_e is not None:
+        # Direct sigma → D conversion
+        chi_Cm = data.chi * data.Cm
+        D_i_xx = data.sigma_i[0] / chi_Cm
+        D_i_yy = data.sigma_i[1] / chi_Cm
+        D_i_xy = data.sigma_i[2] / chi_Cm
+        D_e_xx = data.sigma_e[0] / chi_Cm
+        D_e_yy = data.sigma_e[1] / chi_Cm
+        D_e_xy = data.sigma_e[2] / chi_Cm
+
+        dev = torch.device(device)
+        cond = BidomainConductivity(
+            D_i_field=(
+                torch.tensor(D_i_xx, dtype=torch.float64, device=dev),
+                torch.tensor(D_i_xy, dtype=torch.float64, device=dev),
+                torch.tensor(D_i_yy, dtype=torch.float64, device=dev),
+            ),
+            D_e_field=(
+                torch.tensor(D_e_xx, dtype=torch.float64, device=dev),
+                torch.tensor(D_e_xy, dtype=torch.float64, device=dev),
+                torch.tensor(D_e_yy, dtype=torch.float64, device=dev),
+            ),
+        )
+    else:
+        # Derive from effective D and sigma_ratio
+        # D_eff = D_i * D_e / (D_i + D_e)
+        # With ratio r = D_e/D_i: D_i = D_eff * (1 + r) / r, D_e = D_eff * (1 + r)
+        is_isotropic = (
+            np.allclose(data.D_xx, data.D_xx.flat[0])
+            and np.allclose(data.D_yy, data.D_yy.flat[0])
+            and np.allclose(data.D_xy, 0.0)
+            and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
+        )
+
+        if is_isotropic:
+            D_eff = float(data.D_xx.flat[0])
+            r = sigma_ratio
+            D_i = D_eff * (1 + r) / r
+            D_e = D_eff * (1 + r)
+            cond = BidomainConductivity(D_i=D_i, D_e=D_e)
+        else:
+            # Anisotropic: apply ratio to each component
+            r = sigma_ratio
+            dev = torch.device(device)
+            D_i_xx = data.D_xx * (1 + r) / r
+            D_i_yy = data.D_yy * (1 + r) / r
+            D_i_xy = data.D_xy * (1 + r) / r
+            D_e_xx = data.D_xx * (1 + r)
+            D_e_yy = data.D_yy * (1 + r)
+            D_e_xy = data.D_xy * (1 + r)
+
+            cond = BidomainConductivity(
+                D_i_field=(
+                    torch.tensor(D_i_xx, dtype=torch.float64, device=dev),
+                    torch.tensor(D_i_xy, dtype=torch.float64, device=dev),
+                    torch.tensor(D_i_yy, dtype=torch.float64, device=dev),
+                ),
+                D_e_field=(
+                    torch.tensor(D_e_xx, dtype=torch.float64, device=dev),
+                    torch.tensor(D_e_xy, dtype=torch.float64, device=dev),
+                    torch.tensor(D_e_yy, dtype=torch.float64, device=dev),
+                ),
+            )
+
+    # Build FDM discretization
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=data.Cm)
+
+    # Build stimulus
+    dev = torch.device(device)
+    stimulus = _build_stimulus_protocol_bidomain(data, grid, dev, torch.float64)
+
+    # Build simulation
+    sim = BidomainSimulation(
+        spatial=spatial,
+        ionic_model=ionic,
+        stimulus=stimulus,
+        dt=timestep,
+        elliptic_solver=elliptic_solver,
+        theta=theta,
+        device=device,
+    )
+
+    return CardiacSimulation(sim, 'bidomain', grid, data)
+
+
+def lbm(
+    mesh: Union[str, CardiacMeshData],
+    *,
+    ionic_model: Optional[str] = None,
+    dt: Optional[float] = None,
+    lattice: str = 'd2q5',
+    device: str = 'cpu',
+) -> CardiacSimulation:
+    """Create an LBM simulation from a cardiac mesh.
+
+    Parameters
+    ----------
+    mesh : str or CardiacMeshData
+        Path to .npz file or CardiacMeshData object.
+    ionic_model : str, optional
+        Override ionic model from file.
+    dt : float, optional
+        Override time step from file. Note: LBM typically uses smaller dt (e.g. 0.005).
+    lattice : str
+        Lattice type ('d2q5' or 'd2q9').
+    device : str
+        Compute device ('cpu' or 'cuda').
+
+    Returns
+    -------
+    CardiacSimulation
+        Wrapper with .run() generator interface.
+    """
+    data = _resolve_mesh(mesh)
+    ionic_name = ionic_model or data.ionic_model
+    timestep = dt or data.dt
+
+    # Import LBM V1 engine (needs LBM path for src.simulation)
+    if _LBM_PATH not in sys.path:
+        sys.path.insert(0, _LBM_PATH)
+    from src.simulation import LBMSimulation
+
+    # Import ionic model from V5.4 (clear bidomain cache if present)
+    _prepare_engine(_V54_PATH)
+    from cardiac_sim.ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model
+
+    # Instantiate ionic model
+    model_map = {
+        'ttp06': TTP06Model,
+        'ord': ORdModel,
+        'phas13': PHAS13Model,
+        'paci': PHAS13Model,
+        'mhas13': MHAS13Model,
+    }
+    model_cls = model_map.get(ionic_name.lower())
+    if model_cls is None:
+        raise ValueError(f"Unknown ionic model: {ionic_name}")
+    ionic_instance = model_cls(device=device)
+
+    # Determine D — LBM currently supports scalar isotropic D only for BGK
+    is_isotropic = (
+        np.allclose(data.D_xx, data.D_xx.flat[0])
+        and np.allclose(data.D_yy, data.D_yy.flat[0])
+        and np.allclose(data.D_xy, 0.0)
+        and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
+    )
+    if not is_isotropic:
+        raise ValueError(
+            "LBM BGK currently supports isotropic D only. "
+            "Use D2Q9 MRT for anisotropic diffusion."
+        )
+    D = float(data.D_xx.flat[0])
+
+    Nx, Ny = data.mask.shape
+    sim = LBMSimulation(
+        Nx=Nx, Ny=Ny,
+        dx=data.dx, dt=timestep,
+        D=D, ionic_model=ionic_instance,
+        Cm=data.Cm,
+        lattice=lattice,
+    )
+
+    # Add stimuli as (Nx, Ny) bool tensor masks
+    dev = torch.device(device)
+    for stim in data.stimuli:
+        stim_mask = torch.tensor(
+            stim['mask'] & data.mask,
+            dtype=torch.bool,
+            device=dev,
+        )
+
+        bcl = stim.get('bcl', 0.0)
+        num_pulses = stim.get('num_pulses', 1)
+
+        if bcl > 0 and num_pulses > 1:
+            for p in range(num_pulses):
+                t_start = stim['start_time'] + p * bcl
+                sim.add_stimulus(stim_mask, t_start, stim['duration'], stim['amplitude'])
+        else:
+            sim.add_stimulus(stim_mask, stim['start_time'], stim['duration'], stim['amplitude'])
+
+    return CardiacSimulation(sim, 'lbm', None, data)

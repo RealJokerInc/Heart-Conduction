@@ -5,10 +5,28 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-v3 model code implemented and tested (75/75). Phase 1 of PLAN.md complete: nernst.py, stage1.py, stage2.py, ionic_surrogate_v3.py. Small TTP06 config (ionic=16, cond=8, ~1454 inference params). Phase 2 (data preprocessing) and Phase 3 (v2 cleanup) remain. ORd data generation plan drafted and audited (18 issues, 3 critical — all about TTP06-hardcoded assumptions in existing code).
+v3 model fully implemented, all PLAN phases complete. 51/51 tests (25 model + 7 preprocessor + 19 ORd). Code refactored with final naming convention (ionic_mixing_mlp, gate_conductance_mlp, ionic_state_decoder, gate_conductance_decoder). Scaffold redesigned: ionic_state_decoder(16→14 states), gate_conductance_decoder(8→5 products). Training strategy fully planned (A1→A2→A3→B→C→D→E, single loss per phase, no weighting). Ready to implement training loop.
 
 ## Next Step
-Complete PLAN.md Phase 2 (data preprocessor) + Phase 3 (v2 removal). Then first TTP06 training run. ORd data gen plan needs critical fixes before implementation.
+Implement training loop. Phase A1 first (ionic state autoencoder: 14 states ↔ 16 latent). Then A2 (concentration attention), A3 (gate conductance projection), B (dynamics with rollout curriculum).
+
+### 2026-04-02 Session 19-20: Implementation completion + training planning
+
+**Implementation**: All 3 PLAN phases done. Phase 2: V3Preprocessor (47-col→named tensors, Nernst, conductance products). Phase 3: v2 archived, exports updated. 51/51 tests.
+
+**Code refactoring**: Extracted VoltageAttention and ConductanceAttention as nn.Modules. nn.Sequential for MLPs. einsum for attention ops. Renamed: markov_mlp→ionic_mixing_mlp, comp_nonlinear→gate_conductance_mlp, w_alpha→ionic_mixing_logit, w_beta→gate_conductance_logit, full_decoder→ionic_state_decoder, comp_decoder→gate_conductance_decoder.
+
+**Scaffold redesign**: ionic_state_decoder(16→14): 12 HH gates + RR + CaSR. gate_conductance_decoder(8→5): G_Na(m³hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1·Xr2), G_Ks(Xs²). No sigmoid on decoders (Ca_SR is unbounded). Linear only — weak decoder forces strong latent.
+
+**Training strategy settled** (single loss per phase, no weighting):
+- A1: Ionic autoencoder (14↔16). A2: Concentration attention training. A3: Gate conductance projection.
+- B1-B5: Dynamics with rollout curriculum (1→10→100→1000→10000 steps). Scheduled sampling.
+- C: Concentration dynamics. D: Stage 2 regression (frozen Stage 1). E: End-to-end.
+- Data curriculum: T1 only (A,B1-B2) → +T2 (B3) → +T3 (B4) → +T4 (D,E) → T5-T12 after E works.
+- T12 (celltypes) enters at Phase B.
+- Initialization: zeros for ionic latent (model discovers own representation), real resting values for concentrations (Layer 0 physics). Not from TTP06 encoder output — avoids imprinting model assumptions.
+
+**Docs**: ARCHITECTURE_v3.md polished (Markov→cross-dimensional, compression→gate conductance projection, alpha/beta→logit names, 15→14). Explainer + Mermaid diagram created.
 
 ### 2026-04-02 — Compression input change + architecture doc
 **Decision**: Compression takes full carried_state (36→16) instead of ionic_state only (32→16). Gives compression access to concentration context (Ca_ss for fCass-dependent conductances). +80 params (1416 vs 1336 inference). Code + tests updated, 43/43 pass.

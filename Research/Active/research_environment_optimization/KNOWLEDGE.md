@@ -87,10 +87,11 @@ Research/Active/{question}/
 ├── README.md           Status, criteria, sub-questions, literature, experiments
 ├── KNOWLEDGE.md        Reference (promoted on completion)
 ├── IDEALOG.md          Thinking trail (archived on completion)
-├── WHITEBOARD.md       Ephemeral diagrams for tmux workspace (gitignored)
+├── WHITEBOARD.md       Per-question ephemeral diagrams for tmux workspace (gitignored)
 ├── PLAN.md             Agent execution steps (created by /blueprint)
 ├── literature/         Paper summaries
 ├── papers/             PDFs
+├── plans/              Archived completed PLAN.md files (date_slug.md)
 ├── code_examples/      Reference implementations
 └── results/            Simulation outputs
 ```
@@ -142,7 +143,7 @@ Research/Active/{question}/
 | Skill | Purpose | Lines |
 |-------|---------|-------|
 | **Research lifecycle** | | |
-| `/research-new` | Scaffold new question (README + KNOWLEDGE + IDEALOG + WHITEBOARD) | 222 |
+| `/research-new` | Scaffold new question (README + KNOWLEDGE + IDEALOG + WHITEBOARD) | 229 |
 | `/research-resume` | Resume question, load context, present briefing, set tmux window name | 158 |
 | `/quicksave` | Quick checkpoint — summarize chat into IDEALOG | 57 |
 | `/research-status` | Project-wide dashboard, staleness audit | 171 |
@@ -150,12 +151,12 @@ Research/Active/{question}/
 | `/research` | Full PubMed pipeline: search→screen→acquire→summarize→file | 287 |
 | `/summarize-paper` | Quick-summarize a single local PDF | 52 |
 | **Planning & reasoning** | | |
-| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions | 254 |
-| `/blueprint` | Generate machine-targeted PLAN.md from IDEALOG + codebase | 210 |
-| `/blueprint-revise` | Update existing PLAN.md — preserve completed steps, incorporate new IDEALOG, log mutations | 107 |
+| `/reason` | Interactive reasoning buddy — big→middle→small zoom, writes to IDEALOG on transitions | 269 |
+| `/blueprint` | Generate machine-targeted PLAN.md from IDEALOG + codebase | 232 |
+| `/blueprint-revise` | Update existing PLAN.md — preserve completed steps, incorporate new IDEALOG, log mutations | 117 |
 | `/audit` | Adversarial review via Opus subagent (opt-in) | 97 |
 | `/save-session` | Session cleanup (5 jobs): snapshot, organize KNOWLEDGE, cross-reference, condense, update index | 169 |
-| `/reason-end` | End reasoning session: /save-session, wipe WHITEBOARD, kill tmux panes, reset window name | 68 |
+| `/reason-end` | End reasoning session: /save-session, wipe WHITEBOARD, kill tmux panes, reset window name | 69 |
 | `/quick-implement` | Skip planning pipeline — present fix list, get approval, implement, verify, log | 68 |
 | **Engineering** | | |
 | `/verify` | Auto-detect engine, run test suite, produce pass/fail report | 77 |
@@ -172,11 +173,12 @@ Research/Active/{question}/
 | Risk | Skill | Lines | Mitigation |
 |------|-------|-------|------------|
 | HIGH | `/research` | 287 | Consider splitting into sub-skills (discover, screen, acquire, summarize, file) |
-| HIGH | `/reason` | 254 | Was split from `/blueprint`; could move examples to KNOWLEDGE.md |
-| HIGH | `/research-new` | 222 | Template-heavy; could reference KNOWLEDGE.md for templates instead of inlining |
-| HIGH | `/blueprint` | 210 | Already split `/blueprint-revise` out to avoid growth |
+| HIGH | `/reason` | 269 | Could move examples to KNOWLEDGE.md |
+| HIGH | `/blueprint` | 232 | Already split `/blueprint-revise` out, grew from pane switch + archive additions |
+| HIGH | `/research-new` | 229 | Template-heavy; could reference KNOWLEDGE.md for templates |
 | MED | `/research-status` | 171 | Monitor |
 | MED | `/save-session` | 169 | Monitor |
+| MED | `/research-resume` | 158 | Just over threshold |
 | OK | All others | <150 | Within threshold |
 
 Rule: keep skills under 150 lines. If a skill needs more, split it or reference KNOWLEDGE.md for detailed templates/examples instead of inlining them.
@@ -303,7 +305,7 @@ Setup triggered lazily by `/reason`. Teardown by `/reason-end`.
 ```bash
 H=""; while true; do
   N=$(md5sum FILE | cut -d" " -f1)
-  [ "$N" != "$H" ] && clear && glow -s .glow-style.json -w 70 FILE && H=$N
+  [ "$N" != "$H" ] && clear && glow -s .glow-style.json -w $W FILE && H=$N
   sleep 2
 done
 ```
@@ -316,13 +318,27 @@ elif [ -n "$ZELLIJ" ]; then echo "zellij"
 else echo "none"; fi
 ```
 
+**tmux window name as session identifier:** `/research-resume` and `/research-new` set the window name (capitalized title). `/reason` reads it for auto-resume — survives compaction (external to Claude context). `/reason-end` resets to "claude".
+
+**WHITEBOARD.md is per-question:** Lives in `Research/Active/{question}/WHITEBOARD.md`, not project root. Prevents conflicts between concurrent tmux sessions on different questions.
+
+**plans/ archive system:** `/blueprint` Final Cleanup archives completed PLAN.md to `plans/{date}_{slug}.md` before reverting pane. `/research-new` creates `plans/` dir.
+
+**Pane switch reliability:** `/blueprint` switches bottom pane to PLAN.md immediately after writing (not a separate Step 3b that gets forgotten). Also spawns background agent as safety net.
+
+**Background agent writes:** `/reason` Steps 5, 8, 10 can use background agents for IDEALOG and WHITEBOARD writes. `/save-session` and `/quicksave` can run as background agents when called from other skills.
+
 ### Decisions
 
 | Decision | Rationale |
 |----------|-----------|
 | tmux only | Precise pane targeting by index, safe `kill-pane -t N`, native `capture-pane` |
-| Dynamic glow width | Adapts to terminal size |
+| Dynamic glow width (`-w $(tput cols)`) | Adapts to terminal size instead of hardcoded 70 |
 | `/reason` owns pane lifecycle | Setup on start, teardown on `/reason-end` |
+| WHITEBOARD.md per-question | Prevents conflicts between concurrent tmux sessions |
+| tmux window name for question identity | Survives compaction, per-window, no file conflicts |
+| plans/ archive for completed PLANs | Preserves implementation history, findable by date |
+| Background agent writes in /reason | Maintains conversational flow, IDEALOG is append-only (no conflicts) |
 
 ## Maintenance
 
