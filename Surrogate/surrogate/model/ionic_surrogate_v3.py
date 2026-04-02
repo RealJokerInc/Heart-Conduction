@@ -58,10 +58,10 @@ class IonicSurrogateV3(nn.Module):
         conc_dim: Explicit concentration dims (default 4).
         attn_dim: Stage 1 attention projection dimension (default 4).
         cond_dim: Conductance latent after compression (default 8).
-        mlp_hidden: Markov MLP hidden dim (default 16).
+        mlp_hidden: Ionic mixing MLP hidden dim (default 16).
         comp_h1: Compression first hidden layer (default 12).
         comp_h2: Compression second hidden layer (default 12).
-        n_ionic_targets: Scaffold target: ionic states (default 15).
+        n_ionic_targets: Scaffold target: ionic states (default 14).
         n_conductance_targets: Scaffold target: conductance products (default 5).
         scaffold: Whether to include training scaffold decoders in Stage 1.
         n_env: Number of environment tokens (default 9).

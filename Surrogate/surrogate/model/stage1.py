@@ -103,7 +103,7 @@ class IonicStage1(nn.Module):
         mlp_hidden: Ionic mixing MLP hidden dim (default 16).
         comp_h1: Compression first hidden layer (default 12).
         comp_h2: Compression second hidden layer (default 12).
-        n_ionic_targets: State decoder targets (default 15: 13 gates + Ca_SR + RR).
+        n_ionic_targets: State decoder targets (default 14: 12 HH gates + RR + Ca_SR).
         n_conductance_targets: Conductance decoder targets (default 5: effective gate products).
         scaffold: Whether to include training scaffold decoders.
     """

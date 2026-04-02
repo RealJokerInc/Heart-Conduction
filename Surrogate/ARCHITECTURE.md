@@ -1,23 +1,20 @@
 # IonicSurrogateV3 Architecture Explainer
 
-Logic-based explainer organized by flow, then decisions, then per-block detail.
-All variable names, shapes, and defaults match the implemented code (small TTP06 config).
-
 ---
 
 ## Part 1: Architecture Flow
 
 The model replaces the TTP06 ionic model's per-cell computation. Each timestep, it takes a 20-dimensional carried state (16 ionic + 4 concentration dims) and membrane voltage, and produces an updated state plus a scalar ionic current I_ion.
 
-**VoltageAttention** receives the full `carried_state` (B, 20) along with `Vm` and `dt`. Each of the 20 dims independently queries the voltage to decide how much to update and where to move toward. The output `z_mid` is the same shape (B, 20) -- every dim has been nudged by voltage.
+**VoltageAttention** receives the full `carried_state` (B, 20) along with `Vm` and `dt`. Each of the 20 dimensions queries the voltage input to determine its update rate and target. The output `z_mid` is (B, 20) -- every dimension has been adjusted by voltage.
 
-**Concentration Split** cleaves `z_mid` into `ionic_mid` (B, 16) and `conc_new` (B, 4). Concentrations are done -- they only needed the voltage-gated attention update. Ionic dims continue through the MLP.
+**Concentration Split** separates `z_mid` into `ionic_mid` (B, 16) and `conc_new` (B, 4). Concentrations require only the voltage-gated attention update. Ionic dimensions continue through the MLP.
 
-**IonicMixingMLP** applies cross-dimensional correction to `ionic_mid` only. RMSNorm stabilizes the input, the MLP computes a correction, and `interpolate` blends the correction with the residual via a learned per-dim alpha. The result is `ionic_new` (B, 16).
+**IonicMixingMLP** applies cross-dimensional correction to `ionic_mid` only. RMSNorm stabilizes the input, the MLP computes a correction, and `interpolate` blends the correction with the residual via `ionic_mixing_logit`. The output is `ionic_new` (B, 16).
 
 **Recombine** concatenates `ionic_new` and `conc_new` back into `carried_state_new` (B, 20). This is the state carried to the next timestep.
 
-**GateConductanceCompression** reads the full `carried_state_new` (B, 20) and compresses it into `conductance_latent` (B, 8) through parallel linear and MLP paths, blended by a learned per-dim beta. This latent encodes effective gate products (like m^3*h*j) needed for current computation.
+**GateConductanceCompression** reads the full `carried_state_new` (B, 20) and compresses it into `conductance_latent` (B, 8) through parallel linear and MLP paths, blended by `gate_conductance_logit`. This latent encodes effective gate products (like m^3*h*j) needed for current computation.
 
 **NernstComputer** takes the 4 concentrations from the PREVIOUS timestep and computes reversal potentials [E_Na, E_K, E_Ca, E_Ks] using fixed physics. Then `normalize_environment` packs 9 tokens [Vm, E_Na, E_K, E_Ca, E_Ks, Na_i, K_i, Ca_i, Ca_ss] and normalizes them to roughly [-2, 2].
 
@@ -25,7 +22,7 @@ The model replaces the TTP06 ionic model's per-cell computation. Each timestep, 
 
 **OutputMLP** maps `attended` (B, 8) to scalar `I_ion` (B,).
 
-Key for speedup: Stage 1 advances state to t+1 (off critical path, can run during diffusion), while Stage 2 computes I_ion from the previous step's conductance and concentrations  (t;on critical path, must finish before diffusion begins).
+Key for speedup: Stage 1 advances state to t+1 (off critical path, can run during diffusion), while Stage 2 computes I_ion from the previous step's conductance and concentrations (t, on critical path, must finish before diffusion begins).
 
 ```
 carried_state(t), Vm, dt
@@ -46,59 +43,58 @@ carried_state(t), Vm, dt
 
 ### VoltageAttention
 
-- **Alternatives**: GRU cell (works but gating overhead unnecessary), standard self-attention over dims (47x Rush-Larsen, overkill), pure MLP (no state-dependent gating).
-- **Why this**: n x 1 cross-attention IS learned Rush-Larsen with state-dependent gating. Each dim queries voltage independently, producing a gate and target. The gate depends on both Vm and the current latent value (RL's rate depends on Vm only). Contractive by construction: update is `old + gate * (target - old)` with gate in (0,1).
-- **Layer 0 reality**: Channel proteins change conformation in response to membrane voltage. Each channel type responds independently within one dt.
-- **Does NOT**: apply cross-dim coupling (that is the MLP's job), use softmax (gate is per-dim sigmoid, not competitive), or stack multiple layers (one voltage response per dt is physically correct).
+- Why: n x 1 cross-attention is learned Rush-Larsen with state-dependent gating. Each dimension queries voltage independently, producing a gate and target. The gate depends on both Vm and the current latent value (RL's rate depends on Vm only). Contractive by construction: update is `old + gate * (target - old)` with gate in (0,1).
+- Layer 0: Channel proteins change conformation in response to membrane voltage. Each channel type responds independently within one dt.
+- Does not: Apply cross-dim coupling (that is the MLP's job), use softmax (gate is per-dim sigmoid, not competitive), or stack multiple layers (one voltage response per dt is physically correct).
 
 ### Concentration Split
 
-- **Alternatives**: Pass concentrations through the MLP alongside ionic dims.
-- **Why split**: The MLP handles intra-protein Markov corrections between ionic dims. Concentrations change ~0.0001% per step -- routing them through the MLP creates artificial coupling that does not exist within one dt. Attention alone is sufficient for their slow Vm-dependent tracking.
-- **Does NOT**: apply any MLP correction to concentrations. They get attention only.
+- Alternatives: Pass concentrations through the MLP alongside ionic dims.
+- Why split: The MLP handles cross-dimensional corrections between ionic dims. Concentrations change ~0.0001% per step, and routing them through the MLP creates artificial coupling that does not exist within one dt. Attention alone is sufficient for their slow Vm-dependent tracking.
+- Does not: Apply any MLP correction to concentrations. They receive attention only.
 
 ### RMSNorm
 
-- **Alternatives**: LayerNorm (adds centering + learned scale, unnecessary), BatchNorm (unstable for autoregressive inference with batch=1).
-- **Why this**: Stabilizes MLP input scale across 100K+ recurrent steps. Zero parameters. Instance-level (no batch statistics).
-- **Does NOT**: learn any parameters or center the input. Pure scale normalization.
+- Alternatives: LayerNorm (adds centering + learned scale, unnecessary), BatchNorm (unstable for autoregressive inference with batch=1).
+- Why: Stabilizes MLP input scale across 100K+ recurrent steps. Zero parameters. Instance-level (no batch statistics).
+- Does not: Learn any parameters or center the input. Scale normalization only.
 
 ### IonicMixingMLP + interpolate
 
-- **Alternatives**: Direct residual add (no blending control), spectral norm + zero-init (heavier machinery for same goal), full self-attention (overkill for cross-dim coupling).
-- **Why this**: DeepSeek-inspired learned residual mixing. Convex combination `(1-alpha)*residual + alpha*correction` cannot amplify by construction. Each ionic dim learns how much MLP correction to accept. HH-like dims learn alpha near 0 (pure residual); Markov-coupled dims learn alpha > 0.
-- **Layer 0 reality**: Cross-channel coupling (e.g., Ca cycling affecting gate kinetics) exists but is slow -- accumulates over many steps. One MLP layer captures pairwise interactions per step.
-- **Does NOT**: force coupling on dims that do not need it (residual bypass). Does not touch concentration dims.
+- Alternatives: Direct residual add (no blending control), spectral norm + zero-init (heavier machinery for same goal), full self-attention (overkill for cross-dim coupling).
+- Why: DeepSeek-inspired learned residual mixing. The interpolation `(1-sigmoid(logit))*residual + sigmoid(logit)*correction` cannot amplify by construction. Each ionic dim learns how much MLP correction to accept via `ionic_mixing_logit`. HH-like dims learn logit near -5 (near-pure residual); coupled dims learn logit > 0.
+- Layer 0: Cross-channel coupling (e.g., Ca cycling affecting gate kinetics) exists but is slow -- accumulates over many steps. One MLP layer captures pairwise interactions per step.
+- Does not: Force coupling on dims that do not need it (residual bypass). Does not touch concentration dims.
 
 ### GateConductanceCompression
 
-- **Alternatives**: Carry conductance_latent forward from previous step (attention cannot compute cross-dim products like m^3*h*j, so conductance must be recomputed). Use ionic_state only as input (misses Ca_ss needed for fCass-dependent conductances).
-- **Why this**: Two GELU layers compose triple products (m*h in layer 1, m*h*j in layer 2). Linear bypass provides direct projection path. Beta mixing controls linear vs nonlinear per compressed dim.
-- **Does NOT**: use the previous conductance_latent as input. Recomputes from scratch each step.
+- Alternatives: Carry `conductance_latent` forward from previous step (attention cannot compute cross-dim products like m^3*h*j, so conductance must be recomputed). Use ionic_state only as input (misses Ca_ss needed for fCass-dependent conductances).
+- Why: Two GELU layers compose triple products (m*h in layer 1, m*h*j in layer 2). Linear bypass provides direct projection path. `gate_conductance_logit` controls the interpolation between linear and nonlinear per compressed dim.
+- Does not: Use the previous `conductance_latent` as input. Recomputes from scratch each step.
 
 ### NernstComputer
 
-- **Alternatives**: Learn reversal potentials (unnecessary -- Nernst is exact physics with known constants).
-- **Why fixed**: The Nernst equation is Layer 0 physics. RT/F, extracellular concentrations, and the log relationship are not model assumptions -- they are thermodynamics. Zero learned parameters means zero chance of learning something wrong.
-- **Does NOT**: contribute any learned parameters. Gradients still flow through it (log and division are differentiable).
+- Alternatives: Learn reversal potentials (unnecessary -- Nernst is exact physics with known constants).
+- Why fixed: The Nernst equation is Layer 0 physics. RT/F, extracellular concentrations, and the log relationship are not model assumptions -- they are thermodynamics. Zero learned parameters means zero chance of learning something wrong.
+- Does not: Contribute any learned parameters. Gradients still flow through it (log and division are differentiable).
 
 ### Environment Normalization
 
-- **Alternatives**: Learned normalization (adds parameters for something that is known a priori), no normalization (Ca_i ~ 0.0001 mM vs K_i ~ 138 mM makes calcium invisible to attention).
-- **Why fixed shifts/scales**: Physiological ranges are known. 18 fixed constants. Normalizes all 9 tokens to approximately [-2, 2].
-- **Does NOT**: learn the normalization. Ranges come from TTP06 physiology.
+- Alternatives: Learned normalization (adds parameters for something that is known a priori), no normalization (Ca_i ~ 0.0001 mM vs K_i ~ 138 mM makes calcium invisible to attention).
+- Why fixed shifts/scales: Physiological ranges are known. 18 fixed constants. Normalizes all 9 tokens to approximately [-2, 2].
+- Does not: Learn the normalization. Ranges come from TTP06 physiology.
 
 ### Stage 2 CrossAttention (no softmax)
 
-- **Alternatives**: MLP on concatenated inputs (no routing structure), bilinear form (arbitrary feature engineering), softmax attention (forces positive weights, physically wrong for driving forces).
-- **Why this**: Each conductance dim "asks" the environment what driving force to apply. Na conductance attends to Vm and E_Na, learning (Vm - E_Na). CaL attends to Vm and Ca_ss, learning GHK-like flux. Negative scores are physically meaningful -- the sign of (Vm - E) determines current direction.
-- **Layer 0 reality**: Current = conductance x driving force. The driving force depends on which ion and which voltage/concentration tokens matter for that channel.
-- **Does NOT**: use softmax (I_ion is unbounded, negative attention is meaningful), or share parameters across query dims.
+- Alternatives: MLP on concatenated inputs (no routing structure), bilinear form (arbitrary feature engineering), softmax attention (forces positive weights, physically wrong for driving forces).
+- Why: Each conductance dim queries the environment to determine its driving force. Na conductance attends to Vm and E_Na, learning (Vm - E_Na). CaL attends to Vm and Ca_ss, learning GHK-like flux. Negative scores are physically meaningful -- the sign of (Vm - E) determines current direction.
+- Layer 0: Current = conductance x driving force. The driving force depends on which ion and which voltage/concentration tokens matter for that channel.
+- Does not: Use softmax (I_ion is unbounded, negative attention is meaningful), or share parameters across query dims.
 
 ### OutputMLP
 
-- **Alternatives**: Pure linear sum (Kirchhoff's law says currents sum linearly, but our 8 conductance dims are learned abstractions, not literal channels).
-- **Why MLP**: Allows nonlinear interaction between the 8 attended values. Hidden dim of 4 is conservative.
+- Alternatives: Pure linear sum (Kirchhoff's law says currents sum linearly, but the 8 conductance dims are learned abstractions, not literal channels).
+- Why MLP: Allows nonlinear interaction between the 8 attended values. Hidden dim of 4 is conservative.
 
 ---
 
@@ -132,7 +128,7 @@ carried_state(t), Vm, dt
 
 **Input -> Output**: `z_mid` (B, 20) -> `ionic_mid` (B, 16), `conc_new` (B, 4)
 
-**How it works**: `ionic_mid = z_mid[:, :16]`, `conc_new = z_mid[:, 16:]`. Pure slicing.
+**How it works**: `ionic_mid = z_mid[:, :16]`, `conc_new = z_mid[:, 16:]`. Tensor slicing with no learned parameters.
 
 **Key parameters**: None. Split point determined by `ionic_dim` (16).
 
@@ -156,7 +152,7 @@ carried_state(t), Vm, dt
 
 ### 4. IonicMixingMLP + interpolate
 
-**Purpose**: Cross-dimensional correction on ionic dims (Markov coupling, pairwise gate interactions).
+**Purpose**: Cross-dimensional correction on ionic dims (cross-dimensional coupling, pairwise gate interactions).
 
 **Input -> Output**: `ionic_mid` (B, 16) -> `ionic_new` (B, 16)
 
@@ -169,7 +165,7 @@ carried_state(t), Vm, dt
 
 **Scaffold supervision**: Downstream `ionic_state_decoder` on `ionic_new` ensures the MLP preserves gate information.
 
-**Failure mode**: If alpha stays near 0, MLP has no effect (pure residual -- safe but no coupling). If alpha goes to 1 for all dims, residual path is lost. Sigmoid bounds prevent divergence.
+**Failure mode**: If `ionic_mixing_logit` remains near its initial value (-5.0), the MLP has no effect (pure residual — safe but no coupling). If the logit grows large for all dims, the residual path is lost. Sigmoid bounds prevent divergence.
 
 ### 5. GateConductanceCompression
 
@@ -187,7 +183,7 @@ carried_state(t), Vm, dt
 
 **Scaffold supervision**: `gate_conductance_decoder` maps `conductance_latent` (8) -> (5) predicting effective gate products [G_Na(m^3hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1Xr2), G_Ks(Xs^2)].
 
-**Failure mode**: If compression loses gate-product information, Stage 2 cannot reconstruct the correct current magnitude. The scaffold decoder catches this during training.
+**Failure mode**: If the gate conductance projection loses gate-product information, Stage 2 cannot reconstruct the correct current magnitude. The scaffold decoder catches this during training.
 
 ### 6. NernstComputer
 
@@ -269,17 +265,17 @@ carried_state(t), Vm, dt
 
 **Purpose**: Ensure the ionic latent encodes recoverable gate information during training.
 
-**Input -> Output**: `ionic_new` (B, 16) -> `ionic_state_pred` (B, 15)
+**Input -> Output**: `ionic_new` (B, 16) -> `ionic_state_pred` (B, 14)
 
-**How it works**: Single `nn.Linear(16, 15)`. No activation -- targets include both [0,1]-bounded gates and unbounded concentrations (Ca_SR, RR). Targets: 13 HH gates + Ca_SR + RR.
+**How it works**: Single `nn.Linear(16, 14)`. No activation -- targets include both [0,1]-bounded gates and unbounded concentrations (CaSR, RR). Targets: 12 HH gates + RR + CaSR.
 
-**Key parameters**: Linear(16, 15). Removed by `remove_scaffold()` for inference.
+**Key parameters**: Linear(16, 14). Removed by `remove_scaffold()` for inference.
 
 **Failure mode**: If the decoder cannot reconstruct gates, the ionic latent is not encoding useful gate information. Training adjusts Stage 1 to fix this.
 
 ### 11. Scaffold: gate_conductance_decoder
 
-**Purpose**: Ensure compression preserves effective gate product information.
+**Purpose**: Ensure the gate conductance projection preserves effective gate product information.
 
 **Input -> Output**: `conductance_latent` (B, 8) -> `conductance_pred` (B, 5)
 
@@ -287,7 +283,7 @@ carried_state(t), Vm, dt
 
 **Key parameters**: Linear(8, 5). Removed by `remove_scaffold()` for inference.
 
-**Failure mode**: If the decoder cannot reconstruct gate products, the conductance latent has lost information needed for current computation. Training adjusts compression to fix this.
+**Failure mode**: If the decoder cannot reconstruct gate products, the conductance latent has lost information needed for current computation. Training adjusts the gate conductance projection to fix this.
 
 ---
 
@@ -301,10 +297,10 @@ carried_state(t), Vm, dt
 | `conc_dim`                 | 4         | Number of explicit concentration dimensions [Na_i, K_i, Ca_i, Ca_ss]             |
 | `carried_dim`              | 20        | `ionic_dim + conc_dim`                                                           |
 | `attn_dim`                 | 4         | Attention projection dimension (Stage 1 VoltageAttention)                        |
-| `cond_dim`                 | 8         | Conductance latent dimension after compression                                   |
+| `cond_dim`                 | 8         | Conductance latent dimension after gate conductance projection                   |
 | `mlp_hidden`               | 16        | IonicMixingMLP hidden layer width                                                |
-| `comp_h1`                  | 12        | Compression MLP first hidden layer                                               |
-| `comp_h2`                  | 12        | Compression MLP second hidden layer                                              |
+| `comp_h1`                  | 12        | Gate conductance MLP first hidden layer                                          |
+| `comp_h2`                  | 12        | Gate conductance MLP second hidden layer                                         |
 | `z_mid`                    | (B, 20)   | Attention output before split                                                    |
 | `ionic_mid`                | (B, 16)   | Ionic dims after attention, before MLP                                           |
 | `conc_new`                 | (B, 4)    | Updated concentrations (attention only)                                          |
@@ -313,9 +309,9 @@ carried_state(t), Vm, dt
 | `voltage_attention`        | --        | Instance of `VoltageAttention` in `IonicStage1`                                  |
 | `ionic_mixing_mlp`         | --        | Two-layer MLP for cross-dim ionic correction                                     |
 | `ionic_mixing_logit`       | (16,)     | Per-dim alpha logit for MLP interpolation (init -5.0)                            |
-| `gate_conductance_linear`  | --        | Linear(20, 8) bypass for compression                                             |
-| `gate_conductance_mlp`     | --        | Three-layer MLP (20->12->12->8) for nonlinear compression                        |
-| `gate_conductance_logit`   | (8,)      | Per-dim beta logit for compression interpolation (init -5.0)                     |
+| `gate_conductance_linear`  | --        | Linear(20, 8) bypass for gate conductance projection                             |
+| `gate_conductance_mlp`     | --        | Three-layer MLP (20->12->12->8) for nonlinear gate conductance projection        |
+| `gate_conductance_logit`   | (8,)      | Per-dim logit for gate conductance interpolation (init -5.0)                     |
 | `conductance_latent`       | (B, 8)    | Compressed effective conductances                                                |
 | `cond_lat_prev`            | (B, 8)    | PREVIOUS step's conductance latent (Stage 2 input)                               |
 | `conc_prev`                | (B, 4)    | PREVIOUS step's concentrations (Nernst input)                                    |
@@ -331,12 +327,12 @@ carried_state(t), Vm, dt
 | `attended`                 | (B, 8)    | Stage 2 attention output per conductance dim                                     |
 | `output_mlp`               | --        | Stage 2 final MLP: Linear(8,4) -> GELU -> Linear(4,1)                            |
 | `I_ion`                    | (B,)      | Output: total ionic current                                                      |
-| `ionic_state_decoder`      | --        | Scaffold: Linear(16, 15), training only                                          |
+| `ionic_state_decoder`      | --        | Scaffold: Linear(16, 14), training only                                          |
 | `gate_conductance_decoder` | --        | Scaffold: Linear(8, 5), training only                                            |
-| `n_ionic_targets`          | 15        | Scaffold targets: 13 HH gates + Ca_SR + RR                                       |
+| `n_ionic_targets`          | 14        | Scaffold targets: 12 HH gates + RR + CaSR                                        |
 | `n_conductance_targets`    | 5         | Scaffold targets: 5 effective gate products                                      |
 | `ALPHA_INIT`               | -5.0      | Initial logit for ionic mixing (sigmoid(-5) ~ 0.007)                             |
-| `BETA_INIT`                | -5.0      | Initial logit for compression mixing                                             |
+| `BETA_INIT`                | -5.0      | Initial logit for gate conductance interpolation                                 |
 | `n_env`                    | 9         | Number of environment tokens [Vm, E_Na, E_K, E_Ca, E_Ks, Na_i, K_i, Ca_i, Ca_ss] |
 | `d_v`                      | 1         | Stage 2 value dimension                                                          |
 | `stage2_attn`              | 4         | Stage 2 attention dimension                                                      |
