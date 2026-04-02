@@ -35,7 +35,7 @@ COND_DIM = 8
 MLP_HIDDEN = 16
 COMP_H1 = 12
 COMP_H2 = 12
-N_IONIC_TARGETS = 15     # 13 HH gates + Ca_SR + RR (all states in ionic_state)
+N_IONIC_TARGETS = 14     # 12 HH gates (m-Xs) + RR + Ca_SR = 14 ionic state targets
 N_CONDUCTANCE_TARGETS = 5 # G_Na(m³hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1Xr2), G_Ks(Xs²)
 ALPHA_INIT = -5.0  # sigmoid(-5) ~ 0.007, near-pure residual at init
 BETA_INIT = -5.0

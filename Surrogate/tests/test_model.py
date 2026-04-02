@@ -442,7 +442,7 @@ class TestStage1:
         assert cs_new.shape == (B, 20)
         assert cond_lat.shape == (B, 8)
         assert conc_new.shape == (B, 4)
-        assert gf.shape == (B, 15)
+        assert gf.shape == (B, 14)
         assert gc.shape == (B, 5)
         # All float32
         assert cs_new.dtype == torch.float32
@@ -462,7 +462,7 @@ class TestStage1:
         assert cs_new.shape == (20,)
         assert cond_lat.shape == (8,)
         assert conc_new.shape == (4,)
-        assert gf.shape == (15,)
+        assert gf.shape == (14,)
         assert gc.shape == (5,)
 
     def test_stage1_contractivity(self):
@@ -607,13 +607,13 @@ class TestStage1:
         assert model.inference_param_count() == expected_inference
 
         # Scaffold params
-        # ionic_state_decoder: 16*15+15=255, gate_conductance_decoder: 8*5+5=45
-        expected_scaffold = (16 * 15 + 15) + (8 * 5 + 5)
-        assert expected_scaffold == 300
+        # ionic_state_decoder: 16*14+14=238, gate_conductance_decoder: 8*5+5=45
+        expected_scaffold = (16 * 14 + 14) + (8 * 5 + 5)
+        assert expected_scaffold == 283
 
         total = sum(p.numel() for p in model.parameters())
         assert total == expected_inference + expected_scaffold
-        assert total == 1716
+        assert total == 1699
 
     def test_stage1_remove_scaffold(self):
         """remove_scaffold() drops decoders. Second call is idempotent."""
@@ -623,7 +623,7 @@ class TestStage1:
         assert hasattr(model, "ionic_state_decoder")
         assert hasattr(model, "gate_conductance_decoder")
         total_before = sum(p.numel() for p in model.parameters())
-        assert total_before == 1716
+        assert total_before == 1699
 
         model.remove_scaffold()
         assert not hasattr(model, "ionic_state_decoder")
@@ -812,7 +812,7 @@ class TestV3:
         assert out["conductance_latent"].shape == (B, 8)
         assert out["concentrations"].shape == (B, 4)
         assert out["I_ion"].shape == (B,)
-        assert out["ionic_state_pred"].shape == (B, 15)
+        assert out["ionic_state_pred"].shape == (B, 14)
         assert out["conductance_pred"].shape == (B, 5)
         # All float32
         for key in ["carried_state", "conductance_latent", "concentrations", "I_ion"]:
