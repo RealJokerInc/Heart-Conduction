@@ -17,6 +17,14 @@ from ..model.ionic_surrogate_v3 import IonicSurrogateV3
 # Default initial concentrations (resting values, Layer 0 physics)
 INIT_CONC = torch.tensor([10.0, 138.0, 0.0001, 0.0002], dtype=torch.float64)
 
+# Loss normalization: divide each MSE by target variance so components contribute equally.
+# Computed from T1 training data. Without normalization, conc_mse is 5000x larger than ionic.
+LOSS_NORM = {
+    'ionic_state': 0.667,     # ionic_states overall variance
+    'conc': 3383.5,           # concentrations overall variance (K_i~138 dominates)
+    'conductance': 0.00167,   # conductance_products overall variance
+}
+
 
 def compute_phase_loss(
     phase_name: str,
@@ -35,7 +43,8 @@ def compute_phase_loss(
             model_out['ionic_state_pred'], segment['ionic_states'][:, t, :])
         losses['conc_mse'] = torch.nn.functional.mse_loss(
             model_out['concentrations'], segment['concentrations'][:, t, :])
-        losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse']
+        losses['loss'] = (losses['ionic_state_mse'] / LOSS_NORM['ionic_state']
+                          + losses['conc_mse'] / LOSS_NORM['conc'])
 
     elif phase_name in ("B3", "B4", "B5") or phase_name == "ionic_state_and_conductance":
         losses['ionic_state_mse'] = torch.nn.functional.mse_loss(
@@ -44,7 +53,9 @@ def compute_phase_loss(
             model_out['concentrations'], segment['concentrations'][:, t, :])
         losses['conductance_mse'] = torch.nn.functional.mse_loss(
             model_out['conductance_pred'], segment['conductance_products'][:, t, :])
-        losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse'] + losses['conductance_mse']
+        losses['loss'] = (losses['ionic_state_mse'] / LOSS_NORM['ionic_state']
+                          + losses['conc_mse'] / LOSS_NORM['conc']
+                          + losses['conductance_mse'] / LOSS_NORM['conductance'])
 
     elif phase_name == "C" or phase_name == "concentration_rollout":
         losses['conc_mse'] = torch.nn.functional.mse_loss(

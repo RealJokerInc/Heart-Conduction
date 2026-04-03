@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from ..model.ionic_surrogate_v3 import IonicSurrogateV3
 from .datasets import SnapshotDataset, PairDataset, SegmentDataset, merge_tier_datasets
 from .phases import PhaseConfig, get_phase_config, get_all_phases, apply_freeze_mask, PHASE_ORDER
-from .rollout import rollout, INIT_CONC
+from .rollout import rollout, INIT_CONC, LOSS_NORM
 
 logger = logging.getLogger(__name__)
 
@@ -238,12 +238,12 @@ class SurrogateTrainer:
         conc_mse = nn.functional.mse_loss(out['concentrations'], batch['concentrations'])
 
         losses = {'ionic_state_mse': ionic_mse, 'conc_mse': conc_mse}
-        total = ionic_mse + conc_mse
+        total = ionic_mse / LOSS_NORM['ionic_state'] + conc_mse / LOSS_NORM['conc']
 
         if phase.loss_fn == "ionic_state_and_conductance" and out['conductance_pred'] is not None:
             cond_mse = nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
             losses['conductance_mse'] = cond_mse
-            total = total + cond_mse
+            total = total + cond_mse / LOSS_NORM['conductance']
 
         losses['loss'] = total
         return losses
