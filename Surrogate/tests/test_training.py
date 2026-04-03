@@ -695,3 +695,171 @@ class TestTrainer:
             assert torch.allclose(orig_weights[name], model2.state_dict()[name]), (
                 f"Weights differ for {name} after checkpoint round-trip"
             )
+
+
+# ============================================================================
+# Phase 3: Checkpoint, Monitor, Metrics Tests
+# ============================================================================
+
+class TestCheckpointManager:
+
+    def test_checkpoint_save_load_roundtrip(self, tmp_path):
+        from surrogate.model import IonicSurrogateV3
+        from surrogate.training.checkpoint import CheckpointManager
+        from torch.optim import AdamW
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+
+        model = IonicSurrogateV3(scaffold=True).double()
+        optimizer = AdamW(model.parameters(), lr=1e-3)
+        scheduler = CosineAnnealingLR(optimizer, T_max=10)
+
+        mgr = CheckpointManager(str(tmp_path))
+        mgr.save('test', model, optimizer, scheduler, None, 'A1', 5, 100, 0.001)
+
+        model2 = IonicSurrogateV3(scaffold=True).double()
+        meta = mgr.load('test', model2, device='cpu')
+
+        assert meta['phase'] == 'A1'
+        assert meta['epoch'] == 5
+        assert meta['step'] == 100
+        for k in model.state_dict():
+            assert torch.allclose(model.state_dict()[k], model2.state_dict()[k])
+
+    def test_list_checkpoints(self, tmp_path):
+        from surrogate.model import IonicSurrogateV3
+        from surrogate.training.checkpoint import CheckpointManager
+        from torch.optim import AdamW
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+
+        model = IonicSurrogateV3(scaffold=True).double()
+        optimizer = AdamW(model.parameters(), lr=1e-3)
+        scheduler = CosineAnnealingLR(optimizer, T_max=10)
+
+        mgr = CheckpointManager(str(tmp_path))
+        mgr.save('best_A1', model, optimizer, scheduler, None, 'A1', 0, 0, 0.0)
+        mgr.save('latest', model, optimizer, scheduler, None, 'A1', 1, 10, 0.0)
+
+        ckpts = mgr.list_checkpoints()
+        assert 'best_A1' in ckpts
+        assert 'latest' in ckpts
+
+
+class TestMonitor:
+
+    def test_monitor_jsonl_format(self, tmp_path):
+        import json
+        from surrogate.training.monitor import TrainingMonitor
+
+        mon = TrainingMonitor(str(tmp_path))
+        mon.log_batch('A1', 0, 0, 0, 0.5, 1e-3, 0.1)
+
+        lines = (tmp_path / 'training_log.jsonl').read_text().strip().split('\n')
+        entry = json.loads(lines[0])
+        assert entry['phase'] == 'A1'
+        assert entry['loss'] == 0.5
+        assert 'timestamp' in entry
+
+    def test_monitor_control_pause(self, tmp_path):
+        import json, threading, time
+        from surrogate.training.monitor import TrainingMonitor
+
+        mon = TrainingMonitor(str(tmp_path))
+        mon.update_control(status='pause_requested')
+
+        # Resume in background after short delay
+        def resume():
+            time.sleep(0.5)
+            mon.update_control(status='running')
+        t = threading.Thread(target=resume)
+        t.start()
+
+        result = mon.check_control()
+        t.join()
+        assert result == 'running'
+
+    def test_monitor_nan_detection(self, tmp_path):
+        from surrogate.training.monitor import TrainingMonitor
+
+        mon = TrainingMonitor(str(tmp_path))
+        mon.log_batch('A1', 0, 0, 0, 1.0, 1e-3, 0.1)  # seed EMA
+        result = mon.check_divergence(float('nan'), 0.1)
+        assert result == 'nan'
+
+    def test_monitor_spike_detection(self, tmp_path):
+        from surrogate.training.monitor import TrainingMonitor
+
+        mon = TrainingMonitor(str(tmp_path))
+        # Seed EMA with low loss
+        for i in range(100):
+            mon.log_batch('A1', 0, i, i, 0.1, 1e-3, 0.1)
+        # Spike should be detected
+        result = mon.check_divergence(10.0, 0.1)
+        assert result == 'spike'
+
+    def test_intervention_handler(self, tmp_path):
+        import json
+        from surrogate.training.monitor import TrainingMonitor
+        from torch.optim import AdamW
+        import torch.nn as nn
+
+        mon = TrainingMonitor(str(tmp_path))
+        model = nn.Linear(10, 10)
+        optimizer = AdamW(model.parameters(), lr=1e-3)
+
+        result = mon.apply_intervention({'action': 'reduce_lr', 'factor': 0.5}, optimizer)
+        assert 'Reduced' in result
+        assert optimizer.param_groups[0]['lr'] == pytest.approx(5e-4)
+
+
+class TestMetrics:
+
+    def test_apd90_known_trace(self):
+        from surrogate.training.metrics import compute_apd90
+
+        # Synthetic AP: rest at -80, upstroke to +30, plateau, repolarize
+        T = 10000
+        dt = 0.01  # ms
+        Vm = torch.full((T,), -80.0, dtype=torch.float64)
+        # Upstroke at t=1000 (10ms)
+        Vm[1000:1010] = torch.linspace(-80, 30, 10)
+        # Plateau
+        Vm[1010:5000] = torch.linspace(30, 0, 3990)
+        # Repolarization
+        Vm[5000:7000] = torch.linspace(0, -80, 2000)
+        # Rest
+        Vm[7000:] = -80.0
+
+        apd = compute_apd90(Vm, dt=dt)
+        # AP starts around t=1000, repolarizes to 90% around t=6500-ish
+        assert not torch.isnan(apd)
+        assert 40 < apd.item() < 70  # reasonable range for synthetic trace
+
+    def test_apd90_no_ap(self):
+        from surrogate.training.metrics import compute_apd90
+
+        Vm = torch.full((1000,), -80.0, dtype=torch.float64)
+        apd = compute_apd90(Vm)
+        assert torch.isnan(apd)
+
+    def test_dvdt_max_known_trace(self):
+        from surrogate.training.metrics import compute_dvdt_max
+
+        T = 1000
+        Vm = torch.full((T,), -80.0, dtype=torch.float64)
+        # Sharp upstroke: -80 to +30 in 10 steps at dt=0.01
+        Vm[100:110] = torch.linspace(-80, 30, 10)
+
+        dvdt = compute_dvdt_max(Vm, dt=0.01)
+        # Max slope ~110mV/0.01ms = 11000 mV/ms... actually per step
+        # linspace: each step is 110/9 ≈ 12.2 mV per 0.01ms = 1222 mV/ms
+        assert dvdt.item() > 1000
+
+    def test_dvdt_max_variable_dt(self):
+        from surrogate.training.metrics import compute_dvdt_max
+
+        T = 100
+        Vm = torch.linspace(-80, 30, T, dtype=torch.float64)
+        dt = torch.full((T,), 0.01, dtype=torch.float64)
+
+        dvdt = compute_dvdt_max(Vm, dt=dt)
+        assert dvdt.isfinite()
