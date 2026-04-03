@@ -25,24 +25,33 @@ from torch import Tensor
 # Conductance products (5 dims): G_Na [0, 0.30], G_CaL [0, 0.51], G_to [0, 0.47], G_Kr [0, 0.37], G_Ks [0, 0.02]
 # ============================================================================
 
+# Ranges computed across ALL cached tiers (T1, T2, T3, T12 train+val) with 10% safety margin.
+# Safety margin: expand range by 10% on each side to handle unseen protocols.
+# Without margin, T12 ENDO/M_CELL data clips (e.g., G_to reaches 0.67 vs T1 max 0.47).
 _RANGES = {
     'ionic_states': {
+        # dims 0-12: gates [~0, ~1], dim 13: CaSR [1.2, 4.9]
+        # Margin: gates clamped to [0, 1], CaSR expanded ±10%
         'min': torch.tensor([
-            0.0015, 0.0, 0.0, 0.0, 0.0009, 0.0, 0.206, 0.331,
-            0.400, 0.0002, 0.0135, 0.0017, 0.881, 1.69,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ]),
         'max': torch.tensor([
-            1.0, 0.764, 0.764, 0.794, 1.0, 0.990, 0.999, 1.0,
-            0.995, 0.958, 0.478, 0.142, 0.998, 4.73,
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0, 5.5,
         ]),
     },
     'concentrations': {
-        'min': torch.tensor([8.389, 136.70, 6.79e-5, 1.20e-4]),
-        'max': torch.tensor([8.646, 137.30, 1.76e-4, 6.82e-2]),
+        # Na_i [8.1, 8.7], K_i [136.7, 137.7], Ca_i [5e-5, 2e-4], Ca_ss [1e-4, 7e-2]
+        # Margin: expand ±10% of range on each side
+        'min': torch.tensor([8.0, 136.6, 4.0e-5, 8.0e-5]),
+        'max': torch.tensor([8.8, 137.8, 2.0e-4, 8.0e-2]),
     },
     'conductance_products': {
+        # G_Na [0, 0.31], G_CaL [0, 0.51], G_to [0, 0.67], G_Kr [0, 0.38], G_Ks [0, 0.034]
+        # Margin: max expanded by 20% (products can exceed T1 range in other celltypes)
         'min': torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0]),
-        'max': torch.tensor([0.305, 0.513, 0.475, 0.366, 0.0201]),
+        'max': torch.tensor([0.4, 0.65, 0.85, 0.5, 0.05]),
     },
 }
 

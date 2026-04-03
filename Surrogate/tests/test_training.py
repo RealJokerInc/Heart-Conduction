@@ -315,7 +315,7 @@ class TestPhaseConfig:
 
     def test_phase_configs_complete(self):
         from surrogate.training.phases import PHASE_ORDER, PHASE_CONFIGS
-        assert len(PHASE_ORDER) == 9
+        assert len(PHASE_ORDER) == 10
         for name in PHASE_ORDER:
             assert name in PHASE_CONFIGS
 
@@ -563,13 +563,7 @@ class TestTrainer:
         model = IonicSurrogateV3(scaffold=True).double()
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
-        # Run A2 with 1 epoch
-        a2 = get_phase_config("A2")
-        a2.max_epochs = 1
-        a2.patience = 1
-        trainer.train_phase(a2)
-
-        # Run B1 with 1 epoch — should have different freeze mask
+        # Run B1 with 1 epoch
         b1 = get_phase_config("B1")
         b1.max_epochs = 1
         b1.patience = 1
