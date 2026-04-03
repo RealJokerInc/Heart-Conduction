@@ -147,8 +147,9 @@ class SurrogateTrainer:
 
             if phase.loss_fn == "concentration":
                 loss = self._single_step_loss(phase, batch)
+            elif phase.rollout_length <= 1:
+                loss = self._snapshot_step(phase, batch)
             else:
-                # Rollout-based phases (B-E)
                 loss = self._rollout_step(phase, batch)
 
             loss.backward()
@@ -186,8 +187,34 @@ class SurrogateTrainer:
         )
         return nn.functional.mse_loss(out['concentrations'], batch['concentrations_t1'])
 
+    def _snapshot_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Single-step forward from zeros for rollout=1 phases (B1).
+
+        SnapshotDataset provides (B, ...) tensors without time dimension.
+        """
+        B = batch['Vm'].shape[0]
+        Vm = batch['Vm']
+        dt = batch['dt']
+
+        # Start from zeros (steady state)
+        carried = torch.zeros(B, self.model.carried_dim, dtype=torch.float64, device=self.device)
+        carried[:, self.model.ionic_dim:] = INIT_CONC.to(self.device)
+        cond_lat_prev = torch.zeros(B, self.model.cond_dim, dtype=torch.float64, device=self.device)
+        conc_prev = INIT_CONC.to(self.device).unsqueeze(0).expand(B, -1).clone()
+
+        out = self.model(carried, Vm, dt, cond_lat_prev, conc_prev)
+
+        # Ionic state loss (B1-B2)
+        loss = nn.functional.mse_loss(out['ionic_state_pred'], batch['ionic_states'])
+
+        # Add conductance loss for B3+ phases
+        if phase.loss_fn == "ionic_state_and_conductance" and out['conductance_pred'] is not None:
+            loss = loss + nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
+
+        return loss
+
     def _rollout_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Phase B-E: autoregressive rollout."""
+        """Phase B2-E: autoregressive rollout over segments."""
         result = rollout(
             model=self.model,
             segment=batch,
@@ -209,6 +236,8 @@ class SurrogateTrainer:
 
             if phase.loss_fn == "concentration":
                 loss = self._single_step_loss(phase, batch)
+            elif phase.rollout_length <= 1:
+                loss = self._snapshot_step(phase, batch)
             else:
                 loss = self._rollout_step(phase, batch)
 
@@ -255,6 +284,10 @@ class SurrogateTrainer:
 
             if phase.loss_fn == "concentration":
                 datasets.append(PairDataset(data))
+            elif phase.rollout_length <= 1:
+                # For rollout=1 phases (B1), use SnapshotDataset to avoid
+                # creating millions of 1-step segments in memory
+                datasets.append(SnapshotDataset(data))
             else:
                 datasets.append(SegmentDataset(data, segment_length=phase.rollout_length))
 
