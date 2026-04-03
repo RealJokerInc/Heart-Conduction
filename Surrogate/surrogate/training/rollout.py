@@ -1,38 +1,21 @@
-"""Autoregressive rollout engine with scheduled sampling.
+"""Autoregressive rollout engine.
 
 Executes the model step-by-step over a segment, accumulating per-step losses.
-Handles teacher forcing (Phase B) via the temporary encoder, and autoregressive
-execution (Phase C-E).
+All rollouts are purely autoregressive — the model always feeds its own output.
 
 Key convention: Stage 2 reads PREVIOUS step's conductance_latent and concentrations
 (operator splitting — I_ion(t) depends on state(t), while Stage 1 computes state(t+1)).
 """
 
-import random as pyrandom
 from typing import Optional
 
 import torch
 from torch import Tensor
 
 from ..model.ionic_surrogate_v3 import IonicSurrogateV3
-from ..model.stage1 import interpolate
-from .encoder import TemporaryEncoder
 
 # Default initial concentrations (resting values, Layer 0 physics)
 INIT_CONC = torch.tensor([10.0, 138.0, 0.0001, 0.0002], dtype=torch.float64)
-
-
-def _recompute_conductance(model: IonicSurrogateV3, carried_state: Tensor) -> Tensor:
-    """Recompute conductance latent from carried_state using Stage 1's compression.
-
-    Replicates the inline logic from IonicStage1.forward() lines 212-215:
-    linear + nonlinear + interpolate. Used during teacher forcing to reset
-    cond_lat_prev from ground-truth state.
-    """
-    s1 = model.stage1
-    linear_path = s1.gate_conductance_linear(carried_state)
-    nonlinear_path = s1.gate_conductance_mlp(carried_state)
-    return interpolate(linear_path, nonlinear_path, s1.gate_conductance_logit)
 
 
 def compute_phase_loss(
@@ -44,17 +27,26 @@ def compute_phase_loss(
     """Compute single-step loss for a given phase. Single MSE, no weighting.
 
     Dispatch:
-        autoencoder (A1): handled outside rollout (not temporal)
-        concentration (A2): MSE(attention output conc, true conc at t+1)
-        conductance (A3): MSE(decoded conductance, true products at t)
-        ionic_state (B): MSE(ionic_state_pred, true ionic states at t)
+        ionic_state (B1-B2): MSE(ionic_state_pred, true ionic states at t)
+        ionic_state_and_conductance (B3-B5): ionic_state MSE + conductance MSE
         concentration_rollout (C): MSE(predicted conc, true conc at t)
         I_ion (D/E): MSE(predicted I_ion, true I_ion at t)
     """
-    if phase_name in ("B1", "B2", "B3", "B4", "B5") or phase_name.startswith("ionic_state"):
+    if phase_name in ("B1", "B2") or phase_name == "ionic_state":
         pred = model_out['ionic_state_pred']
         target = segment['ionic_states'][:, t, :]
         return torch.nn.functional.mse_loss(pred, target)
+
+    elif phase_name in ("B3", "B4", "B5") or phase_name == "ionic_state_and_conductance":
+        # Ionic state loss
+        ionic_pred = model_out['ionic_state_pred']
+        ionic_target = segment['ionic_states'][:, t, :]
+        ionic_loss = torch.nn.functional.mse_loss(ionic_pred, ionic_target)
+        # Conductance loss
+        cond_pred = model_out['conductance_pred']
+        cond_target = segment['conductance_products'][:, t, :]
+        cond_loss = torch.nn.functional.mse_loss(cond_pred, cond_target)
+        return ionic_loss + cond_loss
 
     elif phase_name == "C" or phase_name == "concentration_rollout":
         pred = model_out['concentrations']
@@ -66,20 +58,6 @@ def compute_phase_loss(
         target = segment['I_ion'][:, t]
         return torch.nn.functional.mse_loss(pred, target)
 
-    elif phase_name == "A2" or phase_name == "concentration":
-        # Pairs: predict next-step concentration
-        pred = model_out['concentrations']
-        if t + 1 < segment['concentrations'].shape[1]:
-            target = segment['concentrations'][:, t + 1, :]
-        else:
-            target = segment['concentrations'][:, t, :]
-        return torch.nn.functional.mse_loss(pred, target)
-
-    elif phase_name == "A3" or phase_name == "conductance":
-        pred = model_out['conductance_pred']
-        target = segment['conductance_products'][:, t, :]
-        return torch.nn.functional.mse_loss(pred, target)
-
     else:
         raise ValueError(f"Unknown phase for loss computation: {phase_name}")
 
@@ -87,8 +65,6 @@ def compute_phase_loss(
 def rollout(
     model: IonicSurrogateV3,
     segment: dict[str, Tensor],
-    encoder: Optional[TemporaryEncoder] = None,
-    scheduled_sampling_p: float = 1.0,
     phase_name: str = "B1",
     device: Optional[torch.device] = None,
 ) -> dict[str, Tensor]:
@@ -97,9 +73,6 @@ def rollout(
     Args:
         model: IonicSurrogateV3 instance.
         segment: Dict of (B, T, ...) tensors from SegmentDataset + DataLoader.
-        encoder: Temporary encoder for teacher forcing (Phase B only).
-        scheduled_sampling_p: Probability of using model's own prediction.
-            0.0 = all teacher forcing, 1.0 = all autoregressive.
         phase_name: Determines which loss function to use.
         device: Device for initial state tensors.
 
@@ -137,19 +110,8 @@ def rollout(
         cond_lat_prev = out['conductance_latent']
         conc_prev = out['concentrations']
 
-        # Scheduled sampling: use model output or teacher forcing?
-        if encoder is not None and pyrandom.random() > scheduled_sampling_p:
-            # Teacher forcing: replace carried_state with ground truth
-            true_ionic = segment['ionic_states'][:, t, :]
-            true_conc = segment['concentrations'][:, t, :]
-            latent = encoder(true_ionic)
-            carried = torch.cat([latent, true_conc], dim=-1)
-            # Recompute conductance from teacher-forced state
-            cond_lat_prev = _recompute_conductance(model, carried)
-            conc_prev = true_conc
-        else:
-            # Autoregressive: use model's own prediction
-            carried = out['carried_state']
+        # Autoregressive: always use model's own prediction
+        carried = out['carried_state']
 
     per_step_losses = torch.stack(per_step_losses)
     mean_loss = per_step_losses.mean()

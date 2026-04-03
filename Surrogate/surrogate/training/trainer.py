@@ -1,6 +1,6 @@
 """Phase-aware training loop orchestrator for IonicSurrogateV3.
 
-Manages the full A1->E pipeline: data loading per phase, optimizer/scheduler
+Manages the full A2->E pipeline: data loading per phase, optimizer/scheduler
 creation, freeze/unfreeze, train/val epochs, convergence detection, and
 phase transitions. Delegates to checkpoint and monitor subsystems.
 """
@@ -18,7 +18,6 @@ from torch.utils.data import DataLoader
 
 from ..model.ionic_surrogate_v3 import IonicSurrogateV3
 from .datasets import SnapshotDataset, PairDataset, SegmentDataset, merge_tier_datasets
-from .encoder import TemporaryEncoder, make_carried_state
 from .phases import PhaseConfig, get_phase_config, get_all_phases, apply_freeze_mask, PHASE_ORDER
 from .rollout import rollout, INIT_CONC
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class SurrogateTrainer:
-    """Orchestrates the full training pipeline from Phase A1 through E.
+    """Orchestrates the full training pipeline from Phase A2 through E.
 
     Args:
         model: IonicSurrogateV3 with scaffold=True.
@@ -42,7 +41,7 @@ class SurrogateTrainer:
         cache_dir: str,
         run_dir: str,
         device: str = 'cuda',
-        start_phase: str = 'A1',
+        start_phase: str = 'A2',
     ):
         self.model = model
         self.cache_dir = Path(cache_dir)
@@ -53,9 +52,6 @@ class SurrogateTrainer:
         # Create run directory structure
         self.run_dir.mkdir(parents=True, exist_ok=True)
         (self.run_dir / 'checkpoints').mkdir(exist_ok=True)
-
-        # Temporary encoder — created at A1, discarded after B
-        self.encoder: Optional[TemporaryEncoder] = None
 
         # Global step counter (never resets across phases)
         self.global_step = 0
@@ -80,23 +76,11 @@ class SurrogateTrainer:
 
     def train_phase(self, phase: PhaseConfig) -> dict:
         """Train one phase to convergence. Returns final val metrics."""
-        # Create encoder if needed
-        if phase.uses_encoder and self.encoder is None:
-            self.encoder = TemporaryEncoder().to(self.device).to(torch.float64)
-            logger.info("Created temporary encoder")
-
-        # Discard encoder when no longer needed
-        if not phase.uses_encoder and self.encoder is not None:
-            self.encoder = None
-            logger.info("Discarded temporary encoder")
-
         # Apply freeze mask
         apply_freeze_mask(self.model, phase)
 
-        # Collect trainable parameters (model + encoder if applicable)
+        # Collect trainable parameters
         trainable_params = [p for p in self.model.parameters() if p.requires_grad]
-        if phase.uses_encoder and self.encoder is not None:
-            trainable_params.extend(self.encoder.parameters())
 
         if not trainable_params:
             logger.warning(f"Phase {phase.name}: no trainable parameters!")
@@ -153,8 +137,6 @@ class SurrogateTrainer:
     def _train_epoch(self, phase: PhaseConfig, dataloader: DataLoader, optimizer: AdamW) -> float:
         """Run one training epoch. Returns mean loss."""
         self.model.train()
-        if self.encoder is not None:
-            self.encoder.train()
 
         total_loss = 0.0
         n_batches = 0
@@ -163,9 +145,7 @@ class SurrogateTrainer:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
             optimizer.zero_grad()
 
-            if phase.loss_fn == "autoencoder":
-                loss = self._autoencoder_step(batch)
-            elif phase.loss_fn in ("concentration", "conductance"):
+            if phase.loss_fn == "concentration":
                 loss = self._single_step_loss(phase, batch)
             else:
                 # Rollout-based phases (B-E)
@@ -173,8 +153,7 @@ class SurrogateTrainer:
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
-                [p for p in self.model.parameters() if p.requires_grad] +
-                ([p for p in self.encoder.parameters()] if self.encoder is not None else []),
+                [p for p in self.model.parameters() if p.requires_grad],
                 max_norm=1.0,
             )
             optimizer.step()
@@ -185,51 +164,33 @@ class SurrogateTrainer:
 
         return total_loss / max(n_batches, 1)
 
-    def _autoencoder_step(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Phase A1: encode true states -> decode -> reconstruct."""
-        ionic_states = batch['ionic_states']  # (B, 14)
-        latent = self.encoder(ionic_states)    # (B, 16)
-        decoded = self.model.stage1.ionic_state_decoder(latent)  # (B, 14)
-        return nn.functional.mse_loss(decoded, ionic_states)
-
     def _single_step_loss(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Phase A2/A3: single-step forward pass (no rollout)."""
-        if phase.loss_fn == "concentration":
-            # A2: attention concentration tracking
-            ionic_states = batch['ionic_states_t']  # (B, 14)
-            conc_t = batch['concentrations_t']       # (B, 4)
-            Vm = batch['Vm_t']
-            dt = batch['dt_t']
+        """Phase A2: single-step concentration loss (no rollout).
 
-            carried = make_carried_state(self.encoder, ionic_states, conc_t)
-            out = self.model(
-                carried, Vm, dt,
-                torch.zeros(carried.shape[0], self.model.cond_dim, device=self.device, dtype=torch.float64),
-                conc_t,
-            )
-            return nn.functional.mse_loss(out['concentrations'], batch['concentrations_t1'])
+        Build carried_state from zeros + true concentrations, then forward
+        to get concentration output.
+        """
+        conc_t = batch['concentrations_t']       # (B, 4)
+        Vm = batch['Vm_t']
+        dt = batch['dt_t']
+        B = Vm.shape[0]
 
-        elif phase.loss_fn == "conductance":
-            # A3: gate conductance projection
-            ionic_states = batch['ionic_states']   # (B, 14)
-            conc = batch['concentrations']          # (B, 4)
-            carried = make_carried_state(self.encoder, ionic_states, conc)
-            out = self.model(
-                carried, batch['Vm'], batch['dt'],
-                torch.zeros(carried.shape[0], self.model.cond_dim, device=self.device, dtype=torch.float64),
-                conc,
-            )
-            return nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
+        # Build carried_state: zeros for ionic latent + true concentrations
+        carried = torch.zeros(B, self.model.carried_dim, dtype=torch.float64, device=self.device)
+        carried[:, self.model.ionic_dim:] = conc_t
 
-        raise ValueError(f"Unknown single-step loss: {phase.loss_fn}")
+        out = self.model(
+            carried, Vm, dt,
+            torch.zeros(B, self.model.cond_dim, device=self.device, dtype=torch.float64),
+            conc_t,
+        )
+        return nn.functional.mse_loss(out['concentrations'], batch['concentrations_t1'])
 
     def _rollout_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         """Phase B-E: autoregressive rollout."""
         result = rollout(
             model=self.model,
             segment=batch,
-            encoder=self.encoder if phase.uses_encoder else None,
-            scheduled_sampling_p=phase.scheduled_sampling_p,
             phase_name=phase.name,
             device=self.device,
         )
@@ -239,8 +200,6 @@ class SurrogateTrainer:
     def _validate(self, phase: PhaseConfig, dataloader: DataLoader) -> dict:
         """Validation pass. Returns metrics dict."""
         self.model.eval()
-        if self.encoder is not None:
-            self.encoder.eval()
 
         total_loss = 0.0
         n_batches = 0
@@ -248,9 +207,7 @@ class SurrogateTrainer:
         for batch in dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
-            if phase.loss_fn == "autoencoder":
-                loss = self._autoencoder_step(batch)
-            elif phase.loss_fn in ("concentration", "conductance"):
+            if phase.loss_fn == "concentration":
                 loss = self._single_step_loss(phase, batch)
             else:
                 loss = self._rollout_step(phase, batch)
@@ -262,10 +219,9 @@ class SurrogateTrainer:
 
         # Map to transition metric name
         metric_map = {
-            "autoencoder": "val_recon_mse",
             "concentration": "val_conc_mse",
-            "conductance": "val_cond_mse",
             "ionic_state": "val_ionic_state_mse",
+            "ionic_state_and_conductance": "val_ionic_state_mse",
             "concentration_rollout": "val_conc_mse",
             "I_ion": "val_I_ion_mse",
         }
@@ -297,9 +253,7 @@ class SurrogateTrainer:
                 logger.warning(f"Cache for tier {tier} split '{split}' not found, skipping")
                 continue
 
-            if phase.loss_fn == "autoencoder" or phase.loss_fn == "conductance":
-                datasets.append(SnapshotDataset(data))
-            elif phase.loss_fn == "concentration":
+            if phase.loss_fn == "concentration":
                 datasets.append(PairDataset(data))
             else:
                 datasets.append(SegmentDataset(data, segment_length=phase.rollout_length))
@@ -318,7 +272,6 @@ class SurrogateTrainer:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
-            'encoder_state_dict': self.encoder.state_dict() if self.encoder else None,
             'phase': phase.name,
             'epoch': epoch,
             'step': self.global_step,
@@ -331,10 +284,6 @@ class SurrogateTrainer:
         """Load checkpoint and restore state."""
         ckpt = torch.load(path, weights_only=False, map_location=self.device)
         self.model.load_state_dict(ckpt['model_state_dict'])
-        if ckpt.get('encoder_state_dict') is not None:
-            if self.encoder is None:
-                self.encoder = TemporaryEncoder().to(self.device).to(torch.float64)
-            self.encoder.load_state_dict(ckpt['encoder_state_dict'])
         self.global_step = ckpt.get('step', 0)
-        self.start_phase = ckpt.get('phase', 'A1')
+        self.start_phase = ckpt.get('phase', 'A2')
         return ckpt

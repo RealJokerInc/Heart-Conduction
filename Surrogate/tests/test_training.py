@@ -1,4 +1,4 @@
-"""Tests for the training pipeline: cache builder, datasets, encoder, phases, rollout, trainer."""
+"""Tests for the training pipeline: cache builder, datasets, phases, rollout, trainer."""
 
 import tempfile
 from pathlib import Path
@@ -308,47 +308,6 @@ class TestDatasets:
 
 
 # ============================================================================
-# Phase 2: Encoder Tests
-# ============================================================================
-
-class TestEncoder:
-
-    def test_encoder_shape(self):
-        from surrogate.training.encoder import TemporaryEncoder
-        enc = TemporaryEncoder(n_ionic_targets=14, ionic_dim=16)
-        x = torch.randn(8, 14)
-        out = enc(x)
-        assert out.shape == (8, 16)
-
-    def test_encoder_unbatched(self):
-        from surrogate.training.encoder import TemporaryEncoder
-        enc = TemporaryEncoder()
-        x = torch.randn(14)
-        out = enc(x)
-        assert out.shape == (16,)
-
-    def test_encoder_differentiable(self):
-        from surrogate.training.encoder import TemporaryEncoder
-        enc = TemporaryEncoder()
-        x = torch.randn(4, 14, requires_grad=True)
-        out = enc(x)
-        loss = out.sum()
-        loss.backward()
-        assert x.grad is not None
-        assert not torch.isnan(x.grad).any()
-
-    def test_make_carried_state(self):
-        from surrogate.training.encoder import TemporaryEncoder, make_carried_state
-        enc = TemporaryEncoder()
-        ionic = torch.randn(4, 14)
-        conc = torch.randn(4, 4)
-        carried = make_carried_state(enc, ionic, conc)
-        assert carried.shape == (4, 20)
-        # Last 4 dims should be concentrations
-        assert torch.allclose(carried[:, 16:], conc)
-
-
-# ============================================================================
 # Phase 2: Phase Config Tests
 # ============================================================================
 
@@ -356,25 +315,25 @@ class TestPhaseConfig:
 
     def test_phase_configs_complete(self):
         from surrogate.training.phases import PHASE_ORDER, PHASE_CONFIGS
-        assert len(PHASE_ORDER) == 11
+        assert len(PHASE_ORDER) == 9
         for name in PHASE_ORDER:
             assert name in PHASE_CONFIGS
 
-    def test_freeze_mask_A1(self):
+    def test_freeze_mask_B1(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
 
         model = IonicSurrogateV3(scaffold=True)
-        phase = get_phase_config("A1")
+        phase = get_phase_config("B1")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
-        # Only ionic_state_decoder should be unfrozen (encoder is separate)
+        # voltage_attention + ionic_mixing_mlp + ionic_mixing_logit + ionic_state_decoder unfrozen
         for name, grad in summary.items():
-            if 'ionic_state_decoder' in name:
-                assert grad, f"{name} should be unfrozen in A1"
-            else:
-                assert not grad, f"{name} should be frozen in A1"
+            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
+                assert grad, f"{name} should be unfrozen in B1"
+            elif 'stage2' in name:
+                assert not grad, f"{name} should be frozen in B1"
 
     def test_freeze_mask_B3(self):
         from surrogate.model import IonicSurrogateV3
@@ -385,9 +344,14 @@ class TestPhaseConfig:
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
-        # Stage 1 dynamics unfrozen, Stage 2 frozen
+        # Stage 1 dynamics + ionic_state_decoder + conductance params unfrozen, Stage 2 frozen
         for name, grad in summary.items():
-            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit']):
+            if any(p in name for p in [
+                'voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit',
+                'ionic_state_decoder',
+                'gate_conductance_mlp', 'gate_conductance_linear',
+                'gate_conductance_logit', 'gate_conductance_decoder',
+            ]):
                 assert grad, f"{name} should be unfrozen in B3"
             elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen in B3"
@@ -431,15 +395,6 @@ class TestPhaseConfig:
         b1 = get_phase_config("B1")
         assert 12 in b1.data_tiers, "T12 (celltypes) must be in B1 data_tiers"
 
-    def test_encoder_phases(self):
-        from surrogate.training.phases import get_all_phases
-        phases = get_all_phases()
-        # A1-B5 use encoder, C-E do not
-        for p in phases:
-            if p.name in ["A1", "A2", "A3", "B1", "B2", "B3", "B4", "B5"]:
-                assert p.uses_encoder, f"{p.name} should use encoder"
-            else:
-                assert not p.uses_encoder, f"{p.name} should NOT use encoder"
 
 
 # ============================================================================
@@ -476,20 +431,6 @@ class TestRollout:
         assert result['loss'].shape == ()
         assert result['per_step_losses'].shape == (10,)
 
-    def test_rollout_teacher_forcing(self):
-        from surrogate.model import IonicSurrogateV3
-        from surrogate.training.encoder import TemporaryEncoder
-        from surrogate.training.rollout import rollout
-
-        model = IonicSurrogateV3(scaffold=True).double()
-        encoder = TemporaryEncoder().double()
-        segment = self._make_segment(B=2, T=5)
-
-        # p=0.0 means all teacher forcing
-        result = rollout(model, segment, encoder=encoder,
-                         scheduled_sampling_p=0.0, phase_name="B1")
-        assert result['loss'].isfinite()
-
     def test_rollout_autoregressive(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.rollout import rollout
@@ -497,9 +438,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=2, T=5)
 
-        # p=1.0 means fully autoregressive
-        result = rollout(model, segment, encoder=None,
-                         scheduled_sampling_p=1.0, phase_name="B1")
+        result = rollout(model, segment, phase_name="B1")
         assert result['loss'].isfinite()
 
     def test_rollout_gradient_flow(self):
@@ -577,7 +516,7 @@ class TestTrainer:
         return cache_dir
 
     def test_trainer_freeze_unfreeze(self, tmp_path):
-        """Phase A1 freeze mask: only encoder + ionic_state_decoder unfrozen."""
+        """Phase B1 freeze mask: attention + MLP + ionic_state_decoder unfrozen."""
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.trainer import SurrogateTrainer
 
@@ -586,37 +525,18 @@ class TestTrainer:
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
-        phase = get_phase_config("A1")
+        phase = get_phase_config("B1")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
         for name, grad in summary.items():
-            if 'ionic_state_decoder' in name:
+            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
                 assert grad, f"{name} should be unfrozen"
-            else:
+            elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen"
 
-    def test_trainer_A1_one_epoch(self, tmp_path):
-        """Phase A1 runs one epoch without error and produces a loss."""
-        from surrogate.model import IonicSurrogateV3
-        from surrogate.training.trainer import SurrogateTrainer
-        from surrogate.training.phases import get_phase_config
-
-        cache_dir = self._setup_fake_cache(tmp_path, T=500)
-        model = IonicSurrogateV3(scaffold=True).double()
-        trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
-
-        phase = get_phase_config("A1")
-        # Override max_epochs to just 1
-        phase.max_epochs = 1
-        phase.patience = 1
-
-        metrics = trainer.train_phase(phase)
-        assert 'val_recon_mse' in metrics
-        assert metrics['val_recon_mse'] >= 0
-
     def test_trainer_B1_one_epoch(self, tmp_path):
-        """Phase B1 rollout runs one epoch (need encoder from A1 first)."""
+        """Phase B1 rollout runs one epoch without error and produces a loss."""
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.trainer import SurrogateTrainer
         from surrogate.training.phases import get_phase_config
@@ -625,18 +545,13 @@ class TestTrainer:
         model = IonicSurrogateV3(scaffold=True).double()
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
-        # Must create encoder first (normally done in A1)
-        a1 = get_phase_config("A1")
-        a1.max_epochs = 1
-        a1.patience = 1
-        trainer.train_phase(a1)
-
         b1 = get_phase_config("B1")
         b1.max_epochs = 1
         b1.patience = 1
         b1.batch_size = 4  # small for test
         metrics = trainer.train_phase(b1)
         assert 'val_ionic_state_mse' in metrics
+        assert metrics['val_ionic_state_mse'] >= 0
 
     def test_trainer_phase_transition(self, tmp_path):
         """Phase transition resets optimizer and changes freeze mask."""
@@ -648,23 +563,24 @@ class TestTrainer:
         model = IonicSurrogateV3(scaffold=True).double()
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
-        # Run A1 with 1 epoch
-        a1 = get_phase_config("A1")
-        a1.max_epochs = 1
-        a1.patience = 1
-        trainer.train_phase(a1)
-
-        # Run A2 with 1 epoch — should have different freeze mask
+        # Run A2 with 1 epoch
         a2 = get_phase_config("A2")
         a2.max_epochs = 1
         a2.patience = 1
         trainer.train_phase(a2)
 
+        # Run B1 with 1 epoch — should have different freeze mask
+        b1 = get_phase_config("B1")
+        b1.max_epochs = 1
+        b1.patience = 1
+        b1.batch_size = 4
+        trainer.train_phase(b1)
+
         summary = get_freeze_summary(model)
-        # After A2: voltage_attention should be unfrozen
+        # After B1: voltage_attention + ionic_mixing + ionic_state_decoder should be unfrozen
         for name, grad in summary.items():
-            if 'voltage_attention' in name:
-                assert grad, f"{name} should be unfrozen after A2"
+            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
+                assert grad, f"{name} should be unfrozen after B1"
 
     def test_checkpoint_save_load(self, tmp_path):
         """Checkpoint round-trip preserves model weights."""
@@ -676,11 +592,12 @@ class TestTrainer:
         model = IonicSurrogateV3(scaffold=True).double()
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
-        # Run A1 for 1 epoch
-        a1 = get_phase_config("A1")
-        a1.max_epochs = 1
-        a1.patience = 1
-        trainer.train_phase(a1)
+        # Run B1 for 1 epoch
+        b1 = get_phase_config("B1")
+        b1.max_epochs = 1
+        b1.patience = 1
+        b1.batch_size = 4
+        trainer.train_phase(b1)
 
         # Get current weights
         orig_weights = {k: v.clone() for k, v in model.state_dict().items()}
@@ -688,7 +605,7 @@ class TestTrainer:
         # Load checkpoint into fresh model
         model2 = IonicSurrogateV3(scaffold=True).double()
         trainer2 = SurrogateTrainer(model2, str(cache_dir), str(tmp_path / 'run2'), device='cpu')
-        ckpt_path = str(tmp_path / 'run' / 'checkpoints' / 'best_A1.pt')
+        ckpt_path = str(tmp_path / 'run' / 'checkpoints' / 'best_B1.pt')
         trainer2.load_checkpoint(ckpt_path)
 
         for name in orig_weights:
