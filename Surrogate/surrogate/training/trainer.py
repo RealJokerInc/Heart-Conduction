@@ -19,7 +19,8 @@ from torch.utils.data import DataLoader
 from ..model.ionic_surrogate_v3 import IonicSurrogateV3
 from .datasets import SnapshotDataset, PairDataset, SegmentDataset, merge_tier_datasets
 from .phases import PhaseConfig, get_phase_config, get_all_phases, apply_freeze_mask, PHASE_ORDER
-from .rollout import rollout, INIT_CONC, LOSS_NORM
+from .rollout import rollout, INIT_CONC
+from .loss_normalization import LossNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,9 @@ class SurrogateTrainer:
 
         # Move model to device with float64 (project convention)
         self.model = self.model.to(dtype=torch.float64, device=self.device)
+
+        # Loss normalizer (min-max per dimension)
+        self._normalizer = LossNormalizer()
 
     def train(self) -> None:
         """Run full training pipeline from start_phase through E."""
@@ -234,16 +238,19 @@ class SurrogateTrainer:
 
         out = self.model(carried, Vm, dt, cond_lat_prev, conc_prev)
 
-        ionic_mse = nn.functional.mse_loss(out['ionic_state_pred'], batch['ionic_states'])
-        conc_mse = nn.functional.mse_loss(out['concentrations'], batch['concentrations'])
+        ionic_mse = self._normalizer.normalized_mse(
+            out['ionic_state_pred'], batch['ionic_states'], 'ionic_states')
+        conc_mse = self._normalizer.normalized_mse(
+            out['concentrations'], batch['concentrations'], 'concentrations')
 
         losses = {'ionic_state_mse': ionic_mse, 'conc_mse': conc_mse}
-        total = ionic_mse / LOSS_NORM['ionic_state'] + conc_mse / LOSS_NORM['conc']
+        total = ionic_mse + conc_mse
 
         if phase.loss_fn == "ionic_state_and_conductance" and out['conductance_pred'] is not None:
-            cond_mse = nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
+            cond_mse = self._normalizer.normalized_mse(
+                out['conductance_pred'], batch['conductance_products'], 'conductance_products')
             losses['conductance_mse'] = cond_mse
-            total = total + cond_mse / LOSS_NORM['conductance']
+            total = total + cond_mse
 
         losses['loss'] = total
         return losses
