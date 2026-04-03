@@ -71,7 +71,7 @@ class TrainingLog:
         path: Path to HDF5 file. Created if it doesn't exist.
     """
 
-    def __init__(self, path: str = 'runs/training_log.h5'):
+    def __init__(self, path: str = '/media/HDD/surrogate_data/training_logs/training_log.h5'):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
