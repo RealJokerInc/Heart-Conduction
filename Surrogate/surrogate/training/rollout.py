@@ -17,11 +17,44 @@ from ..model.ionic_surrogate_v3 import IonicSurrogateV3
 # Default initial concentrations (resting values, Layer 0 physics)
 INIT_CONC = torch.tensor([10.0, 138.0, 0.0001, 0.0002], dtype=torch.float64)
 
-# Loss normalization: divide each MSE by target variance so components contribute equally.
-# Computed from T1 training data. Without normalization, conc_mse is 5000x larger than ionic.
+# ==========================================================================
+# Loss normalization by target variance
+# ==========================================================================
+#
+# Each MSE loss component is divided by the overall variance of its target,
+# making the loss dimensionless: normalized_mse = MSE / Var(target) = 1 - R².
+#
+# Without normalization, conc_mse was 5071x larger than ionic_state_mse because
+# K_i ~ 138 mM while gates ~ 0-1. The optimizer spent all gradient budget on
+# concentrations and ignored gates and conductance products entirely.
+#
+# Dividing by variance equalizes the gradient contribution:
+#   normalized_mse = 0.0  →  perfect prediction
+#   normalized_mse = 0.5  →  model explains 50% of target variability
+#   normalized_mse = 1.0  →  model predicts the mean (no skill)
+#
+# Variances computed from T1 training data (8M timesteps, EPI celltype):
+#
+#   ionic_states (14 dims):          Var = 0.667
+#     Per-dim range: 0.001 (fCass) to 0.576 (CaSR). Gates mostly 0.04-0.19.
+#
+#   concentrations (4 dims):         Var = 3383.5
+#     Dominated by K_i (var=0.018 but value ~138 mM) and Na_i (var=0.003, ~10 mM).
+#     Ca_i and Ca_ss have negligible variance (~1e-9) but are physically important.
+#
+#   conductance_products (5 dims):   Var = 0.00167
+#     Small because products of gates (0-1 range) with powers (m³hj ≪ 1).
+#     G_Kr (Xr1·Xr2) has largest variance at 0.005.
+#
+# Total loss = MSE_ionic/0.667 + MSE_conc/3383.5 + MSE_cond/0.00167
+#
+# Each term ≈ 1.0 at initialization (predicting zeros/mean), so total loss ≈ 3.0
+# at the start of training. A well-trained model should reach total < 0.1.
+# ==========================================================================
+
 LOSS_NORM = {
     'ionic_state': 0.667,     # ionic_states overall variance
-    'conc': 3383.5,           # concentrations overall variance (K_i~138 dominates)
+    'conc': 3383.5,           # concentrations overall variance
     'conductance': 0.00167,   # conductance_products overall variance
 }
 
