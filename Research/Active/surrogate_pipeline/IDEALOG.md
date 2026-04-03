@@ -5,10 +5,15 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-v3 model fully implemented, all PLAN phases complete. 51/51 tests (25 model + 7 preprocessor + 19 ORd). Code refactored with final naming convention (ionic_mixing_mlp, gate_conductance_mlp, ionic_state_decoder, gate_conductance_decoder). Scaffold redesigned: ionic_state_decoder(16→14 states), gate_conductance_decoder(8→5 products). Training strategy fully planned (A1→A2→A3→B→C→D→E, single loss per phase, no weighting). Ready to implement training loop.
+v3 model fully implemented, all PLAN phases complete. 51/51 tests (25 model + 7 preprocessor + 19 ORd). Code refactored with final naming convention (ionic_mixing_mlp, gate_conductance_mlp, ionic_state_decoder, gate_conductance_decoder). Scaffold redesigned: ionic_state_decoder(16→14 states), gate_conductance_decoder(8→5 products). Training strategy fully planned (A1→A2→A3→B→C→D→E, single loss per phase, no weighting). Ready to blueprint training pipeline.
 
 ## Next Step
-Implement training loop. Phase A1 first (ionic state autoencoder: 14 states ↔ 16 latent). Then A2 (concentration attention), A3 (gate conductance projection), B (dynamics with rollout curriculum).
+Blueprint training pipeline via `/blueprint`. Scope: (1) data cache builder, (2) core training loop with all 7 phases, (3) monitoring/checkpointing, (4) project-based Claude agent for agentic training oversight. Agent lives in repo, monitors JSONL logs, can intervene (pause, adjust LR, transition phase, rollback). Discarded after training succeeds.
+
+### 2026-04-02: Pre-blueprint decisions
+- **Data format**: Keep raw HDF5 on HDD as-is. Preprocess T1-T3 → `.pt` cache on SSD (~5.5 GB float32). T4 shard-streamed from HDD with double-buffering.
+- **SSD freed**: Deleted unused venv (7.7 GB), purged pip cache (11 GB), conda cache (2.9 GB), removed tf-gpu-test env (6.2 GB). SSD now 47 GB free (was 20 GB).
+- **Agentic training oversight**: Project-based Claude agent. Reads training_control.json + training_log.jsonl + phase_summary.json. Can autonomously: pause, reduce LR, transition phase, rollback checkpoint. Must ask user for: skip phase, adjust batch size, abort. Agent is temporary — discarded after training pipeline validated. Full LLM reasoning on logs, not just heuristic thresholds.
 
 ### 2026-04-02 Session 19-20: Implementation completion + training planning
 

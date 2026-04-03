@@ -8,7 +8,7 @@
 
 | Property | Value |
 |----------|-------|
-| Location | `/media/norepinephrine/Elements-ext4/surrogate_data/raw/` |
+| Location | `/media/HDD/surrogate_data/raw/` |
 | Format | One HDF5 file per tier: `tier01.h5` through `tier12.h5` |
 | Precision | float64 (simulator native) |
 | Columns | 47 per timestep |

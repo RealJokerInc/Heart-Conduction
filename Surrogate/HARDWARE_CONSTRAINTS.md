@@ -9,19 +9,19 @@
 
 | Device | Path | Capacity | Free | Speed |
 |---|---|---|---|---|
-| NVMe SSD | `/` (root) | 240 GB | ~20 GB | ~3000 MB/s |
-| USB HDD | `/media/HDD/` | 5.5 TB | 4.6 TB | **~14 MB/s** (measured) |
+| NVMe SSD | `/` (root) | 240 GB | ~47 GB (post-cleanup 2026-04-02) | ~3000 MB/s |
+| USB HDD | `/media/HDD/` | 5.5 TB | 4.6 TB | **~7 MB/s** direct I/O, ~246 MB/s buffered (USB 3.0, WD Elements) |
 
-The training data (608 GB TTP06, 12 GB ORd) lives on the HDD at 14 MB/s. This is the primary bottleneck.
+The training data (608 GB TTP06, 12 GB ORd) lives on the HDD. Measured 2026-04-02: `dd bs=1M iflag=direct` → 7.1 MB/s; `dd bs=4M` → 244 MB/s (OS page cache). Previous measurements of 1.26 MB/s and 14 MB/s were inaccurate.
 
 ## The Problem
 
 Our model processes ~640 bytes per sample per step. At batch=1024:
 - Data needed per batch: 1024 × 640 bytes = 640 KB
 - GPU forward+backward: ~1ms for our tiny model
-- HDD time to load 640 KB: ~45ms at 14 MB/s
+- HDD time to load 640 KB: ~90ms at 7 MB/s (direct I/O)
 
-The GPU is 45× faster than the data pipeline. GPU utilization will be ~2% if we naively load from HDD per batch.
+The GPU is ~90× faster than the data pipeline. GPU utilization will be ~1% if we naively load from HDD per batch.
 
 ## Mitigation Strategy
 
@@ -42,7 +42,7 @@ Strategy:
 
 ### 2. Pre-process and cache to SSD
 
-We have ~20 GB free on SSD. Preprocessed T1-T3 in float32 is ~5.5 GB. Cache it:
+We have ~47 GB free on SSD (post-cleanup). Preprocessed T1-T3+T12 in float32 is ~11 GB. Cache it:
 
 ```
 /tmp/surrogate_cache/          # or a dedicated SSD path
@@ -59,7 +59,7 @@ T4 (random intervals, 551 GB) cannot fit in VRAM or SSD. Strategy:
 - Pre-convert T4 to .pt shards (~200 MB each, float32) on HDD
 - Load ONE shard into VRAM at a time (200 MB fits easily)
 - Train on that shard until exhausted, then swap next shard
-- Shard load time: 200 MB / 14 MB/s = ~14 seconds
+- Shard load time: 200 MB at ~7-246 MB/s = 1-30 seconds (buffered vs direct)
 - Training on one shard: ~2000 segments × ~5 epochs = minutes
 - Shard swap overhead: <1% of training time if shards are large enough
 
@@ -85,7 +85,7 @@ Use `torch.cuda.Stream()` for async HDD→CPU→GPU transfers. PyTorch DataLoade
 
 | Operation | Time | When |
 |---|---|---|
-| Load T1 from HDD to VRAM (first time) | ~250s (~4 min) | Once at training start |
+| Load T1 from HDD to VRAM (first time) | ~22s (buffered) to ~8 min (direct) | Once at training start |
 | Load T1-T3 from SSD cache | ~2s | Once at training start |
 | Swap one T4 shard (200MB, prefetched) | ~1s | Every few minutes during B4+ |
 | Forward+backward per batch | ~1ms | Every batch |
