@@ -15,13 +15,24 @@
 A2: Attention concentration tracking (optional, can skip — conc trains in B1)
 B1: Latent discovery (rollout=1) — attention+MLP+decoder learn what 16 dims mean
 B2: Short rollout (rollout=10) — model handles own errors
-B3: Medium rollout (rollout=100) + conductance compression training
+B2_decoder: Decoder recalibration — freeze attention+MLP, train decoders on stable latent
+B2_cond: Conductance bootstrap — freeze attention+MLP, train conductance compression+decoders
+B3: Medium rollout (rollout=100) — only rollout length changes, all params already trained
 B4: Long rollout (rollout=1000)
 B5: Very long rollout (rollout=10000) — full action potential
 C: Concentration dynamics refinement
 D: Stage 2 current readout (frozen Stage 1)
 E: End-to-end fine-tune
 ```
+
+**Intermediate calibration steps** (B2_decoder, B2_cond): Before increasing rollout length,
+freeze the stable components (attention+MLP) and train the unstable ones (decoders, conductance
+compression) at rollout=1. This ensures each component is well-calibrated before the next
+rollout increase. Without this, B3 saw grad norms of 1e25 because three things changed at once
+(rollout 10→100, conductance unfrozen, T2 data).
+
+**Principle**: Change one thing at a time. Each rollout increase should be the ONLY variable.
+New parameters and new data should be introduced at rollout=1 first, then the rollout extended.
 
 **Removed phases**: A1 (encoder autoencoder — model should discover own latent, not have it imposed), A3 (encoder-fed conductance — needs stable latent from B1/B2 first). See IDEALOG.md Failed Approaches.
 
