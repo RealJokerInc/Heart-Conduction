@@ -36,10 +36,13 @@ Half 2:  carried_state_new → gate_conductance_mlp + linear → conductance_lat
 Training order:
 1. **B1** (rollout=1): Train Half 1 (attention + ionic_mixing_mlp + ionic_state_decoder). Half 2 frozen. Model discovers latent from (zeros, Vm).
 2. **B2** (rollout=10): Same params. Model handles own errors over short sequences.
-3. **B2_decoder**: Freeze Half 1. Train decoders only (rollout=1). Recalibrate to stable latent.
-4. **B2_cond** (rollout=1): Freeze Half 1. Train Half 2 (gate_conductance_mlp + linear + logit + decoder). Conductance compression learns gate products from stable latent.
-5. **B2_cond_r10** (rollout=10): Same as B2_cond but with rollout=10. Conductance tracks across steps.
-6. **B3** (rollout=100): Unfreeze ALL Stage 1 params. Only variable changing = rollout length.
+3. **B2_cond** (rollout=1): Freeze Half 1. Train Half 2 (gate_conductance_mlp + linear + logit + gate_conductance_decoder). Conductance compression learns gate products from stable latent.
+4. **B2_cond_r10** (rollout=10): Same as B2_cond but with rollout=10. Conductance tracks across steps.
+5. **B3** (rollout=100): Unfreeze ALL Stage 1 params. Only variable changing = rollout length.
+
+**Rule**: Always train encoder and decoder together. A decoder trained on a frozen latent
+becomes miscalibrated the moment the latent representation shifts. Each decoder must be
+unfrozen whenever the components that produce the latent it reads are unfrozen.
 
 **Principle**: Train each half of Stage 1 to stability before combining. Extend rollout gradually for each half independently. When combining, the only new variable is rollout length — no newly unfrozen params, no new data.
 
