@@ -5,10 +5,18 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-v3 model fully implemented, all PLAN phases complete. 51/51 tests (25 model + 7 preprocessor + 19 ORd). Code refactored with final naming convention (ionic_mixing_mlp, gate_conductance_mlp, ionic_state_decoder, gate_conductance_decoder). Scaffold redesigned: ionic_state_decoder(16→14 states), gate_conductance_decoder(8→5 products). Training strategy fully planned (A1→A2→A3→B→C→D→E, single loss per phase, no weighting). Ready to blueprint training pipeline.
+Training pipeline fully implemented and verified. All 6 PLAN phases complete: data cache, encoder+phases+rollout+trainer, monitoring+checkpointing+metrics, CLI, T4 shard streaming, training agent. 83 tests (51 training + 32 model/preprocessor). Phases A1→A3 verified on real T1 data: A1 converged in 3 epochs (val_recon_mse=7.9e-5), A2 reached val_conc_mse=0.029 (10 epochs), A3 reached val_cond_mse=1.78e-4 (10 epochs).
 
 ## Next Step
-Blueprint training pipeline via `/blueprint`. Scope: (1) data cache builder, (2) core training loop with all 7 phases, (3) monitoring/checkpointing, (4) project-based Claude agent for agentic training oversight. Agent lives in repo, monitors JSONL logs, can intervene (pause, adjust LR, transition phase, rollback). Discarded after training succeeds.
+Run full training: `python train.py` from Phase A1 through E. A2 needs more epochs or higher LR to converge below 1e-6 threshold. After A phases, Phase B rollout curriculum (1→10→100→1K→10K steps). Monitor via training agent.
+
+### 2026-04-02: Training pipeline implementation (overnight session)
+- **PLAN.md**: 6 phases, 13 steps. 2 audit rounds (20→10→~0 critical issues). All phases implemented + committed.
+- **Data cache**: CacheBuilder preprocesses T1-T3+T12 from HDD → SSD .pt files. 24 GB total (T12 larger than expected: 21 protocols × 2M steps). 3 minutes to build from HDD.
+- **HDD speed measured**: 7 MB/s direct I/O, 246 MB/s buffered (USB 3.0 WD Elements). Old 1.26 MB/s figure was wrong. HARDWARE_CONSTRAINTS.md updated.
+- **Training verified**: A1 converged (val_recon_mse=7.9e-5, 3 epochs). A2 slow (val_conc_mse=0.029 after 10 epochs — needs more epochs). A3 good (val_cond_mse=1.78e-4, 10 epochs).
+- **Files created**: 8 training modules (data_cache, datasets, encoder, phases, rollout, trainer, checkpoint, monitor, metrics, shard_loader), train.py CLI, training-monitor agent definition. 51 training tests.
+- **Key fix**: model must be .double() (float64 project convention) — caught at first real training run.
 
 ### 2026-04-02: Pre-blueprint decisions
 - **Data format**: Keep raw HDF5 on HDD as-is. Preprocess T1-T3 → `.pt` cache on SSD (~5.5 GB float32). T4 shard-streamed from HDD with double-buffering.
