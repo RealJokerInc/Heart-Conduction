@@ -204,8 +204,11 @@ class SurrogateTrainer:
 
         out = self.model(carried, Vm, dt, cond_lat_prev, conc_prev)
 
-        # Ionic state loss (B1-B2)
+        # Ionic state loss
         loss = nn.functional.mse_loss(out['ionic_state_pred'], batch['ionic_states'])
+
+        # Concentration loss — always included for B phases
+        loss = loss + nn.functional.mse_loss(out['concentrations'], batch['concentrations'])
 
         # Add conductance loss for B3+ phases
         if phase.loss_fn == "ionic_state_and_conductance" and out['conductance_pred'] is not None:

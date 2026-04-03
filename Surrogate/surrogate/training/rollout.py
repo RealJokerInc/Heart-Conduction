@@ -33,20 +33,20 @@ def compute_phase_loss(
         I_ion (D/E): MSE(predicted I_ion, true I_ion at t)
     """
     if phase_name in ("B1", "B2") or phase_name == "ionic_state":
-        pred = model_out['ionic_state_pred']
-        target = segment['ionic_states'][:, t, :]
-        return torch.nn.functional.mse_loss(pred, target)
+        ionic_loss = torch.nn.functional.mse_loss(
+            model_out['ionic_state_pred'], segment['ionic_states'][:, t, :])
+        conc_loss = torch.nn.functional.mse_loss(
+            model_out['concentrations'], segment['concentrations'][:, t, :])
+        return ionic_loss + conc_loss
 
     elif phase_name in ("B3", "B4", "B5") or phase_name == "ionic_state_and_conductance":
-        # Ionic state loss
-        ionic_pred = model_out['ionic_state_pred']
-        ionic_target = segment['ionic_states'][:, t, :]
-        ionic_loss = torch.nn.functional.mse_loss(ionic_pred, ionic_target)
-        # Conductance loss
-        cond_pred = model_out['conductance_pred']
-        cond_target = segment['conductance_products'][:, t, :]
-        cond_loss = torch.nn.functional.mse_loss(cond_pred, cond_target)
-        return ionic_loss + cond_loss
+        ionic_loss = torch.nn.functional.mse_loss(
+            model_out['ionic_state_pred'], segment['ionic_states'][:, t, :])
+        conc_loss = torch.nn.functional.mse_loss(
+            model_out['concentrations'], segment['concentrations'][:, t, :])
+        cond_loss = torch.nn.functional.mse_loss(
+            model_out['conductance_pred'], segment['conductance_products'][:, t, :])
+        return ionic_loss + conc_loss + cond_loss
 
     elif phase_name == "C" or phase_name == "concentration_rollout":
         pred = model_out['concentrations']
