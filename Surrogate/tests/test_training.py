@@ -863,3 +863,100 @@ class TestMetrics:
 
         dvdt = compute_dvdt_max(Vm, dt=dt)
         assert dvdt.isfinite()
+
+
+# ============================================================================
+# Phase 5: Shard Loader Tests
+# ============================================================================
+
+class TestShardLoader:
+
+    def test_shard_converter_creates_shards(self, tmp_path):
+        """ShardConverter creates .pt shard files from fake tier."""
+        raw_dir = tmp_path / 'raw'
+        raw_dir.mkdir()
+        shard_dir = tmp_path / 'shards'
+
+        # Create fake tier with 2 protocols
+        _make_fake_tier_h5(raw_dir / 'tier04.h5', ['proto_a', 'proto_b'], T=500)
+
+        from surrogate.training.shard_loader import ShardConverter
+        converter = ShardConverter(str(raw_dir), str(shard_dir), shard_size_mb=0.01)  # tiny shards
+        n_shards = converter.convert_tier(tier=4)
+        assert n_shards > 0
+        assert len(list(shard_dir.glob('shard_*.pt'))) == n_shards
+
+    def test_shard_stream_loader_yields_batches(self, tmp_path):
+        """ShardStreamLoader yields batches with correct shapes."""
+        shard_dir = tmp_path / 'shards'
+        shard_dir.mkdir()
+
+        # Create 2 small shards manually
+        for i in range(2):
+            data = {
+                'Vm': torch.randn(200, dtype=torch.float32),
+                'dt': torch.full((200,), 0.01, dtype=torch.float32),
+                'I_stim': torch.zeros(200, dtype=torch.float32),
+                'I_ion': torch.randn(200, dtype=torch.float32),
+                'clamp_mask': torch.zeros(200, dtype=torch.float32),
+                'concentrations': torch.randn(200, 4, dtype=torch.float32).abs(),
+                'gates': torch.rand(200, 12, dtype=torch.float32),
+                'ionic_states': torch.randn(200, 14, dtype=torch.float32),
+                'conductance_products': torch.rand(200, 5, dtype=torch.float32),
+                'E': torch.randn(200, 4, dtype=torch.float32),
+                'gate_inf': torch.rand(200, 12, dtype=torch.float32),
+                'gate_tau': torch.rand(200, 12, dtype=torch.float32),
+            }
+            torch.save(data, shard_dir / f'shard_{i:04d}.pt')
+
+        from surrogate.training.shard_loader import ShardStreamLoader
+        loader = ShardStreamLoader(str(shard_dir), segment_length=10, batch_size=4, device='cpu')
+
+        batch_count = 0
+        for batch in loader:
+            assert batch['Vm'].shape[0] == 4  # batch size
+            assert batch['Vm'].shape[1] == 10  # segment length
+            assert batch['Vm'].dtype == torch.float64
+            batch_count += 1
+            if batch_count >= 3:
+                break
+        assert batch_count > 0
+
+    def test_shard_loader_float64_output(self, tmp_path):
+        """Shard loader outputs float64 tensors from float32 shards."""
+        shard_dir = tmp_path / 'shards'
+        shard_dir.mkdir()
+
+        data = {
+            'Vm': torch.randn(100, dtype=torch.float32),
+            'dt': torch.full((100,), 0.01, dtype=torch.float32),
+            'concentrations': torch.randn(100, 4, dtype=torch.float32),
+            'ionic_states': torch.randn(100, 14, dtype=torch.float32),
+            'conductance_products': torch.rand(100, 5, dtype=torch.float32),
+            'E': torch.randn(100, 4, dtype=torch.float32),
+        }
+        torch.save(data, shard_dir / 'shard_0000.pt')
+
+        from surrogate.training.shard_loader import ShardStreamLoader
+        loader = ShardStreamLoader(str(shard_dir), segment_length=10, batch_size=2, device='cpu')
+
+        for batch in loader:
+            for key, tensor in batch.items():
+                assert tensor.dtype == torch.float64, f"{key} should be float64"
+            break
+
+
+# ============================================================================
+# Phase 6: Agent Definition Test
+# ============================================================================
+
+class TestAgentDefinition:
+
+    def test_agent_definition_exists(self):
+        from pathlib import Path
+        agent_path = Path('/home/norepinephrine/Documents/Heart-Conduction/.claude/agents/training-monitor.md')
+        assert agent_path.exists(), "Training monitor agent definition should exist"
+        content = agent_path.read_text()
+        assert 'Analysis Checklist' in content
+        assert 'Intervention Protocol' in content
+        assert 'Output Format' in content
