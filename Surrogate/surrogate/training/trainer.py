@@ -60,8 +60,8 @@ class SurrogateTrainer:
         # Global step counter (never resets across phases)
         self.global_step = 0
 
-        # Move model to device
-        self.model = self.model.to(self.device)
+        # Move model to device with float64 (project convention)
+        self.model = self.model.to(dtype=torch.float64, device=self.device)
 
     def train(self) -> None:
         """Run full training pipeline from start_phase through E."""
