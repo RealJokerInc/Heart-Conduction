@@ -7,17 +7,23 @@
 
 ## Overview
 
-7 phases: **A1, A2, A3, B (B1-B5), C, D, E**. Each phase trains specific components with all others frozen. Single loss function per phase — no multi-objective weighting to tune.
+> **UPDATED 2026-04-03**: A1 (encoder autoencoder), A3 (encoder-fed conductance), and teacher forcing removed. Model discovers its own latent through dynamics training. Encoder deleted. Phase order reduced from 11 to 9.
+
+9 phases: **A2, B1-B5, C, D, E**. Each phase trains specific components with all others frozen. Combined ionic + concentration loss from B1 onward (no weighting). All rollouts start from zeros (steady state), purely autoregressive.
 
 ```
-A1: Ionic autoencoder (bootstrap latent space)
-A2: Attention concentration tracking
-A3: Gate conductance projection
-B1-B5: Stage 1 dynamics (rollout curriculum 1→10→100→1K→10K)
-C: Concentration dynamics
+A2: Attention concentration tracking (optional, can skip — conc trains in B1)
+B1: Latent discovery (rollout=1) — attention+MLP+decoder learn what 16 dims mean
+B2: Short rollout (rollout=10) — model handles own errors
+B3: Medium rollout (rollout=100) + conductance compression training
+B4: Long rollout (rollout=1000)
+B5: Very long rollout (rollout=10000) — full action potential
+C: Concentration dynamics refinement
 D: Stage 2 current readout (frozen Stage 1)
 E: End-to-end fine-tune
 ```
+
+**Removed phases**: A1 (encoder autoencoder — model should discover own latent, not have it imposed), A3 (encoder-fed conductance — needs stable latent from B1/B2 first). See IDEALOG.md Failed Approaches.
 
 ---
 

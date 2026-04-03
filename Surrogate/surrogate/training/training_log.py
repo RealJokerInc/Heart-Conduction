@@ -9,8 +9,11 @@ Hierarchical structure:
     │   │   │           loss_type, trainable_params, max_epochs, patience,
     │   │   │           transition_metric, transition_threshold,
     │   │   │           best_val_loss, best_epoch, total_epochs, wall_seconds}
-    │   │   ├── epochs                       (dataset, resizable)
-    │   │   │   columns: [epoch, train_loss, val_loss, lr, wall_s]
+    │   │   ├── epochs                       (dataset, resizable, 14 columns)
+    │   │   │   columns: [epoch, train_loss, train_ionic_state_mse, train_conc_mse,
+    │   │   │            train_conductance_mse, train_I_ion_mse, train_grad_norm,
+    │   │   │            val_loss, val_ionic_state_mse, val_conc_mse,
+    │   │   │            val_conductance_mse, val_I_ion_mse, lr, wall_s]
     │   │   ├── batches                      (dataset, resizable)
     │   │   │   columns: [step, epoch, batch, loss, grad_norm, lr, wall_s]
     │   │   └── events                       (dataset, resizable, variable-length string)
@@ -29,9 +32,13 @@ Usage:
     log.log_batch('run_001', 'B1', step=100, epoch=2, batch=50,
                   loss=0.05, grad_norm=0.3, lr=4.5e-4, wall_s=0.02)
 
-    # Log per-epoch (after validation)
-    log.log_epoch('run_001', 'B1', epoch=2, train_loss=0.05,
-                  val_loss=0.04, lr=4.5e-4, wall_s=120.0)
+    # Log per-epoch (after validation) — pass full metrics dicts
+    log.log_epoch('run_001', 'B1', epoch=2,
+                  train_metrics={'train_loss': 0.05, 'train_ionic_state_mse': 0.03,
+                                 'train_conc_mse': 0.02, 'train_grad_norm': 0.5},
+                  val_metrics={'val_loss': 0.04, 'val_ionic_state_mse': 0.025,
+                               'val_conc_mse': 0.015},
+                  lr=4.5e-4, wall_s=120.0)
 
     # Log events (spikes, transitions, interventions)
     log.log_event('run_001', 'B1', 'epoch=4 divergence=spike loss=4803.99')
@@ -41,8 +48,9 @@ Usage:
                   total_epochs=30, wall_seconds=3449)
 
     # Read back for plotting
-    epochs = log.get_epochs('run_001', 'B1')  # numpy array (N, 5)
+    epochs = log.get_epochs('run_001', 'B1')  # numpy array (N, 14)
     batches = log.get_batches('run_001', 'B1')  # numpy array (M, 7)
+    # Column names: training_log.EPOCH_COLUMNS, training_log.BATCH_COLUMNS
 """
 
 from datetime import datetime
@@ -54,7 +62,23 @@ import numpy as np
 
 
 # Column definitions for fixed-width datasets
-EPOCH_COLUMNS = ['epoch', 'train_loss', 'val_loss', 'lr', 'wall_s']
+# Epochs: full per-component breakdown for both train and val
+EPOCH_COLUMNS = [
+    'epoch',
+    'train_loss',                # total combined loss
+    'train_ionic_state_mse',     # ionic state decoder MSE
+    'train_conc_mse',            # concentration MSE
+    'train_conductance_mse',     # gate conductance decoder MSE (B3+ only, 0 otherwise)
+    'train_I_ion_mse',           # I_ion MSE (D/E only, 0 otherwise)
+    'train_grad_norm',           # mean gradient norm (pre-clip)
+    'val_loss',                  # total combined val loss
+    'val_ionic_state_mse',
+    'val_conc_mse',
+    'val_conductance_mse',
+    'val_I_ion_mse',
+    'lr',                        # learning rate at epoch end
+    'wall_s',                    # epoch wall time in seconds
+]
 EPOCH_DTYPE = np.float64
 
 BATCH_COLUMNS = ['step', 'epoch', 'batch', 'loss', 'grad_norm', 'lr', 'wall_s']
@@ -143,11 +167,29 @@ class TrainingLog:
             ds[n] = row
 
     def log_epoch(self, run_name: str, phase_name: str,
-                  epoch: int, train_loss: float, val_loss: float,
+                  epoch: int, train_metrics: dict, val_metrics: dict,
                   lr: float, wall_s: float = 0.0) -> None:
-        """Append one epoch row."""
-        row = np.array([[epoch, train_loss, val_loss, lr, wall_s]],
-                       dtype=EPOCH_DTYPE)
+        """Append one epoch row with full component breakdown.
+
+        Args:
+            train_metrics: dict from _train_epoch with keys like
+                'train_loss', 'train_ionic_state_mse', 'train_conc_mse', etc.
+            val_metrics: dict from _validate with keys like
+                'val_loss', 'val_ionic_state_mse', 'val_conc_mse', etc.
+        """
+        row = np.zeros((1, len(EPOCH_COLUMNS)), dtype=EPOCH_DTYPE)
+        row[0, 0] = epoch
+        # Map metrics to columns by name
+        col_map = {name: i for i, name in enumerate(EPOCH_COLUMNS)}
+        for k, v in train_metrics.items():
+            if k in col_map:
+                row[0, col_map[k]] = v
+        for k, v in val_metrics.items():
+            if k in col_map:
+                row[0, col_map[k]] = v
+        row[0, col_map['lr']] = lr
+        row[0, col_map['wall_s']] = wall_s
+
         with h5py.File(self.path, 'a') as f:
             ds = f[run_name][phase_name]['epochs']
             n = ds.shape[0]
@@ -181,7 +223,7 @@ class TrainingLog:
     # ------------------------------------------------------------------
 
     def get_epochs(self, run_name: str, phase_name: str) -> np.ndarray:
-        """Return epoch data as (N, 5) array. Columns: epoch, train_loss, val_loss, lr, wall_s."""
+        """Return epoch data as (N, 14) array. Columns: see EPOCH_COLUMNS."""
         with h5py.File(self.path, 'r') as f:
             return f[run_name][phase_name]['epochs'][:]
 
@@ -220,22 +262,20 @@ class TrainingLog:
                         epoch_data: list[dict]) -> None:
         """Import epoch data from a list of dicts.
 
-        Each dict should have: epoch, train_loss, val_loss, lr.
-        Optional: wall_s (defaults to 0).
+        Each dict can have any subset of EPOCH_COLUMNS as keys.
+        Missing columns default to 0. Supports both old format
+        (train_loss, val_loss, lr) and new format (all 14 columns).
         """
-        rows = []
-        for d in epoch_data:
-            rows.append([
-                d['epoch'],
-                d['train_loss'],
-                d['val_loss'],
-                d['lr'],
-                d.get('wall_s', 0.0),
-            ])
-        arr = np.array(rows, dtype=EPOCH_DTYPE)
+        col_map = {name: i for i, name in enumerate(EPOCH_COLUMNS)}
+        arr = np.zeros((len(epoch_data), len(EPOCH_COLUMNS)), dtype=EPOCH_DTYPE)
+
+        for row_idx, d in enumerate(epoch_data):
+            for k, v in d.items():
+                if k in col_map:
+                    arr[row_idx, col_map[k]] = v
 
         with h5py.File(self.path, 'a') as f:
             ds = f[run_name][phase_name]['epochs']
             n = ds.shape[0]
-            ds.resize(n + len(rows), axis=0)
+            ds.resize(n + len(epoch_data), axis=0)
             ds[n:] = arr

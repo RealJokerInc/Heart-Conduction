@@ -5,10 +5,22 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Training pipeline fully implemented and verified. All 6 PLAN phases complete: data cache, encoder+phases+rollout+trainer, monitoring+checkpointing+metrics, CLI, T4 shard streaming, training agent. 83 tests (51 training + 32 model/preprocessor). Phases A1→A3 verified on real T1 data: A1 converged in 3 epochs (val_recon_mse=7.9e-5), A2 reached val_conc_mse=0.029 (10 epochs), A3 reached val_cond_mse=1.78e-4 (10 epochs).
+**Major design change**: Removed encoder entirely. Model discovers its own 16-dim latent through attention+MLP+scaffold decoder, not via external encoder. Phases A1 (autoencoder) and A3 (encoder-fed conductance) eliminated. Phase order now: A2→B1→B2→B3→B4→B5→C→D→E (9 phases). All rollouts start from zeros (steady state), purely autoregressive, no teacher forcing. B1 at rollout=1 IS the autoencoder — attention learns what the 16 dims mean from (zeros, Vm). B3 adds conductance compression once latent is stable. Gradient separation between ionic and concentration paths is natural due to per-dim attention structure — no masking needed.
+
+Training progress: B1 (val=0.56, 30 epochs), B2 (val=1.68, 30 epochs), decoder recalibration (val=1.14). Per-component loss logging implemented (ionic_state_mse, conc_mse, conductance_mse, grad_norm). HDF5 training log on HDD with 14-column epoch schema.
 
 ## Next Step
-Run full training: `python train.py` from Phase A1 through E. A2 needs more epochs or higher LR to converge below 1e-6 threshold. After A phases, Phase B rollout curriculum (1→10→100→1K→10K steps). Monitor via training agent.
+B3 (rollout=100, +conductance compression, +T2 data). Then B4 (rollout=1000) and B5 (rollout=10000).
+
+### 2026-04-03: Encoder removed + first real training (B1→B2)
+- **Encoder removed**: User insight — the model should discover its own latent, not have it imposed by an external encoder. The encoder was creating a mapping that the attention couldn't reproduce. Phases A1 (autoencoder) and A3 (encoder-fed conductance) eliminated. encoder.py deleted.
+- **New phase order**: A2→B1→B2→B3→B4→B5→C→D→E (9 phases, was 11). B1 replaces A1 — attention+MLP+decoder co-discover latent from (zeros, Vm).
+- **Gradient separation proven**: Per-dim attention structure means ionic_loss only backprops through W_q rows 0-15, conc_loss only through rows 16-19. W_k/W_v shared (same Vm physics). No gradient masking needed — architecture handles it naturally.
+- **B1 trained** (rollout=1, T1, batch=4096, 30 epochs): val=0.56 combined (ionic+conc). Model learns voltage-dependent equilibrium from zeros.
+- **B2 trained** (rollout=10, T1, batch=4096, 30 epochs): val=1.68. Early instability (val spiked to 41K at epoch 0) from autoregressive error compounding. Stabilized by epoch 16. First time model handles its own errors.
+- **Decoder recalibration**: Froze attention+MLP, trained only decoders (283 params) at rollout=1. Val=1.14 in 13 epochs. Decoders now calibrated to stable latent.
+- **Per-component loss logging**: ionic_state_mse, conc_mse, conductance_mse, grad_norm tracked separately. HDF5 training log with 14-column epoch schema on HDD.
+- **Concentration dominates loss**: K_i~138 mM vs gates~0.5. Raw unnormalized MSE means conc MSE >> ionic MSE. May need normalization later.
 
 ### 2026-04-02: Training pipeline implementation (overnight session)
 - **PLAN.md**: 6 phases, 13 steps. 2 audit rounds (20→10→~0 critical issues). All phases implemented + committed.
@@ -135,6 +147,9 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | GRU cell | Works but gating mechanism adds cost (10× RL) without clear benefit over residual formulation. |
 | 17×17 self-attention over latent dims | 47× RL. Cross-channel coupling not worth the cost. n×1 + linear coupling achieves the same. |
 | Deep MLP for cross-channel | Overkill. Single linear (or split GELU) layer suffices — real coupling is rank-3. |
+| External encoder for latent bootstrapping (A1) | Encoder imposes a latent space the model didn't discover. With rollout=1 from zeros, the model can't distinguish upstroke from repolarization at same Vm — but that's the correct limitation (history-dependent). The model should discover its own representation through dynamics training, not have it dictated by an encoder. Removed 2026-04-03. |
+| Separate A2 phase for concentration attention | Unnecessary — concentration loss is naturally separated in the per-dim attention structure. Combined ionic+conc loss in B1 trains both paths simultaneously without gradient interference. W_k/W_v shared (same Vm), W_q/W_out rows naturally separated. |
+| Teacher forcing via encoder in Phase B | Without an encoder, there's nothing to teacher-force with. Purely autoregressive from step 1. The contractive attention mechanism provides natural error correction (gate≈1 when far from target). |
 
 ## Session Log
 | Date | Session | Work Done |
