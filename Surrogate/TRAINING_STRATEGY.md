@@ -25,14 +25,23 @@ D: Stage 2 current readout (frozen Stage 1)
 E: End-to-end fine-tune
 ```
 
-**Intermediate calibration steps** (B2_decoder, B2_cond): Before increasing rollout length,
-freeze the stable components (attention+MLP) and train the unstable ones (decoders, conductance
-compression) at rollout=1. This ensures each component is well-calibrated before the next
-rollout increase. Without this, B3 saw grad norms of 1e25 because three things changed at once
-(rollout 10→100, conductance unfrozen, T2 data).
+**Training progression — two halves of Stage 1, then combine:**
 
-**Principle**: Change one thing at a time. Each rollout increase should be the ONLY variable.
-New parameters and new data should be introduced at rollout=1 first, then the rollout extended.
+Stage 1 has two sequential halves:
+```
+Half 1:  carried_state → VoltageAttention → split → ionic_mixing_mlp → ionic_new
+Half 2:  carried_state_new → gate_conductance_mlp + linear → conductance_latent
+```
+
+Training order:
+1. **B1** (rollout=1): Train Half 1 (attention + ionic_mixing_mlp + ionic_state_decoder). Half 2 frozen. Model discovers latent from (zeros, Vm).
+2. **B2** (rollout=10): Same params. Model handles own errors over short sequences.
+3. **B2_decoder**: Freeze Half 1. Train decoders only (rollout=1). Recalibrate to stable latent.
+4. **B2_cond** (rollout=1): Freeze Half 1. Train Half 2 (gate_conductance_mlp + linear + logit + decoder). Conductance compression learns gate products from stable latent.
+5. **B2_cond_r10** (rollout=10): Same as B2_cond but with rollout=10. Conductance tracks across steps.
+6. **B3** (rollout=100): Unfreeze ALL Stage 1 params. Only variable changing = rollout length.
+
+**Principle**: Train each half of Stage 1 to stability before combining. Extend rollout gradually for each half independently. When combining, the only new variable is rollout length — no newly unfrozen params, no new data.
 
 **Removed phases**: A1 (encoder autoencoder — model should discover own latent, not have it imposed), A3 (encoder-fed conductance — needs stable latent from B1/B2 first). See IDEALOG.md Failed Approaches.
 
