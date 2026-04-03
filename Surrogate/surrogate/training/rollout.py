@@ -23,43 +23,43 @@ def compute_phase_loss(
     model_out: dict[str, Tensor],
     segment: dict[str, Tensor],
     t: int,
-) -> Tensor:
-    """Compute single-step loss for a given phase. Single MSE, no weighting.
+) -> dict[str, Tensor]:
+    """Compute single-step loss components for a given phase.
 
-    Dispatch:
-        ionic_state (B1-B2): MSE(ionic_state_pred, true ionic states at t)
-        ionic_state_and_conductance (B3-B5): ionic_state MSE + conductance MSE
-        concentration_rollout (C): MSE(predicted conc, true conc at t)
-        I_ion (D/E): MSE(predicted I_ion, true I_ion at t)
+    Returns dict with 'loss' (total) and per-component losses.
     """
+    losses = {}
+
     if phase_name in ("B1", "B2") or phase_name == "ionic_state":
-        ionic_loss = torch.nn.functional.mse_loss(
+        losses['ionic_state_mse'] = torch.nn.functional.mse_loss(
             model_out['ionic_state_pred'], segment['ionic_states'][:, t, :])
-        conc_loss = torch.nn.functional.mse_loss(
+        losses['conc_mse'] = torch.nn.functional.mse_loss(
             model_out['concentrations'], segment['concentrations'][:, t, :])
-        return ionic_loss + conc_loss
+        losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse']
 
     elif phase_name in ("B3", "B4", "B5") or phase_name == "ionic_state_and_conductance":
-        ionic_loss = torch.nn.functional.mse_loss(
+        losses['ionic_state_mse'] = torch.nn.functional.mse_loss(
             model_out['ionic_state_pred'], segment['ionic_states'][:, t, :])
-        conc_loss = torch.nn.functional.mse_loss(
+        losses['conc_mse'] = torch.nn.functional.mse_loss(
             model_out['concentrations'], segment['concentrations'][:, t, :])
-        cond_loss = torch.nn.functional.mse_loss(
+        losses['conductance_mse'] = torch.nn.functional.mse_loss(
             model_out['conductance_pred'], segment['conductance_products'][:, t, :])
-        return ionic_loss + conc_loss + cond_loss
+        losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse'] + losses['conductance_mse']
 
     elif phase_name == "C" or phase_name == "concentration_rollout":
-        pred = model_out['concentrations']
-        target = segment['concentrations'][:, t, :]
-        return torch.nn.functional.mse_loss(pred, target)
+        losses['conc_mse'] = torch.nn.functional.mse_loss(
+            model_out['concentrations'], segment['concentrations'][:, t, :])
+        losses['loss'] = losses['conc_mse']
 
     elif phase_name in ("D", "E") or phase_name == "I_ion":
-        pred = model_out['I_ion']
-        target = segment['I_ion'][:, t]
-        return torch.nn.functional.mse_loss(pred, target)
+        losses['I_ion_mse'] = torch.nn.functional.mse_loss(
+            model_out['I_ion'], segment['I_ion'][:, t])
+        losses['loss'] = losses['I_ion_mse']
 
     else:
         raise ValueError(f"Unknown phase for loss computation: {phase_name}")
+
+    return losses
 
 
 def rollout(
@@ -94,6 +94,7 @@ def rollout(
     conc_prev = INIT_CONC.to(device).unsqueeze(0).expand(B, -1).clone()
 
     per_step_losses = []
+    component_sums: dict[str, float] = {}
 
     for t in range(T):
         Vm_t = segment['Vm'][:, t]
@@ -102,9 +103,14 @@ def rollout(
         # Forward pass
         out = model(carried, Vm_t, dt_t, cond_lat_prev, conc_prev)
 
-        # Compute per-step loss
-        step_loss = compute_phase_loss(phase_name, out, segment, t)
-        per_step_losses.append(step_loss)
+        # Compute per-step loss components
+        step_losses = compute_phase_loss(phase_name, out, segment, t)
+        per_step_losses.append(step_losses['loss'])
+
+        # Accumulate component losses
+        for k, v in step_losses.items():
+            if k != 'loss':
+                component_sums[k] = component_sums.get(k, 0.0) + v.detach()
 
         # Update prev-step state for next iteration's Stage 2
         cond_lat_prev = out['conductance_latent']
@@ -116,7 +122,12 @@ def rollout(
     per_step_losses = torch.stack(per_step_losses)
     mean_loss = per_step_losses.mean()
 
-    return {
+    result = {
         'loss': mean_loss,
         'per_step_losses': per_step_losses,
     }
+    # Add mean component losses
+    for k, v in component_sums.items():
+        result[k] = v / T
+
+    return result

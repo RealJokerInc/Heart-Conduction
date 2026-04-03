@@ -100,19 +100,31 @@ class SurrogateTrainer:
 
         for epoch in range(phase.max_epochs):
             # Train epoch
-            train_loss = self._train_epoch(phase, train_loader, optimizer)
-            if epoch > 0 or train_loss is not None:
-                scheduler.step()
+            train_metrics = self._train_epoch(phase, train_loader, optimizer)
+            train_loss = train_metrics['train_loss']
+            scheduler.step()
 
             # Validate
             val_metrics = self._validate(phase, val_loader)
             val_loss = val_metrics.get(phase.transition_metric, float('inf'))
 
+            # Build component log string
+            components = []
+            for k in ['train_ionic_state_mse', 'train_conc_mse', 'train_conductance_mse', 'train_grad_norm']:
+                if k in train_metrics:
+                    short = k.replace('train_', '')
+                    components.append(f"{short}={train_metrics[k]:.4f}")
+            for k in ['val_ionic_state_mse', 'val_conc_mse', 'val_conductance_mse']:
+                if k in val_metrics:
+                    short = k.replace('val_', 'v_')
+                    components.append(f"{short}={val_metrics[k]:.4f}")
+            comp_str = ' | '.join(components) if components else ''
+
             logger.info(
                 f"Phase {phase.name} Epoch {epoch}: "
-                f"train_loss={train_loss:.6f}, "
-                f"{phase.transition_metric}={val_loss:.6f}, "
+                f"train={train_loss:.6f}, val={val_loss:.6f}, "
                 f"lr={optimizer.param_groups[0]['lr']:.2e}"
+                + (f" | {comp_str}" if comp_str else "")
             )
 
             # Best model tracking
@@ -141,29 +153,46 @@ class SurrogateTrainer:
         total_loss = 0.0
         n_batches = 0
 
+        component_sums: dict[str, float] = {}
+
         for batch in dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
             optimizer.zero_grad()
 
             if phase.loss_fn == "concentration":
-                loss = self._single_step_loss(phase, batch)
+                loss_val = self._single_step_loss(phase, batch)
+                loss = loss_val  # scalar tensor
+                batch_components = {'conc_mse': loss_val.item()}
             elif phase.rollout_length <= 1:
-                loss = self._snapshot_step(phase, batch)
+                result = self._snapshot_step(phase, batch)
+                loss = result['loss']
+                batch_components = {k: v.item() for k, v in result.items() if k != 'loss'}
             else:
-                loss = self._rollout_step(phase, batch)
+                result = self._rollout_step(phase, batch)
+                loss = result['loss']
+                batch_components = {k: v.item() if hasattr(v, 'item') else v
+                                    for k, v in result.items()
+                                    if k not in ('loss', 'per_step_losses')}
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
+            grad_norm = torch.nn.utils.clip_grad_norm_(
                 [p for p in self.model.parameters() if p.requires_grad],
                 max_norm=1.0,
-            )
+            ).item()
             optimizer.step()
 
             total_loss += loss.item()
+            for k, v in batch_components.items():
+                component_sums[k] = component_sums.get(k, 0.0) + v
+            component_sums['grad_norm'] = component_sums.get('grad_norm', 0.0) + grad_norm
             n_batches += 1
             self.global_step += 1
 
-        return total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        metrics = {'train_loss': total_loss / n}
+        for k, v in component_sums.items():
+            metrics[f'train_{k}'] = v / n
+        return metrics
 
     def _single_step_loss(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         """Phase A2: single-step concentration loss (no rollout).
@@ -187,10 +216,11 @@ class SurrogateTrainer:
         )
         return nn.functional.mse_loss(out['concentrations'], batch['concentrations_t1'])
 
-    def _snapshot_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    def _snapshot_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Single-step forward from zeros for rollout=1 phases (B1).
 
         SnapshotDataset provides (B, ...) tensors without time dimension.
+        Returns dict with 'loss' (total) and per-component losses.
         """
         B = batch['Vm'].shape[0]
         Vm = batch['Vm']
@@ -204,52 +234,67 @@ class SurrogateTrainer:
 
         out = self.model(carried, Vm, dt, cond_lat_prev, conc_prev)
 
-        # Ionic state loss
-        loss = nn.functional.mse_loss(out['ionic_state_pred'], batch['ionic_states'])
+        ionic_mse = nn.functional.mse_loss(out['ionic_state_pred'], batch['ionic_states'])
+        conc_mse = nn.functional.mse_loss(out['concentrations'], batch['concentrations'])
 
-        # Concentration loss — always included for B phases
-        loss = loss + nn.functional.mse_loss(out['concentrations'], batch['concentrations'])
+        losses = {'ionic_state_mse': ionic_mse, 'conc_mse': conc_mse}
+        total = ionic_mse + conc_mse
 
-        # Add conductance loss for B3+ phases
         if phase.loss_fn == "ionic_state_and_conductance" and out['conductance_pred'] is not None:
-            loss = loss + nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
+            cond_mse = nn.functional.mse_loss(out['conductance_pred'], batch['conductance_products'])
+            losses['conductance_mse'] = cond_mse
+            total = total + cond_mse
 
-        return loss
+        losses['loss'] = total
+        return losses
 
-    def _rollout_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    def _rollout_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Phase B2-E: autoregressive rollout over segments."""
-        result = rollout(
+        return rollout(
             model=self.model,
             segment=batch,
             phase_name=phase.name,
             device=self.device,
         )
-        return result['loss']
 
     @torch.no_grad()
     def _validate(self, phase: PhaseConfig, dataloader: DataLoader) -> dict:
-        """Validation pass. Returns metrics dict."""
+        """Validation pass. Returns metrics dict with component breakdowns."""
         self.model.eval()
 
         total_loss = 0.0
+        component_sums: dict[str, float] = {}
         n_batches = 0
 
         for batch in dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
             if phase.loss_fn == "concentration":
-                loss = self._single_step_loss(phase, batch)
+                loss_val = self._single_step_loss(phase, batch)
+                loss = loss_val.item()
+                batch_components = {'conc_mse': loss}
             elif phase.rollout_length <= 1:
-                loss = self._snapshot_step(phase, batch)
+                result = self._snapshot_step(phase, batch)
+                loss = result['loss'].item()
+                batch_components = {k: v.item() for k, v in result.items() if k != 'loss'}
             else:
-                loss = self._rollout_step(phase, batch)
+                result = self._rollout_step(phase, batch)
+                loss = result['loss'].item()
+                batch_components = {k: v.item() if hasattr(v, 'item') else v
+                                    for k, v in result.items()
+                                    if k not in ('loss', 'per_step_losses')}
 
-            total_loss += loss.item()
+            total_loss += loss
+            for k, v in batch_components.items():
+                component_sums[k] = component_sums.get(k, 0.0) + v
             n_batches += 1
 
-        mean_loss = total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        metrics = {'val_loss': total_loss / n}
+        for k, v in component_sums.items():
+            metrics[f'val_{k}'] = v / n
 
-        # Map to transition metric name
+        # Add transition metric alias
         metric_map = {
             "concentration": "val_conc_mse",
             "ionic_state": "val_ionic_state_mse",
@@ -258,7 +303,9 @@ class SurrogateTrainer:
             "I_ion": "val_I_ion_mse",
         }
         metric_name = metric_map.get(phase.loss_fn, phase.transition_metric)
-        return {metric_name: mean_loss}
+        metrics[metric_name] = total_loss / n
+
+        return metrics
 
     def _should_transition(self, phase: PhaseConfig, val_metrics: dict, epochs_no_improve: int) -> bool:
         """Check if phase should transition to next."""
