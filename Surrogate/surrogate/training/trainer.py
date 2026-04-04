@@ -13,7 +13,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
 from ..model.ionic_surrogate_v3 import IonicSurrogateV3
@@ -92,7 +92,9 @@ class SurrogateTrainer:
 
         # Create optimizer and scheduler
         optimizer = AdamW(trainable_params, lr=phase.lr, weight_decay=phase.weight_decay)
-        scheduler = CosineAnnealingLR(optimizer, T_max=phase.max_epochs)
+        # Cosine annealing with warm restarts: restart every T_0 epochs,
+        # doubling the period each time (T_mult=2): 10→20→40→80→...
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
         # Create data loaders
         train_loader = self._make_dataloader(phase, split='train')
@@ -356,7 +358,7 @@ class SurrogateTrainer:
         return DataLoader(merged, batch_size=phase.batch_size, shuffle=shuffle, drop_last=True)
 
     def _save_checkpoint(self, tag: str, phase: PhaseConfig, epoch: int,
-                         optimizer: AdamW, scheduler: CosineAnnealingLR, best_val_loss: float) -> None:
+                         optimizer: AdamW, scheduler: CosineAnnealingWarmRestarts, best_val_loss: float) -> None:
         """Save checkpoint."""
         ckpt = {
             'model_state_dict': self.model.state_dict(),
