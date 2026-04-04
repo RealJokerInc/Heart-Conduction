@@ -315,16 +315,16 @@ class TestPhaseConfig:
 
     def test_phase_configs_complete(self):
         from surrogate.training.phases import PHASE_ORDER, PHASE_CONFIGS
-        assert len(PHASE_ORDER) == 10
+        assert len(PHASE_ORDER) == 9
         for name in PHASE_ORDER:
             assert name in PHASE_CONFIGS
 
-    def test_freeze_mask_B1(self):
+    def test_freeze_mask_A1(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
 
         model = IonicSurrogateV3(scaffold=True)
-        phase = get_phase_config("B1")
+        phase = get_phase_config("A1")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
@@ -335,12 +335,12 @@ class TestPhaseConfig:
             elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen in B1"
 
-    def test_freeze_mask_B3(self):
+    def test_freeze_mask_A3(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
 
         model = IonicSurrogateV3(scaffold=True)
-        phase = get_phase_config("B3")
+        phase = get_phase_config("A3")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
@@ -356,12 +356,12 @@ class TestPhaseConfig:
             elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen in B3"
 
-    def test_freeze_mask_D(self):
+    def test_freeze_mask_B(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
 
         model = IonicSurrogateV3(scaffold=True)
-        phase = get_phase_config("D")
+        phase = get_phase_config("B")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
@@ -372,12 +372,12 @@ class TestPhaseConfig:
             else:
                 assert not grad, f"{name} should be frozen in D"
 
-    def test_freeze_mask_E(self):
+    def test_freeze_mask_C(self):
         from surrogate.model import IonicSurrogateV3
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
 
         model = IonicSurrogateV3(scaffold=True)
-        phase = get_phase_config("E")
+        phase = get_phase_config("C")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
@@ -392,7 +392,7 @@ class TestPhaseConfig:
 
     def test_T12_in_B1(self):
         from surrogate.training.phases import get_phase_config
-        b1 = get_phase_config("B1")
+        b1 = get_phase_config("A1")
         assert 12 in b1.data_tiers, "T12 (celltypes) must be in B1 data_tiers"
 
 
@@ -427,7 +427,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=4, T=10)
 
-        result = rollout(model, segment, phase_name="B1")
+        result = rollout(model, segment, phase_name="A1")
         assert result['loss'].shape == ()
         assert result['per_step_losses'].shape == (10,)
 
@@ -438,7 +438,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=2, T=5)
 
-        result = rollout(model, segment, phase_name="B1")
+        result = rollout(model, segment, phase_name="A1")
         assert result['loss'].isfinite()
 
     def test_rollout_gradient_flow(self):
@@ -448,7 +448,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=2, T=5)
 
-        result = rollout(model, segment, phase_name="B1")
+        result = rollout(model, segment, phase_name="A1")
         result['loss'].backward()
 
         # Check that some Stage 1 params got gradients
@@ -467,7 +467,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=2, T=5)
 
-        result = rollout(model, segment, phase_name="D")
+        result = rollout(model, segment, phase_name="B")
         assert result['loss'].isfinite()
 
     def test_rollout_C_phase_loss(self):
@@ -478,7 +478,7 @@ class TestRollout:
         model = IonicSurrogateV3(scaffold=True).double()
         segment = self._make_segment(B=2, T=5)
 
-        result = rollout(model, segment, phase_name="C")
+        result = rollout(model, segment, phase_name="A3")
         assert result['loss'].isfinite()
 
 
@@ -525,7 +525,7 @@ class TestTrainer:
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
         from surrogate.training.phases import get_phase_config, apply_freeze_mask, get_freeze_summary
-        phase = get_phase_config("B1")
+        phase = get_phase_config("A1")
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
@@ -545,7 +545,7 @@ class TestTrainer:
         model = IonicSurrogateV3(scaffold=True).double()
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
-        b1 = get_phase_config("B1")
+        b1 = get_phase_config("A1")
         b1.max_epochs = 1
         b1.patience = 1
         b1.batch_size = 4  # small for test
@@ -564,7 +564,7 @@ class TestTrainer:
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
         # Run B1 with 1 epoch
-        b1 = get_phase_config("B1")
+        b1 = get_phase_config("A1")
         b1.max_epochs = 1
         b1.patience = 1
         b1.batch_size = 4
@@ -587,7 +587,7 @@ class TestTrainer:
         trainer = SurrogateTrainer(model, str(cache_dir), str(tmp_path / 'run'), device='cpu')
 
         # Run B1 for 1 epoch
-        b1 = get_phase_config("B1")
+        b1 = get_phase_config("A1")
         b1.max_epochs = 1
         b1.patience = 1
         b1.batch_size = 4
@@ -599,7 +599,7 @@ class TestTrainer:
         # Load checkpoint into fresh model
         model2 = IonicSurrogateV3(scaffold=True).double()
         trainer2 = SurrogateTrainer(model2, str(cache_dir), str(tmp_path / 'run2'), device='cpu')
-        ckpt_path = str(tmp_path / 'run' / 'checkpoints' / 'best_B1.pt')
+        ckpt_path = str(tmp_path / 'run' / 'checkpoints' / 'best_A1.pt')
         trainer2.load_checkpoint(ckpt_path)
 
         for name in orig_weights:

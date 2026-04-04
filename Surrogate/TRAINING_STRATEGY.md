@@ -7,46 +7,38 @@
 
 ## Overview
 
-> **UPDATED 2026-04-03**: A1 (encoder autoencoder), A3 (encoder-fed conductance), and teacher forcing removed. Model discovers its own latent through dynamics training. Encoder deleted. Phase order reduced from 11 to 9.
+> **UPDATED 2026-04-04**: Renamed phases. A = Stage 1 training. B = Stage 2. C = end-to-end.
+> No encoder. No teacher forcing. Model discovers its own latent from (zeros, Vm).
+> Loss: per-dim min-max normalized MSE (all dims mapped to [0,1]).
+> Batch size: 32768 (GPU massively underutilized at smaller batches).
 
-9 phases: **A2, B1-B5, C, D, E**. Each phase trains specific components with all others frozen. Combined ionic + concentration loss from B1 onward (no weighting). All rollouts start from zeros (steady state), purely autoregressive.
+9 phases: **A1, A1.5, A2, A2.5, A3, A4, A5, B, C**.
 
 ```
-A2: Attention concentration tracking (optional, can skip — conc trains in B1)
-B1: Latent discovery (rollout=1) — attention+MLP+decoder learn what 16 dims mean
-B2: Short rollout (rollout=10) — model handles own errors
-B2_decoder: Decoder recalibration — freeze attention+MLP, train decoders on stable latent
-B2_cond: Conductance bootstrap — freeze attention+MLP, train conductance compression+decoders
-B3: Medium rollout (rollout=100) — only rollout length changes, all params already trained
-B4: Long rollout (rollout=1000)
-B5: Very long rollout (rollout=10000) — full action potential
-C: Concentration dynamics refinement
-D: Stage 2 current readout (frozen Stage 1)
-E: End-to-end fine-tune
+A1:   Half 1 (attention+MLP+ionic decoder), rollout=1   — latent discovery
+A1.5: Half 1, rollout=10                                 — self-consistency
+A2:   Half 2 (conductance compression+decoder), rollout=1 — gate products (Half 1 frozen)
+A2.5: Half 2, rollout=10                                  — conductance tracking
+A3:   ALL Stage 1, rollout=100                            — combine halves
+A4:   ALL Stage 1, rollout=1000                           — long sequences
+A5:   ALL Stage 1, rollout=10000                          — full action potential
+B:    Stage 2 only (frozen Stage 1), I_ion loss           — current readout
+C:    ALL params, I_ion loss                              — end-to-end fine-tune
 ```
 
-**Training progression — two halves of Stage 1, then combine:**
-
-Stage 1 has two sequential halves:
+**Two halves of Stage 1:**
 ```
 Half 1:  carried_state → VoltageAttention → split → ionic_mixing_mlp → ionic_new
 Half 2:  carried_state_new → gate_conductance_mlp + linear → conductance_latent
 ```
 
-Training order:
-1. **B1** (rollout=1): Train Half 1 (attention + ionic_mixing_mlp + ionic_state_decoder). Half 2 frozen. Model discovers latent from (zeros, Vm).
-2. **B2** (rollout=10): Same params. Model handles own errors over short sequences.
-3. **B2_cond** (rollout=1): Freeze Half 1. Train Half 2 (gate_conductance_mlp + linear + logit + gate_conductance_decoder). Conductance compression learns gate products from stable latent.
-4. **B2_cond_r10** (rollout=10): Same as B2_cond but with rollout=10. Conductance tracks across steps.
-5. **B3** (rollout=100): Unfreeze ALL Stage 1 params. Only variable changing = rollout length.
+Each half trained to stability at rollout=1, then rollout=10, before combining at rollout=100.
 
-**Rule**: Always train encoder and decoder together. A decoder trained on a frozen latent
-becomes miscalibrated the moment the latent representation shifts. Each decoder must be
-unfrozen whenever the components that produce the latent it reads are unfrozen.
-
-**Principle**: Train each half of Stage 1 to stability before combining. Extend rollout gradually for each half independently. When combining, the only new variable is rollout length — no newly unfrozen params, no new data.
-
-**Removed phases**: A1 (encoder autoencoder — model should discover own latent, not have it imposed), A3 (encoder-fed conductance — needs stable latent from B1/B2 first). See IDEALOG.md Failed Approaches.
+**Principles:**
+- Change one variable at a time (rollout OR params, not both)
+- Always train encoder and decoder together (decoder on frozen latent becomes stale)
+- Larger batch = more stable gradients (bad rollouts get diluted)
+- Lower LR for rollout phases (1e-4 not 5e-4) — model adapts to self-consistency slowly
 
 ---
 

@@ -42,7 +42,7 @@ class SurrogateTrainer:
         cache_dir: str,
         run_dir: str,
         device: str = 'cuda',
-        start_phase: str = 'A2',
+        start_phase: str = 'A1',
     ):
         self.model = model
         self.cache_dir = Path(cache_dir)
@@ -112,23 +112,10 @@ class SurrogateTrainer:
             val_metrics = self._validate(phase, val_loader)
             val_loss = val_metrics.get(phase.transition_metric, float('inf'))
 
-            # Build component log string
-            components = []
-            for k in ['train_ionic_state_mse', 'train_conc_mse', 'train_conductance_mse', 'train_grad_norm']:
-                if k in train_metrics:
-                    short = k.replace('train_', '')
-                    components.append(f"{short}={train_metrics[k]:.4f}")
-            for k in ['val_ionic_state_mse', 'val_conc_mse', 'val_conductance_mse']:
-                if k in val_metrics:
-                    short = k.replace('val_', 'v_')
-                    components.append(f"{short}={val_metrics[k]:.4f}")
-            comp_str = ' | '.join(components) if components else ''
-
+            grad_norm = train_metrics.get('train_grad_norm', 0)
             logger.info(
-                f"Phase {phase.name} Epoch {epoch}: "
-                f"train={train_loss:.6f}, val={val_loss:.6f}, "
-                f"lr={optimizer.param_groups[0]['lr']:.2e}"
-                + (f" | {comp_str}" if comp_str else "")
+                f"Ep {epoch:3d} | train={train_loss:.4f} | val={val_loss:.4f} | "
+                f"lr={optimizer.param_groups[0]['lr']:.1e} | gnorm={grad_norm:.1f}"
             )
 
             # Best model tracking
