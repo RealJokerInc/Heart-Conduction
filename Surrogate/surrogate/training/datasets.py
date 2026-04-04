@@ -68,9 +68,13 @@ class PairDataset(Dataset):
 
 
 class SegmentDataset(Dataset):
-    """Contiguous segments of rollout_length for Phases B-E.
+    """Contiguous segments for rollout training.
 
     Extracts overlapping segments with configurable stride.
+    Supports temporal subsampling: subsample=N takes every Nth timestep
+    and multiplies dt by N. This lets rollout=100 at subsample=300 cover
+    the same 300ms AP as rollout=30000 at subsample=1.
+
     Returns dict of (segment_length, ...) tensors, all float64.
     """
 
@@ -85,9 +89,13 @@ class SegmentDataset(Dataset):
         cached_data: dict[str, Tensor],
         segment_length: int,
         stride: Optional[int] = None,
+        subsample: int = 1,
     ):
         self.segment_length = segment_length
-        self.stride = stride if stride is not None else max(1, segment_length // 2)
+        self.subsample = subsample
+        # Raw timesteps needed per segment: segment_length * subsample
+        self.raw_length = segment_length * subsample
+        self.stride = stride if stride is not None else max(1, self.raw_length // 2)
 
         # Store data as float64
         self.data = {}
@@ -95,17 +103,24 @@ class SegmentDataset(Dataset):
             if key in cached_data:
                 self.data[key] = cached_data[key].double()
 
-        # Precompute valid start indices
+        # Precompute valid start indices (in raw timestep space)
         T = self.data['Vm'].shape[0]
-        self.starts = list(range(0, T - segment_length + 1, self.stride))
+        self.starts = list(range(0, T - self.raw_length + 1, self.stride))
 
     def __len__(self) -> int:
         return len(self.starts)
 
     def __getitem__(self, idx: int) -> dict[str, Tensor]:
         start = self.starts[idx]
-        end = start + self.segment_length
-        return {key: tensor[start:end] for key, tensor in self.data.items()}
+        # Take every Nth timestep
+        indices = range(start, start + self.raw_length, self.subsample)
+        result = {}
+        for key, tensor in self.data.items():
+            result[key] = tensor[list(indices)]
+        # Scale dt by subsample factor
+        if 'dt' in result:
+            result['dt'] = result['dt'] * self.subsample
+        return result
 
 
 def merge_tier_datasets(datasets: list[Dataset]) -> ConcatDataset:

@@ -34,14 +34,14 @@ def compute_phase_loss(
     """
     losses = {}
 
-    if phase_name in ("A1", "A1.5") or phase_name == "ionic_state":
+    if phase_name in ("A1", "A2", "A3", "A4") or phase_name == "ionic_state":
         losses['ionic_state_mse'] = _normalizer.normalized_mse(
             model_out['ionic_state_pred'], segment['ionic_states'][:, t, :], 'ionic_states')
         losses['conc_mse'] = _normalizer.normalized_mse(
             model_out['concentrations'], segment['concentrations'][:, t, :], 'concentrations')
         losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse']
 
-    elif phase_name in ("A2", "A2.5", "A3", "A4", "A5") or phase_name == "ionic_state_and_conductance":
+    elif phase_name in ("B1", "B2", "B3", "B4") or phase_name == "ionic_state_and_conductance":
         losses['ionic_state_mse'] = _normalizer.normalized_mse(
             model_out['ionic_state_pred'], segment['ionic_states'][:, t, :], 'ionic_states')
         losses['conc_mse'] = _normalizer.normalized_mse(
@@ -50,7 +50,7 @@ def compute_phase_loss(
             model_out['conductance_pred'], segment['conductance_products'][:, t, :], 'conductance_products')
         losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse'] + losses['conductance_mse']
 
-    elif phase_name in ("B", "C") or phase_name == "I_ion":
+    elif phase_name in ("C", "D") or phase_name == "I_ion":
         losses['I_ion_mse'] = torch.nn.functional.mse_loss(
             model_out['I_ion'], segment['I_ion'][:, t])
         losses['loss'] = losses['I_ion_mse']

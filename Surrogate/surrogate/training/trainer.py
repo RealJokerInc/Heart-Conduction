@@ -150,20 +150,11 @@ class SurrogateTrainer:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
             optimizer.zero_grad()
 
-            if phase.loss_fn == "concentration":
-                loss_val = self._single_step_loss(phase, batch)
-                loss = loss_val  # scalar tensor
-                batch_components = {'conc_mse': loss_val.item()}
-            elif phase.rollout_length <= 1:
-                result = self._snapshot_step(phase, batch)
-                loss = result['loss']
-                batch_components = {k: v.item() for k, v in result.items() if k != 'loss'}
-            else:
-                result = self._rollout_step(phase, batch)
-                loss = result['loss']
-                batch_components = {k: v.item() if hasattr(v, 'item') else v
-                                    for k, v in result.items()
-                                    if k not in ('loss', 'per_step_losses')}
+            result = self._rollout_step(phase, batch)
+            loss = result['loss']
+            batch_components = {k: v.item() if hasattr(v, 'item') else v
+                                for k, v in result.items()
+                                if k not in ('loss', 'per_step_losses')}
 
             loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -263,20 +254,11 @@ class SurrogateTrainer:
         for batch in dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
-            if phase.loss_fn == "concentration":
-                loss_val = self._single_step_loss(phase, batch)
-                loss = loss_val.item()
-                batch_components = {'conc_mse': loss}
-            elif phase.rollout_length <= 1:
-                result = self._snapshot_step(phase, batch)
-                loss = result['loss'].item()
-                batch_components = {k: v.item() for k, v in result.items() if k != 'loss'}
-            else:
-                result = self._rollout_step(phase, batch)
-                loss = result['loss'].item()
-                batch_components = {k: v.item() if hasattr(v, 'item') else v
-                                    for k, v in result.items()
-                                    if k not in ('loss', 'per_step_losses')}
+            result = self._rollout_step(phase, batch)
+            loss = result['loss'].item()
+            batch_components = {k: v.item() if hasattr(v, 'item') else v
+                                for k, v in result.items()
+                                if k not in ('loss', 'per_step_losses')}
 
             total_loss += loss
             for k, v in batch_components.items():
@@ -326,14 +308,11 @@ class SurrogateTrainer:
                 logger.warning(f"Cache for tier {tier} split '{split}' not found, skipping")
                 continue
 
-            if phase.loss_fn == "concentration":
-                datasets.append(PairDataset(data))
-            elif phase.rollout_length <= 1:
-                # For rollout=1 phases (B1), use SnapshotDataset to avoid
-                # creating millions of 1-step segments in memory
-                datasets.append(SnapshotDataset(data))
-            else:
-                datasets.append(SegmentDataset(data, segment_length=phase.rollout_length))
+            datasets.append(SegmentDataset(
+                data,
+                segment_length=phase.rollout_length,
+                subsample=phase.subsample,
+            ))
 
         if not datasets:
             raise RuntimeError(f"No data found for phase {phase.name} split '{split}'")

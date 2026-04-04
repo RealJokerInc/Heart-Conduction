@@ -1,18 +1,12 @@
 """Phase configuration for IonicSurrogateV3 training pipeline.
 
-Each phase is a declarative PhaseConfig dataclass. The trainer applies configs
-without understanding phase semantics — all logic is in the config.
+dt curriculum: fix temporal coverage at ~300ms (one full AP), vary dt.
+Subsample existing T1 data (dt=0.01ms) by stride N → effective dt = N*0.01ms.
 
-Phase progression:
-  A1     → A1.5   → A2      → A2.5    → A3   → A4  → A5  → B → C → D
-  Half 1   Half 1   Half 2    Half 2    All     All   All
-  r=1      r=10     r=1       r=10      r=100   r=1K  r=10K
-
-Half 1: attention + ionic_mixing_mlp + ionic_state_decoder (+ concentration)
-Half 2: gate_conductance_mlp + gate_conductance_linear + gate_conductance_logit + gate_conductance_decoder
-
-Stage 1 trained in A phases. Stage 2 in B (frozen Stage 1). End-to-end in C.
-No encoder. No teacher forcing. All rollouts start from zeros (steady state).
+A phases: Half 1 (attention + ionic MLP + ionic decoder + concentration)
+B phases: Half 2 (conductance compression + decoder), Half 1 frozen
+C: Stage 2 (frozen Stage 1)
+D: End-to-end
 """
 
 from dataclasses import dataclass
@@ -32,13 +26,14 @@ class PhaseConfig:
     lr: float
     weight_decay: float
     rollout_length: int
+    subsample: int              # take every Nth timestep, effective dt = N * 0.01ms
     transition_metric: str
     transition_threshold: Optional[float]
     patience: int
     max_epochs: int
 
 
-# Half 1 params: attention + ionic MLP + ionic decoder
+# Half 1 params
 _HALF1_PARAMS = [
     "stage1.voltage_attention.*",
     "stage1.ionic_mixing_mlp.*",
@@ -46,7 +41,7 @@ _HALF1_PARAMS = [
     "stage1.ionic_state_decoder.*",
 ]
 
-# Half 2 params: conductance compression + conductance decoder
+# Half 2 params
 _HALF2_PARAMS = [
     "stage1.gate_conductance_mlp.*",
     "stage1.gate_conductance_linear.*",
@@ -54,111 +49,122 @@ _HALF2_PARAMS = [
     "stage1.gate_conductance_decoder.*",
 ]
 
-# All Stage 1 params
 _ALL_STAGE1 = ["stage1.*"]
 
 
 PHASE_CONFIGS = {
-    # === Half 1: attention + ionic MLP + ionic decoder + concentration ===
+    # === A: Half 1, dt curriculum ===
+    # dt=3.0ms (subsample=300), rollout=100, covers 300ms
     "A1": PhaseConfig(
         name="A1",
         trainable_params=_HALF1_PARAMS,
         loss_fn="ionic_state",
-        data_tiers=[1, 12],
-        batch_size=32768, lr=5e-4, weight_decay=1e-4,
-        rollout_length=1,
+        data_tiers=[1],
+        batch_size=4096, lr=5e-4, weight_decay=1e-4,
+        rollout_length=100, subsample=300,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=10, max_epochs=30,
+        patience=50, max_epochs=200,
     ),
-    "A1.5": PhaseConfig(
-        name="A1.5",
-        trainable_params=_HALF1_PARAMS,
-        loss_fn="ionic_state",
-        data_tiers=[1, 12],
-        batch_size=32768, lr=1e-4, weight_decay=1e-4,
-        rollout_length=10,
-        transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=10, max_epochs=500,
-    ),
-
-    # === Half 2: conductance compression + decoder (Half 1 frozen) ===
+    # dt=1.0ms (subsample=100), rollout=300, covers 300ms
     "A2": PhaseConfig(
         name="A2",
-        trainable_params=_HALF2_PARAMS,
-        loss_fn="ionic_state_and_conductance",
-        data_tiers=[1, 12],
-        batch_size=32768, lr=1e-3, weight_decay=1e-4,
-        rollout_length=1,
+        trainable_params=_HALF1_PARAMS,
+        loss_fn="ionic_state",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=300, subsample=100,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=10, max_epochs=30,
+        patience=50, max_epochs=500,
     ),
-    "A2.5": PhaseConfig(
-        name="A2.5",
-        trainable_params=_HALF2_PARAMS,
-        loss_fn="ionic_state_and_conductance",
-        data_tiers=[1, 12],
-        batch_size=32768, lr=1e-4, weight_decay=1e-4,
-        rollout_length=10,
-        transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=10, max_epochs=500,
-    ),
-
-    # === All Stage 1 params, rollout curriculum ===
+    # dt=0.1ms (subsample=10), rollout=3000, covers 300ms
     "A3": PhaseConfig(
         name="A3",
-        trainable_params=_ALL_STAGE1,
-        loss_fn="ionic_state_and_conductance",
-        data_tiers=[1, 2, 12],
-        batch_size=16384, lr=5e-4, weight_decay=5e-4,
-        rollout_length=100,
+        trainable_params=_HALF1_PARAMS,
+        loss_fn="ionic_state",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=3000, subsample=10,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=15, max_epochs=50,
+        patience=50, max_epochs=500,
     ),
+    # dt=0.01ms (subsample=1), rollout=30000, covers 300ms — original resolution
     "A4": PhaseConfig(
         name="A4",
-        trainable_params=_ALL_STAGE1,
-        loss_fn="ionic_state_and_conductance",
-        data_tiers=[1, 2, 3, 12],
-        batch_size=8192, lr=3e-4, weight_decay=5e-4,
-        rollout_length=1000,
+        trainable_params=_HALF1_PARAMS,
+        loss_fn="ionic_state",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=30000, subsample=1,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=15, max_epochs=50,
-    ),
-    "A5": PhaseConfig(
-        name="A5",
-        trainable_params=_ALL_STAGE1,
-        loss_fn="ionic_state_and_conductance",
-        data_tiers=[1, 2, 3, 12],
-        batch_size=4096, lr=2e-4, weight_decay=5e-4,
-        rollout_length=10000,
-        transition_metric="val_ionic_state_mse", transition_threshold=None,
-        patience=15, max_epochs=50,
+        patience=50, max_epochs=1000,
     ),
 
-    # === Stage 2 + end-to-end ===
-    "B": PhaseConfig(
-        name="B",
+    # === B: Half 2, same dt curriculum (Half 1 frozen) ===
+    "B1": PhaseConfig(
+        name="B1",
+        trainable_params=_HALF2_PARAMS,
+        loss_fn="ionic_state_and_conductance",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-3, weight_decay=1e-4,
+        rollout_length=100, subsample=300,
+        transition_metric="val_ionic_state_mse", transition_threshold=None,
+        patience=50, max_epochs=200,
+    ),
+    "B2": PhaseConfig(
+        name="B2",
+        trainable_params=_HALF2_PARAMS,
+        loss_fn="ionic_state_and_conductance",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=300, subsample=100,
+        transition_metric="val_ionic_state_mse", transition_threshold=None,
+        patience=50, max_epochs=500,
+    ),
+    "B3": PhaseConfig(
+        name="B3",
+        trainable_params=_HALF2_PARAMS,
+        loss_fn="ionic_state_and_conductance",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=3000, subsample=10,
+        transition_metric="val_ionic_state_mse", transition_threshold=None,
+        patience=50, max_epochs=500,
+    ),
+    "B4": PhaseConfig(
+        name="B4",
+        trainable_params=_HALF2_PARAMS,
+        loss_fn="ionic_state_and_conductance",
+        data_tiers=[1],
+        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        rollout_length=30000, subsample=1,
+        transition_metric="val_ionic_state_mse", transition_threshold=None,
+        patience=50, max_epochs=1000,
+    ),
+
+    # === C: Stage 2, D: end-to-end ===
+    "C": PhaseConfig(
+        name="C",
         trainable_params=["stage2.*"],
         loss_fn="I_ion",
-        data_tiers=[1, 2, 3, 12],
+        data_tiers=[1],
         batch_size=4096, lr=1e-3, weight_decay=1e-3,
-        rollout_length=10000,
+        rollout_length=3000, subsample=10,
         transition_metric="val_I_ion_mse", transition_threshold=1e-3,
         patience=20, max_epochs=300,
     ),
-    "C": PhaseConfig(
-        name="C",
+    "D": PhaseConfig(
+        name="D",
         trainable_params=_ALL_STAGE1 + ["stage2.*"],
         loss_fn="I_ion",
-        data_tiers=[1, 2, 3, 12],
+        data_tiers=[1],
         batch_size=2048, lr=5e-5, weight_decay=1e-3,
-        rollout_length=10000,
+        rollout_length=3000, subsample=10,
         transition_metric="val_I_ion_mse", transition_threshold=None,
         patience=20, max_epochs=300,
     ),
 }
 
-PHASE_ORDER = ["A1", "A1.5", "A2", "A2.5", "A3", "A4", "A5", "B", "C"]
+PHASE_ORDER = ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "C", "D"]
 
 
 def get_phase_config(phase_name: str) -> PhaseConfig:
