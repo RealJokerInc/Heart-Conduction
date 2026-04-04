@@ -64,21 +64,30 @@ def compute_phase_loss(
 def rollout(
     model: IonicSurrogateV3,
     segment: dict[str, Tensor],
-    phase_name: str = "B1",
+    phase_name: str = "A1",
     device: Optional[torch.device] = None,
+    tbptt_window: int = 0,
 ) -> dict[str, Tensor]:
     """Execute autoregressive rollout over a segment, accumulating loss.
+
+    Supports truncated BPTT: the model runs the full T-step forward pass
+    (sees all error compounding), but gradients only flow through the last
+    `tbptt_window` steps. Earlier steps are detached. This keeps the gradient
+    chain short and stable while the model still learns from late-rollout errors.
 
     Args:
         model: IonicSurrogateV3 instance.
         segment: Dict of (B, T, ...) tensors from SegmentDataset + DataLoader.
         phase_name: Determines which loss function to use.
         device: Device for initial state tensors.
+        tbptt_window: If > 0, only backprop through the last N steps.
+            Steps before T-N are detached (forward pass still runs).
+            If 0 (default), backprop through all steps (original behavior).
 
     Returns:
         dict with:
-            'loss': scalar mean loss over rollout steps
-            'per_step_losses': (T,) individual step losses
+            'loss': scalar mean loss over rollout steps (or over tbptt window)
+            'per_step_losses': (T,) individual step losses (detached for monitoring)
     """
     B = segment['Vm'].shape[0]
     T = segment['Vm'].shape[1]
@@ -92,6 +101,12 @@ def rollout(
     cond_lat_prev = torch.zeros(B, model.cond_dim, dtype=torch.float64, device=device)
     conc_prev = INIT_CONC.to(device).unsqueeze(0).expand(B, -1).clone()
 
+    # Determine where to start accumulating gradients
+    if tbptt_window > 0 and tbptt_window < T:
+        grad_start = T - tbptt_window
+    else:
+        grad_start = 0
+
     per_step_losses = []
     component_sums: dict[str, float] = {}
 
@@ -99,14 +114,24 @@ def rollout(
         Vm_t = segment['Vm'][:, t]
         dt_t = segment['dt'][:, t]
 
+        # Detach state before the gradient window — forward pass continues
+        # but gradients don't flow back through early steps
+        if t == grad_start and grad_start > 0:
+            carried = carried.detach()
+            cond_lat_prev = cond_lat_prev.detach()
+            conc_prev = conc_prev.detach()
+
         # Forward pass
         out = model(carried, Vm_t, dt_t, cond_lat_prev, conc_prev)
 
         # Compute per-step loss components
         step_losses = compute_phase_loss(phase_name, out, segment, t)
-        per_step_losses.append(step_losses['loss'])
 
-        # Accumulate component losses
+        # Only accumulate loss for gradient steps (or all if no truncation)
+        if t >= grad_start:
+            per_step_losses.append(step_losses['loss'])
+
+        # Accumulate component losses for monitoring (all steps, detached)
         for k, v in step_losses.items():
             if k != 'loss':
                 component_sums[k] = component_sums.get(k, 0.0) + v.detach()
@@ -125,7 +150,7 @@ def rollout(
         'loss': mean_loss,
         'per_step_losses': per_step_losses,
     }
-    # Add mean component losses
+    # Add mean component losses (over ALL steps for monitoring)
     for k, v in component_sums.items():
         result[k] = v / T
 

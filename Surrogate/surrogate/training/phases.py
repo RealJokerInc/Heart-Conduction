@@ -31,6 +31,7 @@ class PhaseConfig:
     transition_threshold: Optional[float]
     patience: int
     max_epochs: int
+    tbptt_window: int = 0           # truncated BPTT: backprop only last N steps (0 = all)
 
 
 # Half 1 params
@@ -60,7 +61,7 @@ PHASE_CONFIGS = {
         trainable_params=_HALF1_PARAMS,
         loss_fn="ionic_state",
         data_tiers=[1],
-        batch_size=4096, lr=5e-4, weight_decay=1e-4,
+        batch_size=128, lr=5e-4, weight_decay=1e-4,
         rollout_length=100, subsample=300,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=200,
@@ -71,7 +72,7 @@ PHASE_CONFIGS = {
         trainable_params=_HALF1_PARAMS,
         loss_fn="ionic_state",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=300, subsample=100,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=500,
@@ -82,20 +83,22 @@ PHASE_CONFIGS = {
         trainable_params=_HALF1_PARAMS,
         loss_fn="ionic_state",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=3000, subsample=10,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=500,
     ),
     # dt=0.01ms (subsample=1), rollout=30000, covers 300ms — original resolution
+    # tbptt_window=500: only backprop through last 500 steps (5ms), forward pass runs all 30K
     "A4": PhaseConfig(
         name="A4",
         trainable_params=_HALF1_PARAMS,
         loss_fn="ionic_state",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=30000, subsample=1,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
+        tbptt_window=500,
         patience=50, max_epochs=1000,
     ),
 
@@ -105,7 +108,7 @@ PHASE_CONFIGS = {
         trainable_params=_HALF2_PARAMS,
         loss_fn="ionic_state_and_conductance",
         data_tiers=[1],
-        batch_size=4096, lr=1e-3, weight_decay=1e-4,
+        batch_size=128, lr=1e-3, weight_decay=1e-4,
         rollout_length=100, subsample=300,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=200,
@@ -115,7 +118,7 @@ PHASE_CONFIGS = {
         trainable_params=_HALF2_PARAMS,
         loss_fn="ionic_state_and_conductance",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=300, subsample=100,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=500,
@@ -125,7 +128,7 @@ PHASE_CONFIGS = {
         trainable_params=_HALF2_PARAMS,
         loss_fn="ionic_state_and_conductance",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=3000, subsample=10,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=500,
@@ -135,10 +138,11 @@ PHASE_CONFIGS = {
         trainable_params=_HALF2_PARAMS,
         loss_fn="ionic_state_and_conductance",
         data_tiers=[1],
-        batch_size=4096, lr=1e-4, weight_decay=1e-4,
+        batch_size=128, lr=1e-4, weight_decay=1e-4,
         rollout_length=30000, subsample=1,
         transition_metric="val_ionic_state_mse", transition_threshold=None,
         patience=50, max_epochs=1000,
+        tbptt_window=500,
     ),
 
     # === C: Stage 2, D: end-to-end ===
@@ -147,7 +151,7 @@ PHASE_CONFIGS = {
         trainable_params=["stage2.*"],
         loss_fn="I_ion",
         data_tiers=[1],
-        batch_size=4096, lr=1e-3, weight_decay=1e-3,
+        batch_size=128, lr=1e-3, weight_decay=1e-3,
         rollout_length=3000, subsample=10,
         transition_metric="val_I_ion_mse", transition_threshold=1e-3,
         patience=20, max_epochs=300,

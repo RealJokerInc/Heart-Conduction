@@ -234,12 +234,13 @@ class SurrogateTrainer:
         return losses
 
     def _rollout_step(self, phase: PhaseConfig, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Phase B2-E: autoregressive rollout over segments."""
+        """Autoregressive rollout over segments. Supports truncated BPTT."""
         return rollout(
             model=self.model,
             segment=batch,
             phase_name=phase.name,
             device=self.device,
+            tbptt_window=phase.tbptt_window,
         )
 
     @torch.no_grad()
@@ -319,7 +320,7 @@ class SurrogateTrainer:
 
         merged = merge_tier_datasets(datasets) if len(datasets) > 1 else datasets[0]
         shuffle = (split == 'train')
-        return DataLoader(merged, batch_size=phase.batch_size, shuffle=shuffle, drop_last=True)
+        return DataLoader(merged, batch_size=min(phase.batch_size, len(merged)), shuffle=shuffle, drop_last=False)
 
     def _save_checkpoint(self, tag: str, phase: PhaseConfig, epoch: int,
                          optimizer: AdamW, scheduler: CosineAnnealingLR, best_val_loss: float) -> None:
