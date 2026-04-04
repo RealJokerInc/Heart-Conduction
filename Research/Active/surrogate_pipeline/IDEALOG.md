@@ -5,12 +5,25 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Major design change**: Removed encoder entirely. Model discovers its own 16-dim latent through attention+MLP+scaffold decoder, not via external encoder. Phases A1 (autoencoder) and A3 (encoder-fed conductance) eliminated. Phase order now: A2→B1→B2→B3→B4→B5→C→D→E (9 phases). All rollouts start from zeros (steady state), purely autoregressive, no teacher forcing. B1 at rollout=1 IS the autoencoder — attention learns what the 16 dims mean from (zeros, Vm). B3 adds conductance compression once latent is stable. Gradient separation between ionic and concentration paths is natural due to per-dim attention structure — no masking needed.
+**dt curriculum** replaces rollout curriculum. Fix temporal coverage at ~300ms (one full AP), vary dt by subsampling existing T1 data. Phases renamed: A=Stage 1 (Half 1 ionic+conc, Half 2 conductance), B=Stage 2, C=end-to-end. Per-dim min-max loss normalization. Truncated BPTT (tbptt_window=500) for 30K-step phases. Cosine warm restarts (T_0=50, T_mult=2) for multiple breakthrough chances.
 
-Training progress: B1 (val=0.56, 30 epochs), B2 (val=1.68, 30 epochs), decoder recalibration (val=1.14). Per-component loss logging implemented (ionic_state_mse, conc_mse, conductance_mse, grad_norm). HDF5 training log on HDD with 14-column epoch schema.
+Training progress: dt curriculum A1(dt=3ms)→A2(dt=1ms)→A3(dt=0.1ms) completed. A3 val=0.92. A4 (dt=0.01ms, rollout=30K) running with TBPTT + warm restarts.
 
 ## Next Step
-B3 (rollout=100, +conductance compression, +T2 data). Then B4 (rollout=1000) and B5 (rollout=10000).
+A4 running with TBPTT + warm restarts (1000 epochs, manual kill). After A4 converges, B1-B4 (same dt curriculum for conductance compression). Then C (Stage 2) and D (end-to-end).
+
+### 2026-04-04: dt curriculum + TBPTT + warm restarts
+- **dt curriculum**: Instead of increasing rollout at fixed dt=0.01ms, fix coverage at 300ms and vary dt. Subsample existing T1 data: dt=3ms(r=100)→dt=1ms(r=300)→dt=0.1ms(r=3000)→dt=0.01ms(r=30000). Same AP, different resolution. Model learns shape first (cheap), refines later. Replaces entire rollout=1→10→100→1K→10K curriculum.
+- **Phase rename**: A=Stage 1 (A1-A4 Half 1 ionic, B1-B4 Half 2 conductance), C=Stage 2, D=end-to-end. Cleaner mapping to what's being trained.
+- **Min-max loss normalization**: Per-dim normalization to [0,1] using physiological ranges from ALL tiers. Replaces variance normalization. Every dim contributes equally — Ca_i (0.0001 mM) gets same weight as K_i (138 mM). Ranges with 10-20% safety margin.
+- **Batch size lesson**: 32768 doesn't learn (too few optimizer steps). 4096 with scaled LR (4e-3) explodes. Batch=4096, LR=5e-4/1e-4 is the proven config. Don't chase GPU utilization.
+- **dt curriculum results**: A1(dt=3ms) unstable but learned. A2(dt=1ms) val=1.15. A3(dt=0.1ms) val=0.92. Progressive improvement through the dt stages.
+- **A4 struggle**: dt=0.01ms, rollout=30K. Train~870, val~840 at epoch 58. The 30K autoregressive steps compound errors. Grad norms in millions.
+- **Truncated BPTT**: Forward pass runs all 30K steps. Gradients only through last 500 (5ms). Detach earlier steps. Model sees full trajectory but gradient chain is short and stable.
+- **Cosine warm restarts**: T_0=50, T_mult=2. Multiple chances at the "breakthrough" we observe — model oscillates chaotically then suddenly drops. Warm restarts give periodic high-LR exploration to find these transitions.
+- **Breakthrough dynamics**: Autoregressive training has tipping points. Bad predictions at early steps corrupt the whole rollout → incoherent gradients → chaos. Once early steps stabilize → positive feedback → rapid convergence. This explains the sudden loss drops we see.
+- **Short BCL only**: AP shape is ~300ms regardless of BCL. Long BCL just adds boring diastole. Train on BCL=300-500.
+- **Two-half training**: A phases (Half 1: attention+MLP+ionic decoder), B phases (Half 2: conductance compression+decoder, Half 1 frozen). Same dt curriculum for both.
 
 ### 2026-04-03: Encoder removed + first real training (B1→B2)
 - **Encoder removed**: User insight — the model should discover its own latent, not have it imposed by an external encoder. The encoder was creating a mapping that the attention couldn't reproduce. Phases A1 (autoencoder) and A3 (encoder-fed conductance) eliminated. encoder.py deleted.
@@ -150,6 +163,10 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | External encoder for latent bootstrapping (A1) | Encoder imposes a latent space the model didn't discover. With rollout=1 from zeros, the model can't distinguish upstroke from repolarization at same Vm — but that's the correct limitation (history-dependent). The model should discover its own representation through dynamics training, not have it dictated by an encoder. Removed 2026-04-03. |
 | Separate A2 phase for concentration attention | Unnecessary — concentration loss is naturally separated in the per-dim attention structure. Combined ionic+conc loss in B1 trains both paths simultaneously without gradient interference. W_k/W_v shared (same Vm), W_q/W_out rows naturally separated. |
 | Teacher forcing via encoder in Phase B | Without an encoder, there's nothing to teacher-force with. Purely autoregressive from step 1. The contractive attention mechanism provides natural error correction (gate≈1 when far from target). |
+| Batch=32768 for GPU utilization | Too few optimizer steps per epoch (49 batches for rollout=10). Model barely learns. LR scaling (8x) to compensate causes explosions. Batch=4096 is the sweet spot — enough steps, stable gradients. |
+| Variance normalization (MSE/Var) | Treats all dims within a component equally. K_i (var=0.018) still drowns Ca_i (var=1e-9) within conc_mse. Per-dim min-max is better — every dim mapped to [0,1] independently. |
+| Standalone decoder recalibration (B2_decoder) | Decoder trained on frozen latent becomes stale when latent shifts in next phase. Always co-train encoder and decoder. |
+| Rollout curriculum at fixed dt=0.01ms (1→10→100→1K→10K) | Slow and expensive. dt curriculum (3ms→1ms→0.1ms→0.01ms at fixed 300ms coverage) achieves same temporal coverage much cheaper. Rollout=100 at dt=3ms sees the same AP as rollout=30K at dt=0.01ms. |
 
 ## Session Log
 | Date | Session | Work Done |
