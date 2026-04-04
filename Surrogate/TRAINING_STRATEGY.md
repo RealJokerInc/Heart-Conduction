@@ -12,33 +12,75 @@
 > Loss: per-dim min-max normalized MSE (all dims mapped to [0,1]).
 > Batch size: 32768 (GPU massively underutilized at smaller batches).
 
-9 phases: **A1, A1.5, A2, A2.5, A3, A4, A5, B, C**.
+## Phase Structure
+
+**A phases** = Stage 1 Half 1 (attention + ionic MLP + ionic decoder + concentration)
+**B phases** = Stage 1 Half 2 (conductance compression + decoder), Half 1 frozen
+**C phase**  = Stage 2 (current readout), Stage 1 frozen
+**D phase**  = End-to-end fine-tune, all params
+
+### dt Curriculum (replaces rollout curriculum)
+
+Instead of increasing rollout length at fixed dt=0.01ms, we fix the temporal
+coverage (~300ms = one full AP) and vary dt. Same physics, same AP shape,
+different temporal resolution. The model learns the overall AP shape first
+(cheap, coarse dt), then refines to fine dynamics (expensive, fine dt).
+
+Subsample existing T1 traces by stride N, set dt = N × 0.01ms:
 
 ```
-A1:   Half 1 (attention+MLP+ionic decoder), rollout=1   — latent discovery
-A1.5: Half 1, rollout=10                                 — self-consistency
-A2:   Half 2 (conductance compression+decoder), rollout=1 — gate products (Half 1 frozen)
-A2.5: Half 2, rollout=10                                  — conductance tracking
-A3:   ALL Stage 1, rollout=100                            — combine halves
-A4:   ALL Stage 1, rollout=1000                           — long sequences
-A5:   ALL Stage 1, rollout=10000                          — full action potential
-B:    Stage 2 only (frozen Stage 1), I_ion loss           — current readout
-C:    ALL params, I_ion loss                              — end-to-end fine-tune
+A1:  dt=3.0ms,   rollout=100,  covers 300ms — AP shape, coarse      [warmup]
+A2:  dt=1.0ms,   rollout=300,  covers 300ms — more detail
+A3:  dt=0.1ms,   rollout=3000, covers 300ms — fine dynamics
+A4:  dt=0.01ms,  rollout=30000,covers 300ms — full resolution        [original dt]
+
+B1:  dt=3.0ms,   rollout=100   — conductance (same protocol as A1, Half 1 frozen)
+B2:  dt=1.0ms,   rollout=300   — conductance
+B3:  dt=0.1ms,   rollout=3000  — conductance
+B4:  dt=0.01ms,  rollout=30000 — conductance
+
+C:   Stage 2 regression on frozen Stage 1 features, I_ion loss
+D:   End-to-end fine-tune, all params
 ```
 
-**Two halves of Stage 1:**
+**Key insight**: rollout=100 at dt=3.0ms sees the SAME AP as rollout=30000 at
+dt=0.01ms. The model learns the overall shape cheaply, then refines. No need for
+rollout=10000 at dt=0.01 when rollout=100 at dt=3.0 covers the same 300ms.
+
+### Data: single AP from short BCL
+
+Train on BCL=300-500ms traces. The AP is ~300ms regardless of BCL — longer BCL
+just adds diastole (Vm≈-85, trivial). Skip long BCL to avoid wasting steps on
+"do nothing" portions.
+
+Subsampling: take every Nth timestep from existing T1 data (dt=0.01ms).
+Ground truth ionic states at those timesteps are already in the data. No new
+data generation needed.
+
+### Two halves of Stage 1
+
 ```
 Half 1:  carried_state → VoltageAttention → split → ionic_mixing_mlp → ionic_new
 Half 2:  carried_state_new → gate_conductance_mlp + linear → conductance_latent
 ```
 
-Each half trained to stability at rollout=1, then rollout=10, before combining at rollout=100.
+A phases train Half 1. B phases train Half 2 (Half 1 frozen). Same dt curriculum
+for both — the only difference is which parameters are trainable.
 
-**Principles:**
-- Change one variable at a time (rollout OR params, not both)
-- Always train encoder and decoder together (decoder on frozen latent becomes stale)
-- Larger batch = more stable gradients (bad rollouts get diluted)
-- Lower LR for rollout phases (1e-4 not 5e-4) — model adapts to self-consistency slowly
+### Initialization
+
+All rollouts start from zeros carried_state (= resting state). The model
+hard-associates zeros latent with steady state. During diastole in long
+simulations, the latent naturally returns toward zeros, preventing drift.
+
+### Principles
+
+- **dt curriculum over rollout curriculum**: vary dt to control temporal coverage, not rollout length
+- **One AP is enough**: the AP shape is universal across BCLs, only diastole differs
+- **Change one variable at a time**: dt OR params, not both
+- **Always train encoder and decoder together**: decoder on frozen latent becomes stale
+- **Batch=4096, LR=5e-4 (warmup) or 1e-4 (dt curriculum)**: proven config, don't chase GPU utilization
+- **Cosine LR decay**: long epochs (500-1000) for fine dt phases
 
 ---
 
