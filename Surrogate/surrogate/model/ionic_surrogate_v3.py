@@ -153,9 +153,10 @@ class IonicSurrogateV3(nn.Module):
             f"Expected conc_prev dim {self.conc_dim}, got {conc_prev.shape[-1]}"
         )
 
-        # --- Stage 1: state evolution (produces t+1 outputs) ---
+        # --- Stage 1: compression + scaffold (no dynamics — state advanced by IonicNODE) ---
+        # dt kept in V3 signature for backward compat but not passed to Stage1
         cs_new, cond_new, conc_new, ionic_state_pred, conductance_pred = self.stage1(
-            carried_state, Vm, dt
+            carried_state, Vm
         )
 
         # --- Nernst on PREV concentrations ---

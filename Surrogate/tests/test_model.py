@@ -109,18 +109,15 @@ class TestStage1:
         B = 32
         carried = torch.randn(B, 20)
         Vm = torch.randn(B)
-        dt = torch.full((B,), 0.01)
 
-        cs_new, cond_lat, conc_new, gf, gc = model(carried, Vm, dt)
-        assert cs_new.shape == (B, 20)
+        cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
+        assert cs_out.shape == (B, 20)
         assert cond_lat.shape == (B, 8)
         assert conc_new.shape == (B, 4)
         assert gf.shape == (B, 14)
         assert gc.shape == (B, 5)
-        # All float32
-        assert cs_new.dtype == torch.float32
-        assert cond_lat.dtype == torch.float32
-        assert conc_new.dtype == torch.float32
+        # forward() returns carried_state unchanged (no dynamics)
+        assert torch.allclose(cs_out, carried)
 
     def test_stage1_unbatched(self):
         """Unbatched (20,) input produces 1D output shapes."""
@@ -129,10 +126,9 @@ class TestStage1:
         model = IonicStage1()
         carried = torch.randn(20)
         Vm = torch.tensor(0.0)
-        dt = torch.tensor(0.01)
 
-        cs_new, cond_lat, conc_new, gf, gc = model(carried, Vm, dt)
-        assert cs_new.shape == (20,)
+        cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
+        assert cs_out.shape == (20,)
         assert cond_lat.shape == (8,)
         assert conc_new.shape == (4,)
         assert gf.shape == (14,)
@@ -141,7 +137,7 @@ class TestStage1:
     def test_stage1_contractivity(self):
         """Attention contracts: ||z_mid - target|| < ||carried - target||.
 
-        For sigmoid gate in (0,1), the interpolation
+        For sigmoid gate in (0,1), the update
         mid = prev + gate*(target - prev) always moves closer to target.
         """
         from surrogate.model.stage1 import IonicStage1
@@ -153,11 +149,10 @@ class TestStage1:
         B = 100
         carried = torch.randn(B, 20)
         Vm = torch.randn(B)
-        dt = torch.full((B,), 0.01)
 
         with torch.no_grad():
-            z_mid = model.voltage_attention(carried, Vm, dt)
-            x = torch.stack([Vm, dt], dim=-1)
+            z_mid = model.voltage_attention(carried, Vm)
+            x = Vm.unsqueeze(-1)
             v = model.voltage_attention.W_v(x)
             target = v @ model.voltage_attention.W_out
 
@@ -167,7 +162,7 @@ class TestStage1:
         assert (dist_after < dist_before).all()
 
     def test_stage1_alpha_zero(self):
-        """ionic_mixing_logit=-100 (sigmoid~0) makes ionic_new ~ ionic_mid (pure residual)."""
+        """ionic_mixing_logit=-100 (sigmoid~0): dzdt ionic rate ~ attention delta."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
@@ -177,24 +172,24 @@ class TestStage1:
         torch.manual_seed(7)
         carried = torch.randn(8, 20)
         Vm = torch.randn(8)
-        dt = torch.full((8,), 0.01)
 
         with torch.no_grad():
-            cs_new, _, _, _, _ = model(carried, Vm, dt)
+            dz = model.dzdt(carried, Vm)
 
-        # Recompute ionic_mid from attention to compare
+        # Recompute attention delta to compare
         with torch.no_grad():
-            z_mid = model.voltage_attention(carried, Vm, dt)
-            ionic_mid = z_mid[:, :16]
+            z_mid = model.voltage_attention(carried, Vm)
+            delta = z_mid - carried
+            ionic_delta = delta[:, :16]
 
-        # With alpha~0, ionic_new should be nearly identical to ionic_mid
-        ionic_new = cs_new[:, :16]
-        assert torch.allclose(ionic_new, ionic_mid, atol=1e-5), (
-            f"Max diff: {(ionic_new - ionic_mid).abs().max():.2e}"
+        # With alpha~0, ionic rate should be nearly identical to attention delta
+        ionic_rate = dz[:, :16]
+        assert torch.allclose(ionic_rate, ionic_delta, atol=1e-5), (
+            f"Max diff: {(ionic_rate - ionic_delta).abs().max():.2e}"
         )
 
     def test_stage1_beta_zero(self):
-        """gate_conductance_logit=-100 (sigmoid~0) makes cond_lat ~ gate_conductance_linear @ carried_state (linear bypass)."""
+        """gate_conductance_logit=-100 (sigmoid~0) makes cond_lat ~ linear path."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
@@ -204,24 +199,23 @@ class TestStage1:
         torch.manual_seed(7)
         carried = torch.randn(8, 20)
         Vm = torch.randn(8)
-        dt = torch.full((8,), 0.01)
 
         with torch.no_grad():
-            cs_new, cond_lat, _, _, _ = model(carried, Vm, dt)
+            _, cond_lat, _, _, _ = model(carried, Vm)
 
-        # Compare against linear bypass of the FULL carried_state output
+        # Compare against linear path of carried_state (forward doesn't advance state)
         with torch.no_grad():
-            expected = model.gate_conductance_linear(cs_new)
+            expected = model.gate_conductance_linear(carried)
 
         assert torch.allclose(cond_lat, expected, atol=1e-5), (
             f"Max diff: {(cond_lat - expected).abs().max():.2e}"
         )
 
     def test_stage1_conc_no_mlp(self):
-        """Concentrations are unchanged by MLP modifications.
+        """Concentration rate is unchanged by MLP modifications.
 
-        MLP only applies to ionic dims. Concentration dims pass through
-        attention only. Changing MLP weights should not affect conc_new.
+        MLP only applies to ionic dims. Concentration dims use attention delta
+        only. Changing MLP weights should not affect conc rate in dzdt.
         """
         from surrogate.model.stage1 import IonicStage1
 
@@ -229,10 +223,10 @@ class TestStage1:
         torch.manual_seed(42)
         carried = torch.randn(8, 20)
         Vm = torch.randn(8)
-        dt = torch.full((8,), 0.01)
 
         with torch.no_grad():
-            _, _, conc1, _, _ = model(carried, Vm, dt)
+            dz1 = model.dzdt(carried, Vm)
+            conc_rate1 = dz1[:, 16:]
 
         # Drastically change MLP weights
         with torch.no_grad():
@@ -242,11 +236,12 @@ class TestStage1:
             model.ionic_mixing_mlp[2].bias.fill_(99.0)
 
         with torch.no_grad():
-            _, _, conc2, _, _ = model(carried, Vm, dt)
+            dz2 = model.dzdt(carried, Vm)
+            conc_rate2 = dz2[:, 16:]
 
-        assert torch.allclose(conc1, conc2, atol=1e-7), (
-            f"Concentration changed after MLP modification: max diff = "
-            f"{(conc1 - conc2).abs().max():.2e}"
+        assert torch.allclose(conc_rate1, conc_rate2, atol=1e-7), (
+            f"Concentration rate changed after MLP modification: max diff = "
+            f"{(conc_rate1 - conc_rate2).abs().max():.2e}"
         )
 
     def test_stage1_param_count(self):
@@ -256,7 +251,7 @@ class TestStage1:
         model = IonicStage1()
 
         # Inference params (no scaffolds)
-        # W_q: 20*4=80, W_k: 2*4=8, W_v: 2*4=8, W_out: 4*20=80
+        # W_q: 20*4=80, W_k: 1*4=4, W_v: 1*4=4, W_out: 4*20=80
         # ionic_mixing_mlp[0]: 16*16+16=272, ionic_mixing_mlp[2]: 16*16+16=272
         # ionic_mixing_logit: 16
         # gate_conductance_linear: 20*8=160 (no bias)
@@ -264,8 +259,8 @@ class TestStage1:
         # gate_conductance_logit: 8
         expected_inference = (
             20 * 4         # W_q
-            + 2 * 4        # W_k
-            + 2 * 4        # W_v
+            + 1 * 4        # W_k (dt removed: was 2*4=8)
+            + 1 * 4        # W_v (dt removed: was 2*4=8)
             + 4 * 20       # W_out
             + 16 * 16 + 16 # ionic_mixing_mlp[0] weight + bias
             + 16 * 16 + 16 # ionic_mixing_mlp[2] weight + bias
@@ -276,7 +271,7 @@ class TestStage1:
             + 12 * 8 + 8   # gate_conductance_mlp[4] weight + bias
             + 8            # gate_conductance_logit
         )
-        assert expected_inference == 1416
+        assert expected_inference == 1408
         assert model.inference_param_count() == expected_inference
 
         # Scaffold params
@@ -286,7 +281,7 @@ class TestStage1:
 
         total = sum(p.numel() for p in model.parameters())
         assert total == expected_inference + expected_scaffold
-        assert total == 1699
+        assert total == 1691
 
     def test_stage1_remove_scaffold(self):
         """remove_scaffold() drops decoders. Second call is idempotent."""
@@ -296,13 +291,13 @@ class TestStage1:
         assert hasattr(model, "ionic_state_decoder")
         assert hasattr(model, "gate_conductance_decoder")
         total_before = sum(p.numel() for p in model.parameters())
-        assert total_before == 1699
+        assert total_before == 1691
 
         model.remove_scaffold()
         assert not hasattr(model, "ionic_state_decoder")
         assert not hasattr(model, "gate_conductance_decoder")
         total_after = sum(p.numel() for p in model.parameters())
-        assert total_after == 1416
+        assert total_after == 1408
 
         # Idempotent -- no error on second call
         model.remove_scaffold()
@@ -312,40 +307,120 @@ class TestStage1:
         # Forward still works after scaffold removal
         carried = torch.randn(4, 20)
         Vm = torch.randn(4)
-        dt = torch.full((4,), 0.01)
-        cs_new, cond_lat, conc_new, gf, gc = model(carried, Vm, dt)
+        cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
         assert gf is None
         assert gc is None
 
     def test_stage1_gradient_flow(self):
-        """5-step rollout: loss.backward() completes with no NaN gradients."""
+        """dzdt + compression: loss.backward() completes with no NaN gradients."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-        carried = torch.zeros(8, 20)
-        Vm = torch.zeros(8)
-        dt = torch.full((8,), 0.01)
+        torch.manual_seed(99)
+        carried = torch.randn(8, 20)  # non-zero to avoid rms_norm div-by-zero
+        Vm = torch.randn(8)
 
-        gates_full_list = []
-        gates_comp_list = []
-        cond_list = []
-        for _ in range(5):
-            carried, cond_lat, conc, gf, gc = model(carried, Vm, dt)
-            gates_full_list.append(gf)
-            gates_comp_list.append(gc)
-            cond_list.append(cond_lat)
+        # Use dzdt for dynamics + forward for scaffold
+        dz = model.dzdt(carried, Vm)
+        carried_new = carried + 0.01 * dz  # Euler step
+        _, cond_lat, _, gf, gc = model(carried_new, Vm)
 
-        # Include all outputs in loss so all params get gradients
-        loss = (
-            torch.stack(gates_full_list).pow(2).mean()
-            + torch.stack(gates_comp_list).pow(2).mean()
-            + torch.stack(cond_list).pow(2).mean()
-        )
+        loss = dz.pow(2).mean() + gf.pow(2).mean() + gc.pow(2).mean() + cond_lat.pow(2).mean()
         loss.backward()
 
         for name, p in model.named_parameters():
             assert p.grad is not None, f"No grad for {name}"
             assert torch.isfinite(p.grad).all(), f"NaN/Inf grad in {name}"
+
+    def test_stage1_dzdt_shape(self):
+        """dzdt(z, V) returns same shape as z, float64 when input is float64."""
+        from surrogate.model.stage1 import IonicStage1
+
+        model = IonicStage1().double()
+        z = torch.randn(8, 20, dtype=torch.float64)
+        Vm = torch.randn(8, dtype=torch.float64)
+
+        dz = model.dzdt(z, Vm)
+        assert dz.shape == z.shape
+        assert dz.dtype == torch.float64
+        assert torch.isfinite(dz).all()
+
+        # Unbatched
+        dz_single = model.dzdt(z[0], Vm[0])
+        assert dz_single.shape == (20,)
+
+    def test_stage1_dzdt_numerical(self):
+        """At alpha~0 (init), dzdt ≈ voltage_attention(z, V) - z."""
+        from surrogate.model.stage1 import IonicStage1
+
+        model = IonicStage1()
+        # Alpha is already near zero at init (ALPHA_INIT=-5.0, sigmoid(-5)≈0.007)
+        torch.manual_seed(42)
+        z = torch.randn(16, 20)
+        Vm = torch.randn(16)
+
+        with torch.no_grad():
+            dz = model.dzdt(z, Vm)
+            z_mid = model.voltage_attention(z, Vm)
+            expected_delta = z_mid - z
+
+        # Ionic dims: dzdt ≈ delta + alpha*correction ≈ delta (alpha≈0.007)
+        assert torch.allclose(dz[:, :16], expected_delta[:, :16], atol=0.05), (
+            f"Max diff: {(dz[:, :16] - expected_delta[:, :16]).abs().max():.4f}"
+        )
+        # Conc dims: dzdt == delta exactly (no MLP)
+        assert torch.allclose(dz[:, 16:], expected_delta[:, 16:], atol=1e-7)
+
+    def test_stage1_forward_no_dynamics(self):
+        """forward() returns carried_state unchanged (compression + scaffold only)."""
+        from surrogate.model.stage1 import IonicStage1
+
+        model = IonicStage1()
+        torch.manual_seed(0)
+        carried = torch.randn(8, 20)
+        Vm = torch.randn(8)
+
+        with torch.no_grad():
+            cs_out, cond_lat, conc, gf, gc = model(carried, Vm)
+
+        # carried_state returned unchanged
+        assert torch.allclose(cs_out, carried)
+        # conc is just a slice of carried
+        assert torch.allclose(conc, carried[:, 16:])
+        # cond_lat, gf, gc are derived but carried is not modified
+        assert cond_lat.shape == (8, 8)
+        assert gf.shape == (8, 14)
+        assert gc.shape == (8, 5)
+
+    def test_residual_bypass(self):
+        """residual_bypass at extreme logits."""
+        from surrogate.model.stage1 import residual_bypass
+
+        base = torch.randn(8, 16)
+        correction = torch.randn(8, 16)
+
+        # alpha ≈ 0: output ≈ base
+        out_zero = residual_bypass(base, correction, torch.tensor([-100.0]))
+        assert torch.allclose(out_zero, base, atol=1e-4)
+
+        # alpha ≈ 1: output ≈ base + correction
+        out_one = residual_bypass(base, correction, torch.tensor([100.0]))
+        assert torch.allclose(out_one, base + correction, atol=1e-4)
+
+    def test_stage1_compress(self):
+        """_compress() produces correct shape and matches forward() output."""
+        from surrogate.model.stage1 import IonicStage1
+
+        model = IonicStage1()
+        carried = torch.randn(8, 20)
+        Vm = torch.randn(8)
+
+        with torch.no_grad():
+            cond_direct = model._compress(carried)
+            _, cond_fwd, _, _, _ = model(carried, Vm)
+
+        assert cond_direct.shape == (8, 8)
+        assert torch.allclose(cond_direct, cond_fwd)
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +567,7 @@ class TestV3:
             assert out[key].dtype == torch.float32, f"{key} dtype: {out[key].dtype}"
 
     def test_v3_autoregressive(self):
-        """5-step rollout: outputs feed back as inputs, backward no NaN."""
+        """5-step Euler rollout via dzdt: outputs feed back, backward no NaN."""
         from surrogate.model.ionic_surrogate_v3 import IonicSurrogateV3
 
         model = IonicSurrogateV3()
@@ -504,9 +579,12 @@ class TestV3:
         conductance_list = []
         cond_list = []
         for step in range(5):
+            # Advance state via dzdt (exercises attention + MLP + mixing logit)
+            dz = model.stage1.dzdt(carried, Vm)
+            carried = carried + 0.01 * dz  # Euler step
+
+            # Compression + scaffold + readout via V3 forward
             out = model(carried, Vm, dt, cond_lat_prev, conc_prev)
-            # Feed outputs back as next inputs
-            carried = out["carried_state"]
             cond_lat_prev = out["conductance_latent"]
             conc_prev = out["concentrations"]
             I_ions.append(out["I_ion"])
@@ -637,11 +715,11 @@ class TestV3:
         )
         assert model.inference_param_count() == expected
 
-        # Verify known values: stage1=1416 (compression input=carried_dim=20), stage2=118
-        assert model.stage1.inference_param_count() == 1416
+        # Verify known values: stage1=1408 (dt removed: W_k/W_v 1*4 not 2*4), stage2=118
+        assert model.stage1.inference_param_count() == 1408
         stage2_params = sum(p.numel() for p in model.stage2.parameters())
         assert stage2_params == 118
-        assert model.inference_param_count() == 1416 + 118  # = 1534
+        assert model.inference_param_count() == 1408 + 118  # = 1526
 
     def test_v3_no_import_cascade(self):
         """v3 model import doesn't break existing data imports."""

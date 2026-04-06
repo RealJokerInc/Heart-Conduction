@@ -1,16 +1,16 @@
 """Stage 1: Attention + MLP + Compression for ionic surrogate v3.
 
-State evolution engine (off critical path). Processes carried_state (ionic + conc)
-through n x 1 cross-attention to [Vm, dt], ionic mixing MLP on ionic dims only,
-and gate conductance compression to conductance latent.
+State evolution engine (off critical path). Neural ODE dynamics function.
 
-Architecture:
-    voltage_attention(CARRIED_DIM, d=ATTN_DIM)
-    -> split: ionic_mid (IONIC_DIM) + conc_new (CONC_DIM)
-    -> Pre-RMSNorm -> ionic_mixing_mlp(IONIC_DIM -> MLP_HIDDEN -> IONIC_DIM) -> interpolate
-    -> gate_conductance_mlp(CARRIED_DIM -> COMP_H1 -> COMP_H2 -> COND_DIM) + linear bypass -> interpolate
-    NOTE: compression takes FULL carried_state (ionic + conc), not just ionic.
-    Gives compression access to concentration context (e.g., Ca_ss for fCass-dependent conductances).
+dzdt(z, Vm) -> dz/dt:
+    voltage_attention(CARRIED_DIM, d=ATTN_DIM) to [Vm]
+    -> delta = z_mid - z (attention rate)
+    -> split: ionic_delta (IONIC_DIM) + conc_delta (CONC_DIM)
+    -> ionic: Pre-RMSNorm -> ionic_mixing_mlp -> residual_bypass(ionic_delta, correction)
+    -> cat([ionic_rate, conc_delta]) = dz/dt
+
+forward(z, Vm) -> compression + scaffold (no dynamics):
+    -> _compress(z) -> conductance_latent
     -> scaffold decoders (training only):
         ionic_state_decoder(IONIC_DIM -> N_IONIC_TARGETS): all recoverable ionic states
         gate_conductance_decoder(COND_DIM -> N_CONDUCTANCE_TARGETS): effective gate products
@@ -46,28 +46,29 @@ def rms_norm(x: Tensor) -> Tensor:
     return x / (x.pow(2).mean(-1, keepdim=True).sqrt() + 1e-8)
 
 
-def interpolate(residual: Tensor, correction: Tensor, logit: Tensor) -> Tensor:
-    """Learned residual interpolation. alpha=sigmoid(logit) blends residual and correction.
+def residual_bypass(base: Tensor, correction: Tensor, logit: Tensor) -> Tensor:
+    """Additive residual bypass. Identity path unconditional; correction adds on top.
 
-    alpha -> 0: pass residual unchanged. alpha -> 1: fully apply correction.
-    Sigmoid bounds alpha to (0,1), preventing amplification over recurrent steps.
+    alpha -> 0: pass base unchanged. alpha -> 1: add full correction to base.
+    For NODE: derivative = attention_rate + alpha * mlp_correction (clean additive sum).
     """
     alpha = torch.sigmoid(logit)
-    return (1 - alpha) * residual + alpha * correction
+    return base + alpha * correction
 
 
 class VoltageAttention(nn.Module):
     """Per-dim voltage-gated attention over carried state.
 
-    Each carried state dim independently queries [Vm, dt] to produce a gate
+    Each carried state dim independently queries [Vm] to produce a gate
     and target. Contractive update: z = old + gate * (target - old).
+    dt removed for NODE pivot — vector field f(z,V) must be dt-independent.
     """
 
     def __init__(self, carried_dim: int, attn_dim: int):
         super().__init__()
         self.W_q = nn.Parameter(torch.empty(carried_dim, attn_dim))
-        self.W_k = nn.Linear(2, attn_dim, bias=False)
-        self.W_v = nn.Linear(2, attn_dim, bias=False)
+        self.W_k = nn.Linear(1, attn_dim, bias=False)
+        self.W_v = nn.Linear(1, attn_dim, bias=False)
         self.W_out = nn.Parameter(torch.empty(attn_dim, carried_dim))
         self.scale = 1.0 / math.sqrt(attn_dim)
         xavier_uniform_(self.W_q)
@@ -75,8 +76,8 @@ class VoltageAttention(nn.Module):
         xavier_uniform_(self.W_v.weight)
         xavier_uniform_(self.W_out)
 
-    def forward(self, carried_state: Tensor, Vm: Tensor, dt: Tensor) -> Tensor:
-        x = torch.stack([Vm, dt], dim=-1)                              # (B, 2)
+    def forward(self, carried_state: Tensor, Vm: Tensor) -> Tensor:
+        x = Vm.unsqueeze(-1)                                           # (B, 1)
         k = self.W_k(x)                                                # (B, d)
         v = self.W_v(x)                                                # (B, d)
         q = torch.einsum('ij,jk->ijk', carried_state, self.W_q)       # (B, D, d)
@@ -167,20 +168,61 @@ class IonicStage1(nn.Module):
         xavier_uniform_(self.gate_conductance_mlp[2].weight)
         xavier_uniform_(self.gate_conductance_mlp[4].weight)
 
-    def forward(
-        self, carried_state: Tensor, Vm: Tensor, dt: Tensor
-    ) -> Tuple[Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor]]:
-        """Forward pass: one autoregressive step of state evolution.
+    def _compress(self, carried_state: Tensor) -> Tensor:
+        """Run gate conductance compression on carried_state. No dynamics."""
+        linear_path = self.gate_conductance_linear(carried_state)
+        nonlinear_path = self.gate_conductance_mlp(carried_state)
+        return residual_bypass(linear_path, nonlinear_path, self.gate_conductance_logit)
+
+    def dzdt(self, z: Tensor, Vm: Tensor) -> Tensor:
+        """Compute dz/dt for ODE integration. No compression, no scaffold decoders.
+
+        Returns a RATE (not a displacement). ODE solver integrates this;
+        Euler inference does z + dt * dzdt(z, V).
 
         Args:
-            carried_state: Previous carried state (B, carried_dim) or (carried_dim,).
+            z: carried_state (B, carried_dim) or (carried_dim,)
+            Vm: membrane voltage (B,) or scalar
+        Returns:
+            dz_dt: rate of change, same shape as z
+        """
+        squeezed = z.dim() == 1
+        if squeezed:
+            z = z.unsqueeze(0)
+            Vm = Vm.view(1)
+
+        z_mid = self.voltage_attention(z, Vm)           # z + gate*(target-z)
+        delta = z_mid - z                               # attention rate for all dims
+
+        ionic_delta = delta[:, :self.ionic_dim]
+        conc_delta = delta[:, self.ionic_dim:]
+
+        correction = self.ionic_mixing_mlp(rms_norm(z_mid[:, :self.ionic_dim]))
+        ionic_rate = residual_bypass(ionic_delta, correction, self.ionic_mixing_logit)
+
+        dz_dt = torch.cat([ionic_rate, conc_delta], dim=-1)
+
+        if squeezed:
+            dz_dt = dz_dt.squeeze(0)
+        return dz_dt
+
+    def forward(
+        self, carried_state: Tensor, Vm: Tensor
+    ) -> Tuple[Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor]]:
+        """Run compression + scaffold on carried_state. Does NOT advance state.
+
+        State advancement is done by IonicNODE.euler_step() or odeint_adjoint.
+        This method produces conductance_latent and scaffold predictions from
+        an already-advanced state.
+
+        Args:
+            carried_state: Carried state (B, carried_dim) or (carried_dim,).
             Vm: Membrane voltage (B,) or scalar.
-            dt: Time step (B,) or scalar.
 
         Returns:
-            carried_state_new: Updated carried state, same shape as input.
+            carried_state: Same as input (no dynamics).
             conductance_latent: Compressed gate conductance (B, cond_dim) or (cond_dim,).
-            concentrations_new: Updated concentrations (B, conc_dim) or (conc_dim,).
+            concentrations: Concentration slice (B, conc_dim) or (conc_dim,).
             ionic_state_pred: Ionic state decoder predictions, or None if no scaffold.
             conductance_pred: Conductance decoder predictions, or None if no scaffold.
         """
@@ -193,40 +235,23 @@ class IonicStage1(nn.Module):
         if squeezed:
             carried_state = carried_state.unsqueeze(0)
             Vm = Vm.view(1)
-            dt = dt.view(1)
 
-        # === Attention over all carried dims ===
-        z_mid = self.voltage_attention(carried_state, Vm, dt)
-
-        # === Split: ionic vs concentrations ===
-        ionic_mid = z_mid[:, :self.ionic_dim]
-        conc_new = z_mid[:, self.ionic_dim:]    # concentrations DONE (attention only)
-
-        # === Ionic mixing MLP (cross-dim communication, ionic dims only) ===
-        correction = self.ionic_mixing_mlp(rms_norm(ionic_mid))
-        ionic_new = interpolate(ionic_mid, correction, self.ionic_mixing_logit)
-
-        # === Recombine carried state ===
-        carried_state_new = torch.cat([ionic_new, conc_new], dim=-1)
+        ionic_new = carried_state[:, :self.ionic_dim]
+        conc_new = carried_state[:, self.ionic_dim:]
 
         # === Gate conductance compression (full carried_state → cond_dim) ===
-        linear_path = self.gate_conductance_linear(carried_state_new)
-        nonlinear_path = self.gate_conductance_mlp(carried_state_new)
-        conductance_latent = interpolate(linear_path, nonlinear_path, self.gate_conductance_logit)
+        conductance_latent = self._compress(carried_state)
 
         # === Scaffold decoders (training only) ===
         ionic_state_pred = None
         conductance_pred = None
         if hasattr(self, "ionic_state_decoder"):
-            # Decoder 1: ionic_state → full ionic set (no activation — gates are
-            # naturally [0,1] from training targets, Ca_SR is unbounded concentration)
             ionic_state_pred = self.ionic_state_decoder(ionic_new)
-            # Decoder 2: conductance_latent → effective gate products (no sigmoid — products are unbounded)
             conductance_pred = self.gate_conductance_decoder(conductance_latent)
 
         # Restore unbatched shape
         if squeezed:
-            carried_state_new = carried_state_new.squeeze(0)
+            carried_state = carried_state.squeeze(0)
             conductance_latent = conductance_latent.squeeze(0)
             conc_new = conc_new.squeeze(0)
             if ionic_state_pred is not None:
@@ -234,7 +259,7 @@ class IonicStage1(nn.Module):
                 conductance_pred = conductance_pred.squeeze(0)
 
         return (
-            carried_state_new,
+            carried_state,
             conductance_latent,
             conc_new,
             ionic_state_pred,
