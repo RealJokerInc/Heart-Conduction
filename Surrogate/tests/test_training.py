@@ -880,3 +880,127 @@ class TestAgentDefinition:
         assert 'Analysis Checklist' in content
         assert 'Intervention Protocol' in content
         assert 'Output Format' in content
+
+
+# ============================================================================
+# NODE Rollout Tests (Phase 3)
+# ============================================================================
+
+class TestNodeRollout:
+    """Tests for the Neural ODE training rollout."""
+
+    def _make_node(self):
+        from surrogate.model.stage1 import IonicStage1
+        from surrogate.model.node import IonicNODE
+        stage1 = IonicStage1(scaffold=True).double()
+        return IonicNODE(stage1)
+
+    def _make_segment(self, B=4, T=3000):
+        """Fake segment covering ~300ms at dt=0.1ms."""
+        return {
+            'Vm': torch.randn(B, T, dtype=torch.float64) * 10 - 80,
+            'dt': torch.full((B, T), 0.1, dtype=torch.float64),
+            'ionic_states': torch.rand(B, T, 14, dtype=torch.float64),
+            'concentrations': torch.rand(B, T, 4, dtype=torch.float64).abs() + 0.0001,
+            'conductance_products': torch.rand(B, T, 5, dtype=torch.float64),
+        }
+
+    def test_node_rollout_runs(self):
+        """node_rollout completes and returns dict with 'loss'."""
+        from surrogate.training.node_rollout import node_rollout
+        node = self._make_node()
+        seg = self._make_segment(B=2, T=100)  # short for speed
+        out = node_rollout(node, seg, 'A1')
+        node.clear_v_trajectory()
+        assert 'loss' in out
+        assert out['loss'].dim() == 0  # scalar
+
+    def test_node_rollout_backward(self):
+        """loss.backward() runs, gradients exist on stage1 params, norm finite."""
+        from surrogate.training.node_rollout import node_rollout
+        node = self._make_node()
+        seg = self._make_segment(B=2, T=100)
+        out = node_rollout(node, seg, 'A1')
+        out['loss'].backward()
+        node.clear_v_trajectory()
+        gnorm = sum(
+            p.grad.norm().item()
+            for p in node.stage1.parameters()
+            if p.grad is not None
+        )
+        assert gnorm > 0, "Zero gradient norm"
+        assert torch.isfinite(torch.tensor(gnorm)), "Non-finite gradient norm"
+
+    def test_node_rollout_loss_finite(self):
+        """Loss is finite float64 scalar."""
+        from surrogate.training.node_rollout import node_rollout
+        node = self._make_node()
+        seg = self._make_segment(B=2, T=100)
+        out = node_rollout(node, seg, 'A1')
+        node.clear_v_trajectory()
+        assert out['loss'].dtype == torch.float64
+        assert torch.isfinite(out['loss'])
+
+    def test_node_rollout_phase_names(self):
+        """A1, B1 accepted; C raises NotImplementedError."""
+        from surrogate.training.node_rollout import node_rollout
+        node = self._make_node()
+        seg = self._make_segment(B=2, T=100)
+
+        # A1 works
+        out_a1 = node_rollout(node, seg, 'A1')
+        node.clear_v_trajectory()
+        assert 'loss' in out_a1
+
+        # B1 works
+        out_b1 = node_rollout(node, seg, 'B1')
+        node.clear_v_trajectory()
+        assert 'loss' in out_b1
+
+        # C raises
+        with pytest.raises(NotImplementedError):
+            node_rollout(node, seg, 'C')
+        node.clear_v_trajectory()
+
+    def test_node_rollout_z0_noise(self):
+        """z0_noise_sigma>0 in training mode produces different loss than sigma=0."""
+        from surrogate.training.node_rollout import node_rollout
+        node = self._make_node()
+        node.train()
+        seg = self._make_segment(B=2, T=100)
+
+        torch.manual_seed(0)
+        out_no_noise = node_rollout(node, seg, 'A1', z0_noise_sigma=0.0)
+        loss_clean = out_no_noise['loss'].item()
+        node.clear_v_trajectory()
+
+        torch.manual_seed(0)
+        out_noise = node_rollout(node, seg, 'A1', z0_noise_sigma=0.01)
+        loss_noisy = out_noise['loss'].item()
+        node.clear_v_trajectory()
+
+        assert loss_clean != loss_noisy, "Noise should change the loss"
+
+    def test_build_t_grid_cumulative(self):
+        """t_grid[0]=0, t_grid[-1]=sum(dt), shape=(T+1,)."""
+        from surrogate.training.node_rollout import build_t_grid
+        dt = torch.full((4, 100), 0.1, dtype=torch.float64)
+        t_grid = build_t_grid(dt)
+        assert t_grid.shape == (101,)
+        assert t_grid[0] == 0.0
+        assert torch.allclose(t_grid[-1], torch.tensor(10.0, dtype=torch.float64))
+
+    def test_interpolate_v_boundary(self):
+        """V interpolation at t beyond V_traj range clamps correctly."""
+        from surrogate.model.node import IonicNODE
+        from surrogate.model.stage1 import IonicStage1
+        node = IonicNODE(IonicStage1().double())
+        V_traj = torch.tensor([[1.0, 2.0, 3.0]], dtype=torch.float64)
+        t_grid = torch.tensor([0.0, 0.1, 0.2, 0.3], dtype=torch.float64)
+        node.set_v_trajectory(V_traj, t_grid)
+
+        # Beyond V_traj range (t=0.3 maps to t_grid[3] but V only has 3 points)
+        V_end = node._interpolate_V(torch.tensor(0.2, dtype=torch.float64))
+        assert torch.isfinite(V_end).all()
+        assert torch.allclose(V_end, torch.tensor([3.0], dtype=torch.float64))
+        node.clear_v_trajectory()
