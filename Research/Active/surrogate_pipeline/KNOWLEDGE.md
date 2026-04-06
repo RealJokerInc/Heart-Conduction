@@ -285,25 +285,28 @@ Total FLOPs are ~1× ORd. Acceptable because Stage 2 is the ONLY thing on the cr
 - **GELU in output MLP:** Allows nonlinear channel interaction. Kirchhoff says currents sum linearly, but our 16 conductance dims are learned (not literal channels) -- their combination may benefit from nonlinearity.
 - **Input normalization (required):** Environment tokens have wildly different scales (K_i ~ 138 mM vs Ca_i ~ 0.0001 mM -- six orders of magnitude). Without normalization, low-magnitude tokens (Ca_i, Ca_ss) are invisible to attention (key magnitude ≈ 0). All 9 environment inputs normalized to ~[-1, 1] using known physiological ranges before embedding. 18 fixed constants (9 shifts + 9 scales), not learned. Conductance latent scale is controlled by compression -- normalize if needed.
 
-### Training Strategy (v3, revised)
+### Training Strategy (v3) — Status: Discrete Autoregressive ABANDONED
 
-Single loss per phase, no weighting. Each phase trains one thing.
+> The discrete autoregressive approach was abandoned after A4 (native dt, 30K steps) failed to converge.
+> Pivoting to Latent Neural ODE. The v3 architecture (attention + MLP) may serve as the ODE dynamics function.
+> See TRAINING_STRATEGY.md for authoritative current plan.
 
-| Phase | What trains | Loss | Data |
-|---|---|---|---|
-| A1 | Ionic autoencoder (encoder 14→16, decoder=ionic_state_decoder 16→14) | MSE(decoded, true_14_states) | T1 state snapshots |
-| A2 | Attention concentration tracking | MSE(conc_attention_output, true_conc_next) | T1 traces |
-| A3 | Gate conductance projection (gate_conductance_mlp + linear + logit + decoder) | MSE(decoded, true_5_products) | T1 carried_state vectors |
-| B1-B5 | Stage 1 dynamics (attention + ionic_mixing_mlp) | MSE(ionic_state_pred, true_14_states) | T1→T1+T2→T1-T3 |
-| C | Concentration dynamics added | MSE(conc, true_conc) | T1-T3 |
-| D | Stage 2 (frozen Stage 1) | MSE(I_ion_pred, I_ion_true) | T1-T4 |
-| E | End-to-end fine-tune | MSE(I_ion) | T1-T4 |
+**What was tried and what worked:**
 
-Rollout curriculum in Phase B: 1→10→100→1000→10000 steps. Scheduled sampling ramps model predictions from 10%→100%. Transition when val loss plateaus.
+| Approach | Result |
+|---|---|
+| dt curriculum (subsample T1 at 3ms→1ms→0.1ms→0.01ms, fixed 300ms coverage) | A1-A3 worked. A3 (dt=0.1ms, r=3000) val=0.92. A4 (dt=0.01ms, r=30000) stuck at val~720. |
+| Per-dim min-max loss normalization | Essential. Without it, K_i (138 mM) drowns Ca_i (0.0001 mM). |
+| Truncated BPTT (window=500 on 30K rollout) | Did not help A4. Window may be too narrow (5ms of gradient for 300ms trajectory). |
+| Cosine warm restarts (T_0=50, T_mult=2) | No breakthrough after 2 full cycles at A4. |
+| No encoder — model discovers own latent | Correct decision. Encoder imposed wrong latent space. |
+| Two-half training (ionic then conductance) | Sound approach. Not fully tested due to A4 failure. |
 
-Initialization: ionic latent = zeros (model discovers own representation), concentrations = real resting values [Na_i≈10, K_i≈138, Ca_i≈0.0001, Ca_ss≈0.0002] (Layer 0 physics). Not from TTP06 encoder — avoids imprinting model assumptions on latent.
+**Core issue: latent instability over long discrete rollouts.** At native dt (0.01ms), 30K autoregressive steps compound prediction errors faster than the model learns to correct them. Error at step N corrupts steps N+1 through 30K, producing incoherent gradients. This is structural — not fixable by hyperparameter tuning, TBPTT, or LR schedules. A continuous ODE formulation (dz/dt = f(z, Vm)) avoids discrete error accumulation entirely.
 
-Optimizer: AdamW, cosine LR decay per phase, gradient clipping max_norm=1.0. T12 (celltypes) enters at Phase B.
+Initialization: ionic latent = zeros (model discovers own representation), concentrations = real resting values [Na_i≈10, K_i≈138, Ca_i≈0.0001, Ca_ss≈0.0002] (Layer 0 physics).
+
+Optimizer: AdamW, batch=4096, LR=5e-4 (warmup) or 1e-4 (rollout), gradient clipping max_norm=1.0.
 
 ### Multi-Model Conditioning (planned)
 
