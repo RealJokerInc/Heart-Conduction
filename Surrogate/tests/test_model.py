@@ -725,4 +725,97 @@ class TestV3:
         """v3 model import doesn't break existing data imports."""
         from surrogate.data.storage import TraceStorage  # noqa: F401
         from surrogate.model import IonicSurrogateV3  # noqa: F401
+        from surrogate.model import IonicNODE  # noqa: F401
         from surrogate.model.ionic_surrogate_v3 import IonicSurrogateV3 as V3  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# IonicNODE tests (Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestIonicNODE:
+    """Tests for the IonicNODE torchdiffeq wrapper."""
+
+    def _make_node(self):
+        from surrogate.model.stage1 import IonicStage1
+        from surrogate.model.node import IonicNODE
+        stage1 = IonicStage1(scaffold=True).double()
+        return IonicNODE(stage1)
+
+    def test_ionic_node_euler_shape(self):
+        """euler_step(z, V, dt) returns same shape as z, float64, finite."""
+        node = self._make_node()
+        z = torch.randn(8, 20, dtype=torch.float64)
+        V = torch.randn(8, dtype=torch.float64)
+        z_next = node.euler_step(z, V, 0.01)
+        assert z_next.shape == z.shape
+        assert z_next.dtype == torch.float64
+        assert torch.isfinite(z_next).all()
+
+    def test_ionic_node_euler_variable_dt(self):
+        """Euler at dt=0.01, 0.1, 1.0 all produce finite output."""
+        node = self._make_node()
+        z = torch.randn(4, 20, dtype=torch.float64)
+        V = torch.randn(4, dtype=torch.float64)
+        for dt in [0.01, 0.1, 1.0]:
+            z_next = node.euler_step(z, V, dt)
+            assert torch.isfinite(z_next).all(), f"Non-finite at dt={dt}"
+
+    def test_ionic_node_integrate_shape(self):
+        """integrate(z0, t_eval) returns (N, B, D) with correct dims."""
+        node = self._make_node()
+        B = 4
+        z0 = torch.randn(B, 20, dtype=torch.float64)
+        V_traj = torch.randn(B, 100, dtype=torch.float64)
+        t_grid = torch.linspace(0, 1.0, 101, dtype=torch.float64)
+        t_eval = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], dtype=torch.float64)
+
+        node.set_v_trajectory(V_traj, t_grid)
+        try:
+            z_traj = node.integrate(z0, t_eval, rtol=1e-3, atol=1e-3)
+        finally:
+            node.clear_v_trajectory()
+
+        assert z_traj.shape == (5, B, 20)
+        assert z_traj.dtype == torch.float64
+        assert torch.isfinite(z_traj).all()
+
+    def test_ionic_node_adjoint_backward(self):
+        """z_traj[-1].sum().backward() succeeds, grads exist on stage1 params."""
+        node = self._make_node()
+        B = 2
+        z0 = torch.randn(B, 20, dtype=torch.float64)
+        V_traj = torch.randn(B, 50, dtype=torch.float64)
+        t_grid = torch.linspace(0, 0.5, 51, dtype=torch.float64)
+        t_eval = torch.tensor([0.0, 0.1, 0.3, 0.5], dtype=torch.float64)
+
+        # V trajectory must persist through backward (adjoint ODE re-calls forward)
+        node.set_v_trajectory(V_traj, t_grid)
+        z_traj = node.integrate(z0, t_eval, rtol=1e-3, atol=1e-3)
+        z_traj[-1].sum().backward()
+        node.clear_v_trajectory()
+
+        has_grad = any(p.grad is not None and p.grad.abs().sum() > 0
+                       for p in node.stage1.parameters())
+        assert has_grad, "No gradients on stage1 parameters after adjoint backward"
+
+    def test_ionic_node_v_interpolate_endpoints(self):
+        """V at t_grid[0] matches V_traj[:,0]; at t_grid[T-1] matches V_traj[:,-1]."""
+        node = self._make_node()
+        V_traj = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0]], dtype=torch.float64)
+        t_grid = torch.tensor([0.0, 0.1, 0.2, 0.3, 0.4, 0.5], dtype=torch.float64)
+
+        node.set_v_trajectory(V_traj, t_grid)
+        V_start = node._interpolate_V(torch.tensor(0.0, dtype=torch.float64))
+        V_end = node._interpolate_V(torch.tensor(0.4, dtype=torch.float64))
+        node.clear_v_trajectory()
+
+        assert torch.allclose(V_start, torch.tensor([1.0], dtype=torch.float64))
+        assert torch.allclose(V_end, torch.tensor([5.0], dtype=torch.float64))
+
+    def test_ionic_node_no_learned_params(self):
+        """IonicNODE adds zero learned parameters beyond stage1."""
+        node = self._make_node()
+        stage1_ids = {id(p) for p in node.stage1.parameters()}
+        node_only = [p for p in node.parameters() if id(p) not in stage1_ids]
+        assert len(node_only) == 0, f"IonicNODE has {sum(p.numel() for p in node_only)} extra params"
