@@ -5,12 +5,17 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**dt curriculum** replaces rollout curriculum. Fix temporal coverage at ~300ms (one full AP), vary dt by subsampling existing T1 data. Phases renamed: A=Stage 1 (Half 1 ionic+conc, Half 2 conductance), B=Stage 2, C=end-to-end. Per-dim min-max loss normalization. Truncated BPTT (tbptt_window=500) for 30K-step phases. Cosine warm restarts (T_0=50, T_mult=2) for multiple breakthrough chances.
+**Considering pivot to Neural ODE approach.** The discrete autoregressive rollout at native dt (0.01ms, 30K steps) cannot converge despite: dt curriculum (A1-A3 worked, A4 stuck), TBPTT, warm restarts, min-max normalization, batch tuning. The error compounding problem is fundamental to discrete autoregressive training — not a hyperparameter issue.
 
-Training progress: dt curriculum A1(dt=3ms)→A2(dt=1ms)→A3(dt=0.1ms) completed. A3 val=0.92. A4 (dt=0.01ms, rollout=30K) running with TBPTT + warm restarts.
+What worked: dt curriculum A1→A3 (coarse to medium dt), model learns AP shape. What failed: A4 (native dt, 30K steps) — val stuck at ~720 for 155+ epochs.
+
+Neural ODE would replace discrete steps with continuous dynamics: dz/dt = f(z, Vm). Adjoint method handles gradients. No error compounding. See Salvador 2024 (300x speedup on cardiac electromechanics).
 
 ## Next Step
-A4 running with TBPTT + warm restarts (1000 epochs, manual kill). After A4 converges, B1-B4 (same dt curriculum for conductance compression). Then C (Stage 2) and D (end-to-end).
+Research Neural ODE approach for ionic surrogate. Key questions: (1) can torchdiffeq handle the multi-timescale stiffness (0.1ms to 100ms+)? (2) how to couple with the existing attention architecture? (3) what about the operator splitting structure (Stage 1 off-path, Stage 2 on-path)? The v3 attention + MLP architecture may still be the right dynamics model — just integrated with an ODE solver instead of discrete steps.
+
+### 2026-04-06: A4 failed — considering Neural ODE pivot
+A4 (dt=0.01ms, rollout=30K) ran 155 epochs with TBPTT(window=500) + warm restarts (T_0=50, T_mult=2). Val stuck at ~720, zero improvement after two full restart cycles. The discrete autoregressive approach hits a wall at native dt — 30K sequential steps compound errors faster than the model can learn to correct them. TBPTT with window=500 (5ms) may be too narrow — gradients can't reach early steps where errors originate. But expanding the window defeats the purpose (gradient chain gets long again). User suggests Neural ODE as the right abstraction for continuous ionic dynamics. The v3 attention mechanism (voltage-dependent gating) may still work as the dynamics function f(z, Vm) inside an ODE solver.
 
 ### 2026-04-04: dt curriculum + TBPTT + warm restarts
 - **dt curriculum**: Instead of increasing rollout at fixed dt=0.01ms, fix coverage at 300ms and vary dt. Subsample existing T1 data: dt=3ms(r=100)→dt=1ms(r=300)→dt=0.1ms(r=3000)→dt=0.01ms(r=30000). Same AP, different resolution. Model learns shape first (cheap), refines later. Replaces entire rollout=1→10→100→1K→10K curriculum.
@@ -167,6 +172,7 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | Variance normalization (MSE/Var) | Treats all dims within a component equally. K_i (var=0.018) still drowns Ca_i (var=1e-9) within conc_mse. Per-dim min-max is better — every dim mapped to [0,1] independently. |
 | Standalone decoder recalibration (B2_decoder) | Decoder trained on frozen latent becomes stale when latent shifts in next phase. Always co-train encoder and decoder. |
 | Rollout curriculum at fixed dt=0.01ms (1→10→100→1K→10K) | Slow and expensive. dt curriculum (3ms→1ms→0.1ms→0.01ms at fixed 300ms coverage) achieves same temporal coverage much cheaper. Rollout=100 at dt=3ms sees the same AP as rollout=30K at dt=0.01ms. |
+| Discrete autoregressive rollout at native dt (0.01ms, 30K steps) | Fundamentally limited by error compounding. Tried: dt curriculum (A1-A3 worked but A4 stuck at val~720), TBPTT(500), warm restarts, min-max normalization, batch tuning. The 30K-step gradient chain is too long even with truncation. Error at step 100 corrupts steps 101-30000 → incoherent gradients. Not a hyperparameter problem — it's a structural limitation of discrete autoregressive training for stiff multi-timescale systems. |
 
 ## Session Log
 | Date | Session | Work Done |
