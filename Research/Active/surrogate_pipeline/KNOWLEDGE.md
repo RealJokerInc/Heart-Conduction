@@ -19,8 +19,9 @@ Per-step inference: `IonicSurrogate (or Rush-Larsen) -> Vm_post_ionic -> ResNet 
 The diffusion step (94% of wall time) only needs I_ion. Stage 1 outputs (updated latent, compressed conductance) are needed at the NEXT timestep. On GPU, Stage 1 runs on a separate CUDA stream in parallel with the diffusion solve -- effectively free compute. Only Stage 2 (current readout) is on the critical path.
 
 ```
-carried_state(t), Vm, dt
-  |-> Stage 1 (off critical path): state evolution -> carried_state(t+1), conductance_latent(t+1)
+carried_state(t), Vm
+  |-> Stage 1 (off critical path): dzdt(z, V) -> dz/dt rate -> euler_step -> carried_state(t+1)
+  |                                  _compress(carried_state) -> conductance_latent(t+1)
   |                                  Nernst -> reversal_potentials(t+1)
   |                                  [runs during diffusion step]
   |
@@ -85,38 +86,41 @@ carried_state = [ionic_state(32), Na_i, K_i, Ca_i, Ca_ss] = (36,)
 - Ca_SR dropped -- purely internal SR variable, not used in any reversal potential or readout feature. SR calcium load tracked implicitly by ionic_state.
 - **Working dim = 32**: TTP06 has 18 states, ORd has 41. Working dim must accommodate both. 32 is comfortable for TTP06, sufficient for ORd with learned compression. Increase to 48+ for ORd if needed -- cost stays in background.
 
-### Full Pipeline
+### Full Pipeline — PLANNED changes noted inline (code still reflects pre-pivot state)
 
 ```
-carried_state(t) = [ionic_state(32), concentrations(4)]     (36,)
-  -> n x 1 cross-attention to [Vm, dt], attn_dim=4          per-dim voltage response (contractive)
-      36 dims all attend to Vm; concentration dims learn slow tracking
+carried_state(t) = [ionic_state(16), concentrations(4)]     (20,)  [full-size: 32+4=36]
+  -> n x 1 cross-attention to [Vm], attn_dim=4              per-dim voltage response (contractive)
+      NOTE: dt removed for NODE pivot (Section 5b). Field must be dt-independent.
+      20 dims all attend to Vm; concentration dims learn slow tracking
   -> SPLIT after attention:
-      ionic_mid = z_mid[:32]                                 (32,) -> continues to MLP
-      conc(t+1) = z_mid[32:36]                               (4,) -> DONE (attention only, no MLP)
+      ionic_mid = z_mid[:16]                                 (16,) -> continues to MLP  [full: :32]
+      conc_delta = z_mid[16:20] - z[16:20]                   (4,) -> concentration rate  [full: 32:36]
 
   ionic_mid:
   -> Pre-RMSNorm                                             stabilize MLP input scale (0 params)
-  -> learned-mix MLP + GELU (32->32->32), 1 hidden layer     cross-dim Markov correction
+  -> learned-mix MLP + GELU (16->16->16), 1 hidden layer     cross-dim Markov correction  [full: 32->32->32]
       correction = W2 @ GELU(W1 @ RMSNorm(ionic_mid) + b1) + b2
-      alpha = sigmoid(w)                                     per-dim mixing weight (32 params)
-      ionic(t+1) = (1 - alpha) * ionic_mid + alpha * correction
+      alpha = sigmoid(w)                                     per-dim mixing weight (16 params)  [full: 32]
+      ionic_rate = ionic_delta + alpha * correction          residual_bypass (additive, not convex)
 
-  carried_state(t+1) = [ionic(t+1), conc(t+1)]             (36,)
+  dz/dt = [ionic_rate, conc_delta]                           (20,)  [full: 36]
+  NOTE: dzdt() returns a RATE, not a displacement. ODE solver integrates; Euler does z + dt*dzdt.
+  IonicStage1.forward() is removed as a discrete stepper. All callers use dzdt() + euler_step().
 
-  -> learned-mix compression (ionic_state only):
-      linear_path = W_lin @ ionic_state                      (32->16)
-      nonlinear_path = MLP(ionic_state)                      (32->24->24->16) gate products
-      beta = sigmoid(w_beta)                                 per-dim mixing weight (16 params)
-      conductance_latent = (1-beta) * linear_path + beta * nonlinear_path
-  -> conductance_latent(t+1)                                 (16,)
+  -> learned-mix compression (full carried_state):
+      linear_path = W_lin @ carried_state                    (20->8)  [full: 36->16]
+      nonlinear_path = MLP(carried_state)                    (20->12->12->8) gate products  [full: 36->24->24->16]
+      beta = sigmoid(w_beta)                                 per-dim mixing weight (8 params)  [full: 16]
+      conductance_latent = linear_path + beta * nonlinear_path   residual_bypass (additive)
+  -> conductance_latent(t+1)                                 (8,)  [full: 16]
 
   -> Nernst equation (fixed physics, 0 learned params):
       concentrations(t+1) -> [E_Na, E_K, E_Ca, E_Ks]       (4,) reversal potentials
 
 Scaffold decoders (training only, all annealed to zero in Phase D):
-  ionic_state(t+1)        -> full gate decoder (32->12) -> gate predictions (12 HH gates only)
-  conductance_latent(t+1) -> compressed gate decoder (16->12) -> gate predictions
+  ionic_state(t+1)        -> ionic_state_decoder (16->14) -> 12 HH gates + RR + Ca_SR  [full: 32->14]
+  conductance_latent(t+1) -> gate_conductance_decoder (8->5) -> effective gate products  [full: 16->5]
   concentrations(t+1)     -> direct MSE vs true concentrations (no decoder needed)
   Losses:
     L_gate_full = MSE(full_decoder(ionic_state), true_gates)
@@ -127,10 +131,11 @@ Scaffold decoders (training only, all annealed to zero in Phase D):
 ### Design Rationale
 
 **n x 1 cross-attention:**
-- Each of 36 carried_state dims independently queries the voltage [Vm, dt]. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
-- Mathematically equivalent to learned Rush-Larsen but with state-dependent gating (the attention score depends on BOTH Vm AND the current latent value, while RL's rate depends on Vm only).
-- **attn_dim = 4** (down from 8 in v2): Gate is one scalar from 2 inputs (Vm, dt). Smooth sigmoid-like function -- 4 basis functions suffice.
-- **1 attention layer**: One voltage response per dt is physically correct. Stacking applies contraction twice to same Vm -- numerically redundant.
+- Each of 20 carried_state dims [full: 36] independently queries Vm. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
+- NOTE: dt removed from attention input for NODE pivot (Section 5b). The vector field f(z,V) must be dt-independent.
+- Mathematically equivalent to learned Rush-Larsen but with state-dependent gating (the attention score depends on BOTH Vm AND the current latent value, while RL's rate depends on Vm only). In the ODE formulation, this gives `dz/dt = gate * (target(V) - z)` — a linear attractor (see Section 5b "Inherent Contraction").
+- **attn_dim = 4** (down from 8 in v2): Gate is one scalar from 1 input (Vm). Smooth sigmoid-like function -- 4 basis functions suffice.
+- **1 attention layer**: One voltage response is physically correct. Stacking applies contraction twice to same Vm -- numerically redundant.
 
 **Concentrations split off after attention, before MLP:**
 - The MLP handles intra-protein Markov corrections between ionic dims only.
@@ -143,31 +148,33 @@ Scaffold decoders (training only, all annealed to zero in Phase D):
 - Pre-RMSNorm on MLP input stabilizes input scale across 100K+ recurrent steps.
 - One hidden layer captures pairwise interactions. Add second layer if insufficient.
 
-**Learned residual mixing (inspired by DeepSeek hyper-connections):**
+**Residual bypass (evolved from DeepSeek hyper-connections):**
 
 ```python
-alpha = sigmoid(w)                         # w learned per-dim (32,), alpha in (0,1)
+alpha = sigmoid(w)                         # w learned per-dim (16,) [full: 32], alpha in (0,1)
 correction = MLP(RMSNorm(ionic_mid))
-ionic_new = (1 - alpha) * ionic_mid + alpha * correction   # convex combination
+ionic_rate = ionic_delta + alpha * correction   # additive bypass — identity always flows through
 ```
 
-No amplification by construction (convex combination bounded between inputs). Each ionic dim learns how much MLP correction to accept: alpha->0 for HH dims (pure residual), alpha>0 for Markov-coupled dims. Init: w = large negative -> alpha~0 -> starts as near-pure residual. 32 learned params.
+NOTE: Changed from convex combination `(1-alpha)*base + alpha*correction` to additive bypass `base + alpha*correction` for the NODE pivot. In the ODE formulation, the derivative is `dz/dt = attention_rate + alpha * mlp_correction` — a clean additive sum. Identity path is unconditional; MLP adds corrections on top. This breaks existing checkpoint compatibility (acceptable — A4 failed, no checkpoints worth preserving).
+
+Each ionic dim learns how much MLP correction to accept: alpha->0 for HH dims (pure attention attractor), alpha>0 for Markov-coupled dims. Init: w = large negative -> alpha~0 -> starts as near-pure attractor. 16 learned params [full: 32].
 
 Replaces three mechanisms from earlier design iterations:
-- ~~Spectral norm on MLP weights~~ -- not needed, convex combination can't amplify
+- ~~Spectral norm on MLP weights~~ -- not needed, attention contraction provides stability
 - ~~Zero-init of MLP output~~ -- not needed, alpha init handles it
 - ~~Gate-modulated correction~~ -- not needed, per-dim alpha is the learned gate
 
 **Compression MLP (CARRIED_DIM->COMP_H1->COMP_H2->COND_DIM, 2 hidden layers, 2 GELUs):**
 - Takes FULL carried_state (ionic + concentrations) as input, NOT just ionic_state. Gives compression access to concentration context (e.g., Ca_ss for fCass-dependent conductances). Recomputed every step because gate products change and attention cannot compute cross-dim products (structural limitation).
 - Two hidden layers: layer 1 computes pairwise products (m*h), layer 2 composes into triple products (m*h*j).
-- Residual compression with learned mixing: `compressed = (1-beta) * W_lin @ carried + beta * MLP(carried)`. Linear path for direct projection, nonlinear path for gate products. Per-dim beta (COND_DIM params) controls linear vs nonlinear.
+- Residual compression with learned bypass: `compressed = W_lin @ carried + beta * MLP(carried)` [PLANNED: additive bypass, currently convex in code]. Linear path for direct projection, nonlinear path for gate products. Per-dim beta (COND_DIM params) controls nonlinear contribution.
 - Total GELUs in Stage 1 pipeline: 3 (1 in Markov MLP + 2 in compression MLP). Sufficient for triple product composition.
 
 **Dual scaffold decoders (training only):**
-- Full decoder (32->12): ensures full latent encodes HH gate information (12 gates: m,h,j,r,s,d,f,f2,fCass,Xr1,Xr2,Xs). NOT 18 — RR has no gate_inf/tau, concentrations have their own direct MSE loss.
-- Compressed decoder (16->12): ensures compression preserves gate information.
-- Both use L_gate = MSE(gates_pred, gates_true), annealed to zero in Phase D.
+- ionic_state_decoder (16->14): 12 HH gates + RR + Ca_SR = 14 targets. NOT 18 — concentrations have their own direct MSE loss. [full-size: 32->14]
+- gate_conductance_decoder (8->5): 5 effective gate products (G_Na(m³hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1·Xr2), G_Ks(Xs²)). [full-size: 16->5]
+- Both use MSE loss, annealed to zero in Phase D. No sigmoid (Ca_SR is unbounded). Linear only — weak decoder forces strong latent.
 - Both removed for production inference.
 
 ### Nernst Computation (fixed physics, 0 learned params)
@@ -285,11 +292,12 @@ Total FLOPs are ~1× ORd. Acceptable because Stage 2 is the ONLY thing on the cr
 - **GELU in output MLP:** Allows nonlinear channel interaction. Kirchhoff says currents sum linearly, but our 16 conductance dims are learned (not literal channels) -- their combination may benefit from nonlinearity.
 - **Input normalization (required):** Environment tokens have wildly different scales (K_i ~ 138 mM vs Ca_i ~ 0.0001 mM -- six orders of magnitude). Without normalization, low-magnitude tokens (Ca_i, Ca_ss) are invisible to attention (key magnitude ≈ 0). All 9 environment inputs normalized to ~[-1, 1] using known physiological ranges before embedding. 18 fixed constants (9 shifts + 9 scales), not learned. Conductance latent scale is controlled by compression -- normalize if needed.
 
-### Training Strategy (v3) — Status: Discrete Autoregressive ABANDONED
+### Training Strategy (v3) — Status: Discrete Autoregressive ABANDONED → Neural ODE Pivot
 
 > The discrete autoregressive approach was abandoned after A4 (native dt, 30K steps) failed to converge.
-> Pivoting to Latent Neural ODE. The v3 architecture (attention + MLP) may serve as the ODE dynamics function.
-> See TRAINING_STRATEGY.md for authoritative current plan.
+> **Neural ODE pivot active.** Stage1.dzdt() is the dynamics function, trained via odeint_adjoint (dopri8).
+> PLAN.md has implementation steps. See Section 5b for full design, Section 10 for revised training phases.
+> NOTE: TRAINING_STRATEGY.md predates the NODE pivot and recommends batch=32768 (a known failure — see IDEALOG.md). Treat PLAN.md as the authoritative current plan for NODE training.
 
 **What was tried and what worked:**
 
@@ -321,7 +329,7 @@ One model learns both TTP06 and ORd, conditioned on a model ID label token fed t
 | MLP | 32→32 | 16→16 |
 | Compression | 32→24→24→16 | 16→12→12→8 |
 | Stage 2 queries | 16 | 8 |
-| Total inference params | ~4,950 | ~1,200 |
+| Total inference params | ~4,950 | ~1,534 (verified) |
 
 Same architecture, smaller hyperparameters. Validate that the design trains and reproduces TTP06 I_ion before scaling up.
 
@@ -337,7 +345,235 @@ Same architecture, smaller hyperparameters. Validate that the design trains and 
 
 ---
 
-## 5. Naming Convention
+## 5. Neural ODE Pivot -- CfC Liquid Networks (from LFLDNet, Salvador & Marsden 2025)
+
+> **SUPERSEDED by Section 5b.** CfC's Δt-as-input approach was evaluated but rejected — it bakes in a structural prior (convex gating form) that prevents learning non-convex dynamics. Section 5b adopts an unconstrained vector field instead. This section retained for the LFLDNet literature summary and the A4 post-mortem.
+
+> Source: [salvador_2025_lfldnet](literature/salvador_2025_lfldnet.md) — DOI: 10.1016/j.compbiomed.2025.111355
+
+### Why the Discrete Autoregressive Approach Failed (A4 Post-Mortem)
+
+At native dt=0.01ms, 30K autoregressive steps accumulate prediction errors faster than the model corrects them. Error at step N corrupts steps N+1 through 30K, producing incoherent gradients. TBPTT (window=500), cosine warm restarts, and dt curriculum did not fix this — it is structural. The discrete-step recurrence must be replaced.
+
+### What LFLDNets Do
+
+LFLDNets replace the ODE integration step with a **Closed-form Continuous (CfC) Neural Circuit Policy (NCP)**: a sparse, neurologically-inspired liquid network that propagates a latent state s(t) using gating functions f, g, h evaluated directly at arbitrary Δt:
+
+```
+s(t + Δt) = g(s, μ, Δt) ⊙ h(s, μ, Δt) + (1 - g(s, μ, Δt)) ⊙ f(s, μ, Δt)
+```
+
+- `g` is a gating network that learns "how much to update each latent dim given Δt and input."
+- No ODE solver. No CFL condition. No step-size controller. Δt is an explicit scalar input.
+- Operates at dt=10ms (100× larger than FEM dt=0.1ms) on cardiac EP.
+- Bounded dynamics by construction: g ∈ (0,1) by sigmoid, output is convex combination of f and h.
+
+**Speedup on 3D monodomain + TTP06 (HLHS biventricular geometry, 240K DOFs, 7 parameters):**
+- LFLDNet inference: 3 min (1 GPU) vs FEM: 1.5 hr (24 CPU cores) → ~30× wall-clock speedup.
+- Validation normalized MSE: 3.15e-3.
+
+### Connection to Our Stage 1 Architecture
+
+Our n×1 cross-attention block already resembles CfC gating:
+
+| | Our Stage 1 (pre-pivot) | CfC layer |
+|---|---|---|
+| Input | [Vm, dt] (dt removed in Section 5b) | [s, μ, Δt] |
+| Gating | sigmoid(attention score) per dim | g(s, μ, Δt) per dim |
+| Update | delta = attention × (target - state) | convex combination of f and h |
+| Stability | bounded by attention contraction | bounded by g ∈ (0,1) |
+
+The key difference: CfC trains Δt as a continuous input. Our Section 5b approach instead removes dt entirely and learns an unconstrained vector field f(z,V), relying on the ODE solver to handle time.
+
+### Actionable Design Change — SUPERSEDED by Section 5b
+
+> The recommendation below to feed Δt as a continuous input was **rejected** in favor of the unconstrained vector field approach (Section 5b). dt is removed from the model entirely. The ODE solver handles time stepping, and the vector field f(z,V) is dt-independent by construction. Kept for historical context on the CfC evaluation path.
+
+### What Does NOT Transfer
+
+- Their **reconstruction network** (maps latent + spatial coordinate → field) is not applicable to per-cell ionic dynamics. We need per-cell trajectories, not a spatial field surrogate.
+- Their **global latent** (one s(t) for the entire spatial domain) cannot handle per-cell heterogeneity (infarct, APD gradients). Our per-cell carried_state architecture is correct.
+- Their **monodomain-only** surrogate does not address the elliptic solve (94% of bidomain wall time). Cross-Skip ResNet is still needed for the diffusion component.
+- The 30× speedup claim mixes GPU vs CPU hardware. GPU-to-GPU comparison would show a smaller ratio.
+
+---
+
+## 5b. Neural ODE Pivot -- Unconstrained Vector Field (2026-04-06 Session)
+
+### The Core Decision: No Structural Prior on the Dynamics
+
+The CfC/liquid NN approach (Section 5) provides bounded updates and Δt-as-input, but it still bakes in a structural form for the dynamics (convex combination of learned gates). Rush-Larsen is even more constrained — it assumes HH exponential relaxation toward a V-dependent equilibrium.
+
+**Decision: learn the unconstrained vector field `dz/dt = f_θ(z, V)`.** No structural prior on what shape f takes. If Rush-Larsen is the right description of the underlying physics, the learned vector field will look like Rush-Larsen when examined. If it doesn't, that's a discovery. This is the Layer 0 principle applied to the dynamics function: don't bake in TTP06/ORd assumptions at the temporal integration level either.
+
+### Why the Discrete Model Was Fundamentally Wrong
+
+The discrete model trained `z_{t+1} = F(z_t, V_t)` — a transition operator. The implicit vector field `f(z,V) = F(z,V) - z` existed in the weights but was:
+
+- **Only reliable on the true trajectory.** The model only ever saw states lying exactly on `z_true(t)`. It never saw a perturbed state, so it has no reason to point perturbed states back toward the trajectory.
+- **Full of holes.** Everywhere in phase space except the training trajectory, the vector field is undefined/unreliable.
+- **No attractor.** Without a restoring force for off-trajectory states, errors at step N compound through steps N+1 to 30K. The discrete model memorized a path, not a landscape.
+
+### Why the Neural ODE Learns an Attractor
+
+The adjoint method computes gradients against the continuous trajectory. Every time the solver takes an internal step that drifts slightly off the true path, the loss pulls the field back. Over training, the vector field gets shaped not just along the trajectory but in its neighborhood:
+
+```
+Discrete model:   f(z, V) reliable only ON trajectory   →  no restoring force, errors compound
+Neural ODE model: f(z, V) shaped in basin around it      →  attractor forms, errors decay
+```
+
+The rest fixed point, the AP limit cycle, and the basin of attraction are not designed in — they emerge from training the vector field to consistently integrate to the correct trajectory from any starting point near the data.
+
+**Intuition:** the discrete model is a marble rolling along a groove painted on a flat table. The neural ODE model carves a valley. Same path, but the geometry of the valley actively pulls the marble back if it drifts. The valley lives in the weights — not as new parameters, but as the shape the existing parameters were trained to encode.
+
+### Phase Space Geometry
+
+The AP attractor lives in `(V(t), z_1(t), ..., z_32(t)) ∈ ℝ^{33}`, where V is the external driving input and z ∈ ℝ^{32} is the ODE state (+ 4 concentration dims = ℝ^{36} full):
+
+- **Rest fixed point**: z* where `dz/dt = 0` at resting V ≈ -85mV
+- **AP limit cycle**: closed curve in ℝ^{36}, traced once per beat
+- **Basin of attraction**: the neighborhood from which trajectories converge to the cycle
+
+The attractor manifold is likely much lower-dimensional than 36 — maybe 3-5 effective dimensions (fast V-m subsystem, slow n-h subsystem). The remaining dims are approximately slaved. **Testable prediction:** compute intrinsic dimensionality of learned z(t) trajectories after training. If ~4, matches known HH slow manifold structure.
+
+**Publication-worthy diagnostic:** after training, plot the learned vector field in (V, z_i) projection for the most informative dims. If some dims recover V vs n_K phase portrait structure without being told to, that validates the approach.
+
+### Architectural Changes (Minimal) — PLANNED (PLAN.md Phases 1-2, not yet in code)
+
+> Code still reflects pre-pivot state. These changes are specified in PLAN.md and will be implemented in Phases 1-2.
+
+Zero new learned parameters. Net change: -8 parameters (dt removed from W_k, W_v).
+
+| Change | What | Status |
+|--------|------|--------|
+| Remove dt from attention input | W_k, W_v: input dim 2 → 1. dt handled by solver, not model. The vector field f(z,V) must be dt-independent. | PLAN Phase 1 |
+| `interpolate` → `residual_bypass` | Alpha is internal residual bypass, not external blend. `base + alpha * correction` not `(1-alpha)*base + alpha*correction`. Applies to both ionic mixing and conductance compression. | PLAN Phase 1 |
+| `forward()` repurposed | No longer advances state. Runs compression + scaffold only. New `dzdt()` method returns rate. | PLAN Phase 1 |
+| `IonicNODE` wrapper | Thin wrapper: holds V(t) linear interpolant, calls `odeint_adjoint`. Euler step for inference. No learned parameters. | PLAN Phase 2 |
+
+**Critical: ODE solver sits after the full Stage 1 pipeline (attention + MLP), not between them.** Both blocks compute f_θ together. Cutting the solver between attention and MLP would deprive the MLP of the full derivative context.
+
+Corrected forward:
+```python
+def forward(self, t, z):                          # signature for torchdiffeq
+    V = self.v_interp(t)                          # linear interp from training data
+    z_mid = self.voltage_attention(z, V)          # returns z + gate*(target-z), full state
+    delta = z_mid - z                             # attention rate for all dims
+    ionic_delta = delta[:, :self.ionic_dim]
+    conc_delta  = delta[:, self.ionic_dim:]
+    correction = self.mlp(rms_norm(z_mid[:, :self.ionic_dim]))
+    alpha = sigmoid(self.mixing_logit)
+    ionic_rate = ionic_delta + alpha * correction  # residual bypass on ionic dims
+    dz_dt = torch.cat([ionic_rate, conc_delta], dim=-1)
+    return dz_dt                                  # → odeint_adjoint integrates this
+```
+
+### Solver and Training
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Solver | `dopri8` + `odeint_adjoint` | GPU-native, 8th order adaptive RK (fewer steps than dopri5 for smooth regions), O(1) memory backward |
+| V(t) interpolation | Linear between training grid points | Smooth, no discontinuities, cheap |
+| t_eval | 20 AP landmarks (10 in upstroke 0-5ms, 10 in plateau/repol/diastole) | Adjoint shapes full trajectory; dense upstroke sampling matches solver attention |
+| Gradients | Adjoint only | Exact gradients against continuous ODE; no BPTT chain |
+
+The latent space may be less stiff than the original ionic ODE — the learned coordinates can implicitly "unroll" stiff directions into smoother latent coordinates. Using `dopri8` (8th order, fewer steps for smooth dynamics). Fall back to implicit solvers only if NFE >1000.
+
+### Inference: ODE Solver NOT Required
+
+The ODE solver is a training tool only. At inference, z is already on or near the attractor. Simple Euler (or RK4 for accuracy) suffices:
+
+```python
+# Inference — no torchdiffeq, no adaptive stepping:
+dzdt = stage1(z, V)                  # one forward pass, returns dz/dt
+z_next = z + dt * dzdt               # Euler; attractor geometry handles drift
+```
+
+Inference cost is identical to the original discrete model. The stability gain comes entirely from the landscape learned during training, not from the solver at inference.
+
+**Summary:** training is more expensive (adjoint solve), inference is unchanged. The only thing that changed is what the network was asked to learn during training — a landscape instead of a path.
+
+### Attractor Basin Analysis (2026-04-06 Review)
+
+**The real win of the NODE pivot is gradient tractability, not emergent attractors.** The practical gain:
+
+1. **Gradient chain length:** dopri8 takes ~150-800 internal adaptive steps for a 300ms AP (see "Stiffness Analysis" below), where discrete took 30K. The adjoint backprops through ~200-1000 steps, not 30K. That's a 30-150× reduction in gradient chain length — directly fixes A4's incoherent gradients.
+2. **Decoupled resolution:** Loss at ~20 AP landmarks (dense during upstroke) gives the solver freedom between them. Training resolution decoupled from inference resolution.
+3. **dt-independent field:** Network learns a rate; inference works at any dt (0.01ms to 1ms).
+
+**Basin width concern:** The adjoint method shapes the field near the trajectory, but only within the ODE solver's local error tolerance (rtol=1e-4). The solver's internal substeps are not adversarial perturbations — they're numerical artifacts the solver minimizes. Without explicit off-trajectory training, the basin of attraction is narrow.
+
+### Inherent Contraction in VoltageAttention
+
+The attention block already provides attractor structure. VoltageAttention computes:
+
+```python
+z_new = z + gate * (target(V) - z)    # gate ∈ (0,1) via sigmoid
+```
+
+Reinterpreted as a rate for the ODE:
+
+```
+dz/dt = gate * (target(V) - z) = -gate * z + gate * target(V)
+```
+
+This is a **linear attractor** with decay rate `gate` toward V-dependent equilibrium `target(V)`. This is precisely the Rush-Larsen form `dg/dt = (g_inf(V) - g) / tau(V)` — it fell out of the architecture without being designed in, consistent with the Layer 0 principle (if Rush-Larsen is the right description of reality, the model will discover it).
+
+The MLP correction (`alpha * correction`) perturbs this pure attractor. At init (alpha ≈ 0.007), the pure contractive attention dominates. As alpha grows during training, the MLP adds cross-dimensional coupling corrections on top of the attractor base. The attractor is never lost — it's the foundation the MLP builds on.
+
+**Contraction is preserved at inference** as long as `dt * gate < 1` for all dims. Since gate ∈ (0,1) and typical inference dt is 0.01-0.1ms, this holds comfortably.
+
+### Techniques for Widening the Attractor Basin
+
+**1. Noise injection on z0 (recommended for v1, trivial to implement):**
+```python
+z0_noisy = z0 + sigma * torch.randn_like(z0)   # sigma schedule: 1e-3 → 1e-2
+```
+Train the field to reach the correct trajectory from a neighborhood of initial conditions. Same principle as denoising score matching — learn the field in a ball around the data, not just on it. Zero architectural changes, one line in node_rollout.
+
+**2. Mid-trajectory perturbation (follow-up if z0 noise insufficient):**
+At random t_eval landmarks, inject noise into z before continuing the ODE solve. Like "scheduled sampling" for continuous dynamics. Forces restoring force everywhere along the AP, not just at t=0. More expensive (multiple ODE solves per segment).
+
+**3. Jacobian spectral radius regularization (insurance):**
+```python
+v = torch.randn_like(z)
+Jv = torch.autograd.functional.jvp(lambda z: f(z, V), z, v)[1]
+reg = (Jv.norm() / v.norm()) ** 2   # ≈ ||J||²
+loss = trajectory_loss + lambda_reg * reg
+```
+Explicitly pushes Jacobian eigenvalues toward negative real parts (contraction). Sample at a few points per trajectory, not every t_eval.
+
+**4. Lyapunov co-training (research-grade, not for v1):**
+Co-train scalar L(z) with dL/dt < 0 constraint. Formally certifies attractor. Publication material.
+
+**Implementation priority:** z0 noise injection in node_rollout (Phase 3). Mid-trajectory perturbation deferred to first training iteration review. Jacobian regularization if needed after initial results.
+
+### Stiffness Analysis and Training Strategy (2026-04-06)
+
+**Source of stiffness:** VoltageAttention gives each dim its own dynamics: `dz_i/dt ≈ gate_i * (target_i(V) - z_i)`. Jacobian eigenvalues ≈ -gate_i. Gate values range from ~0.001 (slow inactivation) to ~0.999 (m gate during upstroke) → condition number ~1000. The linear scaffold decoder (`nn.Linear(z) ≈ gates`) forces z to be a linear function of gate values, inheriting the full physical stiffness.
+
+**Stiffness is state-dependent, not constant:**
+
+| AP phase | Duration | Fast modes | Eigenvalue spread | dopri8 behavior |
+|----------|----------|------------|-------------------|-----------------|
+| Upstroke | 0-5ms | m gate active | Large (~1000×) | Small steps, ~100-500 NFE |
+| Plateau | 5-100ms | m gate at equilibrium | Small | Large steps, ~20-50 NFE |
+| Repolarization | 100-300ms | Moderate | Moderate | ~50-200 NFE |
+
+Estimated total NFE for 300ms AP: 200-1000. This is 30-150× fewer than 30K discrete steps. Adjoint backward through 200-1000 steps is tractable.
+
+**Segmented training was considered and rejected.** Breaking the AP into separate ODE solves per phase would contain stiffness to short segments. But segment B (plateau) needs an initial condition z at t=5ms — there is no ground truth for this. The latent is learned; only resting state z0 = [zeros, resting_conc] is known. Sequential solves with detach at boundaries reduce to TBPTT, which already failed (A4). Without segmentation, the single solve from resting state is the honest approach.
+
+**Dense upstroke landmarks instead:** Focus the loss signal where dynamics are stiff. 10 of 20 t_eval points are in the first 5ms (upstroke). The solver naturally takes small adaptive steps there — matching loss resolution to solver resolution. No segmentation, no mid-AP initial conditions.
+
+**Scaffold-stiffness interaction:** The linear scaffold constrains z ≈ W⁺ × gates, importing gate timescales into z. A nonlinear decoder would free z to use non-stiff coordinates, but violates the "weak decoder → strong latent" design principle. The linear scaffold is correct for structuring the latent — the stiffness it introduces is manageable with dopri8 on a 300ms solve.
+
+**Contingency:** If NFE consistently >1000, add a learned diagonal preconditioner to IonicNODE (20 params, training-only): integrate in w = z × scale coordinates where rates are equalized, convert back to z for loss. Inference bypasses preconditioner entirely.
+
+---
+
+## 6. Naming Convention
 
 | Name | Dims | What it encodes | Type |
 |---|---|---|---|
@@ -349,7 +585,7 @@ Same architecture, smaller hyperparameters. Validate that the design trains and 
 
 ---
 
-## 6. Normalization and Regularization
+## 7. Normalization and Regularization
 
 ### v3 Strategy
 
@@ -357,15 +593,15 @@ Same architecture, smaller hyperparameters. Validate that the design trains and 
 |-----------|-------|---------|--------|
 | 1/sqrt(4) scaling | Attention score | Prevents score saturation (attn_dim=4) | 0 |
 | Sigmoid gate | Attention update | Bounds update rate to (0,1), guarantees contraction | 0 |
-| Pre-RMSNorm | Before Markov MLP input | Stabilizes MLP input scale across 100K+ recurrent steps | 0 |
-| Learned residual mixing (alpha) | Markov MLP residual (ionic dims only) | Per-dim alpha=sigmoid(w), convex combination. No amplification by construction. | 32 |
-| Learned compression mixing (beta) | Compression residual | Per-dim beta=sigmoid(w), controls linear vs nonlinear path per compressed dim. | 16 |
+| Pre-RMSNorm | Before Markov MLP input | Stabilizes MLP input scale across ODE solver evaluations (training) and Euler inference steps | 0 |
+| Learned residual bypass (alpha) | Markov MLP residual (ionic dims only) | Per-dim alpha=sigmoid(w), additive bypass: `base + alpha*correction`. Identity unconditional. [PLANNED: changed from convex combination for NODE pivot] | 16 [full: 32] |
+| Learned compression bypass (beta) | Compression residual | Per-dim beta=sigmoid(w), additive: `linear + beta*nonlinear`. [PLANNED: same change] | 8 [full: 16] |
 | Weight decay | All parameters (AdamW) | Soft regularization, pushes unused coupling toward zero | 0 |
 | Gradient clipping | Training | max_norm=1.0, prevents gradient explosions during rollout | 0 |
 
 ### Rejected Techniques
 
-- **Spectral norm** (was in v2 and early v3): superseded by learned residual mixing. Convex combination provides a harder guarantee (output bounded between inputs) than spectral norm (bounds amplification ratio but allows growth).
+- **Spectral norm** (was in v2 and early v3): superseded by learned residual bypass. Attention contraction provides stability (Section 5b); additive bypass preserves the attractor base.
 - **RMSNorm on MLP corrections** (was in v2 for split GELU): v3's MLP+GELU has no quadratic blowup risk, and learned mixing alpha already bounds the correction's influence.
 - **LayerNorm**: removes per-dim magnitude, which IS information (state distance from equilibrium).
 - **BatchNorm**: unstable for autoregressive inference (batch=1 during tissue simulation).
@@ -375,7 +611,7 @@ Same architecture, smaller hyperparameters. Validate that the design trains and 
 
 ---
 
-## 7. Cross-State Coupling Analysis
+## 8. Cross-State Coupling Analysis
 
 ### Within One dt (0.01ms)
 
@@ -430,7 +666,7 @@ These unknowns reinforce the design philosophy: provide capacity and inductive b
 
 ---
 
-## 8. Foundational Design Decisions
+## 9. Foundational Design Decisions
 
 ### Why Carried Latent (Not Vm History)
 
@@ -443,12 +679,14 @@ The ionic surrogate uses pure autoregressive latent with no Vm history buffer. T
 
 The n x 1 cross-attention IS a 1D hybrid Transformer: Q=latent dims, K=V=voltage, no self-attention between dims. Cost: ~464 FLOPs vs 200M for a temporal Transformer. Mathematically equivalent to learned Rush-Larsen but with state-dependent gating.
 
-### I_stim Removed
+### I_stim and dt Removed
 
-I_stim has been removed from model inputs. The model receives only [Vm, dt]. Three reasons:
+I_stim was removed from model inputs early in v3 design. dt was subsequently removed for the NODE pivot (Section 5b). The model receives only [Vm]. Three reasons for I_stim removal:
 1. **Biophysically correct**: real ion channel gates respond to Vm only -- they have no mechanism to sense I_stim.
 2. **Matches operator splitting**: in the simulator, the ionic step sees only Vm. I_stim is applied externally in the Vm update equation.
-3. **Simpler model**: W_k and W_v are (2, attn_dim) instead of (3, attn_dim).
+3. **Simpler model**: W_k and W_v are (1, attn_dim).
+
+dt removal rationale: the vector field `f(z,V)` must be dt-independent for ODE integration. The solver handles time stepping — dt is not a model input. See Section 5b.
 
 ### Initialization
 
@@ -456,20 +694,21 @@ I_stim has been removed from model inputs. The model receives only [Vm, dt]. Thr
 
 ---
 
-## 9. Losses and Training
+## 10. Losses and Training
+
+> **NOTE:** Sections 10 below describe the **original discrete autoregressive** training strategy, which was abandoned after A4 failure. The NODE pivot uses `odeint_adjoint` with loss at AP landmarks (not per-step). See Section 5b for NODE training design and PLAN.md Phase 3 for implementation. The loss functions and scaffold structure remain the same; what changes is how the trajectory is produced (ODE integration vs discrete loop).
 
 ### Loss Functions
 
 - `L_ion = MSE(I_ion_pred, I_ion_true)` -- weight 1.0, always active
-- `L_gate_full = MSE(full_decoder(ionic_state), true_gates)` -- weight lambda_gate, annealed to 0
-- `L_gate_comp = MSE(comp_decoder(conductance_latent), true_gates)` -- weight lambda_gate, annealed to 0
+- `L_ionic_state = MSE(ionic_state_decoder(ionic_state), true_ionic_states)` -- scaffold, annealed
+- `L_conductance = MSE(gate_conductance_decoder(cond_lat), true_conductance_products)` -- scaffold, annealed
 - `L_conc = MSE(concentrations, true_concentrations)` -- direct, no decoder
-- `L_roll = (1/T) sum_t MSE(Vm_pred(t), Vm_true(t))` -- weight lambda_roll, introduced in rollout phases
 - Weight decay 1e-4 (AdamW), gradient clipping max_norm=1.0
 
-### Training Strategy
+### Training Strategy (SUPERSEDED — discrete approach)
 
-Bootstrap the latent space first (clean data, autoencoder), then teach dynamics (simple -> complex data, teacher forcing -> rollout), then stress-test (noise, tissue, corruption). The latent must be well-structured before dynamics training begins.
+> The phased strategy below was designed for discrete autoregressive rollout. The NODE pivot replaces rollout-length curriculum with ODE integration at AP landmarks. Phase names (A1, B1, etc.) are reused in node_rollout.py but the training loop is fundamentally different. Kept for historical reference.
 
 **Phase A -- Latent Space Bootstrap:**
 Train a standalone gate autoencoder (encoder: 12 HH gates -> ionic_dim latent, decoder: ionic_dim latent -> 12 HH gates). Data: gate state vectors from Tier 1 (steady-state pacing). Decoder weights transfer to scaffold. Encoder used for initial latent computation in Phase B. Cheap (trains in minutes). Note: 12 gates (not 18) — RR excluded (no gate_inf/tau), concentrations excluded (separate explicit dims with direct MSE loss).
@@ -483,7 +722,7 @@ Add Tiers 2-4 (S1-S2, dynamic, random intervals). All celltypes. Multiple dt val
 **Phase D -- Robustness:**
 Add Tiers 5-12. Scaffold removed (lambda_gate=0). Sub-phases: D1 tissue-mimicking -> D2 stress testing (5-beat rollout, 5000ms). Validation: restitution curve correct, recovery from perturbation within 1 beat.
 
-### Training Timeline
+### Training Timeline (SUPERSEDED — discrete approach)
 
 | Phase | Step | Data | Rollout | lambda_gate | lambda_roll | LR | Weight Decay | Batch |
 |-------|------|------|---------|-------------|-------------|-------|-------------|-------|
@@ -497,7 +736,7 @@ Add Tiers 5-12. Scaffold removed (lambda_gate=0). Sub-phases: D1 tissue-mimickin
 | D | D1 | Tier 1-12 | 100000 | 0 | 1.0 | 5e-5 | 1e-3 | 32 |
 | D | D2 | + stress | 500000 | 0 | 1.0 | 2e-5 | 1e-3 | 8 |
 
-Estimated total: ~40 GPU-hours on Blackwell.
+Estimated total: ~40 GPU-hours on Blackwell (discrete approach — NODE training cost TBD, likely higher per-epoch due to adjoint ODE solve).
 
 ### Optimizer
 
@@ -534,11 +773,11 @@ L_roll only applies to free-running segments (clamped Vm is externally set, not 
 
 ---
 
-## 10. Training Data
+## 11. Training Data
 
 ### Protocol Hierarchy (12 Tiers)
 
-Data generated from TTP06 single-cell ODE. All protocols produce (Vm, 18 gates, I_ion) at each timestep. dt fed as 2nd input to model: K = W_k * [Vm, dt].
+Data generated from TTP06 single-cell ODE. All protocols produce (Vm, 18 gates, I_ion) at each timestep. Model input is Vm only (dt removed for NODE pivot). dt stored in segments for building cumulative time grids during ODE integration.
 
 **Tier 1 -- Steady-state pacing**: BCL in {300, 400, 500, 600, 700, 800, 1000, 1500, 2000} ms. 20 beats each (10 warmup + 10 training). Baseline AP morphology at each rate.
 
@@ -622,9 +861,9 @@ Each shard: `(N_segments, segment_length, 47)` at float32. Loads directly to GPU
 
 | Columns | Content | Role |
 |---------|---------|------|
-| 0 | Vm | model input |
-| 1 | I_stim | model input |
-| 2 | dt | model input |
+| 0 | Vm | model input (only model input post-NODE pivot) |
+| 1 | I_stim | removed from model input (Section 9) |
+| 2 | dt | time grid construction (not model input post-NODE pivot) |
 | 3-20 | 18 gate states | gate decoder target |
 | 21 | I_ion | primary prediction target |
 | 22 | clamp_mask | 0.0 = free-running, 1.0 = voltage clamped |
@@ -660,7 +899,7 @@ GPU batch requires large n (>=1000) to overcome kernel launch overhead.
 
 ---
 
-## 11. Advanced Upgrades
+## 12. Advanced Upgrades
 
 ### Connection to State Space Models (Mamba)
 
@@ -672,7 +911,7 @@ Our ionic surrogate IS a selective SSM -- independently derived but structurally
 
 ### Mixture of Experts (MoE)
 
-4 tiny expert copies of Stage 1, each specialized for one AP phase. Router (single linear on [Vm, dt], ~8 FLOPs) selects top-1 per step. Zero extra inference cost, 4x effective capacity.
+4 tiny expert copies of Stage 1, each specialized for one AP phase. Router (single linear on [Vm], ~4 FLOPs) selects top-1 per step. Zero extra inference cost, 4x effective capacity. NOTE: dt removed from router input for NODE pivot — router sees Vm only.
 
 ### Summary of Advanced Upgrades
 
@@ -684,7 +923,7 @@ Our ionic surrogate IS a selective SSM -- independently derived but structurally
 
 ---
 
-## 12. Diffusion Component -- Cross-Skip Coupled ResNet
+## 13. Diffusion Component -- Cross-Skip Coupled ResNet
 
 Architecture unchanged from original design (not yet revisited -- focus has been on ionic surrogate):
 - Dual conv paths (Vm, phi_e) with bidirectional 1x1 cross-skip connections at each block
@@ -693,21 +932,23 @@ Architecture unchanged from original design (not yet revisited -- focus has been
 
 ---
 
-## 13. Known Risks
+## 14. Known Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Error accumulation over 100K+ autoregressive steps | HIGH | Gate decoder scaffold per-step; gradient checkpointing; validate with 5000ms+ rollouts |
+| Error accumulation over 100K+ autoregressive steps | ~~HIGH~~ MITIGATED | NODE pivot eliminates discrete error compounding. Adjoint trains through ~200-1000 solver steps, not 30K (30-150× reduction). Residual risk: Euler inference drift at very long horizons — mitigated by attractor geometry (Section 5b) and z0 noise injection during training. |
+| Adjoint ODE solve stiffness | HIGH | If dopri8 takes too many internal steps during upstroke (fast m-gate dynamics), training becomes slow. Mitigation: learned latent coordinates may unfold stiffness. Fallback: implicit_adams or stiff solver. Monitor NFE (number of function evaluations) per segment. |
+| Narrow attractor basin from training | MEDIUM | Adjoint shapes field near trajectory but only within solver tolerance. Mitigation: z0 noise injection (primary), mid-trajectory perturbation (secondary), Jacobian regularization (if needed). See Section 5b. |
 | Stage 2 readout insufficient for cross-dim products | HIGH | Start with cross-attention, add GELU/MLP if needed. This is where all cross-dim interaction lives now |
 | Ca handling is compartmental, not gate-like | MEDIUM | Monitor Ca-related predictions; explicit concentrations help |
 | Charge/concentration drift | MEDIUM | Monitor Na/K/Ca; add conservation penalty if needed |
-| Encoder-dynamics latent mismatch | MEDIUM | Monitor encoder(gates) vs dynamics latent in Phase B; gate decoder loss ensures functional equivalence |
+| ~~Encoder-dynamics latent mismatch~~ | ~~MEDIUM~~ REMOVED | Encoder deleted 2026-04-03. Model discovers own latent from zeros. |
 | Stage 1 too slow even with diffusion hiding | LOW | Stage 1 has entire diffusion step (~ms of GPU time). Only a risk if extremely deep |
 | Linear gate decoder insufficient | LOW | Upgrade to MLP decoder if reconstruction error high |
 
 ---
 
-## 14. Competitive Landscape (as of 2026-03-18)
+## 15. Competitive Landscape (as of 2026-03-18)
 
 No existing bidomain surrogate models. Our approach is unique.
 
@@ -723,22 +964,23 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 
 ---
 
-## 15. Open Questions
+## 16. Open Questions
 
-### Stage 2 Readout (active design)
-- What d_model for cross-attention? Token embedding dimension?
-- How to embed scalar conductance dims as query tokens?
-- How to embed the 9 environment values as key/value tokens?
-- Output aggregation: sum of 16 attended values, or concat -> linear?
-- Should the 16->1 output projection have a GELU, or trust linear (Kirchhoff's law)?
+### Stage 2 Readout (RESOLVED — see Section 4)
+- ~~What d_model for cross-attention?~~ d=4 (Section 4)
+- ~~How to embed scalar conductance dims as query tokens?~~ Per-dim embedding e_q (Section 4)
+- ~~How to embed the 9 environment values as key/value tokens?~~ Per-dim e_k, e_v (Section 4)
+- ~~Output aggregation?~~ attended → MLP(16→4→1) with GELU (Section 4)
+- ~~GELU or linear?~~ GELU — conductance dims are learned, not literal channels (Section 4)
 
 ### Architecture Scaling
 - How expressive should Stage 1 be now that it's off the critical path? Multi-head? Stacked layers?
 - Does ORd (41 states) require working dim > 32?
 
 ### Training
-- How does autoregressive error accumulation scale with rollout length? (empirical, no theory)
-- Is Phase A autoencoder (designed for 16-dim latent) still the right bootstrap for 32-dim ionic_state?
+- ~~How does autoregressive error accumulation scale with rollout length?~~ ANSWERED: compounds structurally at 30K steps. NODE pivot eliminates this. (Section 5b)
+- How many dopri8 internal steps (NFE) will the learned latent require per AP? (determines training cost)
+- Is z0 noise injection sufficient for attractor basin, or do we need mid-trajectory perturbation?
 
 ### Diffusion ResNet
 - How many ResNet blocks needed for adequate phi_e receptive field?
@@ -747,7 +989,7 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 
 ---
 
-## 16. Implementation Status
+## 17. Implementation Status
 
 | Component | Code Location | Tests | Status |
 |-----------|--------------|-------|--------|
@@ -760,14 +1002,17 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 | ORd infrastructure | `Surrogate/surrogate/data/ord_*.py` | 19 tests | Done |
 | ORd T1 EPI data | `/media/HDD/surrogate_data/raw_ord/` | -- | Done (9/9 protocols, 12GB) |
 | v2 code | `Surrogate/surrogate/model/v2_archive/` | -- | Archived |
-| Training pipeline | -- | -- | Not started (next) |
+| IonicNODE wrapper | `Surrogate/surrogate/model/node.py` | -- | Not started (PLAN Phase 2) |
+| NODE training loop | `Surrogate/surrogate/training/node_rollout.py` | -- | Not started (PLAN Phase 3) |
+| Discrete training archive | `Surrogate/surrogate/training/archive/` | -- | Not started (PLAN Phase 0) |
+| Training pipeline (discrete) | `Surrogate/surrogate/training/` | 44 tests | Done (superseded by NODE) |
 | ARCHITECTURE.md | `Surrogate/ARCHITECTURE.md` | -- | Done (explainer, code-consistent) |
 
 **Test summary**: 51/51 passing (25 model + 7 preprocessor + 19 ORd). v2 tests removed.
 
 ---
 
-## 17. Connections
+## 18. Connections
 
 - **Engines**: Bidomain V1 (training data source), Monodomain V5.4 (monodomain baseline)
 - **Related research**: [Boundary conduction speedup](../boundary_conduction_speedup/) -- surrogate must reproduce Kleber effect; [Engine consolidation](../engine_consolidation/) -- unified API would simplify data generation
@@ -830,7 +1075,7 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 | Vm history buffer (any size) | Stimulus artifacts contaminate history. Non-uniform schedule is a hyperparameter maze. |
 | Fourier decomposition of Vm | Sliding DFT is O(K) and clever, but unnecessary once carried latent eliminates history need. |
 | Learned Rush-Larsen | Too constrained -- forces HH exponential relaxation and independent dimensions. Can't represent Markov or Ca dynamics. |
-| Neural ODE (dz/dt = MLP(z,Vm)) | Too unconstrained -- multi-timescale learning is notoriously hard without structural priors. |
+| Neural ODE with plain MLP (dz/dt = MLP(z,Vm)) | Too unconstrained without structural priors (Session 7). **Reconsidered**: using existing attention+MLP as f_θ provides inherent contraction via attention gating. Now the active approach — see Section 5b. The key difference: plain MLP has no attractor structure; attention+MLP has built-in contraction (`gate*(target-z)`). |
 | GRU cell | Works but gating mechanism adds cost (10x RL) without clear benefit over residual formulation. |
 | 17x17 self-attention over latent dims | 47x RL. Cross-channel coupling not worth the cost. |
 | Deep MLP for cross-channel | Overkill. Real coupling is rank-3. |

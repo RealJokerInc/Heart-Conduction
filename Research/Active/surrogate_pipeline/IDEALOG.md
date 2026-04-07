@@ -5,14 +5,24 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Considering pivot to Neural ODE approach.** The discrete autoregressive rollout at native dt (0.01ms, 30K steps) cannot converge despite: dt curriculum (A1-A3 worked, A4 stuck), TBPTT, warm restarts, min-max normalization, batch tuning. The error compounding problem is fundamental to discrete autoregressive training — not a hyperparameter issue.
+**Neural ODE pivot — PLAN.md written, ready for implementation.** The discrete autoregressive rollout at native dt (0.01ms, 30K steps) failed structurally (A4 stuck at val~720). Pivoting to continuous dynamics: `dz/dt = f_θ(z, V)` trained via `odeint_adjoint` (dopri8). The v3 attention + MLP architecture becomes the dynamics function — zero new learned params, -8 params (dt removed from attention). The real win: gradient chain ~200-1000 adaptive solver steps vs 30K discrete steps (30-150× reduction). VoltageAttention's contractive structure (`z + gate*(target-z)`) naturally provides attractor geometry in the ODE formulation.
 
-What worked: dt curriculum A1→A3 (coarse to medium dt), model learns AP shape. What failed: A4 (native dt, 30K steps) — val stuck at ~720 for 155+ epochs.
-
-Neural ODE would replace discrete steps with continuous dynamics: dz/dt = f(z, Vm). Adjoint method handles gradients. No error compounding. See Salvador 2024 (300x speedup on cardiac electromechanics).
+CfC/liquid networks (Salvador & Marsden 2025, 30× speedup) evaluated but rejected — bakes in structural prior. We learn the unconstrained vector field; if Rush-Larsen is right, it emerges from training (and the attention block already has this form).
 
 ## Next Step
-Research Neural ODE approach for ionic surrogate. Key questions: (1) can torchdiffeq handle the multi-timescale stiffness (0.1ms to 100ms+)? (2) how to couple with the existing attention architecture? (3) what about the operator splitting structure (Stage 1 off-path, Stage 2 on-path)? The v3 attention + MLP architecture may still be the right dynamics model — just integrated with an ODE solver instead of discrete steps.
+Execute PLAN.md (Neural ODE Pivot for IonicSurrogateV3). Phase 0: archive discrete code. Phase 1: modify stage1.py (remove dt, residual_bypass, dzdt method — returns rate, not displacement; forward() removed as discrete stepper). Phase 2: IonicNODE wrapper (odeint_adjoint + euler_step). Phase 3: node_rollout.py with z0 noise injection for attractor basin widening. Then first NODE training run on T1, Phase A1.
+
+### 2026-04-06–07: Neural ODE Pivot Implementation
+**Worked on**: Full NODE pivot — research, architecture design, 4 audit rounds, implementation (4 phases), training strategy.
+**Accomplished**:
+- Researched LFLDNets (Salvador 2025) — CfC evaluated but rejected (structural prior). Chose unconstrained vector field `dz/dt = f_θ(z, V)`.
+- Key insight: VoltageAttention's `z + gate*(target-z)` IS a linear attractor in ODE form: `dz/dt = gate*(target(V)-z)`. Rush-Larsen emerges without being designed in.
+- Real win of NODE: gradient chain 200-1000 steps (dopri8) vs 30K discrete. Not "attractor emergence" — gradient tractability.
+- Stiffness analysis: eigenvalue spread ~1000× during upstroke from scaffold-imposed gate tracking. Manageable on 300ms solve. Segmentation rejected (no ground truth z for mid-AP init). Dense upstroke landmarks (10/20 in first 5ms).
+- Implemented: Phase 0 (archive), Phase 1 (stage1.py: dt removed, residual_bypass, dzdt, _compress, forward repurposed), Phase 2 (node.py: IonicNODE + dopri8 + euler_step), Phase 3 (node_rollout.py: odeint_adjoint training loop). 116 tests passing.
+- 4 audit rounds (Opus): 46→21→7→0 critical/high issues. Fixed: forward/euler_step incompatibility, V_traj indexing, ~50→200-1000 NFE, PLANNED markers, Section 5 SUPERSEDED, stale refs.
+- New TRAINING_STRATEGY.md for NODE training. Discrete docs archived.
+**Next**: First NODE training run. Phase A1 on T1 data. See TRAINING_STRATEGY.md.
 
 ### 2026-04-02–06 Session
 **Worked on**: Full training pipeline implementation and first training attempts for IonicSurrogateV3.
@@ -166,7 +176,7 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | Vm history buffer (any size) | Stimulus artifacts contaminate history. Non-uniform schedule is a hyperparameter maze. At dt=0.01ms, even 300 points only covers 3ms. |
 | Fourier decomposition of Vm | Sliding DFT is O(K) and clever, but unnecessary once carried latent eliminates the need for history. |
 | Learned Rush-Larsen | Too constrained — forces HH exponential relaxation and independent dimensions. Can't represent Markov or Ca dynamics. |
-| Neural ODE (dz/dt = MLP(z,Vm)) | Too unconstrained — multi-timescale learning is notoriously hard without structural priors. |
+| Neural ODE with plain MLP (dz/dt = MLP(z,Vm)) | Too unconstrained without structural priors (Session 7). **Reconsidered**: using existing attention+MLP as f_θ provides inherent contraction via attention gating. Now the active approach — see Current Direction and KNOWLEDGE.md Section 5b. |
 | GRU cell | Works but gating mechanism adds cost (10× RL) without clear benefit over residual formulation. |
 | 17×17 self-attention over latent dims | 47× RL. Cross-channel coupling not worth the cost. n×1 + linear coupling achieves the same. |
 | Deep MLP for cross-channel | Overkill. Single linear (or split GELU) layer suffices — real coupling is rank-3. |

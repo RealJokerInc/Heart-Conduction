@@ -7,8 +7,8 @@
 
 ## Current Status
 
-**Active Phase:** Documentation
-**Last Updated:** 2026-03-12
+**Active Phase:** Neural ODE Pivot — implementation DONE, training next
+**Last Updated:** 2026-04-06
 
 ---
 
@@ -36,7 +36,47 @@
 
 ---
 
-## Phase 1A: Single-Cell Data Generation -- NOT STARTED
+## v3 Model Implementation — DONE
+
+| Component | Status | Tests |
+|-----------|--------|-------|
+| NernstComputer | DONE | 3 tests |
+| IonicStage1 (attention + MLP + compression + scaffold) | DONE | 17 tests |
+| IonicStage2 (cross-attention readout) | DONE | 6 tests |
+| IonicSurrogateV3 (orchestrator) | DONE | 7 tests |
+| IonicNODE (torchdiffeq wrapper) | DONE | 6 tests |
+| V3Preprocessor | DONE | 7 tests |
+| ORd infrastructure | DONE | 19 tests |
+| Training pipeline (discrete — archived) | DONE | 44 tests |
+| NODE training rollout | DONE | 7 tests |
+
+**Total: 116 tests passing.**
+
+## Neural ODE Pivot — DONE (2026-04-06)
+
+4 phases implemented and committed:
+- Phase 0: Archive discrete training code (`training/archive/`)
+- Phase 1: stage1.py — dt removed, `residual_bypass`, `dzdt()` returns rate, `_compress()`, `forward()` repurposed
+- Phase 2: `model/node.py` — IonicNODE with dopri8 + euler_step, V(t) interpolation
+- Phase 3: `training/node_rollout.py` — odeint_adjoint training loop, 20 AP landmarks, z0 noise
+
+Key decisions:
+- `dzdt()` returns a RATE (not displacement). All state advancement through euler_step/odeint.
+- `forward()` does compression + scaffold only (no dynamics)
+- V trajectory persists through backward (adjoint re-calls forward)
+- Dense upstroke landmarks (10 of 20 in first 5ms)
+- Params: 1,408 inference (-8 from dt removal), 1,691 total with scaffold
+
+## Next: First NODE Training Run — NOT STARTED
+
+- Phase A1 on T1 data, batch=4096, LR=5e-4, dopri8
+- See `Surrogate/TRAINING_STRATEGY.md` for full plan
+- SegmentDataset at subsample=10 (dt=0.1ms trajectory, 300ms coverage)
+- Monitor: NFE, loss components, gradient norm
+
+---
+
+## Phase 1A: Single-Cell Data Generation -- DONE (T1-T12 generated)
 
 ## Phase 1B: Gate Decoder (Training Scaffold) -- NOT STARTED
 
