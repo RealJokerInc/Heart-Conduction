@@ -33,7 +33,6 @@ from .stage2 import IonicStage2
 from .stage1 import (
     IONIC_DIM,
     CONC_DIM,
-    ATTN_DIM,
     COND_DIM,
     MLP_HIDDEN,
     COMP_H1,
@@ -56,9 +55,8 @@ class IonicSurrogateV3(nn.Module):
     Args:
         ionic_dim: Latent ionic state dims (default 16).
         conc_dim: Explicit concentration dims (default 4).
-        attn_dim: Stage 1 attention projection dimension (default 4).
         cond_dim: Conductance latent after compression (default 8).
-        mlp_hidden: Ionic mixing MLP hidden dim (default 16).
+        mlp_hidden: Ionic rate MLP hidden dim (default 16).
         comp_h1: Compression first hidden layer (default 12).
         comp_h2: Compression second hidden layer (default 12).
         n_ionic_targets: Scaffold target: ionic states (default 14).
@@ -74,7 +72,6 @@ class IonicSurrogateV3(nn.Module):
         self,
         ionic_dim: int = IONIC_DIM,
         conc_dim: int = CONC_DIM,
-        attn_dim: int = ATTN_DIM,
         cond_dim: int = COND_DIM,
         mlp_hidden: int = MLP_HIDDEN,
         comp_h1: int = COMP_H1,
@@ -97,7 +94,6 @@ class IonicSurrogateV3(nn.Module):
         self.stage1 = IonicStage1(
             ionic_dim=ionic_dim,
             conc_dim=conc_dim,
-            attn_dim=attn_dim,
             cond_dim=cond_dim,
             mlp_hidden=mlp_hidden,
             comp_h1=comp_h1,

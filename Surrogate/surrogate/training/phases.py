@@ -34,15 +34,18 @@ class PhaseConfig:
     tbptt_window: int = 0           # truncated BPTT: backprop only last N steps (0 = all)
 
 
-# Half 1 params
+# Ionic params (ionic rate MLP + scaffold decoder)
 _HALF1_PARAMS = [
-    "stage1.voltage_attention.*",
-    "stage1.ionic_mixing_mlp.*",
-    "stage1.ionic_mixing_logit",
+    "stage1.ionic_rate_mlp.*",
     "stage1.ionic_state_decoder.*",
 ]
 
-# Half 2 params
+# Conc params (concentration KAN)
+_CONC_PARAMS = [
+    "stage1.conc_kan.*",
+]
+
+# Half 2 params (compression + conductance)
 _HALF2_PARAMS = [
     "stage1.gate_conductance_mlp.*",
     "stage1.gate_conductance_linear.*",

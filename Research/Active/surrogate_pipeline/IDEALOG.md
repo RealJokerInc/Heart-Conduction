@@ -5,12 +5,98 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Neural ODE pivot — PLAN.md written, ready for implementation.** The discrete autoregressive rollout at native dt (0.01ms, 30K steps) failed structurally (A4 stuck at val~720). Pivoting to continuous dynamics: `dz/dt = f_θ(z, V)` trained via `odeint_adjoint` (dopri8). The v3 attention + MLP architecture becomes the dynamics function — zero new learned params, -8 params (dt removed from attention). The real win: gradient chain ~200-1000 adaptive solver steps vs 30K discrete steps (30-150× reduction). VoltageAttention's contractive structure (`z + gate*(target-z)`) naturally provides attractor geometry in the ODE formulation.
-
-CfC/liquid networks (Salvador & Marsden 2025, 30× speedup) evaluated but rejected — bakes in structural prior. We learn the unconstrained vector field; if Rush-Larsen is right, it emerges from training (and the attention block already has this form).
+**IonicRateMLP + KAN architecture validated. Multi-BCL training succeeds (val 0.008). T2 restitution training in progress.** VoltageAttention replaced by dense IonicRateMLP (17→16→16→16, 832 params) which achieved loss=0.022 with 5001 dense landmarks — better than attention's 0.047. Concentration path uses B-spline KAN (no cross-talk). Multi-BCL generalizes to unseen pacing rates. T2 (S1S2 restitution, 11,000ms protocols) stabilizing. Next architecture idea: learned contractive step (target+blend) to replace raw rate + Euler, enabling discrete BPTT without ODE solver.
 
 ## Next Step
-Execute PLAN.md (Neural ODE Pivot for IonicSurrogateV3). Phase 0: archive discrete code. Phase 1: modify stage1.py (remove dt, residual_bypass, dzdt method — returns rate, not displacement; forward() removed as discrete stepper). Phase 2: IonicNODE wrapper (odeint_adjoint + euler_step). Phase 3: node_rollout.py with z0 noise injection for attractor basin widening. Then first NODE training run on T1, Phase A1.
+- Monitor T2 training convergence (currently epoch 4, T2_val=0.92, still stabilizing).
+- Once T2 stable: evaluate combined T1+T2 generalization on held-out BCLs and S2 intervals.
+- Design and prototype learned contractive step: MLP outputs (target, blend) per dim, z_new = z + blend*(target - z). Contractive by construction, dt enters through blend.
+- Consider T3+ data tiers after T2 validates.
+
+### 2026-04-07 (Session 25): Architecture refinements + first multi-BCL and T2 training
+**Worked on**: Replaced VoltageAttention with IonicRateMLP, concentration KAN, dense landmarks, multi-BCL training, T2 restitution training, designed learned contractive step.
+**Accomplished**:
+
+1. **VoltageAttention proven redundant and removed**:
+   - Mathematical proof: attention on scalar inputs collapses to 32 effective parameters (16 gate slopes + 16 target slopes). The 136-param attention machinery was an overparameterized factorization.
+   - Empirical proof: trained weights showed alpha (mixing logit) stayed at init (0.007), MLP contributed ~3% of rate. Gates saturated to binary switches. Model solved loss=0.047 as a switched linear ODE.
+   - Replaced with IonicRateMLP: dense MLP (17→16→16→16) with internal residual. 832 params. Achieved loss=0.022 with 5001 dense landmarks — BETTER than attention.
+   - Archived to v2_archive/stage1_attention.py.
+
+2. **Concentration KAN**:
+   - conc_mlp failed: cross-communicated concentration dims (physically wrong), unstable ODE feedback loop.
+   - Replaced with B-spline KAN layer: 17 inputs (ionic latent + Vm) → 4 outputs (conc rates). No cross-talk between concentration dims. Physics-aligned: each conc rate = sum of independent nonlinear functions of ionic dims + Vm.
+   - Grid=5, order=3, 612 params.
+
+3. **Dense landmarks crucial**: 5001 points (every 0.1ms over 500ms) >> 23 sparse landmarks. Forces smooth vector field everywhere, not just at waypoints. Loss improved 0.066 → 0.022.
+
+4. **Multi-BCL training succeeded**: T1 train BCLs {300,500,700,1000,1500}, val BCLs {400,600,800,2000}. Variable-length segments per BCL. Val loss reached 0.008 — generalizes to unseen pacing rates.
+
+5. **T2 (S1S2 restitution) training in progress**: Full 11,000ms protocols (10 S1 beats + S2). Initial chaos (T2 val oscillated 24→68→18→25) but stabilizing by epoch 4 (T2_val=0.92).
+
+6. **Next architecture direction — learned contractive step (not yet implemented)**:
+   - Current: MLP outputs raw dz/dt, Euler integration has worst-case dt stability (worse than Rush-Larsen which TTP06 uses).
+   - Proposed: MLP outputs (target, blend) per dim. `z_new = z + blend*(target - z)` where blend = sigmoid(MLP output).
+   - Contractive by construction: z always moves toward target.
+   - dt enters through blend (model learns dt-dependent blending, not hardcoded exp(-rate*dt)).
+   - Enables discrete training (BPTT) without ODE solver — contractive Jacobian prevents gradient explosion.
+   - More general than learned Rush-Larsen: model can learn non-exponential decay.
+   - NOT YET IMPLEMENTED. Current model still uses raw rate + odeint.
+
+**Decisions**: VoltageAttention archived, IonicRateMLP is the new ionic rate path. KAN for concentrations. Dense landmarks as default. Multi-BCL as standard training regime.
+**Next**: Monitor T2 convergence. Prototype learned contractive step. Consider T3+ tiers.
+
+### 2026-04-07: VoltageAttention Redundancy — Mathematical Proof + Weight Analysis
+**Worked on**: Advisor critique of attention layer prompted deep analysis of VoltageAttention mechanism and trained weights.
+**Accomplished**:
+
+**Advisor's critique:**
+1. Attention layer is redundant — a dense MLP would suffice.
+2. If doing attention, need cosine similarity step — which would be meaningless here (binary output on scalar tokens).
+
+**Mathematical proof that attention collapses to 32 scalars:**
+- Q_i = z_i * W_q[i,:] and K = Vm * W_k are scalars embedded in R^4. Each of the 16 ionic dims has its own W_q row.
+- Dot product reduces to: score_i = z_i * Vm * c_i where c_i = W_q[i,:] dot W_k (a learned constant per dim).
+- After sigmoid: gate_i = sigma(c_i * z_i * Vm). This is a hard switch — not soft modulation.
+- Cosine similarity would be even worse: sign(z_i * Vm) * const — binary output, no directional content.
+- Target is linear in Vm: target_i = t_i * Vm (W_v * W_out product). Cannot represent sigmoid gate steady-states (nonlinear in Vm).
+- Full equation per dim: dz_i/dt = sigma(c_i * z_i * Vm) * (t_i * Vm - z_i). Only 32 effective params (16 c_i + 16 t_i) out of 136 attention params.
+
+**Empirical evidence from trained weights (runs/single_ap_001/best.pt):**
+- Alpha (ionic_mixing_logit) barely moved from init: mean 0.0076 (init was 0.007). MLP contributes ~3% of rate. Effectively unused.
+- Gates saturate to binary switches (values span 1e-13 to 1.0) — hard on/off, not soft modulation.
+- At z=0 (resting): gate = 0.5 for all dims. Cannot distinguish resting states of different variables.
+- The model solved ionic_state_mse to 0.047 using attention alone as a **switched linear ODE**.
+- The MLP, residual bypass, and alpha mixing were all effectively unused — the architecture defaulted to its simplest mode.
+
+**Conclusion:** VoltageAttention with scalar per-dim inputs is fundamentally limited. The n x 1 cross-attention mechanism, which seemed elegant in Session 7, collapses when each "token" is a single scalar. The nonlinear expressivity we expected from attention (state-dependent gating of voltage-dependent targets) reduces to a linear-in-Vm target with a bilinear gate. Replace VoltageAttention + ionic_mixing_mlp + residual_bypass with a single dense MLP(z_ionic, Vm) -> ionic_rate. Simpler, fewer params, can learn nonlinear V-dependent dynamics that the linear target cannot.
+
+**Checkpoint note:** runs/single_ap_001/best.pt represents the attention-based architecture (ionic_state_mse=0.047). Superseded by this analysis — architecture will be replaced. Checkpoint retained for comparison.
+
+**Decisions**: Replace VoltageAttention + ionic_mixing_mlp + residual_bypass with dense MLP. The attention mechanism is not wrong in principle — it's wrong for scalar inputs where the QKV structure collapses.
+**Next**: Design replacement MLP architecture for ionic Stage 1.
+
+### 2026-04-07: Architecture Refinements + First Single-AP Training
+**Worked on**: Architecture refinements to IonicStage1 dzdt() and first single-AP training runs.
+**Accomplished**:
+- **MLP input changed**: z_mid to ionic_delta (attention rate). Rationale: MLP is a rate corrector, should see rates not states. z_mid has DC offset that wastes tiny MLP capacity. Alpha logit stays semantic (mixing on/off) instead of becoming a scale fixer.
+- **rms_norm removed** from MLP input: delta magnitude is informative (small at rest, large during upstroke). Normalizing destroys this signal.
+- **VoltageAttention now returns rate directly**: `gate*(target-z)` instead of `z + gate*(target-z)`. Eliminates add-then-subtract roundtrip in dzdt().
+- **VoltageAttention shrunk to ionic-only (16 dims)**: Concentrations no longer go through attention. Clean separation.
+- **Dedicated concentration path via B-spline KAN**: `conc_kan = KANLayer(17->4, grid=5, order=3)`. Input: ionic_latent(16) + Vm(1). No conc self-input, no cross-communication between concentration dims. Physics-aligned: each conc rate = sum of independent nonlinear functions of ionic dims and Vm. 612 params (544 spline + 68 base weights).
+- **conc_mlp removed** — replaced by KAN. MLP was wrong because it cross-communicated concentration dims.
+- Training runs (single AP, BCL=2000, 500ms window):
+  - Phase A1 (ionic_state_mse only): 50.6 to 0.047 in 500 epochs. ~1.25s/epoch on GPU.
+  - Adjoint backward diverged with random weights — switched to backprop-through-solver (adjoint=False).
+  - dopri8 diverged — switched to dopri5 with rtol=1e-3, atol=1e-3.
+  - Concentration training (conc_only phase, frozen ionic):
+    - Shared attention: corrupted ionic weights (shared W_q/W_out).
+    - MLP: unstable feedback through ODE (Xavier init exploded to 1e237). Zero last-layer init: stable but slow (0.65 to 0.43 in 500 epochs).
+    - KAN with L1: stable, 176 to 37 in 500 epochs. Slow due to grad clipping.
+    - KAN with L2 + cosine decay (LR 1e-2 to 1e-5): 147K to best ~5.6, settled ~10 in 500 epochs.
+- Model params: 1988 inference (was 1408), 2271 total with scaffold.
+**Decisions**: Concentration loss detached from ionic training (train separately, frozen ionic). "conc_only" phase added to node_rollout.py. L2 loss for concentrations (not normalized MSE).
+**Next**: Investigate W_out rank-4 bottleneck. Conc training needs per-dim normalization. Scale to multiple BCLs.
 
 ### 2026-04-06–07: Neural ODE Pivot Implementation
 **Worked on**: Full NODE pivot — research, architecture design, 4 audit rounds, implementation (4 phases), training strategy.
@@ -188,6 +274,14 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | Standalone decoder recalibration (B2_decoder) | Decoder trained on frozen latent becomes stale when latent shifts in next phase. Always co-train encoder and decoder. |
 | Rollout curriculum at fixed dt=0.01ms (1→10→100→1K→10K) | Slow and expensive. dt curriculum (3ms→1ms→0.1ms→0.01ms at fixed 300ms coverage) achieves same temporal coverage much cheaper. Rollout=100 at dt=3ms sees the same AP as rollout=30K at dt=0.01ms. |
 | Discrete autoregressive rollout at native dt (0.01ms, 30K steps) | Fundamentally limited by error compounding. Tried: dt curriculum (A1-A3 worked but A4 stuck at val~720), TBPTT(500), warm restarts, min-max normalization, batch tuning. The 30K-step gradient chain is too long even with truncation. Error at step 100 corrupts steps 101-30000 → incoherent gradients. Not a hyperparameter problem — it's a structural limitation of discrete autoregressive training for stiff multi-timescale systems. |
+| Adjoint method (odeint_adjoint) with random weights | Adjoint backward diverged during early training when weights are random (vector field is chaotic). Switched to backprop-through-solver (adjoint=False). Adjoint may work later once field is partially trained. |
+| dopri8 for early NODE training | Diverged — too aggressive for poorly-trained vector field. dopri5 with loose tolerances (rtol/atol=1e-3) is stable. |
+| Shared VoltageAttention for concentrations (20-dim attention) | W_q/W_out are shared — training conc dims corrupted ionic weights. Concentrations need a dedicated path. |
+| conc_mlp for concentration rates | MLP cross-communicates concentration dimensions (each conc rate sees all other concs). Physics violation: concentration rates are independent functions of ionic state and Vm. Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow. |
+| Normalized MSE for concentration loss | Catastrophic for out-of-range predictions: if pred >> true, normalization makes loss look small. L2 (raw MSE) is correct for concentrations. |
+| VoltageAttention (n x 1 cross-attention on scalar inputs) | Collapses to 32 effective params (switched linear ODE) when operating on scalar per-dim inputs. Q_i = z_i * W_q[i,:], K = Vm * W_k are scalars in R^4 — dot product reduces to score_i = z_i * Vm * c_i (learned constant). Target is linear in Vm (t_i * Vm), cannot represent nonlinear sigmoid gate steady-states. Trained weights confirm: MLP correction unused (alpha stayed at init 0.007), gates saturate to binary switches. Replace with dense MLP(z_ionic, Vm) -> ionic_rate. |
+| conc_mlp (dense MLP for concentrations) | Cross-communicated concentration dimensions (each conc rate sees all other concs). Physics violation: concentration rates are independent functions of ionic state and Vm. Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow. Replaced by B-spline KAN layer with no cross-talk between concentration dims. |
+| Xavier init on last layer of rate MLP | ODE diverged on first integration step — initial vector field too large, solver immediately produces NaN/Inf. Fixed with zero-init on last layer (model starts as identity/zero-rate, gradually learns dynamics). Critical for any MLP used as ODE right-hand side. |
 
 ## Session Log
 | Date | Session | Work Done |
@@ -209,6 +303,9 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | 2026-04-02–03 | 19-20 | Training pipeline built (6 PLAN phases). Data cache, datasets, encoder, phases, rollout, trainer, checkpoint, monitor, metrics, shard loader, CLI, training agent. 83 tests. Encoder-based A1 verified (val=7.9e-5). Then removed encoder — model discovers own latent. B1(r=1) val=0.073, B1.5(r=10) val=0.39 after 200 epochs. Variance normalization, then min-max. |
 | 2026-04-04 | 21 | dt curriculum replaces rollout curriculum. Subsample T1 data at variable dt (3ms→1ms→0.1ms→0.01ms), fixed 300ms coverage. A1-A3 completed (A3 val=0.92). TBPTT + warm restarts implemented. Batch=32768 failed (too few steps), reverted to 4096. |
 | 2026-04-04–06 | 22 | A4 (dt=0.01ms, r=30K) stuck at val~720 for 155 epochs despite TBPTT(500) + warm restarts. Discrete autoregressive at native dt fundamentally limited by error compounding. **Decision: pivot to Latent Neural ODE.** The latent becomes unstable over long rollouts — continuous ODE integration with adjoint gradients avoids discrete error accumulation. |
+| 2026-04-07 | 23 | Architecture refinements: VoltageAttention returns rate (not state), ionic-only (16 dims), MLP takes ionic_delta (not z_mid), rms_norm removed. conc_mlp replaced by B-spline KAN (612 params). First training: ionic_state_mse 50.6→0.047 (500 epochs). Conc KAN: 147K→~5.6 best. Adjoint unstable→backprop-through-solver. dopri8→dopri5 (rtol/atol=1e-3). Params: 1988 inference, 2271 total. |
+| 2026-04-07 | 24 | VoltageAttention proven mathematically redundant: collapses to 32 effective params (switched linear ODE) on scalar inputs. Advisor critique + weight analysis of best.pt. MLP/residual bypass unused. Decision: replace with dense MLP. Checkpoint runs/single_ap_001/best.pt superseded. |
+| 2026-04-07 | 25 | VoltageAttention replaced by IonicRateMLP (832 params, loss=0.022 vs 0.047). conc_mlp replaced by B-spline KAN. Dense landmarks (5001 pts). Multi-BCL training val=0.008. T2 restitution training in progress (stabilizing at epoch 4). Learned contractive step designed (not yet implemented). |
 
 ### 2026-03-23 — Session 12: Architecture v2 + T4-T12 data generation
 

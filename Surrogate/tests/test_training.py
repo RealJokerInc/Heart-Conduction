@@ -328,10 +328,10 @@ class TestPhaseConfig:
         apply_freeze_mask(model, phase)
         summary = get_freeze_summary(model)
 
-        # voltage_attention + ionic_mixing_mlp + ionic_mixing_logit + ionic_state_decoder unfrozen
+        # ionic_rate_mlp + ionic_state_decoder unfrozen
         for name, grad in summary.items():
-            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
-                assert grad, f"{name} should be unfrozen in B1"
+            if any(p in name for p in ['ionic_rate_mlp', 'ionic_state_decoder']):
+                assert grad, f"{name} should be unfrozen in A1"
             elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen in B1"
 
@@ -352,8 +352,7 @@ class TestPhaseConfig:
             ]):
                 assert grad, f"{name} should be unfrozen in B1"
             elif any(p in name for p in [
-                'voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit',
-                'ionic_state_decoder',
+                'ionic_rate_mlp', 'ionic_state_decoder',
             ]):
                 assert not grad, f"{name} (Half 1) should be frozen in B1"
             elif 'stage2' in name:
@@ -533,7 +532,7 @@ class TestTrainer:
         summary = get_freeze_summary(model)
 
         for name, grad in summary.items():
-            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
+            if any(p in name for p in ['ionic_rate_mlp', 'ionic_state_decoder']):
                 assert grad, f"{name} should be unfrozen"
             elif 'stage2' in name:
                 assert not grad, f"{name} should be frozen"
@@ -578,10 +577,10 @@ class TestTrainer:
         trainer.train_phase(b1)
 
         summary = get_freeze_summary(model)
-        # After B1: voltage_attention + ionic_mixing + ionic_state_decoder should be unfrozen
+        # After A1: ionic_rate_mlp + ionic_state_decoder should be unfrozen
         for name, grad in summary.items():
-            if any(p in name for p in ['voltage_attention', 'ionic_mixing_mlp', 'ionic_mixing_logit', 'ionic_state_decoder']):
-                assert grad, f"{name} should be unfrozen after B1"
+            if any(p in name for p in ['ionic_rate_mlp', 'ionic_state_decoder']):
+                assert grad, f"{name} should be unfrozen after A1"
 
     def test_checkpoint_save_load(self, tmp_path):
         """Checkpoint round-trip preserves model weights."""

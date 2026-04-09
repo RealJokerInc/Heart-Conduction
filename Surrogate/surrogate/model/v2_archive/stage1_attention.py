@@ -1,11 +1,13 @@
-"""Stage 1: Ionic rate MLP + Concentration KAN + Compression for ionic surrogate v3.
+"""Stage 1: Attention + MLP + Compression for ionic surrogate v3.
 
 State evolution engine (off critical path). Neural ODE dynamics function.
 
 dzdt(z, Vm) -> dz/dt:
-    ionic path: ionic_rate_mlp(z[:ionic], Vm) -> ionic_rate (dense MLP, internal residual)
-    conc path: conc_kan([z[:ionic], Vm]) -> conc_rate (B-spline KAN, no cross-talk)
-    -> cat([ionic_rate, conc_rate]) = dz/dt
+    voltage_attention(CARRIED_DIM, d=ATTN_DIM) to [Vm]
+    -> delta = z_mid - z (attention rate)
+    -> split: ionic_delta (IONIC_DIM) + conc_delta (CONC_DIM)
+    -> ionic: Pre-RMSNorm -> ionic_mixing_mlp -> residual_bypass(ionic_delta, correction)
+    -> cat([ionic_rate, conc_delta]) = dz/dt
 
 forward(z, Vm) -> compression + scaffold (no dynamics):
     -> _compress(z) -> conductance_latent
@@ -14,6 +16,7 @@ forward(z, Vm) -> compression + scaffold (no dynamics):
         gate_conductance_decoder(COND_DIM -> N_CONDUCTANCE_TARGETS): effective gate products
 """
 
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -22,66 +25,83 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.init import xavier_uniform_
 
-from .kan import KANLayer
-
 
 # === Hyperparameter defaults (small TTP06 config) ===
 IONIC_DIM = 16
 CONC_DIM = 4
 CARRIED_DIM = IONIC_DIM + CONC_DIM  # 20
+ATTN_DIM = 4
 COND_DIM = 8
 MLP_HIDDEN = 16
 COMP_H1 = 12
 COMP_H2 = 12
 N_IONIC_TARGETS = 14     # 12 HH gates (m-Xs) + RR + Ca_SR = 14 ionic state targets
 N_CONDUCTANCE_TARGETS = 5 # G_Na(m³hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1Xr2), G_Ks(Xs²)
-CONC_KAN_GRID = 5
-CONC_KAN_ORDER = 3
+ALPHA_INIT = -5.0  # sigmoid(-5) ~ 0.007, near-pure residual at init
 BETA_INIT = -5.0
 
 
+def rms_norm(x: Tensor) -> Tensor:
+    """Zero-parameter RMSNorm. Normalizes by root-mean-square, no learned scale."""
+    return x / (x.pow(2).mean(-1, keepdim=True).sqrt() + 1e-8)
+
+
 def residual_bypass(base: Tensor, correction: Tensor, logit: Tensor) -> Tensor:
-    """Additive residual bypass. Used by gate conductance compression."""
+    """Additive residual bypass. Identity path unconditional; correction adds on top.
+
+    alpha -> 0: pass base unchanged. alpha -> 1: add full correction to base.
+    For NODE: derivative = attention_rate + alpha * mlp_correction (clean additive sum).
+    """
     alpha = torch.sigmoid(logit)
     return base + alpha * correction
 
 
-class IonicRateMLP(nn.Module):
-    """Dense MLP: (z_ionic, Vm) → ionic rate. Residual between hidden layers.
+class VoltageAttention(nn.Module):
+    """Per-dim voltage-gated attention over carried state.
 
-    Replaces VoltageAttention + ionic_mixing_mlp. Can learn nonlinear
-    V-dependent dynamics, cross-dim coupling, and contractive structure
-    — all in one network. 832 params at H=16.
+    Each carried state dim independently queries [Vm] to produce a gate
+    and target. Contractive update: z = old + gate * (target - old).
+    dt removed for NODE pivot — vector field f(z,V) must be dt-independent.
     """
 
-    def __init__(self, ionic_dim: int, hidden: int = MLP_HIDDEN):
+    def __init__(self, carried_dim: int, attn_dim: int):
         super().__init__()
-        self.fc1 = nn.Linear(ionic_dim + 1, hidden)   # [z, Vm] → hidden
-        self.fc2 = nn.Linear(hidden, hidden)           # hidden → hidden (residual)
-        self.fc3 = nn.Linear(hidden, ionic_dim)        # hidden → rate
+        self.W_q = nn.Parameter(torch.empty(carried_dim, attn_dim))
+        self.W_k = nn.Linear(1, attn_dim, bias=False)
+        self.W_v = nn.Linear(1, attn_dim, bias=False)
+        self.W_out = nn.Parameter(torch.empty(attn_dim, carried_dim))
+        self.scale = 1.0 / math.sqrt(attn_dim)
+        xavier_uniform_(self.W_q)
+        xavier_uniform_(self.W_k.weight)
+        xavier_uniform_(self.W_v.weight)
+        xavier_uniform_(self.W_out)
 
-    def forward(self, z_ionic: Tensor, Vm: Tensor) -> Tensor:
-        x = torch.cat([z_ionic, Vm.unsqueeze(-1)], dim=-1)
-        h = F.gelu(self.fc1(x))
-        h = h + F.gelu(self.fc2(h))  # residual
-        return self.fc3(h)
+    def forward(self, carried_state: Tensor, Vm: Tensor) -> Tensor:
+        x = Vm.unsqueeze(-1)                                           # (B, 1)
+        k = self.W_k(x)                                                # (B, d)
+        v = self.W_v(x)                                                # (B, d)
+        q = torch.einsum('ij,jk->ijk', carried_state, self.W_q)       # (B, D, d)
+        score = torch.einsum('ijk,ik->ij', q, k) * self.scale         # (B, D)
+        gate = torch.sigmoid(score)                                    # (B, D)
+        target = v @ self.W_out                                        # (B, D)
+        return carried_state + gate * (target - carried_state)         # (B, D)
 
 
 class IonicStage1(nn.Module):
-    """Stage 1: ionic rate MLP + concentration KAN + gate conductance compression.
+    """Stage 1: attention + ionic mixing + gate conductance compression.
 
     Takes carried_state (ionic + concentrations), produces updated state,
     conductance latent, and scaffold predictions.
 
-    Ionic and concentration dims have separate paths in dzdt():
-    - Ionic: IonicRateMLP (dense MLP with internal residual)
-    - Conc: KANLayer (B-spline, no cross-talk between conc dims)
+    Concentrations split off AFTER attention, BEFORE MLP -- they do NOT
+    go through the ionic mixing MLP. Only ionic dims get the MLP correction.
 
     Args:
         ionic_dim: Latent ionic state dims (default 16).
         conc_dim: Explicit concentration dims (default 4).
+        attn_dim: Attention projection dimension (default 4).
         cond_dim: Conductance latent after compression (default 8).
-        mlp_hidden: IonicRateMLP hidden dim (default 16).
+        mlp_hidden: Ionic mixing MLP hidden dim (default 16).
         comp_h1: Compression first hidden layer (default 12).
         comp_h2: Compression second hidden layer (default 12).
         n_ionic_targets: State decoder targets (default 14: 12 HH gates + RR + Ca_SR).
@@ -93,6 +113,7 @@ class IonicStage1(nn.Module):
         self,
         ionic_dim: int = IONIC_DIM,
         conc_dim: int = CONC_DIM,
+        attn_dim: int = ATTN_DIM,
         cond_dim: int = COND_DIM,
         mlp_hidden: int = MLP_HIDDEN,
         comp_h1: int = COMP_H1,
@@ -107,18 +128,16 @@ class IonicStage1(nn.Module):
         self.carried_dim = ionic_dim + conc_dim
         self.cond_dim = cond_dim
 
-        # --- Ionic rate MLP: (z_ionic, Vm) → dz_ionic/dt ---
-        self.ionic_rate_mlp = IonicRateMLP(ionic_dim, mlp_hidden)
+        # --- Attention ---
+        self.voltage_attention = VoltageAttention(self.carried_dim, attn_dim)
 
-        # --- Concentration KAN: (z_ionic, Vm) → dz_conc/dt ---
-        # No conc self-input, no cross-talk between conc dims.
-        # Physics: dConc/dt = sum of ionic current contributions, each a function of gates/Vm.
-        conc_kan_in = ionic_dim + 1  # 16 ionic + 1 Vm = 17
-        self.conc_kan = KANLayer(
-            conc_kan_in, conc_dim,
-            grid_size=CONC_KAN_GRID, order=CONC_KAN_ORDER,
-            grid_range=(-2.0, 2.0),
+        # --- Ionic mixing MLP (cross-dim communication on ionic dims) ---
+        self.ionic_mixing_mlp = nn.Sequential(
+            nn.Linear(ionic_dim, mlp_hidden),
+            nn.GELU(),
+            nn.Linear(mlp_hidden, ionic_dim),
         )
+        self.ionic_mixing_logit = nn.Parameter(torch.full((ionic_dim,), ALPHA_INIT))
 
         # --- Gate conductance compression (full carried_state → effective conductances) ---
         self.gate_conductance_linear = nn.Linear(self.carried_dim, cond_dim, bias=False)
@@ -141,14 +160,9 @@ class IonicStage1(nn.Module):
         self._init_weights()
 
     def _init_weights(self) -> None:
-        """Xavier uniform for MLP and compression weights.
-        KAN handles its own init (spline weights near-zero, small base weights).
-        """
-        xavier_uniform_(self.ionic_rate_mlp.fc1.weight)
-        xavier_uniform_(self.ionic_rate_mlp.fc2.weight)
-        # Last layer near-zero: rate ≈ 0 at init, prevents ODE divergence
-        nn.init.zeros_(self.ionic_rate_mlp.fc3.weight)
-        nn.init.zeros_(self.ionic_rate_mlp.fc3.bias)
+        """Xavier uniform for MLP and compression weights."""
+        xavier_uniform_(self.ionic_mixing_mlp[0].weight)
+        xavier_uniform_(self.ionic_mixing_mlp[2].weight)
         xavier_uniform_(self.gate_conductance_linear.weight)
         xavier_uniform_(self.gate_conductance_mlp[0].weight)
         xavier_uniform_(self.gate_conductance_mlp[2].weight)
@@ -177,16 +191,16 @@ class IonicStage1(nn.Module):
             z = z.unsqueeze(0)
             Vm = Vm.view(1)
 
-        ionic_z = z[:, :self.ionic_dim]
+        z_mid = self.voltage_attention(z, Vm)           # z + gate*(target-z)
+        delta = z_mid - z                               # attention rate for all dims
 
-        # Ionic path: dense MLP
-        ionic_rate = self.ionic_rate_mlp(ionic_z, Vm)
+        ionic_delta = delta[:, :self.ionic_dim]
+        conc_delta = delta[:, self.ionic_dim:]
 
-        # Conc path: KAN (sees ionic latent + Vm, no conc self-input)
-        conc_input = torch.cat([ionic_z, Vm.unsqueeze(-1)], dim=-1)
-        conc_rate = self.conc_kan(conc_input)
+        correction = self.ionic_mixing_mlp(rms_norm(z_mid[:, :self.ionic_dim]))
+        ionic_rate = residual_bypass(ionic_delta, correction, self.ionic_mixing_logit)
 
-        dz_dt = torch.cat([ionic_rate, conc_rate], dim=-1)
+        dz_dt = torch.cat([ionic_rate, conc_delta], dim=-1)
 
         if squeezed:
             dz_dt = dz_dt.squeeze(0)

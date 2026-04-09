@@ -58,6 +58,10 @@ def node_rollout(
     device: Optional[torch.device] = None,
     t_eval_ms: Optional[Tensor] = None,
     z0_noise_sigma: float = 0.0,
+    adjoint: bool = False,
+    method: str = "dopri5",
+    rtol: float = 1e-3,
+    atol: float = 1e-3,
 ) -> dict:
     """NODE training rollout: integrate z via odeint_adjoint, compute loss at landmarks.
 
@@ -104,7 +108,8 @@ def node_rollout(
     # Do NOT clear until after loss.backward() — adjoint re-calls forward.
     node.set_v_trajectory(segment['Vm'].double().to(device), t_grid)
 
-    z_traj = node.integrate(z0, t_eval)  # (N_eval, B, carried_dim)
+    z_traj = node.integrate(z0, t_eval, method=method, rtol=rtol, atol=atol,
+                            adjoint=adjoint)  # (N_eval, B, carried_dim)
 
     # Compute loss at each t_eval point
     losses_per_eval = []
@@ -156,8 +161,15 @@ def _compute_node_loss(
         losses['ionic_state_mse'] = _normalizer.normalized_mse(
             ionic_state_pred, segment['ionic_states'][:, idx, :], 'ionic_states')
         losses['conc_mse'] = _normalizer.normalized_mse(
-            conc_pred, segment['concentrations'][:, idx, :], 'concentrations')
-        losses['loss'] = losses['ionic_state_mse'] + losses['conc_mse']
+            conc_pred, segment['concentrations'][:, idx, :], 'concentrations').detach()
+        losses['loss'] = losses['ionic_state_mse']
+
+    elif phase_name == "conc_only":
+        losses['ionic_state_mse'] = _normalizer.normalized_mse(
+            ionic_state_pred, segment['ionic_states'][:, idx, :], 'ionic_states').detach()
+        losses['conc_mse'] = torch.nn.functional.mse_loss(
+            conc_pred, segment['concentrations'][:, idx, :])
+        losses['loss'] = losses['conc_mse']
 
     elif phase_name in ("B1", "B2", "B3", "B4", "ionic_state_and_conductance"):
         losses['ionic_state_mse'] = _normalizer.normalized_mse(

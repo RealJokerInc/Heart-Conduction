@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from typing import Optional
-from torchdiffeq import odeint_adjoint
+from torchdiffeq import odeint, odeint_adjoint
 
 from .stage1 import IonicStage1
 
@@ -61,19 +61,29 @@ class IonicNODE(nn.Module):
         self,
         z0: Tensor,
         t_eval: Tensor,
-        method: str = "dopri8",
-        rtol: float = 1e-4,
-        atol: float = 1e-5,
+        method: str = "dopri5",
+        rtol: float = 1e-3,
+        atol: float = 1e-3,
+        adjoint: bool = False,
     ) -> Tensor:
         """Integrate from t_eval[0] to t_eval[-1], return z at each t_eval point.
-        Uses odeint_adjoint for O(1) memory backward pass.
+
+        Args:
+            adjoint: If True, use odeint_adjoint (O(1) memory). If False, use
+                odeint (backprop through solver — more memory, stable early training).
         Returns: (N, B, carried_dim) or (N, carried_dim) if unbatched.
         """
-        return odeint_adjoint(
-            self, z0, t_eval,
-            method=method, rtol=rtol, atol=atol,
-            adjoint_params=tuple(self.stage1.parameters()),
-        )
+        if adjoint:
+            return odeint_adjoint(
+                self, z0, t_eval,
+                method=method, rtol=rtol, atol=atol,
+                adjoint_params=tuple(self.stage1.parameters()),
+            )
+        else:
+            return odeint(
+                self, z0, t_eval,
+                method=method, rtol=rtol, atol=atol,
+            )
 
     def euler_step(self, z: Tensor, V: Tensor, dt: float) -> Tensor:
         """Euler inference step. No solver. Works for any dt value.

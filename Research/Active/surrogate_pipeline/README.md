@@ -55,6 +55,7 @@ Documentation phase complete (2026-03-12). Architecture designed:
 | [centofanti_2025_fno_kol_cardiac](literature/centofanti_2025_fno_kol_cardiac.md) | — | FNO/KOL maps stimulus→AT/RT directly. Single-shot, not timestep sim. Validates FNO for cardiac EP. |
 | [lydon_2025_pino_cardiac](literature/lydon_2025_pino_cardiac.md) | — | PINO with FNO backbone. Autoregressive rollouts, 10x resolution upscaling. PINN-adjacent. |
 | [salvador_2024_lnode_cardiac](literature/salvador_2024_lnode_cardiac.md) | — | Latent Neural ODE for electromechanics. 300x speedup but 0D outputs (PV loops), not spatial fields. |
+| [salvador_2025_lfldnet](literature/salvador_2025_lfldnet.md) | — | LFLDNet: CfC liquid NN replaces ODE solver for latent dynamics. 30x speedup on 3D monodomain (TTP06). Δt=10ms vs 0.1ms FEM. CfC gating directly addresses our A4 discrete-step error accumulation. |
 
 ## Future Work
 - Variable grid sizes (currently fixed Nx × Ny)

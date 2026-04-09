@@ -21,9 +21,11 @@ The diffusion step (94% of wall time) only needs I_ion. Stage 1 outputs (updated
 ```
 carried_state(t), Vm
   |-> Stage 1 (off critical path): dzdt(z, V) -> dz/dt rate -> euler_step -> carried_state(t+1)
-  |                                  _compress(carried_state) -> conductance_latent(t+1)
-  |                                  Nernst -> reversal_potentials(t+1)
-  |                                  [runs during diffusion step]
+  |     Ionic: VoltageAttention(ionic_state, Vm) -> ionic_delta -> MLP correction -> ionic_rate
+  |     Conc:  KAN(ionic_state, Vm) -> conc_rate
+  |     Compression: _compress(carried_state) -> conductance_latent(t+1)
+  |     Nernst: concentrations(t+1) -> reversal_potentials(t+1)
+  |     [runs during diffusion step]
   |
   +-> Stage 2 (ON critical path):  current readout -> I_ion(t)
                                     [must complete before diffusion step begins]
@@ -77,34 +79,41 @@ Architectural decisions are derived from three layers, prioritized top-down:
 ### Carried State
 
 ```
-carried_state = [ionic_state(32), Na_i, K_i, Ca_i, Ca_ss] = (36,)
+carried_state = [ionic_state(16), Na_i, K_i, Ca_i, Ca_ss] = (20,)    [full-size: 32+4=36]
                  |-- latent ---|  |---- explicit, named ---|
 ```
 
-- **ionic_state** (32 dims): latent, learned, encodes channel conformational states (gates, Markov occupancies)
+- **ionic_state** (16 dims) [full: 32]: latent, learned, encodes channel conformational states (gates, Markov occupancies)
 - **concentrations** (4 dims): explicit named variables [Na_i, K_i, Ca_i, Ca_ss]
 - Ca_SR dropped -- purely internal SR variable, not used in any reversal potential or readout feature. SR calcium load tracked implicitly by ionic_state.
-- **Working dim = 32**: TTP06 has 18 states, ORd has 41. Working dim must accommodate both. 32 is comfortable for TTP06, sufficient for ORd with learned compression. Increase to 48+ for ORd if needed -- cost stays in background.
+- **Working dim = 16 (TTP06 first run)** [full: 32]: TTP06 has 18 states, ORd has 41. 16 is sufficient for TTP06 first run. Scale to 32 for ORd. Increase to 48+ if needed -- cost stays in background.
 
-### Full Pipeline — PLANNED changes noted inline (code still reflects pre-pivot state)
+### Full Pipeline (current code, post-2026-04-07 refinements)
 
 ```
 carried_state(t) = [ionic_state(16), concentrations(4)]     (20,)  [full-size: 32+4=36]
-  -> n x 1 cross-attention to [Vm], attn_dim=4              per-dim voltage response (contractive)
-      NOTE: dt removed for NODE pivot (Section 5b). Field must be dt-independent.
-      20 dims all attend to Vm; concentration dims learn slow tracking
-  -> SPLIT after attention:
-      ionic_mid = z_mid[:16]                                 (16,) -> continues to MLP  [full: :32]
-      conc_delta = z_mid[16:20] - z[16:20]                   (4,) -> concentration rate  [full: 32:36]
 
-  ionic_mid:
-  -> Pre-RMSNorm                                             stabilize MLP input scale (0 params)
-  -> learned-mix MLP + GELU (16->16->16), 1 hidden layer     cross-dim Markov correction  [full: 32->32->32]
-      correction = W2 @ GELU(W1 @ RMSNorm(ionic_mid) + b1) + b2
+  IONIC PATH (16 dims):
+  -> n x 1 cross-attention to [Vm], attn_dim=4, IONIC DIMS ONLY
+      VoltageAttention returns RATE directly: gate*(target-z)  (not z + gate*(target-z))
+      ionic_delta = attention_rate                            (16,)  [full: 32]
+
+  -> learned-mix MLP + GELU (16->16->16), 1 hidden layer     cross-dim Markov correction
+      INPUT: ionic_delta (the attention rate, NOT z_mid)
+      No rms_norm — delta magnitude is informative (small at rest, large at upstroke)
+      correction = W2 @ GELU(W1 @ ionic_delta + b1) + b2
       alpha = sigmoid(w)                                     per-dim mixing weight (16 params)  [full: 32]
       ionic_rate = ionic_delta + alpha * correction          residual_bypass (additive, not convex)
 
-  dz/dt = [ionic_rate, conc_delta]                           (20,)  [full: 36]
+  CONCENTRATION PATH (4 dims):
+  -> B-spline KAN: KANLayer(17->4, grid=5, order=3)         dedicated concentration rate network
+      Input: ionic_latent(16) + Vm(1)                        NO conc self-input (no feedback loop)
+      Each output dim = sum of independent B-spline functions of each input dim
+      No cross-communication between concentration dims (physics-aligned)
+      612 params (544 spline weights + 68 base weights)
+      conc_rate = conc_kan(cat[ionic_state, Vm])             (4,)
+
+  dz/dt = [ionic_rate, conc_rate]                            (20,)  [full: 36]
   NOTE: dzdt() returns a RATE, not a displacement. ODE solver integrates; Euler does z + dt*dzdt.
   IonicStage1.forward() is removed as a discrete stepper. All callers use dzdt() + euler_step().
 
@@ -130,29 +139,37 @@ Scaffold decoders (training only, all annealed to zero in Phase D):
 
 ### Design Rationale
 
-**n x 1 cross-attention:**
-- Each of 20 carried_state dims [full: 36] independently queries Vm. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
-- NOTE: dt removed from attention input for NODE pivot (Section 5b). The vector field f(z,V) must be dt-independent.
-- Mathematically equivalent to learned Rush-Larsen but with state-dependent gating (the attention score depends on BOTH Vm AND the current latent value, while RL's rate depends on Vm only). In the ODE formulation, this gives `dz/dt = gate * (target(V) - z)` — a linear attractor (see Section 5b "Inherent Contraction").
+**n x 1 cross-attention (ionic dims only):**
+- Each of 16 ionic_state dims [full: 32] independently queries Vm. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
+- **Returns rate directly**: `gate * (target(V) - z)`, NOT `z + gate * (target(V) - z)`. This eliminates the add-then-subtract roundtrip that existed when dzdt() had to recover the rate from attention output.
+- **Ionic-only (16 dims)**: Concentrations no longer go through attention. Clean separation — concentrations have their own dedicated KAN path.
+- dt removed from attention input for NODE pivot (Section 5b). The vector field f(z,V) is dt-independent.
+- Mathematically: `dz/dt = gate * (target(V) - z)` is a linear attractor, precisely the Rush-Larsen form. See Section 5b "Inherent Contraction".
 - **attn_dim = 4** (down from 8 in v2): Gate is one scalar from 1 input (Vm). Smooth sigmoid-like function -- 4 basis functions suffice.
 - **1 attention layer**: One voltage response is physically correct. Stacking applies contraction twice to same Vm -- numerically redundant.
+- **W_out rank-4 bottleneck concern (open)**: W_out is (attn_dim, ionic_dim) = (4, 16). Each target dim is a linear combination of only 4 value features. May limit expressiveness for 16 independent targets. Under investigation.
 
-**Concentrations split off after attention, before MLP:**
-- The MLP handles intra-protein Markov corrections between ionic dims only.
-- Passing concentrations through the MLP would create artificial ionic<->concentration coupling that doesn't exist within one dt.
-- Attention is sufficient for concentration tracking: Vm strongly correlates with gate state during normal pacing, concentration changes are ~0.0001% per step, self-regulation via own-value feedback, end-to-end training through I_ion -> Nernst catches systematic errors.
-
-**Markov MLP (32->32->32, 1 hidden layer, 1 GELU):**
-- Cross-dim correction over ionic_state dims only (32 dims). No bottleneck -- architecture ALLOWS coupling but does not FORCE it.
+**Markov MLP (16->16->16, 1 hidden layer, 1 GELU):**
+- Cross-dim correction over ionic_state dims only (16 dims) [full: 32]. No bottleneck -- architecture ALLOWS coupling but does not FORCE it.
+- **Input: ionic_delta** (the attention rate), NOT z_mid. Rationale: MLP is a rate corrector, should see rates not states. z_mid has a DC offset (the current latent value) that wastes the tiny MLP's capacity on scale correction instead of dynamics. With ionic_delta as input, alpha logit stays semantic (mixing on/off) instead of becoming a scale fixer.
+- **No rms_norm on input**: Delta magnitude is informative — small at rest, large during upstroke. Normalizing destroys this signal.
 - HH gates that need no coupling pass through residual unchanged.
-- Pre-RMSNorm on MLP input stabilizes input scale across 100K+ recurrent steps.
 - One hidden layer captures pairwise interactions. Add second layer if insufficient.
+
+**Concentration KAN (B-spline, 17->4):**
+- Dedicated path for concentration rates, replacing both shared attention and conc_mlp.
+- **B-spline KAN** (`KANLayer(17->4, grid=5, order=3)`): each output dimension is a sum of independent nonlinear B-spline functions of each input dimension. This is physics-aligned: each concentration rate (e.g., dCa_i/dt) depends on ionic state variables and Vm through independent nonlinear channels, with no cross-communication between concentration dimensions.
+- **Input**: ionic_latent(16) + Vm(1) = 17 dims. No concentration self-input — avoids feedback loop through the ODE.
+- **No cross-communication**: Unlike an MLP, the KAN computes each output as a sum of univariate functions. Concentration dim i cannot see concentration dim j. This matches physics: Ca_i rate depends on gates and Vm, not on K_i.
+- **612 params**: 544 spline weights + 68 base weights. File: `surrogate/model/kan.py`.
+- **Why not conc_mlp**: MLP cross-communicates all inputs to all outputs, violating the independence constraint. In practice, MLP with Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow (0.65 to 0.43 in 500 epochs). KAN is both physically correct and empirically better.
+- **Why not shared attention**: W_q and W_out are shared between ionic and conc dims. Training conc dims corrupts ionic weights. Concentrations need a dedicated path.
 
 **Residual bypass (evolved from DeepSeek hyper-connections):**
 
 ```python
 alpha = sigmoid(w)                         # w learned per-dim (16,) [full: 32], alpha in (0,1)
-correction = MLP(RMSNorm(ionic_mid))
+correction = MLP(ionic_delta)              # MLP input is the attention rate, no rms_norm
 ionic_rate = ionic_delta + alpha * correction   # additive bypass — identity always flows through
 ```
 
@@ -168,7 +185,7 @@ Replaces three mechanisms from earlier design iterations:
 **Compression MLP (CARRIED_DIM->COMP_H1->COMP_H2->COND_DIM, 2 hidden layers, 2 GELUs):**
 - Takes FULL carried_state (ionic + concentrations) as input, NOT just ionic_state. Gives compression access to concentration context (e.g., Ca_ss for fCass-dependent conductances). Recomputed every step because gate products change and attention cannot compute cross-dim products (structural limitation).
 - Two hidden layers: layer 1 computes pairwise products (m*h), layer 2 composes into triple products (m*h*j).
-- Residual compression with learned bypass: `compressed = W_lin @ carried + beta * MLP(carried)` [PLANNED: additive bypass, currently convex in code]. Linear path for direct projection, nonlinear path for gate products. Per-dim beta (COND_DIM params) controls nonlinear contribution.
+- Residual compression with learned bypass: `compressed = W_lin @ carried + beta * MLP(carried)` (additive bypass). Linear path for direct projection, nonlinear path for gate products. Per-dim beta (COND_DIM params) controls nonlinear contribution.
 - Total GELUs in Stage 1 pipeline: 3 (1 in Markov MLP + 2 in compression MLP). Sufficient for triple product composition.
 
 **Dual scaffold decoders (training only):**
@@ -292,29 +309,50 @@ Total FLOPs are ~1× ORd. Acceptable because Stage 2 is the ONLY thing on the cr
 - **GELU in output MLP:** Allows nonlinear channel interaction. Kirchhoff says currents sum linearly, but our 16 conductance dims are learned (not literal channels) -- their combination may benefit from nonlinearity.
 - **Input normalization (required):** Environment tokens have wildly different scales (K_i ~ 138 mM vs Ca_i ~ 0.0001 mM -- six orders of magnitude). Without normalization, low-magnitude tokens (Ca_i, Ca_ss) are invisible to attention (key magnitude ≈ 0). All 9 environment inputs normalized to ~[-1, 1] using known physiological ranges before embedding. 18 fixed constants (9 shifts + 9 scales), not learned. Conductance latent scale is controlled by compression -- normalize if needed.
 
-### Training Strategy (v3) — Status: Discrete Autoregressive ABANDONED → Neural ODE Pivot
+### Training Strategy (v3) — Neural ODE Active
 
-> The discrete autoregressive approach was abandoned after A4 (native dt, 30K steps) failed to converge.
-> **Neural ODE pivot active.** Stage1.dzdt() is the dynamics function, trained via odeint_adjoint (dopri8).
-> PLAN.md has implementation steps. See Section 5b for full design, Section 10 for revised training phases.
-> NOTE: TRAINING_STRATEGY.md predates the NODE pivot and recommends batch=32768 (a known failure — see IDEALOG.md). Treat PLAN.md as the authoritative current plan for NODE training.
+**Current approach**: Neural ODE with `odeint` (dopri5, rtol/atol=1e-3, adjoint=False). Train on single-AP trajectories from T1 data. Two-phase training: ionic first (frozen concentrations), then concentrations (frozen ionic).
 
-**What was tried and what worked:**
+**Training scripts**: `run_single_ap.py` (ionic), `run_single_ap_conc.py` (concentrations), `surrogate/training/train_node.py` (library).
+
+**NODE training results (2026-04-07, single AP BCL=2000, 500ms):**
+
+| Phase | What | Loss start | Loss best | Epochs | Notes |
+|---|---|---|---|---|---|
+| A1 (ionic_state_mse) | Ionic path only, conc frozen | 50.6 | 0.047 | 500 | ~1.25s/epoch GPU. dopri5, adjoint=False. |
+| conc_only (KAN L2+cosine) | Conc path only, ionic frozen | 147,000 | ~5.6 | 500 | Dominated by K_i. Needs per-dim normalization. |
+
+**What was tried in NODE training:**
 
 | Approach | Result |
 |---|---|
-| dt curriculum (subsample T1 at 3ms→1ms→0.1ms→0.01ms, fixed 300ms coverage) | A1-A3 worked. A3 (dt=0.1ms, r=3000) val=0.92. A4 (dt=0.01ms, r=30000) stuck at val~720. |
-| Per-dim min-max loss normalization | Essential. Without it, K_i (138 mM) drowns Ca_i (0.0001 mM). |
-| Truncated BPTT (window=500 on 30K rollout) | Did not help A4. Window may be too narrow (5ms of gradient for 300ms trajectory). |
-| Cosine warm restarts (T_0=50, T_mult=2) | No breakthrough after 2 full cycles at A4. |
-| No encoder — model discovers own latent | Correct decision. Encoder imposed wrong latent space. |
-| Two-half training (ionic then conductance) | Sound approach. Not fully tested due to A4 failure. |
+| Adjoint method (odeint_adjoint) | Diverged with random weights — backward ODE through chaotic field is unstable. Switched to backprop-through-solver. |
+| dopri8 | Diverged — too aggressive for poorly-trained field. Switched to dopri5. |
+| Shared attention for concentrations | Corrupted ionic weights (W_q/W_out shared). Concentrations need dedicated path. |
+| conc_mlp (Xavier init) | ODE feedback explosion — predictions hit 1e237. |
+| conc_mlp (zero last-layer init) | Stable but slow: 0.65 to 0.43 in 500 epochs. |
+| conc KAN with L1 regularization | Stable, 176 to 37 in 500 epochs. Slow due to grad clipping. |
+| conc KAN with L2 + cosine decay | Best: 147K to ~5.6. Settled at ~10. K_i dominates. |
+| Normalized MSE for concentrations | Catastrophic for out-of-range predictions. L2 (raw MSE) is correct. |
 
-**Core issue: latent instability over long discrete rollouts.** At native dt (0.01ms), 30K autoregressive steps compound prediction errors faster than the model learns to correct them. Error at step N corrupts steps N+1 through 30K, producing incoherent gradients. This is structural — not fixable by hyperparameter tuning, TBPTT, or LR schedules. A continuous ODE formulation (dz/dt = f(z, Vm)) avoids discrete error accumulation entirely.
+**What was tried in discrete training (pre-NODE, for reference):**
 
-Initialization: ionic latent = zeros (model discovers own representation), concentrations = real resting values [Na_i≈10, K_i≈138, Ca_i≈0.0001, Ca_ss≈0.0002] (Layer 0 physics).
+| Approach | Result |
+|---|---|
+| dt curriculum (3ms to 0.01ms at fixed 300ms coverage) | A1-A3 worked. A4 (dt=0.01ms, r=30K) stuck at val~720. |
+| Per-dim min-max loss normalization | Essential for discrete training. |
+| TBPTT (window=500), cosine warm restarts | Did not help A4. |
 
-Optimizer: AdamW, batch=4096, LR=5e-4 (warmup) or 1e-4 (rollout), gradient clipping max_norm=1.0.
+**Core issue that motivated NODE pivot**: At native dt (0.01ms), 30K autoregressive steps compound prediction errors structurally. Not fixable by hyperparameters. ODE integration avoids discrete error accumulation.
+
+**Initialization**: ionic latent = zeros (model discovers own representation), concentrations = real resting values [Na_i~10, K_i~138, Ca_i~0.0001, Ca_ss~0.0002] (Layer 0 physics).
+
+**Optimizer**: AdamW, batch=4096, LR=5e-4, gradient clipping max_norm=1.0. Cosine decay for concentration phase (LR 1e-2 to 1e-5).
+
+**Open training issues**:
+- Concentration loss dominated by K_i (~138 mM). Per-dimension normalization or separate K_i handling needed.
+- W_out rank-4 bottleneck may limit ionic accuracy ceiling.
+- Scale to multiple BCLs after single-AP accuracy is satisfactory.
 
 ### Multi-Model Conditioning (planned)
 
@@ -326,12 +364,14 @@ One model learns both TTP06 and ORd, conditioned on a model ID label token fed t
 |---|---|---|
 | ionic_state | 32 | 16 |
 | conductance_latent | 16 | 8 |
-| MLP | 32→32 | 16→16 |
-| Compression | 32→24→24→16 | 16→12→12→8 |
+| MLP | 32->32 | 16->16 |
+| Compression | 36->24->24->16 | 20->12->12->8 |
+| Concentration KAN | 33->4 | 17->4 (grid=5, order=3, 612 params) |
 | Stage 2 queries | 16 | 8 |
-| Total inference params | ~4,950 | ~1,534 (verified) |
+| Total inference params | TBD | 1,988 |
+| Total with scaffold | TBD | 2,271 |
 
-Same architecture, smaller hyperparameters. Validate that the design trains and reproduces TTP06 I_ion before scaling up.
+Same architecture, smaller hyperparameters. First training results: ionic_state_mse down to 0.047, conc loss settling at ~10 (needs work).
 
 ### Approaches Explored Then Scrapped
 
@@ -439,46 +479,52 @@ The attractor manifold is likely much lower-dimensional than 36 — maybe 3-5 ef
 
 **Publication-worthy diagnostic:** after training, plot the learned vector field in (V, z_i) projection for the most informative dims. If some dims recover V vs n_K phase portrait structure without being told to, that validates the approach.
 
-### Architectural Changes (Minimal) — PLANNED (PLAN.md Phases 1-2, not yet in code)
+### Architectural Changes (IMPLEMENTED, 2026-04-06 + refined 2026-04-07)
 
-> Code still reflects pre-pivot state. These changes are specified in PLAN.md and will be implemented in Phases 1-2.
-
-Zero new learned parameters. Net change: -8 parameters (dt removed from W_k, W_v).
+All NODE pivot changes are in code and tested (116 tests).
 
 | Change | What | Status |
 |--------|------|--------|
-| Remove dt from attention input | W_k, W_v: input dim 2 → 1. dt handled by solver, not model. The vector field f(z,V) must be dt-independent. | PLAN Phase 1 |
-| `interpolate` → `residual_bypass` | Alpha is internal residual bypass, not external blend. `base + alpha * correction` not `(1-alpha)*base + alpha*correction`. Applies to both ionic mixing and conductance compression. | PLAN Phase 1 |
-| `forward()` repurposed | No longer advances state. Runs compression + scaffold only. New `dzdt()` method returns rate. | PLAN Phase 1 |
-| `IonicNODE` wrapper | Thin wrapper: holds V(t) linear interpolant, calls `odeint_adjoint`. Euler step for inference. No learned parameters. | PLAN Phase 2 |
+| Remove dt from attention input | W_k, W_v: input dim 2 to 1. dt handled by solver, not model. | Done |
+| `interpolate` to `residual_bypass` | Alpha is internal residual bypass: `base + alpha * correction`. | Done |
+| VoltageAttention returns rate | `gate*(target-z)` directly, not `z + gate*(target-z)`. | Done (2026-04-07) |
+| VoltageAttention ionic-only | Shrunk from 20 to 16 dims. Concentrations have dedicated KAN path. | Done (2026-04-07) |
+| MLP takes ionic_delta | Input is the attention rate, not z_mid. No rms_norm. | Done (2026-04-07) |
+| Concentration KAN | B-spline KAN replaces shared attention + conc_mlp for concentration rates. | Done (2026-04-07) |
+| `forward()` repurposed | No longer advances state. Runs compression + scaffold only. `dzdt()` returns rate. | Done |
+| `IonicNODE` wrapper | Thin wrapper: holds V(t) linear interpolant. Euler step for inference. | Done |
 
-**Critical: ODE solver sits after the full Stage 1 pipeline (attention + MLP), not between them.** Both blocks compute f_θ together. Cutting the solver between attention and MLP would deprive the MLP of the full derivative context.
+**Critical: ODE solver sits after the full Stage 1 pipeline (attention + MLP + KAN), not between them.**
 
-Corrected forward:
+Current dzdt():
 ```python
-def forward(self, t, z):                          # signature for torchdiffeq
-    V = self.v_interp(t)                          # linear interp from training data
-    z_mid = self.voltage_attention(z, V)          # returns z + gate*(target-z), full state
-    delta = z_mid - z                             # attention rate for all dims
-    ionic_delta = delta[:, :self.ionic_dim]
-    conc_delta  = delta[:, self.ionic_dim:]
-    correction = self.mlp(rms_norm(z_mid[:, :self.ionic_dim]))
-    alpha = sigmoid(self.mixing_logit)
-    ionic_rate = ionic_delta + alpha * correction  # residual bypass on ionic dims
-    dz_dt = torch.cat([ionic_rate, conc_delta], dim=-1)
-    return dz_dt                                  # → odeint_adjoint integrates this
+def dzdt(self, z, V):
+    ionic_state = z[:, :self.ionic_dim]          # (batch, 16)
+    # Ionic path: attention returns rate directly
+    ionic_delta = self.voltage_attention(ionic_state, V)  # gate*(target-z), (batch, 16)
+    correction = self.ionic_mixing_mlp(ionic_delta)       # no rms_norm
+    alpha = sigmoid(self.ionic_mixing_logit)
+    ionic_rate = ionic_delta + alpha * correction         # residual bypass
+
+    # Concentration path: dedicated B-spline KAN
+    conc_input = torch.cat([ionic_state, V], dim=-1)      # (batch, 17)
+    conc_rate = self.conc_kan(conc_input)                  # (batch, 4)
+
+    dz_dt = torch.cat([ionic_rate, conc_rate], dim=-1)    # (batch, 20)
+    return dz_dt
 ```
 
 ### Solver and Training
 
 | Decision | Choice | Reason |
 |----------|--------|--------|
-| Solver | `dopri8` + `odeint_adjoint` | GPU-native, 8th order adaptive RK (fewer steps than dopri5 for smooth regions), O(1) memory backward |
+| Solver | `dopri5` (forward) | dopri8 diverged during early training with poorly-trained vector field. dopri5 is more robust. |
+| Tolerances | rtol=1e-3, atol=1e-3 | Loose tolerances required for stability with random/early weights. Tighten as training progresses. |
 | V(t) interpolation | Linear between training grid points | Smooth, no discontinuities, cheap |
 | t_eval | 20 AP landmarks (10 in upstroke 0-5ms, 10 in plateau/repol/diastole) | Adjoint shapes full trajectory; dense upstroke sampling matches solver attention |
-| Gradients | Adjoint only | Exact gradients against continuous ODE; no BPTT chain |
+| Gradients | Backprop-through-solver (adjoint=False) | Adjoint method diverged with random initial weights (chaotic backward ODE). Backprop-through-solver is stable. Revisit adjoint after partial training for O(1) memory. |
 
-The latent space may be less stiff than the original ionic ODE — the learned coordinates can implicitly "unroll" stiff directions into smoother latent coordinates. Using `dopri8` (8th order, fewer steps for smooth dynamics). Fall back to implicit solvers only if NFE >1000.
+**Training experience (2026-04-07):** dopri8 was the original plan but diverged. dopri5 with loose tolerances is the working configuration. Adjoint method is theoretically superior (O(1) memory) but practically unstable when the vector field is poorly trained — the backward ODE through a chaotic field diverges. Backprop-through-solver stores the full forward trajectory and backprops through it, which is stable but memory-intensive. For the current tiny model (1988 params) and single-AP training, memory is not a constraint.
 
 ### Inference: ODE Solver NOT Required
 
@@ -506,13 +552,13 @@ Inference cost is identical to the original discrete model. The stability gain c
 
 ### Inherent Contraction in VoltageAttention
 
-The attention block already provides attractor structure. VoltageAttention computes:
+The attention block already provides attractor structure. VoltageAttention now directly returns the rate (changed 2026-04-07):
 
 ```python
-z_new = z + gate * (target(V) - z)    # gate ∈ (0,1) via sigmoid
+rate = gate * (target(V) - z)    # gate in (0,1) via sigmoid; this IS the ODE rate
 ```
 
-Reinterpreted as a rate for the ODE:
+As a differential equation:
 
 ```
 dz/dt = gate * (target(V) - z) = -gate * z + gate * target(V)
@@ -577,11 +623,13 @@ Estimated total NFE for 300ms AP: 200-1000. This is 30-150× fewer than 30K disc
 
 | Name | Dims | What it encodes | Type |
 |---|---|---|---|
-| **carried_state** | 36 | Full state: ionic + concentrations | Carried between timesteps |
-| **ionic_state** | 32 | Channel conformational states (gates, Markov occupancies) | Latent, learned |
-| **concentrations** | 4 | [Na_i, K_i, Ca_i, Ca_ss] -- dims 32-35 of carried_state | Explicit, physically named |
-| **conductance_latent** | 16 | Effective conductances (gate products) | Latent, compressed from ionic_state |
+| **carried_state** | 20 [full: 36] | Full state: ionic + concentrations | Carried between timesteps |
+| **ionic_state** | 16 [full: 32] | Channel conformational states (gates, Markov occupancies) | Latent, learned |
+| **concentrations** | 4 | [Na_i, K_i, Ca_i, Ca_ss] -- dims 16-19 of carried_state [full: 32-35] | Explicit, physically named |
+| **conductance_latent** | 8 [full: 16] | Effective conductances (gate products) | Latent, compressed from carried_state |
 | **reversal_potentials** | 4 | [E_Na, E_K, E_Ca, E_Ks] | Derived from concentrations via Nernst (fixed physics) |
+| **ionic_delta** | 16 [full: 32] | Attention rate for ionic dims: `gate*(target-z)` | Input to MLP, not a stored quantity |
+| **conc_rate** | 4 | Concentration rate from KAN | Output of conc_kan, not a stored quantity |
 
 ---
 
@@ -593,9 +641,8 @@ Estimated total NFE for 300ms AP: 200-1000. This is 30-150× fewer than 30K disc
 |-----------|-------|---------|--------|
 | 1/sqrt(4) scaling | Attention score | Prevents score saturation (attn_dim=4) | 0 |
 | Sigmoid gate | Attention update | Bounds update rate to (0,1), guarantees contraction | 0 |
-| Pre-RMSNorm | Before Markov MLP input | Stabilizes MLP input scale across ODE solver evaluations (training) and Euler inference steps | 0 |
-| Learned residual bypass (alpha) | Markov MLP residual (ionic dims only) | Per-dim alpha=sigmoid(w), additive bypass: `base + alpha*correction`. Identity unconditional. [PLANNED: changed from convex combination for NODE pivot] | 16 [full: 32] |
-| Learned compression bypass (beta) | Compression residual | Per-dim beta=sigmoid(w), additive: `linear + beta*nonlinear`. [PLANNED: same change] | 8 [full: 16] |
+| Learned residual bypass (alpha) | Markov MLP residual (ionic dims only) | Per-dim alpha=sigmoid(w), additive bypass: `base + alpha*correction`. Identity unconditional. | 16 [full: 32] |
+| Learned compression bypass (beta) | Compression residual | Per-dim beta=sigmoid(w), additive: `linear + beta*nonlinear`. | 8 [full: 16] |
 | Weight decay | All parameters (AdamW) | Soft regularization, pushes unused coupling toward zero | 0 |
 | Gradient clipping | Training | max_norm=1.0, prevents gradient explosions during rollout | 0 |
 
@@ -603,6 +650,7 @@ Estimated total NFE for 300ms AP: 200-1000. This is 30-150× fewer than 30K disc
 
 - **Spectral norm** (was in v2 and early v3): superseded by learned residual bypass. Attention contraction provides stability (Section 5b); additive bypass preserves the attractor base.
 - **RMSNorm on MLP corrections** (was in v2 for split GELU): v3's MLP+GELU has no quadratic blowup risk, and learned mixing alpha already bounds the correction's influence.
+- **Pre-RMSNorm on MLP input** (was in early v3 + NODE): removed 2026-04-07. MLP input changed from z_mid (state, has DC offset) to ionic_delta (rate). Delta magnitude is informative — small at rest, large during upstroke. Normalizing destroys this physically meaningful signal.
 - **LayerNorm**: removes per-dim magnitude, which IS information (state distance from equilibrium).
 - **BatchNorm**: unstable for autoregressive inference (batch=1 during tissue simulation).
 - **Dropout**: injects noise that compounds over 100K+ autoregressive steps. Train/inference mismatch.
@@ -696,7 +744,7 @@ dt removal rationale: the vector field `f(z,V)` must be dt-independent for ODE i
 
 ## 10. Losses and Training
 
-> **NOTE:** Sections 10 below describe the **original discrete autoregressive** training strategy, which was abandoned after A4 failure. The NODE pivot uses `odeint_adjoint` with loss at AP landmarks (not per-step). See Section 5b for NODE training design and PLAN.md Phase 3 for implementation. The loss functions and scaffold structure remain the same; what changes is how the trajectory is produced (ODE integration vs discrete loop).
+> **NOTE:** The phased training tables below describe the **original discrete autoregressive** strategy, which was abandoned after A4 failure. The NODE pivot uses `odeint` (dopri5, adjoint=False) with loss at AP landmarks. Current NODE training results are in Section 3 "Training Strategy". The loss functions and scaffold structure remain the same; what changes is how the trajectory is produced (ODE integration vs discrete loop) and that concentration training is separated (frozen ionic weights).
 
 ### Loss Functions
 
@@ -937,8 +985,10 @@ Architecture unchanged from original design (not yet revisited -- focus has been
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Error accumulation over 100K+ autoregressive steps | ~~HIGH~~ MITIGATED | NODE pivot eliminates discrete error compounding. Adjoint trains through ~200-1000 solver steps, not 30K (30-150× reduction). Residual risk: Euler inference drift at very long horizons — mitigated by attractor geometry (Section 5b) and z0 noise injection during training. |
-| Adjoint ODE solve stiffness | HIGH | If dopri8 takes too many internal steps during upstroke (fast m-gate dynamics), training becomes slow. Mitigation: learned latent coordinates may unfold stiffness. Fallback: implicit_adams or stiff solver. Monitor NFE (number of function evaluations) per segment. |
+| Adjoint ODE solve stiffness | HIGH (partially resolved) | dopri8 diverged; switched to dopri5 with loose tolerances. Adjoint backward also diverged with random weights — using backprop-through-solver. Stiffness is manageable with dopri5 but training is slower than ideal. |
 | Narrow attractor basin from training | MEDIUM | Adjoint shapes field near trajectory but only within solver tolerance. Mitigation: z0 noise injection (primary), mid-trajectory perturbation (secondary), Jacobian regularization (if needed). See Section 5b. |
+| W_out rank-4 bottleneck | MEDIUM | W_out is (4, 16): 16 target dims from 4-dim value. May limit expressiveness. Under investigation. |
+| Concentration training dominated by K_i | MEDIUM | K_i (~138 mM) dwarfs Ca_i (~0.0001 mM) in raw MSE. Per-dim normalization or separate handling needed for balanced concentration learning. |
 | Stage 2 readout insufficient for cross-dim products | HIGH | Start with cross-attention, add GELU/MLP if needed. This is where all cross-dim interaction lives now |
 | Ca handling is compartmental, not gate-like | MEDIUM | Monitor Ca-related predictions; explicit concentrations help |
 | Charge/concentration drift | MEDIUM | Monitor Na/K/Ca; add conservation penalty if needed |
@@ -979,8 +1029,11 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 
 ### Training
 - ~~How does autoregressive error accumulation scale with rollout length?~~ ANSWERED: compounds structurally at 30K steps. NODE pivot eliminates this. (Section 5b)
-- How many dopri8 internal steps (NFE) will the learned latent require per AP? (determines training cost)
+- ~~Which ODE solver/tolerance works for early training?~~ ANSWERED: dopri5 with rtol/atol=1e-3, adjoint=False. dopri8 and adjoint diverge with random weights.
+- How to handle concentration loss scale imbalance? K_i (~138 mM) dominates. Per-dim normalization? Separate handling?
+- Does W_out rank-4 bottleneck limit ionic accuracy? (4-dim value projecting to 16 target dims)
 - Is z0 noise injection sufficient for attractor basin, or do we need mid-trajectory perturbation?
+- Can adjoint method be enabled after partial training (once field is less chaotic)?
 
 ### Diffusion ResNet
 - How many ResNet blocks needed for adequate phi_e receptive field?
@@ -996,19 +1049,22 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 | Data generation (TTP06) | `Surrogate/surrogate/data/` | 32 tests | Done |
 | V3Preprocessor | `Surrogate/surrogate/data/preprocessor.py` | 7 tests | Done |
 | NernstComputer | `Surrogate/surrogate/model/nernst.py` | 3 tests | Done |
-| IonicStage1 | `Surrogate/surrogate/model/stage1.py` | 9 tests | Done (1,416 inference params) |
+| IonicStage1 | `Surrogate/surrogate/model/stage1.py` | -- | Done (NODE pivot: dzdt() returns rate, ionic-only attention, KAN for concs) |
 | IonicStage2 | `Surrogate/surrogate/model/stage2.py` | 6 tests | Done (118 params) |
-| IonicSurrogateV3 | `Surrogate/surrogate/model/ionic_surrogate_v3.py` | 7 tests | Done (1,534 total inference) |
+| IonicSurrogateV3 | `Surrogate/surrogate/model/ionic_surrogate_v3.py` | 7 tests | Done (1,988 inference / 2,271 total with scaffold) |
+| KANLayer | `Surrogate/surrogate/model/kan.py` | -- | Done (B-spline KAN for concentration rates) |
+| IonicNODE wrapper | `Surrogate/surrogate/model/node.py` | -- | Done (dopri5, euler_step for inference) |
+| NODE training loop | `Surrogate/surrogate/training/node_rollout.py` | -- | Done (ionic + conc_only phases) |
+| NODE training library | `Surrogate/surrogate/training/train_node.py` | -- | Done |
+| Single-AP training scripts | `Surrogate/run_single_ap.py`, `run_single_ap_conc.py` | -- | Done |
 | ORd infrastructure | `Surrogate/surrogate/data/ord_*.py` | 19 tests | Done |
 | ORd T1 EPI data | `/media/HDD/surrogate_data/raw_ord/` | -- | Done (9/9 protocols, 12GB) |
 | v2 code | `Surrogate/surrogate/model/v2_archive/` | -- | Archived |
-| IonicNODE wrapper | `Surrogate/surrogate/model/node.py` | -- | Not started (PLAN Phase 2) |
-| NODE training loop | `Surrogate/surrogate/training/node_rollout.py` | -- | Not started (PLAN Phase 3) |
-| Discrete training archive | `Surrogate/surrogate/training/archive/` | -- | Not started (PLAN Phase 0) |
+| Discrete training code | `Surrogate/surrogate/training/archive/` | -- | Archived |
 | Training pipeline (discrete) | `Surrogate/surrogate/training/` | 44 tests | Done (superseded by NODE) |
-| ARCHITECTURE.md | `Surrogate/ARCHITECTURE.md` | -- | Done (explainer, code-consistent) |
+| ARCHITECTURE.md | `Surrogate/ARCHITECTURE.md` | -- | Done (explainer, needs update for 2026-04-07 changes) |
 
-**Test summary**: 51/51 passing (25 model + 7 preprocessor + 19 ORd). v2 tests removed.
+**Test summary**: 116 tests passing. **Param counts**: 1,988 inference (was 1,408 pre-KAN), 2,271 total with scaffold.
 
 ---
 
@@ -1086,3 +1142,9 @@ Our differentiators: (1) only bidomain surrogate, (2) only biophysically detaile
 | Bilinear readout with hand-crafted features | Feature vector [1,Vm,Vm^2,...] is arbitrary. Psi factorization overly complex. Cross-attention learns routing naturally. |
 | Concentration decoder from ionic state | Replaced by explicit concentration dims. No decoder that can go wrong. |
 | Sigmoid output bounding | Vanishing gradients, breaks residual identity, triple sigmoid path. |
+| Shared VoltageAttention for concentrations (20-dim) | W_q/W_out shared between ionic and conc dims. Training conc dims corrupted ionic weights. Concentrations need a dedicated path. |
+| conc_mlp for concentration rates | MLP cross-communicates concentration dimensions (physics violation). Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow. Replaced by B-spline KAN with per-dim independence. |
+| Pre-RMSNorm on MLP input (with ionic_delta) | Delta magnitude is informative (small at rest, large during upstroke). Normalizing destroys this signal. Was appropriate when MLP input was z_mid (state), not appropriate for ionic_delta (rate). |
+| Adjoint method with random weights | Backward ODE through chaotic (untrained) vector field diverges. Must use backprop-through-solver for early training. |
+| dopri8 for early NODE training | Too aggressive for poorly-trained vector field. dopri5 with loose tolerances (rtol/atol=1e-3) is more robust. |
+| Normalized MSE for concentration loss | Catastrophic when predictions are far out of range (normalization makes large errors look small). Raw L2 is correct. |

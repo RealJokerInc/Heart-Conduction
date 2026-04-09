@@ -134,59 +134,48 @@ class TestStage1:
         assert gf.shape == (14,)
         assert gc.shape == (5,)
 
-    def test_stage1_contractivity(self):
-        """Attention contracts: ||z_mid - target|| < ||carried - target||.
-
-        For sigmoid gate in (0,1), the update
-        mid = prev + gate*(target - prev) always moves closer to target.
-        """
+    def test_stage1_ionic_rate_mlp(self):
+        """IonicRateMLP produces finite output and has internal residual."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-        model.eval()
-
         torch.manual_seed(42)
-        B = 100
-        carried = torch.randn(B, 20)
-        Vm = torch.randn(B)
-
-        with torch.no_grad():
-            z_mid = model.voltage_attention(carried, Vm)
-            x = Vm.unsqueeze(-1)
-            v = model.voltage_attention.W_v(x)
-            target = v @ model.voltage_attention.W_out
-
-        dist_before = (carried - target).norm(dim=-1)
-        dist_after = (z_mid - target).norm(dim=-1)
-        # gate in (0,1) guarantees contraction (strict for gate > 0)
-        assert (dist_after < dist_before).all()
-
-    def test_stage1_alpha_zero(self):
-        """ionic_mixing_logit=-100 (sigmoid~0): dzdt ionic rate ~ attention delta."""
-        from surrogate.model.stage1 import IonicStage1
-
-        model = IonicStage1()
-        with torch.no_grad():
-            model.ionic_mixing_logit.fill_(-100.0)
-
-        torch.manual_seed(7)
-        carried = torch.randn(8, 20)
+        z = torch.randn(8, 20)
         Vm = torch.randn(8)
 
         with torch.no_grad():
-            dz = model.dzdt(carried, Vm)
+            dz = model.dzdt(z, Vm)
 
-        # Recompute attention delta to compare
-        with torch.no_grad():
-            z_mid = model.voltage_attention(carried, Vm)
-            delta = z_mid - carried
-            ionic_delta = delta[:, :16]
-
-        # With alpha~0, ionic rate should be nearly identical to attention delta
+        # Output is finite
+        assert torch.isfinite(dz).all()
+        # Ionic rate comes from ionic_rate_mlp
         ionic_rate = dz[:, :16]
-        assert torch.allclose(ionic_rate, ionic_delta, atol=1e-5), (
-            f"Max diff: {(ionic_rate - ionic_delta).abs().max():.2e}"
-        )
+        assert ionic_rate.shape == (8, 16)
+
+    def test_stage1_ionic_conc_separate(self):
+        """Changing ionic MLP weights doesn't affect conc rate and vice versa."""
+        from surrogate.model.stage1 import IonicStage1
+
+        model = IonicStage1()
+        torch.manual_seed(7)
+        z = torch.randn(8, 20)
+        Vm = torch.randn(8)
+
+        with torch.no_grad():
+            dz1 = model.dzdt(z, Vm)
+            conc1 = dz1[:, 16:].clone()
+            ionic1 = dz1[:, :16].clone()
+
+        # Change ionic MLP weights
+        with torch.no_grad():
+            model.ionic_rate_mlp.fc1.weight.fill_(0.0)
+
+        with torch.no_grad():
+            dz2 = model.dzdt(z, Vm)
+            conc2 = dz2[:, 16:]
+
+        # Conc rate unchanged
+        assert torch.allclose(conc1, conc2, atol=1e-7)
 
     def test_stage1_beta_zero(self):
         """gate_conductance_logit=-100 (sigmoid~0) makes cond_lat ~ linear path."""
@@ -211,38 +200,21 @@ class TestStage1:
             f"Max diff: {(cond_lat - expected).abs().max():.2e}"
         )
 
-    def test_stage1_conc_no_mlp(self):
-        """Concentration rate is unchanged by MLP modifications.
-
-        MLP only applies to ionic dims. Concentration dims use attention delta
-        only. Changing MLP weights should not affect conc rate in dzdt.
-        """
+    def test_stage1_conc_kan(self):
+        """Concentration KAN produces finite output with correct shape."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
         torch.manual_seed(42)
-        carried = torch.randn(8, 20)
+        z = torch.randn(8, 20)
         Vm = torch.randn(8)
 
         with torch.no_grad():
-            dz1 = model.dzdt(carried, Vm)
-            conc_rate1 = dz1[:, 16:]
+            dz = model.dzdt(z, Vm)
+            conc_rate = dz[:, 16:]
 
-        # Drastically change MLP weights
-        with torch.no_grad():
-            model.ionic_mixing_mlp[0].weight.fill_(99.0)
-            model.ionic_mixing_mlp[0].bias.fill_(99.0)
-            model.ionic_mixing_mlp[2].weight.fill_(99.0)
-            model.ionic_mixing_mlp[2].bias.fill_(99.0)
-
-        with torch.no_grad():
-            dz2 = model.dzdt(carried, Vm)
-            conc_rate2 = dz2[:, 16:]
-
-        assert torch.allclose(conc_rate1, conc_rate2, atol=1e-7), (
-            f"Concentration rate changed after MLP modification: max diff = "
-            f"{(conc_rate1 - conc_rate2).abs().max():.2e}"
-        )
+        assert conc_rate.shape == (8, 4)
+        assert torch.isfinite(conc_rate).all()
 
     def test_stage1_param_count(self):
         """Parameter count matches expected for default small config."""
@@ -251,27 +223,24 @@ class TestStage1:
         model = IonicStage1()
 
         # Inference params (no scaffolds)
-        # W_q: 20*4=80, W_k: 1*4=4, W_v: 1*4=4, W_out: 4*20=80
-        # ionic_mixing_mlp[0]: 16*16+16=272, ionic_mixing_mlp[2]: 16*16+16=272
-        # ionic_mixing_logit: 16
+        # ionic_rate_mlp: fc1(17*16+16=288), fc2(16*16+16=272), fc3(16*16+16=272) = 832
+        # conc_kan: spline(17*4*8=544), base(17*4=68) = 612
         # gate_conductance_linear: 20*8=160 (no bias)
         # gate_conductance_mlp[0]: 20*12+12=252, [2]: 12*12+12=156, [4]: 12*8+8=104
         # gate_conductance_logit: 8
         expected_inference = (
-            20 * 4         # W_q
-            + 1 * 4        # W_k (dt removed: was 2*4=8)
-            + 1 * 4        # W_v (dt removed: was 2*4=8)
-            + 4 * 20       # W_out
-            + 16 * 16 + 16 # ionic_mixing_mlp[0] weight + bias
-            + 16 * 16 + 16 # ionic_mixing_mlp[2] weight + bias
-            + 16           # ionic_mixing_logit
-            + 20 * 8       # gate_conductance_linear (no bias) -- input = carried_dim=20
+            17 * 16 + 16   # ionic_rate_mlp.fc1
+            + 16 * 16 + 16 # ionic_rate_mlp.fc2
+            + 16 * 16 + 16 # ionic_rate_mlp.fc3
+            + 17 * 4 * 8   # conc_kan spline_weight (17 in, 4 out, 8 basis)
+            + 17 * 4       # conc_kan base_weight
+            + 20 * 8       # gate_conductance_linear (no bias)
             + 20 * 12 + 12 # gate_conductance_mlp[0] weight + bias
             + 12 * 12 + 12 # gate_conductance_mlp[2] weight + bias
             + 12 * 8 + 8   # gate_conductance_mlp[4] weight + bias
             + 8            # gate_conductance_logit
         )
-        assert expected_inference == 1408
+        assert expected_inference == 2124
         assert model.inference_param_count() == expected_inference
 
         # Scaffold params
@@ -281,7 +250,7 @@ class TestStage1:
 
         total = sum(p.numel() for p in model.parameters())
         assert total == expected_inference + expected_scaffold
-        assert total == 1691
+        assert total == 2407
 
     def test_stage1_remove_scaffold(self):
         """remove_scaffold() drops decoders. Second call is idempotent."""
@@ -291,13 +260,13 @@ class TestStage1:
         assert hasattr(model, "ionic_state_decoder")
         assert hasattr(model, "gate_conductance_decoder")
         total_before = sum(p.numel() for p in model.parameters())
-        assert total_before == 1691
+        assert total_before == 2407
 
         model.remove_scaffold()
         assert not hasattr(model, "ionic_state_decoder")
         assert not hasattr(model, "gate_conductance_decoder")
         total_after = sum(p.numel() for p in model.parameters())
-        assert total_after == 1408
+        assert total_after == 2124
 
         # Idempotent -- no error on second call
         model.remove_scaffold()
@@ -317,7 +286,7 @@ class TestStage1:
 
         model = IonicStage1()
         torch.manual_seed(99)
-        carried = torch.randn(8, 20)  # non-zero to avoid rms_norm div-by-zero
+        carried = torch.randn(8, 20)
         Vm = torch.randn(8)
 
         # Use dzdt for dynamics + forward for scaffold
@@ -350,26 +319,20 @@ class TestStage1:
         assert dz_single.shape == (20,)
 
     def test_stage1_dzdt_numerical(self):
-        """At alpha~0 (init), dzdt ≈ voltage_attention(z, V) - z."""
+        """dzdt produces ionic rate from MLP and conc rate from KAN."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-        # Alpha is already near zero at init (ALPHA_INIT=-5.0, sigmoid(-5)≈0.007)
         torch.manual_seed(42)
         z = torch.randn(16, 20)
         Vm = torch.randn(16)
 
         with torch.no_grad():
             dz = model.dzdt(z, Vm)
-            z_mid = model.voltage_attention(z, Vm)
-            expected_delta = z_mid - z
+            # Verify ionic rate matches ionic_rate_mlp directly
+            ionic_rate = model.ionic_rate_mlp(z[:, :16], Vm)
 
-        # Ionic dims: dzdt ≈ delta + alpha*correction ≈ delta (alpha≈0.007)
-        assert torch.allclose(dz[:, :16], expected_delta[:, :16], atol=0.05), (
-            f"Max diff: {(dz[:, :16] - expected_delta[:, :16]).abs().max():.4f}"
-        )
-        # Conc dims: dzdt == delta exactly (no MLP)
-        assert torch.allclose(dz[:, 16:], expected_delta[:, 16:], atol=1e-7)
+        assert torch.allclose(dz[:, :16], ionic_rate, atol=1e-7)
 
     def test_stage1_forward_no_dynamics(self):
         """forward() returns carried_state unchanged (compression + scaffold only)."""
@@ -715,11 +678,11 @@ class TestV3:
         )
         assert model.inference_param_count() == expected
 
-        # Verify known values: stage1=1408 (dt removed: W_k/W_v 1*4 not 2*4), stage2=118
-        assert model.stage1.inference_param_count() == 1408
+        # Verify known values: stage1=2124 (ionic MLP + conc KAN + compression), stage2=118
+        assert model.stage1.inference_param_count() == 2124
         stage2_params = sum(p.numel() for p in model.stage2.parameters())
         assert stage2_params == 118
-        assert model.inference_param_count() == 1408 + 118  # = 1526
+        assert model.inference_param_count() == 2124 + 118  # = 2242
 
     def test_v3_no_import_cascade(self):
         """v3 model import doesn't break existing data imports."""
