@@ -39,8 +39,9 @@ def _flatten(d: Any, prefix: str = "", sep: str = ".") -> dict:
             key = f"{prefix}{sep}{k}" if prefix else str(k)
             out.update(_flatten(v, key, sep))
     elif isinstance(d, list):
+        # MLflow param key regex permits [a-zA-Z0-9_\-./: ]; use `.N` not `[N]`.
         for i, v in enumerate(d):
-            out.update(_flatten(v, f"{prefix}[{i}]", sep))
+            out.update(_flatten(v, f"{prefix}{sep}{i}" if prefix else str(i), sep))
     else:
         out[prefix] = d if (d is None or isinstance(d, (str, int, float, bool))) else str(d)
     return out

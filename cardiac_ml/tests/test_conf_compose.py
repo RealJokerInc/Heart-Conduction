@@ -76,7 +76,8 @@ def test_default_config_resolves():
     """Top-level config.yaml composes without error."""
     cfg = _compose()
     assert cfg is not None
-    assert cfg.model._target_ == "surrogate.model.node.IonicNODE"
+    # Model yaml now routes through the warm-start factory.
+    assert cfg.model._target_ == "cardiac_ml.model.ionic_node_factory.make_node"
 
 
 def test_experiment_override():

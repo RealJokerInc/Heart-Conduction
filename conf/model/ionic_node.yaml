@@ -1,3 +1,8 @@
-# Stub — Phase 2. Real kwargs fill in post-Step-4.0 reality check.
-# Target: surrogate.model.node.IonicNODE (verified 2026-04-19).
-_target_: surrogate.model.node.IonicNODE
+# Ionic NODE model — IonicNODE wrapping IonicStage1(scaffold=True).
+# Oracle parity per run_multi_bcl.py:89-90.
+#
+# Optional warm-start via env var: WARM_START_CKPT=/path/to/best.pt
+# (matches run_multi_bcl.py:93-101). Leave unset for from-scratch training.
+_target_: cardiac_ml.model.ionic_node_factory.make_node
+scaffold: true
+stage1_ckpt: ${oc.env:WARM_START_CKPT,null}

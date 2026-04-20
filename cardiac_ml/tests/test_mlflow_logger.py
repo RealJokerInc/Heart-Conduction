@@ -29,8 +29,9 @@ def test_flatten_nested_dict():
 
 
 def test_flatten_list_gets_indexed_keys():
+    # MLflow param keys forbid `[` / `]`, so list indices flatten as `.N`.
     out = _flatten({"xs": [10, 20, 30]})
-    assert out == {"xs[0]": 10, "xs[1]": 20, "xs[2]": 30}
+    assert out == {"xs.0": 10, "xs.1": 20, "xs.2": 30}
 
 
 def test_flatten_stringifies_non_primitives():

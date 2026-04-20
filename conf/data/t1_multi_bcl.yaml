@@ -1,7 +1,19 @@
-# Stub — Phase 2. Shape re-specified post-Step-4.0 (Round-3 HIGH-1:
-# train_bcls/val_bcls fields don't exist on SegmentDataset — real pipeline
-# uses make_dataloaders(tier) over pre-split tier caches).
+# Multi-BCL T1 data loaders — oracle parity via cardiac_ml.data.multi_bcl_loader.
+# Mirrors run_multi_bcl.py:117-121 (5 train BCLs, 4 val BCLs; last 5/3 beats).
+# Cache files built via `surrogate.training.data_cache.CacheBuilder` (see Step 4.3).
 train:
-  _target_: surrogate.training.datasets.SegmentDataset
+  _target_: cardiac_ml.data.multi_bcl_loader.make_loader
+  cache_path: ${oc.env:SURROGATE_T1_CACHE_TRAIN,/tmp/surrogate_cache/tier01_train.pt}
+  bcls: [300, 500, 700, 1000, 1500]
+  n_beats: 20
+  min_beat: 15             # oracle: last 5 of 20 beats per BCL
+  batch_size: 1
+  shuffle: true
 val:
-  _target_: surrogate.training.datasets.SegmentDataset
+  _target_: cardiac_ml.data.multi_bcl_loader.make_loader
+  cache_path: ${oc.env:SURROGATE_T1_CACHE_VAL,/tmp/surrogate_cache/tier01_val.pt}
+  bcls: [400, 600, 800, 2000]
+  n_beats: 20
+  min_beat: 17             # oracle: last 3 of 20 beats per BCL
+  batch_size: 1
+  shuffle: false

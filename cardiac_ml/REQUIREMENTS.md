@@ -144,17 +144,31 @@ def teacher_forced_step(trainer, batch):
 
 ### 7.2 NODE adjoint (ionic surrogate)
 
+Production shape (matches `Surrogate/surrogate/training/node_step.py` landed in Step 4.1):
+
 ```python
 # Surrogate/surrogate/training/node_step.py
 def node_train_step(trainer, batch):
-    z0, V_traj, t, landmarks_true = batch
-    z_traj = odeint_adjoint(trainer.model, z0, t,
-                            method="dopri8", rtol=1e-5, atol=1e-7)
-    landmarks_pred = z_traj[landmarks_true.indices]
-    loss = F.mse_loss(landmarks_pred, landmarks_true.values)
-    # nfe goes through the return dict — auto-logged as an MLflow metric
-    return {"loss": loss, "nfe": trainer.model.nfe}
+    """Pure adapter — delegates to the frozen node_rollout() oracle.
+    phase_name is a REQUIRED cfg field (A1|A2|A3|A4|ionic_state|conc_only|
+    B1|B2|B3|B4|ionic_state_and_conductance)."""
+    result = node_rollout(
+        node=trainer.model, segment=batch,
+        phase_name=trainer.cfg.training.phase_name,
+        method="dopri5", rtol=1e-3, atol=1e-3, adjoint=False,
+    )
+    loss = result["loss"]
+    def _clear(): trainer.model.clear_v_trajectory()
+    return {"loss": loss, "_on_after_backward": _clear,
+            **{k: v.detach() for k, v in result.items() if k != "loss"}}
 ```
+
+Key corrections vs. the original sketch (post-Session 25 reality check):
+- ODE config is `dopri5` + `rtol=atol=1e-3`, NOT `dopri8 / rtol=1e-5` (Session 23 found the stricter tolerances diverged under warm-start).
+- `adjoint=False` — oracle runs `odeint` for stability; adjoint memory savings weren't worth the accuracy loss at scale.
+- `node.nfe` is a latent AttributeError bug in legacy `train_node.py` — IonicNODE has no `.nfe` attribute at pin `8f191f77`. Drop it.
+- Per-component scaffold metrics (`ionic_state_mse`, `conc_mse`, `conductance_mse`) pass through as detached entries — auto-logged per the return-dict convention.
+- `_on_after_backward` hook calls `clear_v_trajectory()` after backward completes (adjoint re-calls forward during backward; clearing earlier corrupts the V interpolation).
 
 Wired into Hydra via:
 

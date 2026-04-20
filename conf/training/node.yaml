@@ -1,22 +1,20 @@
-# NODE training group. Stub — phase_name and final callback list re-specified
-# post-Step-4.0 (Round-3 CRITICAL-3: phase_name is REQUIRED by node_step.py;
-# valid values A1|A2|A3|A4|ionic_state|conc_only|B1..B4|ionic_state_and_conductance).
-#
-# Currently uses "A1" as a placeholder — Step 4.0 verifies this is what
-# Session 25's multi_bcl_002 actually used.
-epochs: 500
+# NODE training group — Session 25 multi_bcl_002 oracle parity.
+# AdamW lr=1e-4 weight_decay=1e-4 matches log.jsonl epoch-0 lr (9.997e-05).
+# Scope trimmed per R4 reality check: oracle ran 8 epochs / ~15 min.
+epochs: 30
 seed: 42
 device: cuda
 dtype: float64
-phase_name: A1                # PLACEHOLDER — verify in Step 4.0 (Round-3 C-3)
+phase_name: A1                # oracle multi_bcl_002 used phase A1 (ionic-only scaffold loss)
 ode_method: dopri5
 ode_rtol: 1e-3
 ode_atol: 1e-3
 ode_adjoint: false            # Session 23 finding: adjoint=True diverged
 
 optimizer:
-  _target_: torch.optim.Adam
-  lr: 5e-4
+  _target_: torch.optim.AdamW
+  lr: 1e-4
+  weight_decay: 1e-4
 
 train_step_fn:
   _target_: hydra.utils.get_method
@@ -28,8 +26,8 @@ val_step_fn:
 callbacks:
   - _target_: cardiac_ml.training.callbacks.EarlyStopping
     monitor: val_loss
-    patience: 30
+    patience: 10
   - _target_: cardiac_ml.training.callbacks.ModelCheckpoint
     monitor: val_loss
-    every_n_epochs: 50
+    every_n_epochs: 5
   - _target_: cardiac_ml.training.callbacks.GradNormMonitor
