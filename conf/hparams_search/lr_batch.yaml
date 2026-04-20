@@ -1,7 +1,12 @@
 # @package _global_
 # Loose group — activate via: python scripts/sweep.py --multirun +hparams_search=lr_batch
-# Round-3 LOW-4 fix: explicit pruner block (was a trailing comment before).
-# Round-4 HIGH-1 fix: n_startup_trials=1 so pruner can activate even at n_trials=3.
+#
+# Note: hydra-optuna-sweeper 1.2.0 (our pinned version) does NOT expose a
+# `pruner` field on OptunaSweeperConf — only `sampler`. The original plan's
+# `MedianPruner` block broke composition. Pruning is deferred: at n_trials=3
+# it adds no value, and upgrading the sweeper plugin triggers the forced
+# downgrade of optuna<3.0 (pinned by the 1.2.0 plugin). If pruning becomes
+# critical, reconfigure via a `study_callback` instead.
 defaults:
   - override /hydra/sweeper: optuna
 
