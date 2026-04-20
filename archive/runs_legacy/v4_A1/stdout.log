@@ -1,0 +1,37 @@
+21:57:58 INFO Device: cuda
+21:57:58 INFO Inference params: 7552
+21:57:58 INFO Total params: 7891
+21:57:59 INFO Train: 532 segments, 1 batches
+21:57:59 INFO Val:   505 segments, 1 batches
+21:57:59 INFO Phase A1: 7072 trainable params
+21:58:03 INFO Ep   0 | train=328.1386 | val=274.8201 | gnorm=5345.67 | nfe=56 | 3.2s *
+21:58:06 INFO Ep   1 | train=270.9099 | val=223.7957 | gnorm=4609.85 | nfe=62 | 3.0s *
+21:58:09 INFO Ep   2 | train=220.7218 | val=179.2397 | gnorm=3993.79 | nfe=62 | 3.0s *
+21:58:12 INFO Ep   3 | train=176.0416 | val=141.5376 | gnorm=3400.49 | nfe=62 | 3.0s *
+21:58:15 INFO Ep   4 | train=138.4608 | val=110.0321 | gnorm=2845.24 | nfe=62 | 3.0s *
+21:58:18 INFO Ep   5 | train=107.7038 | val=84.9547 | gnorm=2337.16 | nfe=62 | 3.0s *
+21:58:21 INFO Ep   6 | train=83.2155 | val=65.6317 | gnorm=1880.07 | nfe=62 | 3.0s *
+21:58:24 INFO Ep   7 | train=64.1776 | val=51.0990 | gnorm=1482.05 | nfe=86 | 3.0s *
+21:58:27 INFO Ep   8 | train=50.1015 | val=40.3000 | gnorm=1164.23 | nfe=92 | 3.0s *
+21:58:30 INFO Ep   9 | train=39.5897 | val=32.4239 | gnorm=924.66 | nfe=92 | 3.0s *
+21:58:33 INFO Ep  10 | train=31.9265 | val=26.5901 | gnorm=761.47 | nfe=104 | 2.9s *
+21:58:36 INFO Ep  11 | train=26.3720 | val=22.0711 | gnorm=660.75 | nfe=98 | 3.1s *
+21:58:38 INFO Ep  12 | train=21.7940 | val=18.2886 | gnorm=586.07 | nfe=74 | 2.8s *
+21:58:42 INFO Ep  13 | train=18.1205 | val=15.0049 | gnorm=517.72 | nfe=62 | 3.1s *
+21:58:45 INFO Ep  14 | train=14.8957 | val=12.1635 | gnorm=441.60 | nfe=62 | 3.0s *
+21:58:47 INFO Ep  15 | train=12.0592 | val=9.9151 | gnorm=370.80 | nfe=62 | 2.9s *
+21:58:50 INFO Ep  16 | train=9.7245 | val=8.2328 | gnorm=350.68 | nfe=62 | 3.0s *
+21:58:53 INFO Ep  17 | train=7.9960 | val=6.8792 | gnorm=369.74 | nfe=68 | 2.9s *
+21:58:56 INFO Ep  18 | train=6.6130 | val=5.8349 | gnorm=344.58 | nfe=80 | 2.9s *
+21:58:59 INFO Ep  19 | train=5.6220 | val=5.3288 | gnorm=250.26 | nfe=74 | 3.1s *
+21:59:02 INFO Ep  20 | train=5.1171 | val=5.0530 | gnorm=210.25 | nfe=92 | 3.0s *
+21:59:05 INFO Ep  21 | train=4.8544 | val=4.5651 | gnorm=234.33 | nfe=80 | 3.0s *
+21:59:08 INFO Ep  22 | train=4.3974 | val=4.0071 | gnorm=219.88 | nfe=86 | 2.9s *
+21:59:11 INFO Ep  23 | train=3.8434 | val=3.5604 | gnorm=164.32 | nfe=74 | 3.0s *
+21:59:14 INFO Ep  24 | train=3.4180 | val=3.1849 | gnorm=157.66 | nfe=86 | 2.9s *
+21:59:17 INFO Ep  25 | train=3.0960 | val=2.8277 | gnorm=164.93 | nfe=80 | 3.0s *
+21:59:20 INFO Ep  26 | train=2.7586 | val=2.5066 | gnorm=141.75 | nfe=92 | 3.1s *
+21:59:23 INFO Ep  27 | train=2.4720 | val=2.1682 | gnorm=133.93 | nfe=80 | 3.0s *
+21:59:26 INFO Ep  28 | train=2.1440 | val=1.8415 | gnorm=120.53 | nfe=86 | 2.9s *
+21:59:29 INFO Ep  29 | train=1.8243 | val=1.6152 | gnorm=83.14 | nfe=80 | 2.9s *
+21:59:29 INFO Done. Best val loss: 1.615246377754046

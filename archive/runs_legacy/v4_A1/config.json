@@ -1,0 +1,17 @@
+{
+  "phase": "A1",
+  "cache_dir": "/tmp/surrogate_cache",
+  "run_dir": "runs/v4_A1",
+  "device": "cuda",
+  "tier": 1,
+  "batch_size": 4096,
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "max_epochs": 30,
+  "patience": 15,
+  "segment_length": 3000,
+  "subsample": 10,
+  "stride": 15000,
+  "z0_noise": 0.0,
+  "checkpoint": null
+}
