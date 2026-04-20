@@ -1,0 +1,17 @@
+# @package _global_
+# Loose group — activate via: python scripts/sweep.py --multirun +hparams_search=lr_batch
+# Round-3 LOW-4 fix: explicit pruner block (was a trailing comment before).
+# Round-4 HIGH-1 fix: n_startup_trials=1 so pruner can activate even at n_trials=3.
+defaults:
+  - override /hydra/sweeper: optuna
+
+hydra:
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.TPESampler
+    direction: minimize
+    study_name: lr_sweep
+    n_trials: 3
+    n_jobs: 1
+    params:
+      training.optimizer.lr: choice(1e-3, 5e-4, 1e-4)

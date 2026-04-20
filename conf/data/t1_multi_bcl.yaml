@@ -1,0 +1,7 @@
+# Stub — Phase 2. Shape re-specified post-Step-4.0 (Round-3 HIGH-1:
+# train_bcls/val_bcls fields don't exist on SegmentDataset — real pipeline
+# uses make_dataloaders(tier) over pre-split tier caches).
+train:
+  _target_: surrogate.training.datasets.SegmentDataset
+val:
+  _target_: surrogate.training.datasets.SegmentDataset
