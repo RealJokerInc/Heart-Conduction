@@ -5,10 +5,14 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-Build a project-wide `cardiac_ml/` package at repo root as a training harness: Hydra (config) + MLflow (tracking, file-backed) + Optuna (HPO) + SHAP (analysis overlay). Single flexible `Trainer` class with overridable `_train_step`. Model code stays in place and is referenced via Hydra `_target_`. Ionic NODE training is the pilot migration. Old `Surrogate/runs/` gets archived.
+**As of 2026-04-20**: Phases 1-3 + Step 4.0 executed and committed. Steps 4.1-4.4 re-specified post-reality-check (R4 blueprint-revise pass). Ready for Phase 4 execution.
+
+Harness architecture settled: project-wide `cardiac_ml/` at repo root, Hydra config composition, MLflow file-backed tracking, single `Trainer` class, `train_step_fn(trainer, batch) -> dict` via Hydra `_target_: hydra.utils.get_method`. `_on_after_backward` hook protocol for stateful cleanup (e.g., NODE's `clear_v_trajectory`).
 
 ## Next Step
-Survey GitHub for mature Hydra+MLflow+Optuna research templates — `ashleve/lightning-hydra-template` first, plus 1–2 peers. Produce a short decision note in `results/` on what to adopt, what to skip, and where this project's requirements (float64, NODE adjoint, custom-class artifact logging) force deviations. Then `/blueprint` the implementation.
+Execute Step 4.1 — write `Surrogate/surrogate/training/node_step.py` adapter (pure function wrapping `node_rollout()`, returns `{"loss": ..., "_on_after_backward": lambda: trainer.model.clear_v_trajectory(), **per_component_metrics}`). Required `phase_name` field, no NFE.
+
+Then Step 4.2 (multi_bcl_loader.py + updated YAMLs), Step 4.3 (smoke), Step 4.4 (parity run).
 
 ## Thread
 
@@ -33,6 +37,28 @@ Propagated into: `cardiac_ml/REQUIREMENTS.md` (§2 goal 3, §3 non-goals, §4.3 
 
 Why A is load-bearing: it kills the "generalization without a second consumer" risk. The NODE `train_step_fn` can be written today against the real Trainer — we don't need the ResNet `train_step_fn` to exist before we commit to the shape. Two concrete functions (node_step + default teacher-forced) validate the shape before blueprint.
 
+### 2026-04-19 (heavy session): Phases 1-3 + Step 4.0 executed; 4.1-4.4 re-spec'd
+
+Worked through: blueprint → 4 rounds of audit (R1 25 issues, R2 27 issues, R3 30 issues, R4 18 issues / 0 critical) → 3 blueprint-revise passes → execute Phases 1-3 → Step 4.0 reality check → R4 blueprint-revise pass for Phase 4 re-spec.
+
+**Executed commits**:
+- `b9d9c718` — Phase 1: planning docs + template survey + env install + gitignore (deps pinned: hydra-core 1.3.2, hydra-optuna-sweeper 1.2.0, optuna 2.10.1, mlflow 2.22.4, shap 0.51.0)
+- `eb057232` — Phase 2: package skeleton + conf/ tree, 18 tests
+- `57b7efac` — Phase 3: Trainer + MLflow logger + callbacks, 57 tests (incl. end-to-end subprocess smoke)
+- `77114cb4` — Step 4.0: reality check doc (257 lines, 15 findings)
+- `2d90fdaf` — Phase 4 re-spec: Steps 4.1-4.4 un-deferred, SessionParityGate removed, multi_bcl_loader.py added to spec
+
+**Reality-check discoveries that changed Phase 4**:
+1. Session 25 parity oracle is `Surrogate/run_multi_bcl.py`, NOT `train_node.py` (`train_node.py:138` has a latent `node.nfe` AttributeError — IonicNODE has no such attribute).
+2. Oracle run was 8 epochs in ~15 minutes, best val 0.00838 at epoch 6. NOT 500 epochs / multi-hour as earlier plans assumed.
+3. Parity threshold: ≤ 0.0088 (= 1.05 × oracle 0.00838), NOT 0.008 (oracle itself doesn't hit 0.008).
+4. SessionParityGate with `min_epoch=10` was dead code (reference log only covers 0-7). Dropped entirely — post-fit threshold check replaces it.
+5. `conf/data/t1_multi_bcl.yaml`'s `train_bcls`/`val_bcls` fields were fabricated — SegmentDataset has no BCL filter. Real oracle path uses manual `extract_beats()` with SUBSAMPLE=10 (dt=0.1ms) over a pre-loaded T1 dict. Replicated in new `cardiac_ml/data/multi_bcl_loader.py`.
+6. Data path is `/media/HDD/norepinephrine/surrogate_data/raw/` (verified tier01/02/03.h5 present). `/media/HDD/surrogate_data/raw/` in `data_cache.py:7` docstring is wrong.
+7. SHA pin `8f191f77` verified current — model tree unchanged since pin. `git diff --quiet 8f191f77 -- Surrogate/surrogate/model/` is the authoritative drift check.
+
+**Audit trajectory**: R1 (25) → R2 (27) → R3 (30, 15 deferred to Step 4.0) → R4 (18, 0 critical). Convergence: severity decreasing, verdict CONDITIONAL→ready. Step 4.0 explicitly designed to de-risk Phase 4 before implementation, which paid off — R4 Phase 4 re-spec dropped multiple speculative components.
+
 ## Failed Approaches
 
 | Approach | Why it failed |
@@ -50,3 +76,7 @@ Why A is load-bearing: it kills the "generalization without a second consumer" r
 | 2026-04-16 | — | Direction settled inside surrogate_pipeline Session 26 (parent IDEALOG.md). |
 | 2026-04-19 | 1 | Promoted to parallel top-level research question. README/KNOWLEDGE/IDEALOG scaffolded from parent context. No code yet. |
 | 2026-04-19 | 2 | MLflow + Hydra primer walkthrough. Trainer override form settled: pure function via Hydra `_target_` (A), return dict as primary metric channel (B), escape hatches `trainer.log_artifact` / `trainer.log_figure` for rare cases. Propagated to REQUIREMENTS (§2/§3/§4.3/§7/§9) + README + KNOWLEDGE. OPEN-8 added for tracking-disable shim (C, not decided). |
+| 2026-04-19 | 3-7 | 4 audit rounds + 3 blueprint-revise passes. R1 25, R2 27, R3 30 (15 deferred to Step 4.0), R4 18 (0 critical). Plan converged. |
+| 2026-04-19 | 8 | Phases 1-3 executed: Phase 1 commit b9d9c718 (env + docs + gitignore), Phase 2 eb057232 (skeleton + conf tree, 18 tests), Phase 3 57b7efac (Trainer + MLflow + callbacks, 57 tests total). |
+| 2026-04-19 | 9 | Step 4.0 reality check executed (commit 77114cb4). 15 findings; oracle re-identified as run_multi_bcl.py (not train_node.py), parity threshold raised to 0.0088, mid-flight gate dropped. |
+| 2026-04-19 | 10 | Blueprint-revise pass 4 (commit 2d90fdaf): Steps 4.1-4.4 un-deferred and simplified. Ready for Phase 4 execution. |
