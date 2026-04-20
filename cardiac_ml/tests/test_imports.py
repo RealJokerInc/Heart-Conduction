@@ -23,14 +23,13 @@ def test_all_init_files_importable():
         importlib.import_module(mod)
 
 
-def test_trainer_lazy_raises_clean_import_error():
-    """Before Step 3.4, `from cardiac_ml import Trainer` raises ImportError
-    with a message pointing at the missing implementation. Must NOT raise
-    AttributeError (which would mean PEP 562 __getattr__ isn't wired) and
-    must NOT silently bind a placeholder."""
+def test_trainer_accessible_via_lazy_getattr():
+    """Post Step 3.4: `cardiac_ml.Trainer` resolves cleanly via PEP 562
+    `__getattr__`. Was a "raises ImportError" test during Phase 2 when
+    trainer.py was still a stub."""
     import cardiac_ml
-    with pytest.raises(ImportError, match="not yet implemented"):
-        _ = cardiac_ml.Trainer
+    from cardiac_ml.training.trainer import Trainer as RealTrainer
+    assert cardiac_ml.Trainer is RealTrainer
 
 
 def test_unknown_attribute_raises_attribute_error():
