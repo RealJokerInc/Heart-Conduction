@@ -1,6 +1,6 @@
 # Heart-Conduction — Master Progress
 
-Last updated: 2026-03-18
+Last updated: 2026-04-19
 
 ## Active Research
 
@@ -13,14 +13,15 @@ Last updated: 2026-03-18
 | [Geometry-induced pacemaking](Research/Active/geometry_induced_pacemaking/) | V5.4, LBM, Bidomain | Just started | Literature review + PHAS13 baseline |
 | [Research environment optimization](Research/Active/research_environment_optimization/) | All (meta) | **Implementation complete**: 16 skills, 3-doc architecture, PreCompact hook | Real-world testing of new workflow |
 | [Surrogate pipeline](Research/Active/surrogate_pipeline/) | Bidomain V1, V5.4 | Docs done, no code yet | Phase 1A: single-cell data generation |
+| [Cardiac ML harness](Research/Active/cardiac_ml_harness/) | None (project-wide) | Direction settled, no code yet | Template survey → blueprint |
 | [Bidomain parabolic-parabolic](Research/Active/bidomain_parabolic_parabolic/) | Bidomain V1 | Just started | Literature review of PP formulation |
+| [LBM-EP](Research/Active/lbm_ep/) | LBM V1, Bidomain V1 | Reopened 2026-04-19 (was lbm_cardiac, complete 2026-03-16) | Audit current LBM V1 — find highest-leverage gap (anisotropy/boundary/tuning) |
 
 ## Complete Research
 
 | Question | Key Answer | Knowledge |
 |----------|-----------|-----------|
 | [Bidomain simulation](Research/Complete/bidomain_simulation/) | FDM/FEM/FVM + 3-tier solver + Strang/RL/CN | [Knowledge file](Research/Knowledge/bidomain_simulation.md) |
-| [LBM for cardiac EP](Research/Complete/lbm_cardiac/) | D2Q5 iso, D2Q9 aniso, MRT > BGK, 34 tests | [Knowledge file](Research/Knowledge/lbm_cardiac.md) |
 | [Scar BC validity](Research/Complete/scar_bc_validity/) | Neumann correct; Dirichlet invalid (voltage source artifact) | [Knowledge file](Research/Knowledge/scar_bc_validity.md) |
 
 ## Backlog

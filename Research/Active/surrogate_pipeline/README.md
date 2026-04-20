@@ -26,8 +26,11 @@ The bidomain simulation is computationally expensive — the elliptic solve for 
 
 | Sub-Question | Status | Key Finding |
 |-------------|--------|-------------|
-| Ionic component (Transformer) | Not started | — |
+| Ionic component (Transformer) | In progress | NODE pivot (2026-04-06) validated. IonicRateMLP + conc KAN, multi-BCL val=0.008. |
 | Diffusion component (Cross-Skip ResNet) | Not started | — |
+
+## Parallel / Related Questions
+- [cardiac_ml_harness](../cardiac_ml_harness/) — project-wide training harness (Hydra + MLflow + Optuna + SHAP). Originated here in Session 26; broken out on 2026-04-19 because the harness scope is project-wide and blocks diffusion ResNet + Optimizer V1 work, not just the surrogate line.
 
 ## Key Findings So Far
 Documentation phase complete (2026-03-12). Architecture designed:
