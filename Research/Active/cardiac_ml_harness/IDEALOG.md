@@ -5,14 +5,15 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**As of 2026-04-20**: Phases 1-3 + Step 4.0 executed and committed. Steps 4.1-4.4 re-specified post-reality-check (R4 blueprint-revise pass). Ready for Phase 4 execution.
+**As of 2026-04-20 (post-implementation)**: All phases complete. NODE parity MET (best val_loss=0.00835 vs. threshold 0.0088). Reusability proven via diffusion stub. Optuna sweep + SHAP wired. Cutover to archive/runs_legacy/ done. 80 cardiac_ml tests pass. Harness is consumer-ready.
 
 Harness architecture settled: project-wide `cardiac_ml/` at repo root, Hydra config composition, MLflow file-backed tracking, single `Trainer` class, `train_step_fn(trainer, batch) -> dict` via Hydra `_target_: hydra.utils.get_method`. `_on_after_backward` hook protocol for stateful cleanup (e.g., NODE's `clear_v_trajectory`).
 
 ## Next Step
-Execute Step 4.1 — write `Surrogate/surrogate/training/node_step.py` adapter (pure function wrapping `node_rollout()`, returns `{"loss": ..., "_on_after_backward": lambda: trainer.model.clear_v_trajectory(), **per_component_metrics}`). Required `phase_name` field, no NFE.
-
-Then Step 4.2 (multi_bcl_loader.py + updated YAMLs), Step 4.3 (smoke), Step 4.4 (parity run).
+Harness is done. Next consumer migrations (not in scope for this question):
+- Diffusion ResNet (real, not stub) — a consumer question should drive the scope.
+- Optimizer V1 BayesOpt — wrap `cardiac_ml.Trainer.evaluate()` as objective; settles OPEN-2.
+- Real production sweep for NODE: replace smoke lr_batch with an actual NODE search when a research question asks.
 
 ## Thread
 
@@ -80,3 +81,4 @@ Worked through: blueprint → 4 rounds of audit (R1 25 issues, R2 27 issues, R3 
 | 2026-04-19 | 8 | Phases 1-3 executed: Phase 1 commit b9d9c718 (env + docs + gitignore), Phase 2 eb057232 (skeleton + conf tree, 18 tests), Phase 3 57b7efac (Trainer + MLflow + callbacks, 57 tests total). |
 | 2026-04-19 | 9 | Step 4.0 reality check executed (commit 77114cb4). 15 findings; oracle re-identified as run_multi_bcl.py (not train_node.py), parity threshold raised to 0.0088, mid-flight gate dropped. |
 | 2026-04-19 | 10 | Blueprint-revise pass 4 (commit 2d90fdaf): Steps 4.1-4.4 un-deferred and simplified. Ready for Phase 4 execution. |
+| 2026-04-20 | 11 | Phases 4+5 executed end-to-end. Step 4.1 `node_step.py` adapter (8 tests), Step 4.2 `multi_bcl_loader.py` + configs (7 tests, oracle-parity via `_bcl`-driven t_eval + min_beat filter), Step 4.3 smoke passed (2 epochs, end-to-end MLflow + checkpoints), Step 4.4 NODE parity MET at epoch 1 val_loss=0.00835 < 0.0088 threshold. Discovered oracle warm-starts from multi_bcl_001/best.pt — added `cardiac_ml/model/ionic_node_factory.py` for warm-start via `WARM_START_CKPT` env var. Phase 5: `scripts/sweep.py` + `conf/hparams_search/lr_batch.yaml` (pruner dropped — hydra-optuna-sweeper 1.2.0 lacks field); `cardiac_ml/analysis/shap_utils.py` + `scripts/analyze.py` (KernelExplainer-only per OPEN-4); diffusion-stub reusability proof (test passes); `Surrogate/runs/` → `archive/runs_legacy/` via git-rename. MASTER.md + README.md updated — 11/11 completion criteria checked. 80 cardiac_ml tests pass. |

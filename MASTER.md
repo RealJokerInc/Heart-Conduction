@@ -13,7 +13,7 @@ Last updated: 2026-04-19
 | [Geometry-induced pacemaking](Research/Active/geometry_induced_pacemaking/) | V5.4, LBM, Bidomain | Just started | Literature review + PHAS13 baseline |
 | [Research environment optimization](Research/Active/research_environment_optimization/) | All (meta) | **Implementation complete**: 16 skills, 3-doc architecture, PreCompact hook | Real-world testing of new workflow |
 | [Surrogate pipeline](Research/Active/surrogate_pipeline/) | Bidomain V1, V5.4 | Docs done, no code yet | Phase 1A: single-cell data generation |
-| [Cardiac ML harness](Research/Active/cardiac_ml_harness/) | None (project-wide) | Direction settled, no code yet | Template survey → blueprint |
+| [Cardiac ML harness](Research/Active/cardiac_ml_harness/) | None (project-wide) | IMPLEMENTED. NODE parity met. Reusability proved via diffusion stub. | Consumer migrations (diffusion ResNet, BayesOpt wrapper) |
 | [Bidomain parabolic-parabolic](Research/Active/bidomain_parabolic_parabolic/) | Bidomain V1 | Just started | Literature review of PP formulation |
 | [LBM-EP](Research/Active/lbm_ep/) | LBM V1, Bidomain V1 | Reopened 2026-04-19 (was lbm_cardiac, complete 2026-03-16) | Audit current LBM V1 — find highest-leverage gap (anisotropy/boundary/tuning) |
 
