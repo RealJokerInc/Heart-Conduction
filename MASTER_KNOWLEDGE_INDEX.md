@@ -19,6 +19,7 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 | Research Environment Optimization | [KNOWLEDGE](Research/Active/research_environment_optimization/KNOWLEDGE.md) | Active |
 | Surrogate Pipeline | [KNOWLEDGE](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | Active — Neural ODE implemented + first training runs. Ionic MSE 0.047 (500 epochs). KAN for concentrations. dopri5 + backprop-through-solver. 1,988 inference params. |
 | Bidomain Parabolic-Parabolic | [KNOWLEDGE](Research/Active/bidomain_parabolic_parabolic/KNOWLEDGE.md) | Active |
+| Cardiac ML Harness | [KNOWLEDGE](Research/Active/cardiac_ml_harness/KNOWLEDGE.md) | Implemented 2026-04-20 — NODE parity met (0.00835 ≤ 0.0088), diffusion-stub reusability proven, cutover complete. 80 tests. |
 | Bidomain Simulation | [KNOWLEDGE](Research/Knowledge/bidomain_simulation.md) | Promoted |
 | LBM Cardiac | [KNOWLEDGE](Research/Knowledge/lbm_cardiac.md) | Promoted |
 | Scar BC Validity | [KNOWLEDGE](Research/Knowledge/scar_bc_validity.md) | Promoted |
@@ -39,3 +40,5 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 - **Surrogate ↔ Boundary Speedup**: Surrogate validation target — CV_ratio within 10% of simulator. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Boundary](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md)
 - **Surrogate ↔ Optimization**: Trained surrogate replaces simulator in optimization loop for fast parameter sweeps. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Optimization](Research/Active/ionic_model_optimization/KNOWLEDGE.md)
 - **Surrogate ↔ Consolidation**: Unified engine API simplifies training data generation across engines. [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md) | [Consolidation](Research/Active/engine_consolidation/KNOWLEDGE.md)
+- **Surrogate ↔ Cardiac ML Harness**: Surrogate's ionic NODE is the harness's pilot. Harness's `Surrogate/surrogate/training/node_step.py` adapter reproduces Session-25 parity. [Harness](Research/Active/cardiac_ml_harness/KNOWLEDGE.md) | [Surrogate](Research/Active/surrogate_pipeline/KNOWLEDGE.md)
+- **Cardiac ML Harness ↔ Optimization**: Future BayesOpt objective-evaluation consumer — via `Trainer.evaluate()` entry point (OPEN-2, deferred). [Harness](Research/Active/cardiac_ml_harness/KNOWLEDGE.md) | [Optimization](Research/Active/ionic_model_optimization/KNOWLEDGE.md)

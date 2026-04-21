@@ -60,6 +60,28 @@ Worked through: blueprint → 4 rounds of audit (R1 25 issues, R2 27 issues, R3 
 
 **Audit trajectory**: R1 (25) → R2 (27) → R3 (30, 15 deferred to Step 4.0) → R4 (18, 0 critical). Convergence: severity decreasing, verdict CONDITIONAL→ready. Step 4.0 explicitly designed to de-risk Phase 4 before implementation, which paid off — R4 Phase 4 re-spec dropped multiple speculative components.
 
+### 2026-04-20: Phases 4-5 executed end-to-end — harness is consumer-ready
+
+**Parity MET.** Best val_loss=0.00835 at epoch 1, below 0.0088 threshold. Training ran to epoch 3 then crashed at `on_fit_end` because I prematurely `rm -rf outputs_parity/` during cleanup while the Python process was still alive — `ModelCheckpoint._save_and_log` couldn't write `last.pt`. The 4 recorded epochs are valid; parity was already demonstrated twice over (epoch 0 at 0.00891, epoch 1 at 0.00835). EarlyStopping never fired (patience=10 not exhausted).
+
+**Warm-start reality — the plan's biggest blind spot.** Oracle `multi_bcl_002` warm-started from `runs/multi_bcl_001/best.pt` (visible in `run_multi_bcl.py:93-101`). The R4 reality check didn't flag this. Without warm-start, a fresh run starts at val_loss ≈ 7800 (confirmed via 2-epoch smoke from scratch) and CANNOT reach 0.0088 in 30 epochs. Fix: added `cardiac_ml/model/ionic_node_factory.py::make_node(stage1_ckpt=...)` as a Hydra factory with `WARM_START_CKPT` env-var override. Config-driven, opt-in. Updated `conf/model/ionic_node.yaml` to use the factory.
+
+**Oracle t_eval parity — a quieter trap.** `NODE_T_EVAL_MS` (20 landmark points, baked into `node_rollout.py`) gives a different loss average than the oracle's full-resolution `torch.linspace(0, T_ms, int(T_ms/0.1)+1)` (5001 points at 0.1-ms spacing). Adapter now reads `batch["_bcl"]` metadata and builds the full grid when present, falls back to landmarks when absent. `_single_beat_collate` explicitly preserves non-tensor metadata through the DataLoader.
+
+**MLflow param-key regex — caught during smoke run.** List indices flattened as `[N]` fail MLflow's param-key regex (alphanumerics + `_-./: ` only). Fixed `_flatten` to use `.N`. Updated the one existing test that asserted the old form. Don't regress.
+
+**Optuna plugin limitation — caught during sweep config compose.** `hydra-optuna-sweeper 1.2.0`'s `OptunaSweeperConf` has no `pruner` field (added in later plugin versions). The plan's `MedianPruner` YAML block broke composition. Removed with a deferral note. At `n_trials=3` pruning adds no value anyway; OPEN-5 stays deferred.
+
+**Cutover acceptance — legacy scripts break-if-invoked.** `Surrogate/run_multi_bcl.py` hardcodes `Path('runs/multi_bcl_002/best.pt')`. Post-archive, it can't find its own source. Intended behavior — the cutover IS the path forward. Legacy scripts stay frozen at pin `8f191f77` per M-6; users migrate to `scripts/train.py experiment=ionic_node_t1`.
+
+**Execution commits (2026-04-20)**:
+- `b20fabf7` — Phase 4 (node_step + multi_bcl_loader + factory + configs + 15 tests + mlflow_logger fix + REQUIREMENTS §7.2 patch)
+- `5e59ad39` — Phase 5 code (sweep.py + analyze.py + shap_utils + diffusion stub + 12 tests)
+- `04d46cbf` — Phase 5.4 archive move (`Surrogate/runs/` → `archive/runs_legacy/` via git-rename + adds)
+- `67d3e6a8` — Phase 5 docs (MASTER.md, README.md, IDEALOG.md quicksave, PLAN archive)
+
+Final: 80 tests pass. 10/10 PLAN checkboxes done + 1 OPEN-8 tracking-disable shim (11/11). MASTER.md reflects IMPLEMENTED state.
+
 ## Failed Approaches
 
 | Approach | Why it failed |
