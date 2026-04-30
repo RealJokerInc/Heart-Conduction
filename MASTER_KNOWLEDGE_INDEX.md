@@ -11,7 +11,7 @@ Grant materials in `ResearchStatement/` (PDF/DOCX). Machine-readable summary to 
 
 | Topic | Knowledge | Status |
 |-------|-----------|--------|
-| Boundary Conduction Speedup | [KNOWLEDGE](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md) | Active |
+| Boundary Conduction Speedup | [KNOWLEDGE](Research/Active/boundary_conduction_speedup/KNOWLEDGE.md) | Active — **2026-04-30 BRIDGE CONFIRMED**: Moore-8 stencil + face_mirror BC reproduces John's crescent in monodomain (+486 µs LAT shift, TTP06 EPI). Same mechanism across storage tank / monodomain V5.4 / LBM V1. Cardinal-only OR face_mirror_iso (LBM bounce-back analog) eliminates in all three. V5.4 FDM gained `stencil` + `face_mirror_iso` API; LBM V1 gained `weights_mode` + critical cs2 plumbing fix. |
 | Ionic Model Optimization | [KNOWLEDGE](Research/Active/ionic_model_optimization/KNOWLEDGE.md) | Active |
 | Engine Consolidation | [KNOWLEDGE](Research/Active/engine_consolidation/KNOWLEDGE.md) | Active |
 | Geometry-Induced Pacemaking | [KNOWLEDGE](Research/Active/geometry_induced_pacemaking/KNOWLEDGE.md) | Active |
