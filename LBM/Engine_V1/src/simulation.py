@@ -14,7 +14,7 @@ import torch
 from torch import Tensor
 from typing import Optional, List
 
-from .lattice import D2Q5, D2Q9
+from .lattice import D2Q5, D2Q9, D2Q9_uniform
 from .diffusion import tau_from_D
 from .state import create_lbm_state, recover_voltage
 from .step import lbm_step_d2q5_bgk, lbm_step_d2q9_bgk
@@ -43,12 +43,20 @@ class LBMSimulation:
         Cm: membrane capacitance (uF/cm^2), default 1.0. Used for source
             term scaling: R = -(I_ion + I_stim) / Cm
         lattice: 'd2q5' or 'd2q9' (default 'd2q5')
+        weights_mode: 'canonical' (default) or 'uniform_8' for d2q9.
+            uniform_8 selects the non-canonical D2Q9_uniform lattice with
+            equal weight 1/8 on all 8 moving particles (rest particle = 0).
+            Used for connectivity-effect comparison against the canonical
+            isotropic 4:1 weights — see Research/Active/boundary_conduction_speedup.
+            Must be 'canonical' for d2q5 (no diagonals to weight differently).
         bounce_masks: dict of boundary masks (if None, uses full-grid rectangular)
     """
 
     def __init__(self, Nx: int, Ny: int, dx: float, dt: float,
                  D: float, ionic_model, Cm: float = 1.0,
-                 lattice: str = 'd2q5', bounce_masks: dict = None):
+                 lattice: str = 'd2q5',
+                 weights_mode: str = 'canonical',
+                 bounce_masks: dict = None):
         self.Nx = Nx
         self.Ny = Ny
         self.dx = dx
@@ -61,16 +69,36 @@ class LBMSimulation:
 
         # Lattice setup
         if lattice == 'd2q5':
+            if weights_mode != 'canonical':
+                raise ValueError(
+                    f"weights_mode={weights_mode!r} only valid for d2q9 "
+                    f"(d2q5 has no diagonals to weight)"
+                )
             self.lattice = D2Q5()
             self._step_fn = lbm_step_d2q5_bgk
         elif lattice == 'd2q9':
-            self.lattice = D2Q9()
+            if weights_mode == 'canonical':
+                self.lattice = D2Q9()
+            elif weights_mode == 'uniform_8':
+                self.lattice = D2Q9_uniform()
+            else:
+                raise ValueError(
+                    f"weights_mode must be 'canonical' or 'uniform_8', "
+                    f"got {weights_mode!r}"
+                )
+            # NOTE: BGK only — if collision selector is added later,
+            # weights_mode plumbing must be re-checked for MRT path
+            # (TODO: weights_mode-MRT compatibility).
             self._step_fn = lbm_step_d2q9_bgk
         else:
             raise ValueError(f"Unknown lattice: {lattice}")
 
         self.w = torch.tensor(self.lattice.w, device=self.device, dtype=self.dtype)
-        tau = tau_from_D(D, dx, dt)
+        # CRITICAL FIX (2026-04-30): pass cs2 from lattice. Previously this used
+        # the default cs2=1/3 regardless of lattice, which is bit-correct for
+        # canonical D2Q9 (cs2=1/3) but produces an incorrect tau for any non-
+        # canonical lattice (e.g., D2Q9_uniform with cs2=0.75).
+        tau = tau_from_D(D, dx, dt, cs2=self.lattice.cs2)
         self.omega = 1.0 / tau
 
         # Boundary masks
