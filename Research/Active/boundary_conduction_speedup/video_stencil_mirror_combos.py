@@ -74,8 +74,10 @@ def run_one(label, stencil, boundary_mode):
         stencil=stencil, boundary_mode=boundary_mode,
     )
     proto = StimulusProtocol()
+    # Stim at the most leftward column only (col 0).
+    # DX/2 threshold catches x=0.0 but excludes x=DX (col 1).
     proto.add_stimulus(
-        region=lambda x, y: x < 0.05,
+        region=lambda x, y: x < DX / 2,
         start_time=0.0, duration=2.0, amplitude=-52.0,
     )
     sim = MonodomainSimulation(
