@@ -1,12 +1,12 @@
 # Heart-Conduction — Master Progress
 
-Last updated: 2026-04-19
+Last updated: 2026-04-28
 
 ## Active Research
 
 | Question | Engines | Status | Next Step |
 |----------|---------|--------|-----------|
-| [Boundary conduction speedup](Research/Active/boundary_conduction_speedup/) | Bidomain, LBM | CV ratio 1.071→1.131 confirmed | Anisotropic boundary study |
+| [Boundary conduction speedup](Research/Active/boundary_conduction_speedup/) | Bidomain, LBM | CV ratio 1.071→1.131; clean inverse-crescent BC found (same-cell specular, 2026-05-28) | Anisotropic study; (α,β,γ) simplex on HBB↔same-cell-specular |
 | [Ionic model optimization](Research/Active/ionic_model_optimization/) | V5.4, Optimizer | Docs done, MHAS13 test run | Optimizer V1 Phase 1 |
 | [Mature hiPSC-CM models](Research/Active/mature_hipsc_cm_models/) | V5.4, Bidomain | MHAS13 complete (quiescent, V_rest=-83.7mV) | Tissue validation, ORd-based variant |
 | [Engine consolidation](Research/Active/engine_consolidation/) | All | **Phase 0 DONE**: unified file format + `monodomain()`/`bidomain()`/`lbm()` API (34 tests) | Phase 1: extract shared ionic/mesh |
@@ -16,6 +16,8 @@ Last updated: 2026-04-19
 | [Cardiac ML harness](Research/Active/cardiac_ml_harness/) | None (project-wide) | IMPLEMENTED. NODE parity met. Reusability proved via diffusion stub. | Consumer migrations (diffusion ResNet, BayesOpt wrapper) |
 | [Bidomain parabolic-parabolic](Research/Active/bidomain_parabolic_parabolic/) | Bidomain V1 | Just started | Literature review of PP formulation |
 | [LBM-EP](Research/Active/lbm_ep/) | LBM V1, Bidomain V1 | Reopened 2026-04-19 (was lbm_cardiac, complete 2026-03-16) | Audit current LBM V1 — find highest-leverage gap (anisotropy/boundary/tuning) |
+| [Mesh builder](Research/Active/mesh_builder/) | All (Builder-first) | Just started | Survey existing `Builder/` package — extend or replace |
+| [Monthly report pipeline](Research/Active/monthly_report_pipeline/) | None (meta) | Spec extracted (Zimmerman format V1, 4/20/2026) | Decide: rush manual April report (due 4/30) or target May as first pipeline run |
 
 ## Complete Research
 
@@ -36,7 +38,7 @@ Last updated: 2026-04-19
 |--------|-------|--------|----------|-------------|
 | Monodomain V5.4 | 77 | All phases done | [Engines/monodomain_v5.4](Engines/monodomain_v5.4/) | [experiments/](Monodomain/Engine_V5.4/experiments/) |
 | Bidomain V1 | 38+ | All phases done | [Engines/bidomain_v1](Engines/bidomain_v1/) | [experiments/](Bidomain/Engine_V1/experiments/) |
-| LBM V1 | 34 | All phases done | [Engines/lbm_v1](Engines/lbm_v1/) | [experiments/](Monodomain/LBM_V1/experiments/) |
+| LBM V1 | 34 | All phases done | [LBM/Engine_V1](LBM/Engine_V1/) | [experiments/](LBM/Engine_V1/experiments/) |
 | Cross-engine | — | — | [Engines/cross_engine](Engines/cross_engine/) | Per research question |
 | cardiac_core | — | Not started | — | — |
 

@@ -22,9 +22,12 @@ The Kleber boundary speedup is a real biophysical effect: at a bath-perfused tis
 - [x] Conductivity sweep (edge lead ~ 1/sqrt(D_eff))
 - [x] **Connectivity-mediated boundary deficit reproduced in monodomain (2026-04-30)** — Moore-8 stencil + face_mirror BC produces +486 µs LAT shift in TTP06 EPI line-stim. Eliminated by cardinal-only OR face_mirror_iso (LBM bounce-back analog).
 - [x] **Cross-engine bridge claim confirmed (2026-04-30)** — same connectivity mechanism in storage tank, monodomain V5.4, LBM V1. Cardinal-only or iso+bounce-back fixes it in all three.
+- [x] **Clean inverse-crescent BC discovered (2026-05-28)** — same-cell specular reflection (flip wall-normal, keep tangential, deposit same cell) gives genuine boundary speedup (−300 µs by precharge-immune dV/dt) with zero standing artifact and exact mass conservation. Found via exhaustive 27-rule enumeration. The earlier "horizontal redirect" inverse crescent was a wall-pre-charge artifact. See KNOWLEDGE.md § "Clean inverse-crescent BC".
 - [ ] Anisotropic boundary study (fiber-parallel vs perpendicular)
 - [ ] 3D validation
 - [ ] Tissue thickness study (when boundary layer spans full thickness)
+- [ ] (α,β,γ) simplex rebuilt on HBB↔same-cell-specular axis (artifact-free)
+- [ ] PDE analog of same-cell specular (face stencil preserving tangential gradient)
 
 ## Sub-Questions
 
@@ -36,6 +39,7 @@ The Kleber boundary speedup is a real biophysical effect: at a bath-perfused tis
 | Conductivity sweep | Complete | Edge lead ~ 1/sqrt(D_eff); 4x sigma_i increases Kleber ratio |
 | Connectivity-mediated boundary deficit | **Complete (2026-04-30)** | Moore-8 stencil + face_mirror reproduces John's crescent in monodomain (+486 µs LAT). Bridge claim confirmed across storage-tank, monodomain V5.4, LBM V1. |
 | Anisotropic boundaries | Active | Testing fiber-parallel vs perpendicular effects |
+| Clean inverse-crescent BC | **Complete (2026-05-28)** | Same-cell specular reflection — genuine single-field boundary speedup, zero artifact, mass-exact. Found by exhaustive 27-rule enumeration. Horizontal-redirect inverse crescent was a wall-pre-charge artifact. |
 
 ## Experiments
 

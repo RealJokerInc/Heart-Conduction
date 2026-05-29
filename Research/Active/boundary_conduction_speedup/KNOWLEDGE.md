@@ -195,6 +195,97 @@ negligible. John's effective `max_pump = 10` is at the camel-toe peak.
 For the gradient rule, magnitude scales monotonically with 1/k (faster k →
 smaller absolute time delays) but the *shape stays crescent at every k*. The
 self-limiting flux makes the drainage advantage impossible in principle.
+See "Equilibrium argument" below for the structural proof and empirical
+k-sweep confirmation.
+
+### Equilibrium argument: why Fickian is sign-locked to crescent at every k (2026-05-02)
+
+Take a fired source cell mid-wavefront. Upstream column at V_up, downstream
+column ≈ 0, lateral N/S gaps ≈ 0 in the y-uniform regime. Under Fickian:
+
+```
+dV/dt = k·N_in·(V_up − V) − k·N_out·V
+
+V*(y) = [N_in / (N_in + N_out)] · V_up   (steady state)
+τ(y)  = 1 / [k·(N_in + N_out)]            (time constant)
+```
+
+In the moore8 + zero_pad lattice with one_way pipes and uniform y, both edge
+and interior cells have N_in = N_out (3,3 interior; 2,2 edge), so:
+
+```
+V*(edge)     = (2/4)·V_up = V_up/2
+V*(interior) = (3/6)·V_up = V_up/2
+ratio        = 1            ←  IDENTICALLY, independent of k
+```
+
+**Edge plateau equals interior plateau.** No y-asymmetric stockpile exists
+to discharge. The time constant τ does differ — τ_edge = 1/(4k) takes 50%
+longer to reach V* than τ_interior = 1/(6k) — but that is just Effect A
+re-stated as a charging time, not a differential downstream-pumping
+advantage. Once V*(y) is reached, the per-pipe outflow rate k·(V* − V_down)
+is the same at edge and interior; total downstream pumping
+= k·V*·N_out scales with N_out, so the edge actually pumps LESS total
+fluid into the next column than interior does. Effect B doesn't merely
+vanish under Fickian — it inverts and *reinforces* Effect A.
+
+Replacing k → α·k everywhere rescales τ uniformly (isochrones stretch by
+1/α) but leaves the V*(y) ratio at 1. **No k can produce a non-unity
+ratio.** This is structural, not parametric.
+
+### Capacitor vs resistor mnemonic
+
+```
+                    John's constant rule        Fickian gradient rule
+─────────────────────────────────────────────────────────────────────────
+Phase structure     Fill → dwell → drain        No phases — asymptotic
+Stockpile high V?   YES (parks near V_max)      NO (asymptotes to V_up/2)
+Drain depends on V_down?  No (until cap kicks)  Yes (linear in gap)
+Edge advantage      Slower drain → more         No advantage — V* is
+                    integrated downstream       y-independent and total
+                    pumping → camel toe         pumping ∝ N_out
+                    possible                    favours interior
+Behaves like…       Capacitor discharging       Resistor in steady state
+─────────────────────────────────────────────────────────────────────────
+```
+
+Capacitors hold a stockpile that asymmetric drainage can release on its
+own schedule. Resistors carry no stockpile to release asymmetrically.
+Effect B is the capacitor's discharge bonus; it cannot exist in a
+resistor network.
+
+### Empirical confirmation (2026-05-02 k-sweep)
+
+`Nx=80`, `Ny=50`, `gradient` mode, `moore8` connectivity, `zero_pad`,
+`one_way`, line stim, `threshold=45`, sweeping k. Edge−center LAT (steps,
+positive = edge fires LATER = crescent):
+
+```
+   k     x=10   x=20   x=30   x=40   x=50   x=60
+ 0.200    +12    +15    +22    +28    +33    +38
+ 0.120    +18    +43    +72   +105   +132   +159
+ 0.080    +22    +56    +92   +127   +161   +192
+ 0.040    +41   +100   +160   +214   +265    --
+ 0.020    +79   +185   +290    --     --     --
+ 0.010   +155   +357    --     --     --     --
+ 0.005   +307    --     --     --     --     --
+```
+
+Sign locked positive at every k from 0.005 to 0.20 (40× range).
+Magnitude scales as 1/k as predicted by Effect A combined with
+wave-slowing dilation. (`--` columns indicate the wavefront stalled
+before reaching that x — see Finding 1 in IDEALOG re finite-distance
+propagation under threshold gating.)
+
+### Generalisation
+
+The equilibrium argument generalises to **any** flux law of the form
+`q-dot = f(V_src − V_dst)` with f(0) = 0 and f monotonic. Solving
+dV/dt = 0 in the y-uniform regime gives V*(y) = N_in/(N_in+N_out)·V_up,
+which is y-independent whenever N_in = N_out at every cell. Any such law
+can only manifest Effect A (geometric inflow deficit) and is sign-locked
+to crescent. The bias is baked into the diffusion operator's structure,
+not the rate-law parameters.
 
 **Pipe directionality is a third axis.** Even within the constant rule under zero-pad
 BC, the *transient* camel toe in mid columns disappears if pipes are made bidirectional
@@ -393,8 +484,9 @@ no-flux walls:
 - Storage-tank GRADIENT rule + `zero_pad` BC → strong crescent (Δ@x=18 ≈ +49 to +120)
 - Storage-tank GRADIENT rule + `reflect_y` BC → strong camel toe (Δ@x=18 = −270)
 - Storage-tank GRADIENT rule + `bidirectional` pipes → still crescent
-- Monodomain (5-pt or Mehrstellen) + Neumann → flat (0.000 cm deviation)
-- LBM (D2Q9) + bounce-back → flat
+- Monodomain (cardinal-4 stencil) + Neumann → flat (0.000 cm deviation)
+- LBM (D2Q5) + bounce-back → flat
+- LBM (D2Q9) + bounce-back → forward crescent (small magnitude; see §"Three BC families" below — HBB is NOT a "fix", it has the same sign as face_mirror)
 
 The discrepancy is NOT explained by the rate law (linear vs nonlinear), the
 connectivity (Moore-8 / D2Q9 both have diagonals), or the threshold-gating —
@@ -535,7 +627,11 @@ reproduce the storage-tank crescent directly.
 | Bidomain V1 monodomain mode (Mehrstellen + Neumann) | face-centered mirror | NO (empirically — 0.000 cm)  | mirror compensates  |
 | Monodomain V5.4 FDMDiscretization (default since 2026-04-29) | face-centered mirror (V_ghost = V[i,0]) | NO (verified empirically — 1.10e-13 mV deviation) | mirror compensates |
 | Monodomain V5.4 FDMDiscretization (legacy mode `node_mirror_existing`) | node-centered mirror (V_ghost = V[i,1]) | YES — but only with non-y-uniform input | 2x amplification of column-wise gradient at wall |
-| LBM bounce-back (D2Q5/D2Q9)   | equivalent to face-centered    | NO (predicted)           | mirror compensates       |
+| LBM halfway bounce-back (D2Q5) | NO diagonals → no deficit channel | NO                | no diagonal mass to lose at wall |
+| LBM halfway bounce-back (D2Q9, canonical 4:1) | structurally ≡ face_mirror + moore8_iso | YES — forward crescent (mild, 5/6) | diagonal upstream-V info lost at wall (see §"Three BC families") |
+| LBM halfway bounce-back (D2Q9, uniform_8 1:1) | structurally ≡ face_mirror + moore8_uniform | YES — forward crescent (full, 2/3) | same mechanism, more diagonal weight = bigger deficit |
+| LBM specular reflection (D2Q9) | structurally ≡ face_mirror_iso | NO — zero structural bias | diagonal mass crosses to neighbour cell, preserves upstream-V (see §"Three BC families") |
+| LBM horizontal redirect (D2Q9, novel) | NEW family — no PDE analog yet | YES — sustained INVERSE crescent | diagonal mass redirected to cardinal eastward slot at wall (see §"Three BC families") |
 | bidomain bath-coupled         | Dirichlet V_e=0 at bath wall   | YES — camel toe (Kleber) | asymmetric BC pair       |
 
 **RESOLVED 2026-04-29:** the V5.4 default `boundary_mode` was changed from
@@ -562,26 +658,29 @@ Neumann (intracellular wall) BC pair, which IS a real continuum effect.
 ### Predictions that distinguish discretization-artifact from continuum-effect
 
 ```
-   variant                         predicted boundary signal  predicted h-scaling
-   ─────────────────────────────────────────────────────────────────────────────
-   monodomain face-centered Neumann      0                     n/a (zero at all h)
-   monodomain "zero-pad" Laplacian       crescent              ~ h (vanishes as h → 0)
-   monodomain "node-mirror" Laplacian    camel toe             ~ h (vanishes as h → 0)
-   bidomain bath-coupled                 camel toe ~7%         ~constant in h (continuum)
-   ─────────────────────────────────────────────────────────────────────────────
+   variant                                       predicted boundary signal   predicted h-scaling
+   ────────────────────────────────────────────────────────────────────────────────────────────
+   monodomain face_mirror + cardinal4                  0                     n/a (zero at all h)
+   monodomain face_mirror + moore8_uniform             crescent (2/3)        ~ constant
+   monodomain face_mirror + moore8_iso                 crescent (5/6, mild)  ~ constant
+   monodomain face_mirror_iso + any moore8 stencil     0                     n/a (zero at all h)
+   monodomain "zero-pad" Laplacian                     crescent              ~ h (vanishes as h → 0)
+   monodomain "node-mirror" Laplacian                  camel toe             ~ h (vanishes as h → 0)
+   bidomain bath-coupled                               camel toe ~7%         ~constant in h (continuum)
+   ────────────────────────────────────────────────────────────────────────────────────────────
 ```
 
 If empirical h-scaling matches these predictions, the artifact-vs-physical
 classification is settled. See `PLAN.md` for the implementation plan.
 
-## Headline finding: bridge claim CONFIRMED across all three model classes (2026-04-30)
+## Headline finding: bridge claim CONFIRMED across all three model classes (2026-04-30, refined 2026-05-14)
 
 **The connectivity-mediated boundary deficit is a unified mechanism across:**
 - Discrete lattice models (John's storage tank with one_way pumps)
 - Continuum PDE solvers (monodomain V5.4 FDM)
 - Lattice Boltzmann methods (LBM V1)
 
-The same 8-neighbour topology produces the same boundary asymmetry in all three. Cardinal-only stencils (or diagonal-aware bounce-back BC, the LBM analog) eliminate it in all three.
+The same 8-neighbour topology produces the same boundary asymmetry in all three. Cardinal-only stencils eliminate the deficit in all three. The LBM bounce-back family is **structurally equivalent to face_mirror** (NOT to face_mirror_iso — see §"Three BC families: structural bias hierarchy" below for the corrected mapping established 2026-05-14). The LBM analog of face_mirror_iso is specular reflection.
 
 ### Empirical confirmation in monodomain V5.4
 
@@ -590,24 +689,26 @@ After implementing `stencil ∈ {cardinal4, moore8_uniform, moore8_iso}` and `bo
 ```
 case                               max|V[top] - V[ctr]|   ΔLAT (top vs ctr)   verdict
 ─────────────────────────────────────────────────────────────────────────────────────
-cardinal4 + face_mirror              1.1e-13 mV          0.000 µs            baseline (no deficit)
-moore8_uniform + face_mirror         70.5 mV          +486.06 µs            DEFICIT (John-equivalent)
-moore8_uniform + face_mirror_iso     2.8e-14 mV          0.000 µs            fix (bounce-back)
-moore8_iso + face_mirror             48.4 mV          +229.74 µs            smaller deficit (5/6 ratio)
-moore8_iso + face_mirror_iso         7.5e-14 mV          0.000 µs            LBM analog (full fix)
+cardinal4 + face_mirror              1.1e-13 mV          0.000 µs            no deficit (no diagonals to lose)
+moore8_uniform + face_mirror         70.5 mV          +486.06 µs            DEFICIT 2/3 (full John-equivalent)
+moore8_uniform + face_mirror_iso     2.8e-14 mV          0.000 µs            FIX — face_mirror_iso eliminates
+moore8_iso + face_mirror             48.4 mV          +229.74 µs            DEFICIT 5/6 (mild, canonical D2Q9 weights)
+moore8_iso + face_mirror_iso         7.5e-14 mV          0.000 µs            FIX — face_mirror_iso eliminates
 ```
+
+**Note (corrected 2026-05-14):** face_mirror_iso is a PDE-only construction. It is NOT the LBM bounce-back analog. The LBM analog of face_mirror_iso is **specular reflection**. LBM bounce-back (HBB) is structurally equivalent to face_mirror (forward crescent, same sign-lock). See §"Three BC families" below for the full corrected mapping.
 
 **The +486 µs LAT shift under `moore8_uniform + face_mirror` is John's storage-tank crescent reproduced in cardiac PDE.** Boundary cells fire ~half a millisecond AFTER bulk because they have fewer effective inflow channels (fewer-neighbours topology → less charging current → slower threshold crossing). The sign matches John's `zero_pad` crescent (boundary lags) exactly.
 
 ### Cross-engine summary
 
-| Engine | Deficit (max boundary asymmetry) | Baseline | Fix |
-|---|---|---|---|
-| Storage tank (LAT spread) | 130 steps (R1 moore8 uniform) | 0 (R2 cardinal-4) | 103 steps (R5 iso 4:1, no bounce-back) |
-| Monodomain V5.4 (mV) | 1.76 mV (mid-x snapshot) | 0 | 0 (with face_mirror_iso) |
-| LBM V1 (mV) | 0.077 mV (LBM smaller overall) | 0 (D2Q5) | 0.044 mV (canonical D2Q9) |
+| Engine | Full deficit (2/3 family) | Mild deficit (5/6 family) | Zero-deficit BC | Notes |
+|---|---|---|---|---|
+| Storage tank (LAT spread) | 130 steps (R1 moore8 uniform) | 103 steps (R5 iso 4:1) | 0 (R2 cardinal-4) | both moore8 variants have forward crescent |
+| Monodomain V5.4 (max ΔV at mid-x) | 70.5 mV (moore8_uniform + fm) | 48.4 mV (moore8_iso + fm) | ~0 (face_mirror_iso OR cardinal4) | face_mirror_iso fully eliminates |
+| LBM V1 (max ΔV at mid-x) | 0.077 mV (D2Q9 uniform_8 + HBB) | 0.044 mV (D2Q9 canonical + HBB) | ~0 (D2Q5 + HBB, or D2Q9 + specular) | specular is LBM analog of fm_iso |
 
-The qualitative ordering is preserved across model classes. Absolute magnitudes differ because of different scaling, time scales, and (for LBM) shorter run windows.
+The qualitative ordering is preserved across model classes. Absolute magnitudes differ because of different scaling, time scales, and time-step calibrations between LBM and PDE — but the family structure (full / mild / zero deficit) maps cleanly. **The previously-stated claim that "canonical D2Q9 + HBB fixes the deficit" was wrong**: canonical D2Q9 + HBB has a smaller residual than D2Q9 uniform + HBB only because of the 4:1 cardinal:diagonal weight ratio (less diagonal upstream-V mass to lose at the wall), NOT because HBB does anything diagonal-aware. All HBB variants lie in the face_mirror sign-locked family.
 
 ### Why the effect appears in monodomain when previously it didn't
 
@@ -631,7 +732,8 @@ Construction:
 fdm = FDMDiscretization(
     grid, D=0.001, chi=1.0, Cm=1.0,
     stencil='moore8_uniform',         # or 'moore8_iso' / 'cardinal4'
-    boundary_mode='face_mirror',       # or 'face_mirror_iso' for LBM-analog fix
+    boundary_mode='face_mirror',       # standard Neumann; sign-locks to forward crescent at the wall
+                                       # or 'face_mirror_iso' to eliminate the diagonal deficit
 )
 ```
 
@@ -639,7 +741,7 @@ Constraints on Moore-8 stencils:
 - Isotropic D only (raises `NotImplementedError` for non-zero Dxy in `D_field`)
 - Square grids only (raises `NotImplementedError` for dx ≠ dy)
 
-The `face_mirror_iso` boundary mode is the LBM bounce-back analog: for diagonal off-grid cells, the ghost reflects only the off-grid axis (e.g., NE at `(i+1, -1)` → ghost = `V[i+1, 0]`, NOT `V[i, 0]`). For cardinal-only stencils, `face_mirror_iso` degenerates to `face_mirror` exactly.
+The `face_mirror_iso` boundary mode pulls the row-aligned REAL neighbour into the diagonal ghost slot (e.g., NE at `(i+1, -1)` → ghost = `V[i+1, 0]`, NOT `V[i, 0]`). This injects real upstream-V information into the diagonal channel and eliminates the boundary deficit. For cardinal-only stencils, `face_mirror_iso` degenerates to `face_mirror` exactly. **The LBM structural analog of face_mirror_iso is specular reflection**, NOT bounce-back. (Both achieve zero per-column bias; bounce-back is in the face_mirror family with the forward sign-lock — see §"Three BC families" below.)
 
 LBM V1 received the analogous `weights_mode` parameter on `LBMSimulation`:
 ```python
@@ -657,6 +759,11 @@ Plus a critical latent bug fix in `LBM/Engine_V1/src/simulation.py:73`: was pass
 | `Research/Active/boundary_conduction_speedup/figures/diag_monodomain_connectivity.png` | V(t) traces and dev curves per case |
 | `Research/Active/boundary_conduction_speedup/figures/connectivity_cross_engine.{png,pdf}` | 3×3 cross-engine comparison (storage tank / monodomain / LBM) |
 | `Research/Active/boundary_conduction_speedup/figures/video_stencil_mirror_combos.mp4` | 5-panel animated wavefront comparison |
+| `Research/Active/boundary_conduction_speedup/diag_dvdt_decomposition.py` (2026-05-14) | Cases 1-7: dV/dt diagnostic at step 1, AP-first protocols; full V tensor logged to HDF5 |
+| `Research/Active/boundary_conduction_speedup/diag_lbm_invcrescent.py` (2026-05-14) | Case 8: LBM cross-engine inverse-crescent test (HBB sign-lock confirmation) |
+| `Research/Active/boundary_conduction_speedup/diag_lbm_specular.py` (2026-05-14) | Cases 9-14: LBM 4-way comparison HBB/specular × canonical/uniform_8; cases 13-14 horizontal redirect |
+| `Research/Active/boundary_conduction_speedup/plot_dvdt_traces.py` (2026-05-14) | Figures from cases 1-4 |
+| `Research/Active/boundary_conduction_speedup/data/case{1..14}_*.h5` (2026-05-14) | HDF5 dumps of full V(t, NX, NY) tensors for each case, per-file attrs |
 | `simulation/connectivity_threshold_ablation.py` | Storage-tank R1-R6 ablation (predecessor) |
 | `Monodomain/Engine_V5.4/test_boundary_modes.py` | 21 boundary-mode tests including the new stencils + face_mirror_iso |
 | `LBM/Engine_V1/tests/test_d2q9_uniform_weights.py` | 8 LBM tests for D2Q9_uniform + cs2 plumbing |
@@ -668,6 +775,354 @@ Standard cardiac PDE solvers (5-point cardinal + face-centered Neumann) are stru
 For applications that genuinely model cardiac tissue boundaries (no mathematical trick to hide the effect), the right physical setup is bath-coupled bidomain (Kleber et al.) — that produces a real CV speedup at the boundary (~7-13%) via a different mechanism (extracellular shunt, not fewer-neighbour intracellular topology).
 
 The connectivity-mediated effect we just confirmed is **a separate phenomenon** — it's the discrete-topology boundary lag that John's storage-tank reveals. It exists in all 9-point cardiac discretizations but is invisible at 5-point. Whether to consider it "physical" or "numerical" depends on whether you think the discrete fewer-neighbours-at-edge structure is faithful to real tissue (it's a long-running debate in computational EP).
+
+## Three BC families: structural bias hierarchy (2026-05-14)
+
+The 2026-05-14 session corrected an earlier mis-mapping in this document and established a clean three-family taxonomy of boundary treatments based on their structural bias direction. Each family is realized in BOTH the PDE (V5.4 FDM) and LBM (V1) engines via a different bookkeeping but the SAME physical effect.
+
+### The taxonomy
+
+```
+   Family                         Sign-lock direction       PDE realization        LBM realization
+   ─────────────────────────────────────────────────────────────────────────────────────────────
+   Forward crescent (slowdown)    boundary lags interior    face_mirror            HBB (halfway bounce-back)
+   Zero bias (transparent wall)   no sign-lock              face_mirror_iso        specular-at-neighbor
+   Inverse crescent (speedup)     boundary leads interior   [no PDE analog yet]    same-cell specular ← CLEAN (2026-05-28)
+```
+
+> **Updated 2026-05-28**: the inverse-crescent LBM realization is
+> **same-cell specular reflection**, NOT horizontal redirect. Horizontal
+> redirect (the original 2026-05-14 candidate) gives inverse crescent only
+> via a wall pre-charge artifact. See "Clean inverse-crescent BC" section
+> below for the corrected rule and full derivation.
+
+### Forward crescent: HBB ≡ face_mirror
+
+**Both are zero-flux Neumann BCs**, just expressed differently:
+- face_mirror sets `V_NW_ghost = V_self` → gap = 0 → no diagonal Laplacian contribution at the wall
+- HBB reverses populations: `f_SE(C, after) = f_NW(C, before)` → diagonal slot receives C's own pre-stream NW emission, which is local-equilibrium-like (≈ `w_NW · ρ_C`) and carries no upstream V
+
+Different bookkeeping, same Neumann condition at the operator level, same structural deficit: diagonal channels at the wall are starved of upstream-V information, so the boundary cell charges more slowly than interior. This is sign-locked: imposed inverse crescents are eaten within a few columns of propagation (case 7 in monodomain: 2 cols; case 8 in LBM: ~20 cols).
+
+**Weight ratio determines deficit magnitude.** The cardinal:diagonal weight ratio sets how much diagonal mass is being lost, which sets the deficit ratio (boundary charging rate / interior charging rate):
+
+```
+   Mapping                                                 deficit ratio    boundary/center
+   ──────────────────────────────────────────────────────────────────────────────────────
+   moore8_uniform + fm  ↔  D2Q9 uniform_8 (1:1) + HBB      2/3 (full)       0.667
+   moore8_iso     + fm  ↔  D2Q9 canonical (4:1) + HBB      5/6 (mild)       0.833
+   cardinal4      + fm  ↔  D2Q5 + HBB                      no diagonals     1.000 (no deficit)
+```
+
+The 2/3 ratio was verified at the very first diffusion step in case 6 (strict AP-first protocol): boundary cell charges 1.23 mV vs center cell 1.85 mV from V_rest, ratio = 1.23/1.85 = 0.665. **The deficit is local and per-column** — it activates at whichever column is currently charging from rest under face_mirror, NOT inherited LAT-shift from upstream.
+
+### Operator-level confirmation: dV/dt at step 1 (cases 1-6, 2026-05-14)
+
+The "operator-level state-independent" claim from the earlier discrete-lattice analysis was verified directly by measuring dV/dt at step 1 from a clean V_rest initial condition. Earlier (case 1, natural propagation): boundary dV/dt = 92.0 mV/ms, center dV/dt = 138.0 mV/ms → ratio 0.667 ≈ 2/3 EXACTLY at step 1, with no accumulation needed.
+
+Case 6 (strict AP-first protocol) eliminates upstream-LAT-inheritance as an alternative explanation: cols 1-3 are clamped to +30 mV using ionic-only updates for the first 10 steps (no diffusion anywhere during the sync window). Then diffusion is released, and the very first diffusion step at col 4 (which sits at V_rest exactly because no diffusion has happened yet) shows the same 0.665 boundary/center charging-rate ratio. **The deficit is generated fresh at whichever column is currently charging from rest under face_mirror; it is NOT an inherited LAT shift from upstream history.**
+
+Cases 1-4 also confirmed: face_mirror_iso eliminates the deviation to floating-point precision (V[j=0] == V[j=mid] to 0.0e+00) on every step in both diffusion-only and TTP06 paths. The fix is also instantaneous and operator-level.
+
+| Case | Setup | Crescent | Source of imbalance |
+|---|---|---|---|
+| 3 | fm + ttp06 natural | +486 µs LAT (col 2+) | every column charging from rest |
+| 4 | fmi + ttp06 natural | 0 µs LAT everywhere | no source imbalance under face_mirror_iso |
+| 5 | fm + sync cols 1-3 (Strang in window) | LAT at col 4 (contaminated by diff-in-window) | per-column at col 4 + small pre-release seed |
+| 6 | fm + sync cols 1-3 (ionic-only in window) | LAT at col 4 (cleanly) | per-column at col 4, isolated from any upstream history |
+
+### Sign-lock confirmation: imposed inverse crescent (cases 7-8, 2026-05-14)
+
+The forward sign-lock claim was tested operationally by imposing an INVERSE crescent (boundaries clamped one column ahead of interior) and watching what face_mirror / HBB does to it.
+
+**Case 7 (monodomain, moore8_uniform + face_mirror).** Sync window clamps cols 1-3 at +30 mV on all rows AND col 4 at +30 mV only on boundary rows (j=0, j=NY-1). Ionic-only stepping for 10 steps to lock in the asymmetric AP plateau, then release.
+
+| col | LAT[bdry] | LAT[ctr] | bdry − ctr | interpretation |
+|---|---|---|---|---|
+|  4 | 0.0000 | 0.5491 | −549 µs | imposed inverse crescent |
+|  5 | 0.9579 | 1.0203 | −62 µs  | lead almost gone |
+|  6 | 1.4999 | 1.4780 | +22 µs  | FLIPPED to forward |
+| 10 | 3.4922 | 3.2921 | +200 µs | growing forward |
+| 40 | 17.3955 | 16.8272 | +568 µs | asymptotic forward |
+
+face_mirror eats a 1-column lead in 2 columns and grows its own forward crescent to +568 µs by col 40.
+
+**Case 8 (LBM V1, D2Q9 canonical + HBB).** Same inverse-crescent setup, cross-engine. Lead eaten in ~20 cols (longer because the 5/6 mild deficit acts more gradually), then flips and grows forward to +73 µs by col 40. The 8× weaker per-column slope is exactly what the 5/6 (LBM canonical) vs 2/3 (PDE uniform) weight ratio predicts.
+
+**Conclusion.** The face_mirror / HBB family is sign-locked to forward crescent in BOTH engines. No initial condition (including a fully imposed inverse crescent) can survive long-range propagation. The asymmetry is baked into the operator, not into transients.
+
+### Zero bias: specular reflection ≡ face_mirror_iso
+
+**Both inject real upstream-V into the diagonal channel at the wall**:
+- face_mirror_iso: `V_NW_ghost = V_W` (the row-aligned real neighbour) → diagonal channel sees real upstream gradient
+- Specular reflection: diagonal populations cross the wall to the *adjacent cell's row-aligned slot* — e.g., NE at top redirects to SE at east-neighbour cell, carrying upstream-V from upstream-boundary's emission
+
+Empirical confirmation (cases 9-12, natural propagation in LBM D2Q9):
+
+```
+  col       can+HBB    can+SPEC     uni+HBB    uni+SPEC
+  ──────────────────────────────────────────────────────
+   3       −43 µs     −46 µs       −196 µs    −178 µs   (stim transient — identical between HBB/SPEC at col 3)
+  10       +27        −24          −34        −120      (HBB flips forward; SPEC still inverse)
+  20       +63        −15          +67        −77       (HBB grows forward)
+  38       +96        −7           +148       −35       (HBB sign-locked forward; SPEC decaying to 0)
+```
+
+Specular has zero per-column structural bias. Initial inverse residuals from the stim transient decay slowly toward zero; the bias does NOT asymptote to a fixed inverse value. Specular eliminates HBB's forward sign-lock without introducing a counter-bias of its own — it's a transparent wall.
+
+**face_mirror_iso is a PDE-only construction** in the same family (zero deficit). It works by deliberately breaking strict Neumann symmetry on the diagonals (the ghost is NOT a mirror of the boundary cell — it's pulled from the row-aligned real neighbour). Specular reflection achieves the same effect on the LBM side via a different population-bookkeeping route.
+
+### Inverse crescent (novel): horizontal redirect — SUPERSEDED 2026-05-28
+
+> **WARNING (2026-05-28): this "inverse crescent" is an ARTIFACT.**
+> Horizontal redirect produces inverse crescent only by spontaneously
+> pre-depolarizing the wall row (a +18 mV standing offset that appears with
+> NO stimulus — see "Edge-row depolarization diagnosis" above and "Clean
+> inverse-crescent BC" below). The −1146 µs "speedup" is an early LAT
+> threshold crossing on the pre-charged ramp; it vanishes under the
+> precharge-immune dV/dt metric. The genuine clean inverse-crescent BC is
+> same-cell specular reflection. Treat this section as historical.
+
+A NEW BC family introduced 2026-05-14 (cases 13-14, user's invention). At the top/bottom walls, diagonal populations are redirected into the adjacent neighbour's **pure-cardinal eastward (or westward) slot** instead of specular's row-aligned diagonal slot:
+
+```
+   Standard HBB:        f_5 (NE) at top cell → f_7 (SW) at SAME cell (reversed in place)
+   Specular:            f_5 (NE) at top cell → f_8 (SE) at east-neighbour cell (y-flip, x-preserved)
+   Horizontal redirect: f_5 (NE) at top cell → f_1 (E)  at east-neighbour cell (y-momentum → x-momentum)
+```
+
+Implementation: HBB everywhere first, then zero out f_7/f_8 at top non-corner cells and f_5/f_6 at bottom non-corner cells, then ADD the pre-stream diagonal masses to neighbours' cardinal slots.
+
+**Result: sustained inverse crescent that grows monotonically with distance** (cases 13-14, natural propagation, NX=41):
+
+| col | canonical (4:1) | uniform_8 (1:1) |
+|---|---|---|
+| 3   | −220 µs  | −641 µs  |
+| 10  | −517 µs  | −1496 µs |
+| 20  | −839 µs  | −2289 µs |
+| 38  | −1146 µs | −3106 µs |
+
+Wall channel propagates faster than bulk by sustained ~30-80 µs per column. This is the OPPOSITE sign of HBB and gives a real boundary speedup — the long-sought BC analog of Kleber-style boundary acceleration via a purely numerical / lattice-side mechanism.
+
+**Caveat (open issue for next session).** Mass-conservation in the horizontal-redirect implementation is imperfect:
+- V_sum at t_end is 9% (canonical) to 18% (uniform_8) HIGHER than HBB baseline
+- V_max climbs above the expected +15 mV plateau (to +18.75 / +19.68 mV)
+
+~~Likely mass leak at corner cells~~ — **disproven 2026-05-28** (see below).
+
+#### Edge-row depolarization diagnosis (2026-05-28)
+
+Ran a 4-step diagnostic (`PLAN.md`) on the horizontal-redirect BC:
+
+- **Mass IS conserved.** Diffusion-only runs of HBB, buggy horizontal,
+  and a corner-aware variant (`--bc horizontal_fixed`) all show
+  `V_sum(t=25 ms) = V_sum(0)` to floating-point precision. No leak.
+- **The 9% V_sum excess vs HBB in TTP06 runs is wave-propagation, not
+  leak.** The wall channel propagates the AP wave faster along the wall
+  row → more cells reach the TTP06 plateau by t=25 ms → higher Σ V via
+  the source term. Mass is conserved per LBM step; "more depolarization"
+  is the BC working as intended.
+- **The sub-edge dip at j=1 (V ≈ −94 mV) is a BC-MECHANICAL artifact,
+  not ionic.** It persists under pure diffusion (R=0): V_min at (2, 1)
+  is −94.8 mV (buggy horizontal) / −95.2 mV (fixed) / −89.4 mV (HBB).
+  The horizontal redirect's lateral mass shift starves the sub-edge row
+  during wavefront passage; ionic hyperpolarization is not required.
+- **Corner-aware variant barely changes anything.** Donor-excludes-corner
+  + orphan-HBB-self-bounce reduces LAT magnitude by ~12 % (−1130 → −1002
+  µs at col 38) and shifts V_sum by 0.001 mV/cell. The wall channel and
+  sub-edge dip patterns are visually indistinguishable from the original.
+
+**Updated mass-conserving column in the summary table** ↓: yes for all
+three families.
+
+Diagnostic figure: `figures/horizontal_synthesis.png`. Scripts:
+`diag_horizontal_{mass,vyprofile,synthesis}.py`. Code:
+`diag_lbm_specular.py::apply_horizontal_fixed_top_bottom_d2q9`.
+
+### Summary table (CORRECTED 2026-05-28)
+
+> The horizontal-redirect "inverse crescent" is an ARTIFACT (wall pre-charge,
+> see above + the dedicated clean-BC section below). The genuine clean
+> inverse-crescent BC is **same-cell specular reflection**.
+
+| BC family | LBM form | crescent | mass-conserving? | rest no-op? | Notes |
+|---|---|---|---|---|---|
+| Forward (slowdown) | HBB: NE→SW same cell | forward | yes | YES | Standard no-flux wall; reverses both x and y. |
+| Zero bias | specular-at-neighbor: NE→SE @ i+1 | none | yes | YES | Transparent wall; y-flip displaced one cell cancels bias. |
+| **Inverse (CLEAN)** | **same-cell specular: NE→SE @ same cell** | **inverse** | **yes** | **YES** | **Genuine novel result; flip wall-normal, keep tangential, same cell. Zero standing artifact, inverse at all thresholds + dV/dt.** |
+| Inverse (ARTIFACT) | horizontal redirect: diagonal→cardinal | inverse | yes (mass) | **NO (+18 mV)** | Pre-charges wall with no stim. Discard. |
+
+### Implications
+
+1. **The earlier KNOWLEDGE claim that "face_mirror_iso (PDE) ≡ bounce-back (LBM)" was wrong.** The correct mapping has bounce-back on the face_mirror side (NOT the face_mirror_iso side). Sections of this document that previously stated "LBM bounce-back fixes the deficit" have been corrected: it doesn't — it inherits the same forward sign-lock as face_mirror, just with a smaller magnitude due to D2Q9's 4:1 cardinal:diagonal weight ratio.
+
+2. **All three engines (storage tank, monodomain, LBM) live in the face_mirror family by default.** Cardinal-4 / D2Q5 escape the deficit by having no diagonals at all. Moore-8 + face_mirror and D2Q9 + HBB express the same operator-level pathology.
+
+3. **A genuine clean inverse-crescent BC exists** — same-cell specular reflection (2026-05-28). The horizontal-redirect route was an artifact, but the *goal* (single-field boundary speedup) is achievable cleanly. See the dedicated section below.
+
+4. **The bridge-claim narrative still holds, refined.** Three engines, same connectivity-mediated boundary deficit when using the face_mirror-family Neumann condition. The structure is the operator (face_mirror), not the model class.
+
+## Clean inverse-crescent BC: same-cell specular reflection (2026-05-28)
+
+> **Headline.** There IS a discrete LBM wall boundary condition that produces
+> a genuine inverse crescent (boundary conduction FASTER than interior) while
+> being exactly mass-conserving AND a perfect no-op on a uniform field. It is
+> **same-cell specular reflection**: at the wall, flip the wall-normal (y)
+> velocity component, keep the tangential (x) component, deposit at the SAME
+> cell. In D2Q9 slots, top wall: f_5 (NE) → f_8 (SE) same cell, f_6 (NW) →
+> f_7 (SW) same cell (bottom y-mirrored). User-confirmed visually (developing
+> inverse chevron, no wall pre-glow). Video:
+> `figures/video_bc_specular_samecell.mp4`.
+
+### The journey — part-by-part realization
+
+Each sub-finding was a necessary rung from "line speedup looks real" to the
+clean rule:
+
+**1. Line speedup is real (visual).** Under horizontal redirect, the wall
+rows fire ahead of the interior → inverse-crescent (V-shaped) wavefront.
+Looked like a genuine novel boundary speedup.
+
+**2. Diagonal→horizontal is the inverse-crescent mechanism (big insight #1).**
+Horizontal redirect converts a slow diagonal population (weight 1/36, 45°)
+into a fast pure-cardinal population (weight 1/9, straight along the wall) —
+a "wall highway." The weight-CLASS change (diagonal → cardinal) is what
+carries the wave faster at the boundary.
+
+**3. The wall depolarizes uniformly in x, in 2 steps (anomaly).** Hi-res
+traces (`diag_horizontal_wall_propagation.py`): cols 3-35 all at −82 mV at
+t=0.04 ms — far faster than any wave. Generated LOCALLY per cell, not
+transported.
+
+**4. The depolarization is INTRINSIC — exists with zero stimulus (big
+insight #2).** No-stim test (uniform V_rest IC, diffusion only): HBB and
+specular give Δwall = exactly 0; horizontal gives +18.43 mV wall / −1.9 sub
+/ −1.9 interior — a standing 3-layer structure from a uniform field. Mass
+exactly conserved (redistributed). ⇒ the "speedup" is a wall pre-charge that
+crosses the −40 mV LAT threshold early. A MEASUREMENT artifact, not faster
+physics.
+
+**5. Root cause = weight-class mismatch (big insight #3).** D2Q9 weights:
+cardinal 1/9, diagonal 1/36, ratio exactly 4. feq_i = w_i·V. HBB and
+specular map diagonal→diagonal and cardinal→cardinal (weight-matched), so at
+rest they map feq→feq exactly — structural no-ops. Horizontal puts a 1/36·V
+diagonal into a 1/9·V cardinal slot — 4× mismatch; the leftover is the
+artifact. Single-step instrumentation: the redirect conserves V at its own
+step, but leaves a non-equilibrium distribution (cardinals over-full,
+diagonals empty) that the NEXT collision retargets, pumping the offset. An
+omega-sweep nailed it: artifact = 0 at omega = 1 (instant equilibration),
+growing with |omega − 1|.
+
+**6. Mass-accumulation ⇒ REFLECTION, not transport (big insight #4).** A
+scalar weight-normalization can't fix it: mass conservation pins the transfer
+scale to exactly 1 (any k≠1 leaks/blows up — tested). Any rule that keeps
+mass ON the wall (stays in x, or re-hits in +y) traps equilibrium mass →
+standing artifact. The only artifact-free option is a rule where the mass
+LEAVES the wall into the interior (−y) — a genuine REFLECTION. HBB and
+specular are clean precisely because they reflect. So: to get inverse
+crescent without accumulation, stay in the reflection class but change which
+velocity component is reversed.
+
+**7. Final — exhaustive enumeration finds the clean rule.** Enumerated all
+27 symmetric mass-conserving rules (f_5 → every slot × {west, same, east};
+f_6 x-mirrored; bottom y-mirrored). `diag_enumerate_walls.py` →
+`data/wall_enumeration.txt`. They partition CLEANLY by destination y-sign:
+
+```
+   destination y-sign    artifact (Δwall, no stim)   crescent
+   ────────────────────────────────────────────────────────────────
+   stays on wall (x)        +18 mV  (ALL 9 rules)     inverse  (trap)
+   re-hits wall (+y)        +18 to +24 (ALL 9)        inverse  (trap)
+   leaves into bulk (−y)    ~0      (ALL 9)           forward OR inverse
+                                                       ├ x-REVERSED  (NE→SW) = HBB       → forward
+                                                       ├ x-PRESERVED (NE→SE) = specular  → INVERSE ✓
+                                                       └ NE→S (pure down)               → mild inverse
+```
+
+The reflection class (mass leaves, −y) is the only artifact-free class; the
+crescent SIGN within it is set by whether the tangential (x) component is
+reversed (forward, HBB) or preserved (inverse, same-cell specular).
+
+### The clean rule (D2Q9, top wall, non-corner cells)
+
+```
+   f_5 (NE, +x+y)  →  f_8 (SE, +x−y)  at the SAME cell   (flip y, keep x)
+   f_6 (NW, −x+y)  →  f_7 (SW, −x−y)  at the SAME cell
+   f_3 (N)         →  f_4 (S)          HBB cardinal (unchanged)
+   bottom wall: y-mirror (f_8→f_5, f_7→f_6 at same cell)
+```
+
+Contrast with the two known reflection rules:
+- **HBB**: f_5 → f_7 (NE→SW) — reverses BOTH x and y. Kills forward drive → forward crescent (slowdown).
+- **specular-at-neighbor** (old "specular"): f_5 → f_8 at cell i+1 — flips y but displaces one cell east → cancels → zero bias.
+- **specular-same-cell** (NEW): f_5 → f_8 at the same cell — flips y, keeps x, no displacement → inverse crescent (speedup).
+
+### Verification
+
+```
+   NO-STIM, diffusion only, 50 ms, V_init = V_rest everywhere:
+     Δwall = −0.000000   Δsub = −0.000000   Δinterior = −0.000000
+     mass drift = −1.6e-10   (machine precision; exact no-op + exact conservation)
+     top wall = bottom wall  (symmetric)
+
+   WITH-STIM (col-0 line stim, TTP06 EPI, 25 ms), LAT bdry−ctr at col 38:
+     threshold −40 mV:  −313 µs   ┐
+     threshold −20 mV:  −317 µs   │ inverse at EVERY threshold
+     threshold   0 mV:  −318 µs   │ (not a threshold-crossing artifact)
+     threshold +10 mV:  −329 µs   ┘
+     wall precharge @ t=1 ms:  −85.232 mV  =  V_rest  (NO pre-charge)
+     max(dV/dt) timing:        −300 µs   (precharge-IMMUNE → real upstroke speedup)
+```
+
+The precharge-immune dV/dt-peak metric is the clincher: −300 µs inverse
+means the regenerative upstroke initiates earlier at the wall — a real
+boundary speedup, not an early threshold crossing on a charged ramp. (The
+horizontal-redirect "speedup" vanishes under the dV/dt metric — that is the
+qualitative difference.)
+
+### Why same-cell specular gives speedup (mechanism)
+
+A diagonal NE = (+x, +y) carries momentum forward (+x) and toward-wall (+y).
+At the wall it can't go +y; the three reflection choices differ in the +x part:
+- HBB reverses it (→ −x): forward drive destroyed → wall receives less push
+  than interior → slower → forward crescent.
+- Same-cell specular keeps it (+x preserved, y flipped to −y): forward drive
+  survives the bounce and stays at the wall cell → wall keeps MORE forward
+  push than interior → faster → inverse crescent.
+
+Diagonal → diagonal is weight-matched (both 1/36), so the map sends feq → feq
+exactly at rest: no standing offset, exact mass conservation.
+
+### Implications
+
+1. **The (forward ↔ inverse) BC axis is real and clean.** Both endpoints are
+   rest-neutral reflections: HBB (forward) and same-cell specular (inverse),
+   with neighbor-displaced specular at zero in between. A weighted blend of
+   HBB and same-cell specular gives a tunable, artifact-free crescent
+   magnitude — the correct basis for the (α, β, γ) simplex / tissue-fitting
+   program, replacing the artifact-laden horizontal vertex.
+
+2. **Single-field boundary speedup IS achievable.** Earlier reasoning held
+   that Kleber speedup is intrinsically bidomain and a single-field wall can
+   only slow down. False at the discrete-operator level: a
+   tangential-momentum-preserving reflection produces speedup in a single
+   field. (Whether it maps to a *physical* tissue boundary is a separate,
+   open question.)
+
+3. **The "trap ⟺ inverse ⟺ artifact" coupling hypothesized mid-session was
+   WRONG.** Inverse crescent does NOT require trapping mass on the wall.
+   Trapping (horizontal/specular_up) is one route and it drags the artifact
+   along; reflection (same-cell specular) is a clean route to the same sign.
+
+### Reproduce
+
+- Enumeration: `diag_enumerate_walls.py` → `data/wall_enumeration.txt`
+  (winning rule is `f5->SE@0`).
+- BC modes added to `diag_lbm_specular.py` this session: `horizontal_fixed`,
+  `horizontal_donut`, `horizontal_gradient`, `horizontal_wnorm`,
+  `specular_up` (all rejected; kept for reference).
+- Diagnostics: `diag_horizontal_{wallrow,longrun,inward_widestim,wall_propagation,anisotropic,resolve}.py`.
+- Video: `figures/video_bc_specular_samecell.mp4`.
 
 ## Connectivity is the smoking gun: 8-neighbour vs 4-neighbour ablation (2026-04-29/30)
 
@@ -740,17 +1195,22 @@ Empirically R5 vs R1: 81.0 vs 91.8 steps — **only ~12% reduction in
 crescent magnitude**, exactly matching the 5/6 deficit prediction modulo
 threshold-amplified compounding. **Iso 4:1 weighting alone is necessary
 but not sufficient** to eliminate the boundary effect. Full elimination
-requires either cardinal-4 or iso 4:1 PLUS proper diagonal-aware face_mirror
-reflection at the wall (LBM "bounce-back" generalised to 9-point) — not
-yet implemented.
+requires either cardinal-4 (no diagonals at all) OR a custom boundary
+treatment (face_mirror_iso on the PDE side, specular reflection on the
+LBM side) that restores real upstream-V information to the diagonal
+ghost / population slots at the wall.
 
-### LBM connection
+### LBM connection (corrected 2026-05-14)
 
 LBM D2Q9 weights are 4/9 (rest), 1/9 (cardinals), 1/36 (diagonals).
 Cardinal:diagonal ratio = 4:1, identical to Patra-Kałuża isotropic 9-point.
-LBM's bounce-back boundary handling IS the diagonal-aware reflection that
-zeros the deficit, which is why standard LBM reproduces the "no crescent
-in monodomain Neumann" result automatically.
+**LBM halfway bounce-back (HBB) is structurally equivalent to face_mirror**
+(not face_mirror_iso). Both kill upstream-V contribution from diagonal
+channels at the wall:
+- face_mirror: `V_NW_ghost = V_self` → gap = 0 → no diagonal Laplacian contribution
+- HBB: `f_SE(C, after) = f_NW(C, before)` → diagonal slot gets C's own pre-stream NW emission, which is local equilibrium (≈ `w_NW · ρ_C`) and carries no upstream V information
+
+Different bookkeeping, same physical Neumann boundary condition, same structural deficit. The LBM bounce-back family inherits the forward sign-lock from face_mirror, and the magnitude of the deficit follows the cardinal:diagonal weight ratio (canonical 4:1 → 5/6 mild; uniform_8 1:1 → 2/3 full). The LBM analog of face_mirror_iso (zero deficit, no sign-lock) is **specular reflection**, in which diagonal mass crosses the wall to the adjacent cell's row-aligned slot and carries real upstream-V information from the upstream-boundary's diagonal emission. See §"Three BC families" for the full mapping.
 
 ## Wave-slowing dilation: apparent curvature growth in isochrone images
 
@@ -827,6 +1287,10 @@ the deficit at all (cardinal-4 stencil + face_mirror).
 | V5.4 FDM default boundary mode (2026-04-29) | `face_mirror` (was `node_mirror_existing`) | Eliminates 2× column-gradient amplification at the wall; verified zero deviation in y-uniform line-stim TTP06 propagation |
 | Storage-tank crescent root cause (2026-04-29) | Moore-8 connectivity, NOT threshold gate | 6-way ablation R1-R6 shows cardinal-4 → 0.0 deviation regardless of threshold; threshold amplifies but is not necessary |
 | Iso 9-pt prefactor convention (2026-04-29) | Use 1/6 Patra-Kałuża normalisation | Without it, D_eff = 6k violates 2D-explicit CFL limit and produces grid-scale mosaic instability |
+| HBB ↔ face_mirror equivalence (2026-05-14) | HBB is in the **face_mirror family**, NOT the face_mirror_iso family | Both kill diagonal upstream-V at the wall; weight ratio determines magnitude. Corrects earlier mis-statement that "canonical D2Q9 + HBB fixes the deficit". |
+| LBM analog of face_mirror_iso (2026-05-14) | Specular reflection | Diagonal mass crosses to neighbour cell's row-aligned slot, carrying real upstream-V. Zero structural per-column bias. Confirmed cases 9-12. |
+| Inverse-crescent BC (2026-05-14) | Horizontal redirect (novel, LBM-only so far) | Diagonal y-momentum → cardinal x-momentum at wall; sustained inverse crescent. Has mass leak at corners; needs correction. |
+| Operator-level deficit locality (2026-05-14) | LOCAL per-column, not inherited from upstream | Case 6 (strict AP-first): first diffusion step at col 4 from V_rest gives boundary/center ratio 0.665 ≈ 2/3 exactly, with cols 1-3 frozen y-uniform. Deficit activates fresh wherever a column charges from rest. |
 
 ## Open Questions
 
@@ -835,6 +1299,8 @@ the deficit at all (cardinal-4 stencil + face_mirror).
 - Does the speedup magnitude change with anisotropic conductivity tensors (fiber orientation at boundary)?
 - At what tissue thickness does the boundary layer span the entire preparation (transitioning from surface effect to full-thickness effect)?
 - Does the EMI model (cell-resolved, no homogenization) reproduce the same speedup magnitude?
+- Is there a mass-conserving PDE analog of the horizontal-redirect BC? (Currently LBM-only with a corner mass leak.)
+- Why does V_sum climb 9-18% above HBB baseline under horizontal redirect — is the leak at corners, or is the mechanism more deeply non-mass-conserving?
 
 ## Connections
 - **Engines**: Bidomain V1 (primary validation), LBM V1 (secondary confirmation)

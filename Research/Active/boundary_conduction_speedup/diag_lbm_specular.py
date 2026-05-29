@@ -67,7 +67,7 @@ DX = 0.025
 DT = 0.02
 D = 0.001
 V_STIM = 0.0
-T_END = 25.0
+T_END_DEFAULT = 25.0
 
 OUT_DIR = Path(__file__).parent / "data"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -78,8 +78,15 @@ _parser = argparse.ArgumentParser()
 _parser.add_argument("--weights", default="canonical",
                      choices=["canonical", "uniform_8"])
 _parser.add_argument("--bc", default="specular",
-                     choices=["specular", "hbb", "horizontal", "weighted"],
+                     choices=["specular", "hbb", "horizontal", "horizontal_fixed",
+                              "horizontal_donut", "horizontal_gradient",
+                              "horizontal_wnorm", "specular_up", "weighted"],
                      help="boundary treatment at top/bottom walls")
+_parser.add_argument("--physics", default="ttp06",
+                     choices=["ttp06", "diffusion"],
+                     help="ttp06 = full ionic+diffusion; diffusion = R=0 only")
+_parser.add_argument("--t_end", type=float, default=None,
+                     help=f"override T_END (default {T_END_DEFAULT} ms)")
 _parser.add_argument("--alpha", type=float, default=None,
                      help="HBB weight in weighted BC (α + β + γ = 1)")
 _parser.add_argument("--beta", type=float, default=None,
@@ -100,14 +107,27 @@ if BC_MODE == "weighted":
 else:
     ALPHA = BETA = GAMMA = None
     _case_id = {
-        ("canonical", "specular"):   "case9",
-        ("canonical", "hbb"):        "case10",
-        ("uniform_8", "specular"):   "case11",
-        ("uniform_8", "hbb"):        "case12",
-        ("canonical", "horizontal"): "case13",
-        ("uniform_8", "horizontal"): "case14",
+        ("canonical", "specular"):         "case9",
+        ("canonical", "hbb"):              "case10",
+        ("uniform_8", "specular"):         "case11",
+        ("uniform_8", "hbb"):              "case12",
+        ("canonical", "horizontal"):       "case13",
+        ("uniform_8", "horizontal"):       "case14",
+        ("canonical", "horizontal_fixed"): "case_horiz_fixed",
+        ("uniform_8", "horizontal_fixed"): "case_horiz_fixed_u8",
+        ("canonical", "horizontal_donut"): "case_horiz_donut",
+        ("uniform_8", "horizontal_donut"): "case_horiz_donut_u8",
+        ("canonical", "horizontal_gradient"): "case_horiz_grad",
+        ("uniform_8", "horizontal_gradient"): "case_horiz_grad_u8",
+        ("canonical", "horizontal_wnorm"): "case_horiz_wnorm",
+        ("uniform_8", "horizontal_wnorm"): "case_horiz_wnorm_u8",
+        ("canonical", "specular_up"): "case_spec_up",
+        ("uniform_8", "specular_up"): "case_spec_up_u8",
     }[(WEIGHTS_MODE, BC_MODE)]
-    OUT_FILE = OUT_DIR / f"{_case_id}_lbm_d2q9_{WEIGHTS_MODE}_{BC_MODE}_natural.h5"
+    PHYS_SUFFIX = "" if _args.physics == "ttp06" else f"_{_args.physics}"
+    OUT_FILE = OUT_DIR / (
+        f"{_case_id}_lbm_d2q9_{WEIGHTS_MODE}_{BC_MODE}_natural{PHYS_SUFFIX}.h5"
+    )
 
 
 def apply_specular_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
@@ -223,6 +243,270 @@ def lbm_step_horizontal(f: torch.Tensor, V: torch.Tensor, R: torch.Tensor,
     return f, V
 
 
+# Weight ratio: diagonal weight / cardinal weight = (1/36)/(1/9) = 1/4.
+W_DIAG_OVER_CARD = 0.25
+
+
+def apply_horizontal_wnorm_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
+                                             NX: int, NY: int,
+                                             r: float = W_DIAG_OVER_CARD) -> torch.Tensor:
+    """Weight-normalized NON-gradient horizontal redirect (user-proposed fix).
+
+    Same full-f operation as apply_horizontal_redirect, but the diagonal
+    mass moved into a CARDINAL slot is scaled by the weight ratio
+    r = w_diag / w_card = 1/4, with the remaining (1 - r) fraction bounced
+    back HBB-style into the cell's own opposite diagonal. This keeps the
+    operation mass-conserving and acting on the full f (NOT a gradient
+    split), while accounting for the diagonal→cardinal weight mismatch.
+
+    Top wall (j=NY-1), non-corner i in [1, NX-2]:
+      f_5 (NE) pre-stream:  r → east nbr f_1 (E);  (1-r) → C's own f_7 (HBB)
+      f_6 (NW) pre-stream:  r → west nbr f_2 (W);  (1-r) → C's own f_8 (HBB)
+
+    Bottom wall (j=0), symmetric:
+      f_8 (SE) pre-stream:  r → east nbr f_1 (E);  (1-r) → C's own f_6 (HBB)
+      f_7 (SW) pre-stream:  r → west nbr f_2 (W);  (1-r) → C's own f_5 (HBB)
+    """
+    # TOP WALL
+    f[7, 1:NX - 1, NY - 1] = (1.0 - r) * f_star[5, 1:NX - 1, NY - 1]   # partial HBB NE→SW
+    f[8, 1:NX - 1, NY - 1] = (1.0 - r) * f_star[6, 1:NX - 1, NY - 1]   # partial HBB NW→SE
+    f[1, 2:NX,    NY - 1] += r * f_star[5, 1:NX - 1, NY - 1]           # r-share NE → east E
+    f[2, :NX - 2, NY - 1] += r * f_star[6, 1:NX - 1, NY - 1]           # r-share NW → west W
+
+    # BOTTOM WALL
+    f[5, 1:NX - 1, 0] = (1.0 - r) * f_star[7, 1:NX - 1, 0]            # partial HBB SW→NE
+    f[6, 1:NX - 1, 0] = (1.0 - r) * f_star[8, 1:NX - 1, 0]            # partial HBB SE→NW
+    f[1, 2:NX,    0] += r * f_star[8, 1:NX - 1, 0]                    # r-share SE → east E
+    f[2, :NX - 2, 0] += r * f_star[7, 1:NX - 1, 0]                    # r-share SW → west W
+    return f
+
+
+def lbm_step_horizontal_wnorm(f, V, R, dt, omega, w, bounce_masks_full, NX, NY,
+                               r=W_DIAG_OVER_CARD):
+    """Weight-normalized non-gradient horizontal redirect step."""
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_horizontal_wnorm_top_bottom_d2q9(f, f_star, NX, NY, r)
+    V = recover_voltage(f)
+    return f, V
+
+
+def apply_specular_up_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
+                                        NX: int, NY: int) -> torch.Tensor:
+    """'Weird specular' — lateral shift to the neighbour WITHOUT flipping the
+    y-velocity (user-proposed).
+
+    Standard specular flips y: top NE(i) → SE(i+1) [down-right of next cell].
+    This variant KEEPS the diagonal direction: top NE(i) → NE(i+1)
+    [up-right of next cell]. The wall-leaving diagonal is shifted one cell
+    laterally but keeps pointing toward the wall, so it rides the wall.
+
+    Diagonal → diagonal (weight-matched, like HBB/specular), so this should
+    be a NO-OP at rest. But it preserves toward-wall momentum laterally,
+    which may bias the crescent.
+
+    Call AFTER apply_neumann_d2q9 (HBB has set the downward slots f_7/f_8 at
+    top, f_5/f_6 at bottom). We ZERO those HBB fills and ADD the leaving
+    diagonals to neighbours' SAME-direction diagonal slots.
+
+    Top wall (j=NY-1), non-corner i ∈ [1, NX-2]:
+      f_5 (NE) leaving → ADD to east neighbour's f_5 (NE) at (i+1)
+      f_6 (NW) leaving → ADD to west neighbour's f_6 (NW) at (i-1)
+      zero the HBB-bounced f_7, f_8 (their mass now goes up, not down)
+
+    Bottom wall (j=0), symmetric (keep down-going):
+      f_8 (SE) leaving → ADD to east neighbour's f_8 (SE) at (i+1)
+      f_7 (SW) leaving → ADD to west neighbour's f_7 (SW) at (i-1)
+      zero the HBB-bounced f_5, f_6
+    """
+    # TOP WALL
+    f[7, 1:NX - 1, NY - 1] = 0
+    f[8, 1:NX - 1, NY - 1] = 0
+    f[5, 2:NX,    NY - 1] += f_star[5, 1:NX - 1, NY - 1]   # NE(i) → NE(i+1)
+    f[6, :NX - 2, NY - 1] += f_star[6, 1:NX - 1, NY - 1]   # NW(i) → NW(i-1)
+
+    # BOTTOM WALL
+    f[5, 1:NX - 1, 0] = 0
+    f[6, 1:NX - 1, 0] = 0
+    f[8, 2:NX,    0] += f_star[8, 1:NX - 1, 0]            # SE(i) → SE(i+1)
+    f[7, :NX - 2, 0] += f_star[7, 1:NX - 1, 0]            # SW(i) → SW(i-1)
+    return f
+
+
+def lbm_step_specular_up(f, V, R, dt, omega, w, bounce_masks_full, NX, NY):
+    """'Weird specular' lateral-shift-without-y-flip step."""
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_specular_up_top_bottom_d2q9(f, f_star, NX, NY)
+    V = recover_voltage(f)
+    return f, V
+
+
+def apply_horizontal_fixed_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
+                                             NX: int, NY: int) -> torch.Tensor:
+    """Corner-aware horizontal redirect. Mass-conserving.
+
+    Difference from the original: redirect destinations EXCLUDE the four
+    corners (which keep their pure-HBB self-bounce), and the orphaned
+    donors at i=1, i=NX-2 (whose redirect destination would have been a
+    corner) bounce back at SELF via HBB-style.
+
+    Top wall (j=NY-1):
+      donor i ∈ [1, NX-3] : f_star[5, i, NY-1] → f[1, i+1, NY-1]  (avoid corner i+1=NX-1)
+      donor i ∈ [2, NX-2] : f_star[6, i, NY-1] → f[2, i-1, NY-1]  (avoid corner i-1=0)
+      orphan i=NX-2 (f_5) : f_star[5, NX-2, NY-1] → f[7, NX-2, NY-1]  (HBB self-bounce)
+      orphan i=1    (f_6) : f_star[6, 1,    NY-1] → f[8, 1,    NY-1]  (HBB self-bounce)
+
+    All other non-corner f_7/f_8 slots at top are still zeroed (their mass
+    went to a neighbour's cardinal slot).
+    """
+    # ─── TOP WALL ─────────────────────────────────────────────────────
+    # Zero non-corner HBB diagonal slots (same as buggy version)
+    f[7, 1:NX - 1, NY - 1] = 0
+    f[8, 1:NX - 1, NY - 1] = 0
+
+    # Redirect: donor [1, NX-3] → dest [2, NX-2] (corner-excluding)
+    f[1, 2:NX - 1, NY - 1] += f_star[5, 1:NX - 2, NY - 1]
+    f[2, 1:NX - 2, NY - 1] += f_star[6, 2:NX - 1, NY - 1]
+
+    # Orphaned donors bounce back at self (HBB-style; restore the zero we set)
+    f[7, NX - 2, NY - 1] = f_star[5, NX - 2, NY - 1]
+    f[8, 1,      NY - 1] = f_star[6, 1,      NY - 1]
+
+    # ─── BOTTOM WALL ──────────────────────────────────────────────────
+    f[5, 1:NX - 1, 0] = 0
+    f[6, 1:NX - 1, 0] = 0
+
+    f[1, 2:NX - 1, 0] += f_star[8, 1:NX - 2, 0]
+    f[2, 1:NX - 2, 0] += f_star[7, 2:NX - 1, 0]
+
+    f[5, NX - 2, 0] = f_star[8, NX - 2, 0]
+    f[6, 1,      0] = f_star[7, 1,      0]
+
+    return f
+
+
+def lbm_step_horizontal_fixed(f, V, R, dt, omega, w, bounce_masks_full, NX, NY):
+    """Mass-conserving horizontal-redirect variant."""
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_horizontal_fixed_top_bottom_d2q9(f, f_star, NX, NY)
+    V = recover_voltage(f)
+    return f, V
+
+
+def apply_corner_diagonal_wrap_d2q9(f: torch.Tensor, f_star: torch.Tensor,
+                                      NX: int, NY: int) -> torch.Tensor:
+    """At each of the 4 wall corners, the 'fully-off-corner' diagonal pre-stream
+    (the one that would have streamed both off-the-top/bottom AND off-the-side)
+    gets X-wrapped to the OPPOSITE corner's inward cardinal slot.
+
+    Mapping (NW = (-x, +y), etc.):
+       top-left  (0, NY-1)   f_star_6 NW  →  f[2] (W) at top-right (NX-1, NY-1)
+       top-right (NX-1, NY-1) f_star_5 NE →  f[1] (E) at top-left  (0, NY-1)
+       bot-left  (0, 0)       f_star_7 SW →  f[2] (W) at bot-right (NX-1, 0)
+       bot-right (NX-1, 0)    f_star_8 SE →  f[1] (E) at bot-left  (0, 0)
+
+    Removes the HBB-bounced contribution at each original corner slot to
+    keep mass-conservation (each pre-stream goes to exactly one place).
+
+    Purpose: counteract the asymmetric mass flow generated at the bulk
+    wavefront column. The wavefront's f_5 pre-stream feeds the wall row
+    eastward via the existing redirect; this corner wrap returns mass
+    westward from the east end, balancing the buildup.
+    """
+    # Snapshot pre-stream diagonals at the 4 corners (f_star is read-only here)
+    nw_TL = f_star[6, 0,      NY - 1].clone()
+    ne_TR = f_star[5, NX - 1, NY - 1].clone()
+    sw_BL = f_star[7, 0,      0    ].clone()
+    se_BR = f_star[8, NX - 1, 0    ].clone()
+
+    # Remove HBB contributions at the original corners (opposite mapping:
+    # 6→8, 5→7, 7→5, 8→6). After apply_neumann_d2q9 these slots equal
+    # the corresponding f_star diagonal; subtracting zeros them.
+    f[8, 0,      NY - 1] -= nw_TL
+    f[7, NX - 1, NY - 1] -= ne_TR
+    f[5, 0,      0    ] -= sw_BL
+    f[6, NX - 1, 0    ] -= se_BR
+
+    # Add to the opposite corner's inward-cardinal slot
+    f[2, NX - 1, NY - 1] += nw_TL  # top-left NW → top-right W
+    f[1, 0,      NY - 1] += ne_TR  # top-right NE → top-left E
+    f[2, NX - 1, 0    ] += sw_BL  # bot-left SW → bot-right W
+    f[1, 0,      0    ] += se_BR  # bot-right SE → bot-left E
+    return f
+
+
+def apply_horizontal_gradient_top_bottom_d2q9(f, f_star, V, w, NX, NY):
+    """Gradient-based horizontal redirect: redirect only the NON-equilibrium
+    (flux) part of the outgoing diagonals; keep the equilibrium part as a
+    standard HBB bounce at the same cell.
+
+    feq_i = w_i * V.  At rest, f_star_i ≈ feq_i so the neq part ≈ 0 → no
+    redirect → pure HBB → NO-OP at rest (like HBB/specular).  During a
+    wavefront, neq carries the flux → redirect laterally → inverse crescent.
+
+    Mass-conserving: eq part bounces at same cell, neq part relocates to a
+    neighbour's cardinal slot.
+
+    Call AFTER apply_neumann_d2q9 (which has already set f_7/f_8 at top and
+    f_5/f_6 at bottom to the full f_star diagonals); this OVERWRITES those
+    with just the eq part, then adds the neq part to neighbours' cardinals.
+    """
+    Vt = V[:, NY - 1]                      # (NX,) wall-row V (top)
+    Vb = V[:, 0]                           # bottom
+
+    # ── TOP WALL ──  f_5 (NE) → east f_1 ; f_6 (NW) → west f_2
+    feq5_t = w[5] * Vt
+    feq6_t = w[6] * Vt
+    f[7, 1:NX - 1, NY - 1] = feq5_t[1:NX - 1]          # eq part: HBB bounce NE→SW
+    f[8, 1:NX - 1, NY - 1] = feq6_t[1:NX - 1]          # eq part: HBB bounce NW→SE
+    f[1, 2:NX,    NY - 1] += (f_star[5, 1:NX - 1, NY - 1] - feq5_t[1:NX - 1])
+    f[2, :NX - 2, NY - 1] += (f_star[6, 1:NX - 1, NY - 1] - feq6_t[1:NX - 1])
+
+    # ── BOTTOM WALL ──  f_8 (SE) → east f_1 ; f_7 (SW) → west f_2
+    feq7_b = w[7] * Vb
+    feq8_b = w[8] * Vb
+    f[5, 1:NX - 1, 0] = feq7_b[1:NX - 1]               # eq part: HBB bounce SW→NE
+    f[6, 1:NX - 1, 0] = feq8_b[1:NX - 1]               # eq part: HBB bounce SE→NW
+    f[1, 2:NX,    0] += (f_star[8, 1:NX - 1, 0] - feq8_b[1:NX - 1])
+    f[2, :NX - 2, 0] += (f_star[7, 1:NX - 1, 0] - feq7_b[1:NX - 1])
+    return f
+
+
+def lbm_step_horizontal_gradient(f, V, R, dt, omega, w, bounce_masks_full, NX, NY):
+    """Gradient horizontal redirect — no-op at rest, inverse crescent at wavefront."""
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_horizontal_gradient_top_bottom_d2q9(f, f_star, V, w, NX, NY)
+    V = recover_voltage(f)
+    return f, V
+
+
+def lbm_step_horizontal_donut(f, V, R, dt, omega, w, bounce_masks_full, NX, NY):
+    """Horizontal redirect + corner-diagonal X-wrap (donut for the 4 corner
+    off-diagonals only). User-proposed fix: counteract the wavefront column's
+    asymmetric eastward mass flux by routing the corner-off diagonals back
+    via the opposite corner's W/E cardinal slot.
+    """
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_horizontal_redirect_top_bottom_d2q9(f, f_star, NX, NY)
+    f = apply_corner_diagonal_wrap_d2q9(f, f_star, NX, NY)
+    V = recover_voltage(f)
+    return f, V
+
+
 def apply_weighted_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
                                      alpha: float, beta: float, gamma: float,
                                      NX: int, NY: int) -> torch.Tensor:
@@ -314,6 +598,7 @@ def main():
     # top/bottom non-corner diagonals after the HBB pass.
     bounce_masks_full = sim.bounce_masks
 
+    T_END = _args.t_end if _args.t_end is not None else T_END_DEFAULT
     n_steps = int(round(T_END / DT))
     print(f"Grid: {NX} × {NY}   dx={DX} cm   dt={DT} ms   t_end={T_END} ms ({n_steps} steps)")
     print(f"Lattice: D2Q9 {WEIGHTS_MODE} + BGK   V_rest={V_rest:.3f} mV   V_stim={V_STIM} mV")
@@ -329,9 +614,12 @@ def main():
     V = sim.V
     for k in range(1, n_steps + 1):
         I_stim = torch.zeros(NX, NY, device=device, dtype=sim.dtype)
-        I_ion = sim.ionic_model.compute_Iion(V.reshape(-1), sim.ionic_states)
-        R_flat = compute_source_term(I_ion, I_stim.reshape(-1), sim.Cm)
-        R = R_flat.reshape(NX, NY)
+        if _args.physics == "ttp06":
+            I_ion = sim.ionic_model.compute_Iion(V.reshape(-1), sim.ionic_states)
+            R_flat = compute_source_term(I_ion, I_stim.reshape(-1), sim.Cm)
+            R = R_flat.reshape(NX, NY)
+        else:  # diffusion-only — no ionic source
+            R = torch.zeros(NX, NY, device=device, dtype=sim.dtype)
         if BC_MODE == "specular":
             f, V = lbm_step_specular(
                 f, V, R, sim.dt, sim.omega, sim.w,
@@ -339,6 +627,31 @@ def main():
             )
         elif BC_MODE == "horizontal":
             f, V = lbm_step_horizontal(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "horizontal_fixed":
+            f, V = lbm_step_horizontal_fixed(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "horizontal_donut":
+            f, V = lbm_step_horizontal_donut(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "horizontal_gradient":
+            f, V = lbm_step_horizontal_gradient(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "horizontal_wnorm":
+            f, V = lbm_step_horizontal_wnorm(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "specular_up":
+            f, V = lbm_step_specular_up(
                 f, V, R, sim.dt, sim.omega, sim.w,
                 bounce_masks_full, NX, NY,
             )
@@ -353,7 +666,9 @@ def main():
             f = stream_d2q9(f)
             f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
             V = recover_voltage(f)
-        sim.ionic_states = ionic_step(sim.ionic_model, V.reshape(-1), sim.ionic_states, sim.dt)
+        if _args.physics == "ttp06":
+            sim.ionic_states = ionic_step(sim.ionic_model, V.reshape(-1),
+                                          sim.ionic_states, sim.dt)
         V_hist[k] = V.cpu().numpy()
         t_hist[k] = k * DT
     elapsed = time.time() - t0
@@ -372,7 +687,7 @@ def main():
         a["weights_mode"] = WEIGHTS_MODE
         a["boundary_treatment_y"] = BC_MODE
         a["boundary_treatment_x"] = "halfway_bounce_back"
-        a["physics"] = f"ttp06_natural_{BC_MODE}_y"
+        a["physics"] = f"{_args.physics}_natural_{BC_MODE}_y"
         if BC_MODE == "weighted":
             a["alpha"] = ALPHA
             a["beta"] = BETA
