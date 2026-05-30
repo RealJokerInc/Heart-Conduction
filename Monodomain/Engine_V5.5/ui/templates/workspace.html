@@ -1,0 +1,528 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page page-workspace">
+    <!-- Header -->
+    <header class="workspace-header">
+        <h1>Builder</h1>
+        <div class="header-actions">
+            <button class="btn" id="export-btn">Export</button>
+            <button class="btn btn-secondary" id="reset-btn">Reset</button>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <div class="workspace-content">
+        <!-- Left panel: Groups -->
+        <aside class="panel panel-left" id="groups-panel">
+            <div class="panel-header">
+                <h3>Tissue Groups</h3>
+                <button class="btn-panel-toggle" id="panel-toggle" title="Collapse panel">◀</button>
+            </div>
+            <div class="groups-list" id="groups-list">
+                <!-- Groups will be inserted here -->
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <h3>Tissue Dimensions</h3>
+            <div class="dimensions-form">
+                <div class="dimension-row">
+                    <label>Width</label>
+                    <div class="dimension-input-group">
+                        <input type="number" id="input-width" value="10" min="0.1" step="0.1">
+                        <span class="unit">cm</span>
+                    </div>
+                </div>
+                <div class="dimension-row">
+                    <label>Height</label>
+                    <div class="dimension-input-group">
+                        <input type="number" id="input-height" value="10" min="0.1" step="0.1">
+                        <span class="unit">cm</span>
+                    </div>
+                </div>
+                <div class="dimension-row">
+                    <label>dx</label>
+                    <div class="dimension-input-group">
+                        <input type="number" id="input-dx" value="0.01" min="0.001" step="0.001">
+                        <span class="unit">cm</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right panel: Image -->
+        <main class="panel panel-right">
+            <div class="dimensions-display" id="dimensions-display">
+                <span><span class="label">W:</span> <span class="value" id="dim-width">1.0 cm</span></span>
+                <span><span class="label">H:</span> <span class="value" id="dim-height">1.0 cm</span></span>
+                <span><span class="label">dx:</span> <span class="value" id="dim-dx">0.01 cm</span></span>
+                <span><span class="label">Cells:</span> <span class="value" id="dim-grid">1000 × 1000</span></span>
+            </div>
+            <div class="image-container" id="image-container">
+                <img id="preview-image" src="/api/image" alt="Tissue image">
+                <canvas id="boundary-canvas"></canvas>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+    const groupsList = document.getElementById('groups-list');
+    const previewImage = document.getElementById('preview-image');
+    const exportBtn = document.getElementById('export-btn');
+    const resetBtn = document.getElementById('reset-btn');
+
+    const conductivePresets = {{ conductive_presets | tojson }};
+    const groupsPanel = document.getElementById('groups-panel');
+    const panelToggle = document.getElementById('panel-toggle');
+    let groups = [];
+    let expandedGroup = null;
+    let isPanelCollapsed = false;
+
+    // Panel toggle functionality
+    panelToggle.addEventListener('click', () => {
+        isPanelCollapsed = !isPanelCollapsed;
+        groupsPanel.classList.toggle('collapsed', isPanelCollapsed);
+        panelToggle.textContent = isPanelCollapsed ? '▶' : '◀';
+        panelToggle.title = isPanelCollapsed ? 'Expand panel' : 'Collapse panel';
+
+        // Reset highlight when collapsing panel
+        if (isPanelCollapsed) {
+            clearHighlight();
+            expandedGroup = null;
+        }
+    });
+
+    // Expand panel (used when double-clicking image)
+    function expandPanel() {
+        if (isPanelCollapsed) {
+            isPanelCollapsed = false;
+            groupsPanel.classList.remove('collapsed');
+            panelToggle.textContent = '◀';
+            panelToggle.title = 'Collapse panel';
+        }
+    }
+
+    // Double-click on image to select group
+    previewImage.addEventListener('dblclick', async (e) => {
+        // Get click position relative to image
+        const rect = previewImage.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Scale to image natural size
+        const scaleX = previewImage.naturalWidth / rect.width;
+        const scaleY = previewImage.naturalHeight / rect.height;
+        const imgX = Math.floor(x * scaleX);
+        const imgY = Math.floor(y * scaleY);
+
+        // Fetch pixel color at this position
+        try {
+            const response = await fetch(`/api/pixel/${imgX}/${imgY}`);
+            const data = await response.json();
+            if (data.group_index) {
+                expandPanel();
+                toggleDropdown(data.group_index);
+                // Highlight the group with marching ants
+                highlightGroup(data.group_index);
+                // Scroll to the group item
+                const groupItem = document.querySelector(`.group-item[data-index="${data.group_index}"]`);
+                if (groupItem) {
+                    groupItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        } catch (e) {
+            console.error('Failed to get pixel info:', e);
+        }
+    });
+
+    // Load session data
+    async function loadSession() {
+        const response = await fetch('/api/session');
+        const data = await response.json();
+        groups = data.groups;
+        renderGroups();
+        updateDimensions(data.dimensions);
+    }
+
+    // Update dimensions display and inputs
+    function updateDimensions(dims) {
+        if (!dims) return;
+        // Calculate cell count (nodes - 1)
+        const cellsX = dims.nx - 1;
+        const cellsY = dims.ny - 1;
+
+        // Update top display
+        document.getElementById('dim-width').textContent = dims.width.toFixed(2) + ' cm';
+        document.getElementById('dim-height').textContent = dims.height.toFixed(2) + ' cm';
+        document.getElementById('dim-dx').textContent = dims.dx.toFixed(4) + ' cm';
+        document.getElementById('dim-grid').textContent = `${cellsX} × ${cellsY}`;
+
+        // Update left panel inputs
+        document.getElementById('input-width').value = dims.width;
+        document.getElementById('input-height').value = dims.height;
+        document.getElementById('input-dx').value = dims.dx;
+    }
+
+    // Render groups list
+    function renderGroups() {
+        groupsList.innerHTML = '';
+
+        groups.forEach(group => {
+            const el = createGroupElement(group);
+            groupsList.appendChild(el);
+        });
+    }
+
+    // Create group element
+    function createGroupElement(group) {
+        const div = document.createElement('div');
+        div.className = 'group-item' + (group.configured ? ' configured' : '');
+        div.dataset.index = group.index;
+        div.dataset.hex = group.hex;
+
+        // Use conductive-swatch class for conductive groups (dashed white)
+        const swatchClass = group.is_conductive ? 'color-swatch conductive-swatch' : 'color-swatch';
+        const swatchStyle = group.is_conductive ? '' : `background-color: ${group.hex}`;
+
+        div.innerHTML = `
+            <div class="group-header">
+                <div class="${swatchClass}" style="${swatchStyle}"></div>
+                <span class="group-label">${group.label}</span>
+                ${group.configured ? '<span class="group-status">✓</span>' : ''}
+            </div>
+            <div class="group-dropdown" style="display: none;">
+                <div class="dropdown-buttons">
+                    <button class="dropdown-btn btn-conductive" data-type="conductive">Conductive</button>
+                    <button class="dropdown-btn btn-non-conductive" data-type="non_conductive">Non-Conductive</button>
+                </div>
+                <div class="dropdown-content conductive-options" style="display: none;">
+                    ${Object.entries(conductivePresets).map(([key, preset]) => `
+                        <label class="preset-option">
+                            <input type="radio" name="preset-${group.index}" value="${key}">
+                            <span>${preset.label}</span>
+                        </label>
+                    `).join('')}
+                </div>
+                <div class="dropdown-content non-conductive-options" style="display: none;">
+                    <div class="name-input-group">
+                        <label>Name:</label>
+                        <input type="text" class="infarct-name-input" placeholder="Infarct Group ${group.group_number || group.index}" value="Infarct Group ${group.group_number || group.index}">
+                    </div>
+                    <button class="btn btn-small btn-confirm-infarct">Confirm</button>
+                </div>
+            </div>
+        `;
+
+        // Click on header to expand/collapse
+        const header = div.querySelector('.group-header');
+        header.addEventListener('click', () => toggleDropdown(group.index));
+
+        // Hover for highlight
+        div.addEventListener('mouseenter', () => highlightGroup(group.index));
+        div.addEventListener('mouseleave', () => clearHighlight());
+
+        // Dropdown button clicks
+        div.querySelectorAll('.dropdown-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const type = btn.dataset.type;
+                const conductiveOpts = div.querySelector('.conductive-options');
+                const nonConductiveOpts = div.querySelector('.non-conductive-options');
+
+                // Toggle active state on buttons
+                div.querySelectorAll('.dropdown-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                if (type === 'conductive') {
+                    conductiveOpts.style.display = 'block';
+                    nonConductiveOpts.style.display = 'none';
+                } else {
+                    conductiveOpts.style.display = 'none';
+                    nonConductiveOpts.style.display = 'block';
+                }
+            });
+        });
+
+        // Conductive preset selection
+        div.querySelectorAll('input[type="radio"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const presetKey = e.target.value;
+                configureGroup(group.index, 'conductive', presetKey, null);
+            });
+        });
+
+        // Non-conductive confirm button
+        const confirmBtn = div.querySelector('.btn-confirm-infarct');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const nameInput = div.querySelector('.infarct-name-input');
+                const defaultName = `Infarct Group ${group.group_number || group.index}`;
+                const name = nameInput.value.trim() || defaultName;
+                configureGroup(group.index, 'non_conductive', null, name);
+            });
+        }
+
+        return div;
+    }
+
+    // Toggle dropdown
+    function toggleDropdown(index) {
+        const items = document.querySelectorAll('.group-item');
+
+        items.forEach(item => {
+            const dropdown = item.querySelector('.group-dropdown');
+            const conductiveOpts = item.querySelector('.conductive-options');
+            const nonConductiveOpts = item.querySelector('.non-conductive-options');
+
+            if (parseInt(item.dataset.index) === index) {
+                // Toggle this one
+                const isExpanded = dropdown.style.display !== 'none';
+                dropdown.style.display = isExpanded ? 'none' : 'block';
+                item.classList.toggle('expanded', !isExpanded);
+                expandedGroup = isExpanded ? null : index;
+
+                // Reset sub-options when closing
+                if (isExpanded) {
+                    conductiveOpts.style.display = 'none';
+                    nonConductiveOpts.style.display = 'none';
+                    item.querySelectorAll('.dropdown-btn').forEach(b => b.classList.remove('active'));
+                }
+            } else {
+                // Close others
+                dropdown.style.display = 'none';
+                item.classList.remove('expanded');
+                conductiveOpts.style.display = 'none';
+                nonConductiveOpts.style.display = 'none';
+            }
+        });
+    }
+
+    // Marching ants animation
+    const boundaryCanvas = document.getElementById('boundary-canvas');
+    const ctx = boundaryCanvas.getContext('2d');
+    let contours = [];  // Array of paths, each path is array of [x,y] points
+    let animationId = null;
+    let dashOffset = 0;
+    let lastFrameTime = 0;
+    const MARCH_SPEED = 50; // ms between march steps
+    const DASH_LENGTH = 6;  // Length of each dash segment
+
+    // Highlight color in image by group index
+    async function highlightGroup(index) {
+        // Stop any existing animation
+        stopMarchingAnts();
+
+        // Fetch ordered contours
+        try {
+            const response = await fetch(`/api/boundary/${index}`);
+            const data = await response.json();
+            contours = data.contours || [];
+        } catch (e) {
+            console.error('Failed to fetch boundary:', e);
+            return;
+        }
+
+        // Load highlighted image and start animation when ready
+        const startAnimation = () => {
+            if (setupCanvas()) {
+                startMarchingAnts();
+            }
+        };
+
+        // Set up load handler before changing src
+        previewImage.onload = startAnimation;
+
+        // Change image source
+        previewImage.src = `/api/image/highlight/${index}`;
+    }
+
+    // Setup canvas to match image size
+    function setupCanvas() {
+        const img = previewImage;
+
+        // Wait for image to have dimensions
+        if (!img.naturalWidth || !img.naturalHeight) {
+            console.log('Image not loaded yet, waiting...');
+            return false;
+        }
+
+        // Get the displayed size of the image
+        const displayWidth = img.clientWidth;
+        const displayHeight = img.clientHeight;
+
+        // Set canvas size to match displayed image
+        boundaryCanvas.width = displayWidth;
+        boundaryCanvas.height = displayHeight;
+        boundaryCanvas.style.width = displayWidth + 'px';
+        boundaryCanvas.style.height = displayHeight + 'px';
+
+        return true;
+    }
+
+    // Draw marching ants using smooth dashed paths
+    function drawMarchingAnts() {
+        if (contours.length === 0) {
+            return;
+        }
+
+        const img = previewImage;
+        const scaleX = boundaryCanvas.width / img.naturalWidth;
+        const scaleY = boundaryCanvas.height / img.naturalHeight;
+
+        ctx.clearRect(0, 0, boundaryCanvas.width, boundaryCanvas.height);
+
+        // Draw each contour as a dashed path
+        for (const path of contours) {
+            if (path.length < 2) continue;
+
+            ctx.beginPath();
+            ctx.moveTo(path[0][0] * scaleX, path[0][1] * scaleY);
+
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i][0] * scaleX, path[i][1] * scaleY);
+            }
+            ctx.closePath();
+
+            // Draw white dashes (background)
+            ctx.setLineDash([DASH_LENGTH, DASH_LENGTH]);
+            ctx.lineDashOffset = -dashOffset;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw black dashes (offset by half to fill gaps)
+            ctx.lineDashOffset = -dashOffset + DASH_LENGTH;
+            ctx.strokeStyle = '#000000';
+            ctx.stroke();
+        }
+
+        // Reset line dash
+        ctx.setLineDash([]);
+    }
+
+    // Start marching ants animation
+    function startMarchingAnts() {
+        lastFrameTime = 0;
+        dashOffset = 0;
+
+        if (contours.length === 0) {
+            return;
+        }
+
+        function animate(currentTime) {
+            // Throttle the march speed
+            if (currentTime - lastFrameTime >= MARCH_SPEED) {
+                dashOffset = (dashOffset + 1) % (DASH_LENGTH * 2);
+                lastFrameTime = currentTime;
+            }
+            drawMarchingAnts();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        animationId = requestAnimationFrame(animate);
+    }
+
+    // Stop marching ants animation
+    function stopMarchingAnts() {
+        if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
+        ctx.clearRect(0, 0, boundaryCanvas.width, boundaryCanvas.height);
+        // Don't clear contours here - let highlightGroup manage them
+    }
+
+    // Clear highlight
+    function clearHighlight() {
+        previewImage.src = '/api/image';
+        stopMarchingAnts();
+        contours = [];  // Clear contours when mouse leaves
+    }
+
+    // Configure group
+    async function configureGroup(index, type, preset, name) {
+        const body = { index, type };
+        if (preset) body.preset = preset;
+        if (name) body.name = name;
+
+        const response = await fetch('/api/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Reload session to get updated groups
+            await loadSession();
+            // Collapse dropdown
+            expandedGroup = null;
+            // Refresh image
+            previewImage.src = '/api/image?' + Date.now();
+        }
+    }
+
+    // Reset
+    resetBtn.addEventListener('click', async () => {
+        if (confirm('Reset and start over?')) {
+            await fetch('/api/reset', { method: 'POST' });
+            window.location.href = '/upload';
+        }
+    });
+
+    // Export
+    exportBtn.addEventListener('click', () => {
+        const unconfigured = groups.filter(g => !g.configured);
+        if (unconfigured.length > 0) {
+            alert(`${unconfigured.length} group(s) not configured yet.`);
+            return;
+        }
+        alert('Export functionality coming soon!');
+    });
+
+    // Dimension inputs
+    const inputWidth = document.getElementById('input-width');
+    const inputHeight = document.getElementById('input-height');
+    const inputDx = document.getElementById('input-dx');
+
+    // Update dimensions when changed
+    function updateDimensionsFromInput() {
+        const width = parseFloat(inputWidth.value) || 10;
+        const height = parseFloat(inputHeight.value) || 10;
+        const dx = parseFloat(inputDx.value) || 0.01;
+
+        // Cell count (not nodes)
+        const cellsX = Math.floor(width / dx);
+        const cellsY = Math.floor(height / dx);
+
+        // Update the top display
+        document.getElementById('dim-width').textContent = width.toFixed(2) + ' cm';
+        document.getElementById('dim-height').textContent = height.toFixed(2) + ' cm';
+        document.getElementById('dim-dx').textContent = dx.toFixed(4) + ' cm';
+        document.getElementById('dim-grid').textContent = `${cellsX} × ${cellsY}`;
+
+        // Save to server
+        saveDimensions(width, height, dx);
+    }
+
+    // Save dimensions to server
+    async function saveDimensions(width, height, dx) {
+        await fetch('/api/dimensions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ width, height, dx })
+        });
+    }
+
+    // Add event listeners to dimension inputs
+    inputWidth.addEventListener('change', updateDimensionsFromInput);
+    inputHeight.addEventListener('change', updateDimensionsFromInput);
+    inputDx.addEventListener('change', updateDimensionsFromInput);
+
+    // Initialize
+    loadSession();
+</script>
+{% endblock %}

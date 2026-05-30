@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page page-loading">
+    <div class="loading-content">
+        <h2>Processing</h2>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+
+        <p class="loading-status" id="loading-status">Initializing...</p>
+
+        <div class="loading-stages" id="loading-stages">
+            <div class="stage" data-stage="1">
+                <span class="stage-icon">○</span>
+                <span class="stage-text">Loading image</span>
+            </div>
+            <div class="stage" data-stage="2">
+                <span class="stage-icon">○</span>
+                <span class="stage-text">Detecting colors</span>
+            </div>
+            <div class="stage" data-stage="3">
+                <span class="stage-icon">○</span>
+                <span class="stage-text">Preparing workspace</span>
+            </div>
+        </div>
+
+        <div class="loading-error" id="loading-error" style="display: none;">
+            <p id="error-message"></p>
+            <a href="/upload" class="btn">← Back to Upload</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const progressFill = document.getElementById('progress-fill');
+    const statusEl = document.getElementById('loading-status');
+    const stagesEl = document.getElementById('loading-stages');
+    const errorEl = document.getElementById('loading-error');
+    const errorMsg = document.getElementById('error-message');
+
+    function setStage(stageNum, status) {
+        // Update progress bar
+        const progress = (stageNum / 3) * 100;
+        progressFill.style.width = progress + '%';
+
+        // Update stages
+        document.querySelectorAll('.stage').forEach(el => {
+            const num = parseInt(el.dataset.stage);
+            const icon = el.querySelector('.stage-icon');
+
+            if (num < stageNum) {
+                icon.textContent = '✓';
+                el.classList.add('complete');
+            } else if (num === stageNum) {
+                icon.textContent = '◉';
+                el.classList.add('active');
+            }
+        });
+    }
+
+    function showError(message) {
+        stagesEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorMsg.textContent = message;
+    }
+
+    // Start processing
+    async function process() {
+        try {
+            // Stage 1: Loading
+            setStage(1);
+            statusEl.textContent = 'Loading image...';
+            await new Promise(r => setTimeout(r, 300));
+
+            // Stage 2: Processing
+            setStage(2);
+            statusEl.textContent = 'Detecting colors...';
+
+            const response = await fetch('/api/process', { method: 'POST' });
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Processing failed');
+            }
+
+            // Stage 3: Complete
+            setStage(3);
+            statusEl.textContent = 'Preparing workspace...';
+            await new Promise(r => setTimeout(r, 300));
+
+            // Done - redirect
+            progressFill.style.width = '100%';
+            statusEl.textContent = 'Ready!';
+
+            await new Promise(r => setTimeout(r, 500));
+            window.location.href = '/workspace';
+
+        } catch (err) {
+            showError(err.message);
+        }
+    }
+
+    // Start on page load
+    process();
+</script>
+{% endblock %}
