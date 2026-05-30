@@ -8,7 +8,9 @@
 **V5.5 DETOUR COMPLETE (2026-05-30).** Forked V5.4 → `Monodomain/Engine_V5.5`, fixed the Formulation-A reaction Cm bug (reaction now `/state.Cm`), dropped the dead internal LBM path. Validated (Cm=1 golden max|dV|=0; exact 1/Cm scaling 3.55e-15; Bidomain V1 cross-check 0.0%/1.1%) — 4 commits on `main`. V5.5 is now the Cm-correct monodomain to consolidate; V5.4 stays the frozen baseline. **Next thread: the actual consolidation** — extract shared code (ionic, mesh, stimulus, conductivity) into `cardiac_core/`, eliminate the 15+ duplicates and the `sys.modules` hack, building against V5.5 (not V5.4).
 
 ## Next Step
-Resume consolidation **Phase 1**: move ionic models (TTP06, ORd + `base.py`/`lut.py`) into `cardiac_core/ionic/` as the single copy; rewire all engines (incl. V5.5) to import from there; delete engine-local copies; verify all tests pass. (Reconcile the live `cardiac_core/` drift first — it gained `geometry.py`/`io.py`/`analysis.py`/`run.py` since Phase 0, and `Engines/lbm_v1` symlink was deleted.)
+**cardiac_core drift RECONCILED (2026-05-30):** the post-Phase-0 additions (`run.py`/`analysis.py`/`geometry.py`/`io.py`) are a benign wrapper-level convenience layer (77 tests now, not 34); no shared-code packages yet, so Phase 1 is unblocked. `Engines/` symlink index fixed (cardiac_core un-broken; lbm_v1 → real `LBM/Engine_V1`; monodomain_v5.5 added). See KNOWLEDGE "cardiac_core drift reconciled".
+
+Now start consolidation **Phase 1**: move ionic models (TTP06, ORd + `base.py`/`lut.py`) into `cardiac_core/ionic/` as the single copy; rewire all engines (incl. V5.5) to import from there; delete engine-local copies; verify all tests pass.
 
 ## Thread
 ### 2026-03-16: The core tension is engine-centric vs. research-centric layout

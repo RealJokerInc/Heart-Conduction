@@ -41,10 +41,14 @@ Files to read when resuming work on this question:
 
 | File | What it tells you |
 |------|-------------------|
-| `cardiac_core/__init__.py` | Package exports: monodomain, bidomain, lbm, create_cardiac_mesh |
+| `cardiac_core/__init__.py` | Package exports: api (monodomain/bidomain/lbm), file_format, run, analysis, geometry, io |
 | `cardiac_core/file_format.py` | CardiacMeshData dataclass, save/load/create functions, .npz format v1 |
 | `cardiac_core/api.py` | Simplified API: monodomain(), bidomain(), lbm() + CardiacSimulation wrapper |
-| `cardiac_core/tests/` | 34 tests: file format, per-engine, integration, direct-match verification |
+| `cardiac_core/run.py` | One-shot `run_monodomain/run_bidomain/run_lbm`, `simulate`, `SimulationResult` (added post-Phase-0) |
+| `cardiac_core/analysis.py` | Pure tensor analysis: activation_time, conduction_velocity, apd_map, phase_singularities, restitution_curve |
+| `cardiac_core/geometry.py` | Mask/region/distance/fiber helpers |
+| `cardiac_core/io.py` | Result .npz save/load |
+| `cardiac_core/tests/` | 77 tests: file format, per-engine, integration, run/analysis/geometry/io, direct-match verification |
 | `Bidomain/Engine_V1/REVIEW.md` §6 | Full merger proposal: chi/Cm audit, diffusion tensor encoding, unified API design |
 | `Optimizer/improvement.md` | Engine adapter design for Optimizer V2 |
 | `Bidomain/Engine_V1/cardiac_sim/ionic/base.py` | IonicModel ABC (identical across engines) |

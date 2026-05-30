@@ -82,12 +82,7 @@ cardiac_sim/
 │   │               ├── chebyshev.py          # Sync-free polynomial (GPU)
 │   │               └── fft.py               # DCT (Neumann) / FFT (periodic)
 │   │
-│   └── lbm/                                  # Lattice-Boltzmann path
-│       ├── state.py                          # LBM state (distribution functions)
-│       ├── monodomain.py                     # LBM simulation entry
-│       ├── collision.py                      # BGK (isotropic) / MRT (anisotropic)
-│       ├── d2q5.py                           # 2D lattice velocity set
-│       └── d3q7.py                           # 3D lattice velocity set
+│   └── (lbm/ REMOVED in V5.5 — unused; use the standalone LBM/Engine_V1 engine)
 │
 ├── mesh_builder/                             # SVG → mesh.npz (from Builder)
 ├── stim_builder/                             # SVG → stim.npz (from Builder)
@@ -112,7 +107,6 @@ cardiac_sim/
 | `discretization_scheme/` | Build spatial operators (M, K, L) | Init |
 | `solver/` | Advance solution in time | Runtime |
 | `state.py` | Store all runtime data | Runtime |
-| `lbm/` | Self-contained LBM alternative | Runtime |
 | `utils/` | Device management | Throughout |
 
 **Key separations:**
@@ -250,7 +244,10 @@ tissue_builder → discretization_scheme → state → solver
 
 Spatial and temporal discretization are orthogonal — any spatial method can pair with any time stepper.
 
-### Lattice-Boltzmann (LBM)
+### Lattice-Boltzmann (LBM) — REMOVED in V5.5
+
+> The internal LBM path was removed in V5.5 (unused; the maintained LBM engine is the
+> standalone `LBM/Engine_V1`). The description below is retained from V5.4 for context only.
 
 Alternative paradigm — no linear system solve:
 
@@ -320,10 +317,10 @@ These two concerns are cleanly separated. The spatial method provides operators;
 ### Installation
 
 ```bash
-cd "Monodomain/Engine_V5.4"
-source ../../venv/bin/activate
+cd "Monodomain/Engine_V5.5"
+conda activate heart-conduction          # project env (Python 3.11, PyTorch/CUDA, float64)
 
-# Core dependencies
+# Core dependencies (already in the conda env)
 pip install torch numpy scipy
 
 # Optional (Builder integration)

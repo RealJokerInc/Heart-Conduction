@@ -120,6 +120,17 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 
 **34 tests** (10 file format, 6 monodomain, 6 LBM, 7 bidomain, 5 integration). Wrapper output matches direct engine construction exactly (verified with `torch.allclose` at atol=1e-10). All 93 V5.4 tests and 10 bidomain spot-check tests still pass.
 
+### cardiac_core drift reconciled (2026-05-30)
+
+Since Phase 0, `cardiac_core/` grew a **convenience/analysis layer** (all still wrapper-level — imports FROM engines, no shared-code packages yet). Current package = `file_format.py`, `api.py` **plus**:
+- `run.py` — one-shot `run_monodomain/run_bidomain/run_lbm`, `simulate`, `SimulationResult` (call once → `(times, V)`, no generator).
+- `analysis.py` — pure tensor analysis: `activation_time`, `conduction_velocity`, `apd_at`/`apd_map`, `dominant_frequency`, `wavefront_mask`, `phase_map`, `phase_singularities`, `restitution_curve`.
+- `geometry.py` — mask/region/distance/fiber helpers (`circle_mask`, `annulus_mask`, `left_edge_mask`, `boundary_distance`, `fiber_field_transmural`, …).
+- `io.py` — result `.npz` save/load (`save_result`/`load_result`).
+- **Test count is now 77** (not 34) — the convenience layer is tested (`test_run`, `test_analysis`, `test_geometry`, `test_io`).
+
+**Assessment:** the drift is benign and additive — it does NOT block consolidation Phase 1 (ionic extraction is orthogonal to these wrappers). The target architecture (ionic/mesh/stimulus/conductivity packages, engines importing from them) is still unstarted. Build Phase 1 against **V5.5**. Also fixed the stale `Engines/` symlink index: `Engines/cardiac_core` (was broken `../../cardiac_core` → `../cardiac_core`), restored `lbm_v1 → ../LBM/Engine_V1` (old target `../Monodomain/LBM_V1` was stale), added `monodomain_v5.5 → ../Monodomain/Engine_V5.5`.
+
 ### V5.5 Cm-correct fork (completed 2026-05-30)
 
 Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Engine_V5.5` — a full copy of V5.4 with ONE functional change: the operator-split reaction divides by the tissue Cm, `dV = -(Iion + Istim)/state.Cm` (Formulation B, matching Bidomain V1 / LBM V1). V5.4 stays the frozen baseline.
