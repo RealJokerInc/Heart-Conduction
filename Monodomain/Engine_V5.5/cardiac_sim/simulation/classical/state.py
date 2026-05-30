@@ -81,6 +81,11 @@ class SimulationState:
     # Time
     t: float = 0.0
 
+    # Tissue membrane capacitance (uF/cm^2). Single source of truth for the
+    # reaction step: ionic dV = -(Iion + Istim) / Cm. Populated from spatial.Cm
+    # at construction (MonodomainSimulation). Default 1.0 reproduces V5.3/V5.4.
+    Cm: float = 1.0
+
     # Stimulus data
     stim_masks: torch.Tensor = None
     stim_starts: List[float] = field(default_factory=list)

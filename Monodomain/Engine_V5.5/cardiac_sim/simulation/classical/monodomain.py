@@ -331,6 +331,10 @@ class MonodomainSimulation:
             gate_indices=list(self._ionic_model.gate_indices),
             concentration_indices=list(self._ionic_model.concentration_indices),
             t=0.0,
+            # Tissue Cm: single source of truth shared with the reaction step.
+            # Direct read (no getattr fallback) — a spatial scheme missing `.Cm`
+            # must fail loud, not silently divide the reaction by 1.0.
+            Cm=spatial.Cm,
             stim_masks=stim_masks,
             stim_starts=stim_starts,
             stim_durations=stim_durations,

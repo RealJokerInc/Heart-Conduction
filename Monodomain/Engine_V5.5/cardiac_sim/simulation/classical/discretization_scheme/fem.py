@@ -158,6 +158,10 @@ class FEMDiscretization(SpatialDiscretization):
         self._n_dof = mesh.n_nodes
         self._x = mesh.nodes[:, 0]
         self._y = mesh.nodes[:, 1]
+        # Retain chi/Cm (FEM otherwise bakes them only into self.M). The reaction
+        # step reads Cm via the property below; both must share one value.
+        self._chi = chi
+        self._Cm = Cm
 
         # Assemble FEM matrices
         self.M = assemble_mass_matrix(mesh, chi, Cm)
@@ -166,6 +170,11 @@ class FEMDiscretization(SpatialDiscretization):
     @property
     def n_dof(self) -> int:
         return self._n_dof
+
+    @property
+    def Cm(self) -> float:
+        """Membrane capacitance (uF/cm^2) — single source of truth, shared with reaction."""
+        return self._Cm
 
     @property
     def coordinates(self) -> Tuple[torch.Tensor, torch.Tensor]:

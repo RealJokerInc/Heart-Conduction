@@ -78,9 +78,10 @@ class RushLarsenSolver(IonicSolver):
         Istim = self._evaluate_Istim(state)  # (n_dof,)
 
         # 4. Forward Euler on voltage
-        # V5.3 convention: dV = -(Iion + Istim)
-        # A negative Istim (e.g., -80 uA/uF) reduces total current, depolarizing V
-        state.V = V + dt * (-(Iion + Istim))
+        # Formulation B: dV = -(Iion + Istim) / Cm  (Cm = tissue capacitance from state).
+        # Cm = 1.0 reproduces the V5.3/V5.4 convention exactly (/1.0 is a no-op).
+        # A negative Istim (e.g., -80 uA/uF) reduces total current, depolarizing V.
+        state.V = V + dt * (-(Iion + Istim) / state.Cm)
 
         # 5. Rush-Larsen exponential integration on gates
         # Uses gate_inf/tau computed from OLD state (step 2)

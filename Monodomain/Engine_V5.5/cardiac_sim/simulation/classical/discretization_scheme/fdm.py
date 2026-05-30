@@ -164,6 +164,11 @@ class FDMDiscretization(SpatialDiscretization):
         return self._n_dof
 
     @property
+    def Cm(self) -> float:
+        """Membrane capacitance (uF/cm^2) — single source of truth, shared with reaction."""
+        return self._Cm
+
+    @property
     def coordinates(self) -> Tuple[torch.Tensor, torch.Tensor]:
         return self._x, self._y
 

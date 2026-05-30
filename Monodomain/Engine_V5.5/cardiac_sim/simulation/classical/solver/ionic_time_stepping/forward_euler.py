@@ -60,8 +60,9 @@ class ForwardEulerIonicSolver(IonicSolver):
         Istim = self._evaluate_Istim(state)
 
         # 3. Forward Euler on voltage
-        # V5.3 convention: dV = -(Iion + Istim)
-        state.V = V + dt * (-(Iion + Istim))
+        # Formulation B: dV = -(Iion + Istim) / Cm  (Cm = tissue capacitance from state;
+        # Cm = 1.0 reproduces the V5.3/V5.4 convention exactly).
+        state.V = V + dt * (-(Iion + Istim) / state.Cm)
 
         # 4. Forward Euler on gates
         # dx/dt = (x_inf - x) / tau
