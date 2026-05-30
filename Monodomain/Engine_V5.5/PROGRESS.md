@@ -13,7 +13,15 @@
 
 ## Current Status
 
-**Active Phase:** V5.5 fork — Cm-correct reaction (see engine_consolidation/PLAN.md). Phase 0 (clone + drop LBM + regression golden) in progress.
+**Active Phase:** V5.5 fork COMPLETE (Phases 0-2; see engine_consolidation/PLAN.md).
+  - Phase 0 DONE: clone of V5.4 + drop dead LBM path + Cm=1 regression golden (max|dV|=0).
+  - Phase 1 DONE: reaction divides by tissue Cm; Cm plumbed via state.Cm; FEM `_Cm` fix.
+  - Phase 2 DONE: Cm-correctness validated. `test_phase10_cm_scaling.py` (3/3): exact 1/Cm
+    reaction scaling (3.55e-15), Cm direction, Bidomain V1 cross-validation
+    (Cm=1 54.35 vs 54.35 cm/s; Cm=2 28.09 vs 27.77 cm/s, 1.1%).
+  - NOTE: the Cm time-dilation invariant in the original plan is physically FALSE (gate
+    kinetics carry no Cm); validation pivoted to exact-scaling + cross-engine agreement.
+    See engine_consolidation/IDEALOG.md (2026-05-30).
 **Inherited from V5.4:** All phases complete (Phases 1-8 + Phase 9 State Rework)
 **Last Updated:** 2026-05-30
 

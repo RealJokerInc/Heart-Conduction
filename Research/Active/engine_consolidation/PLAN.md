@@ -386,9 +386,28 @@ conda run -n heart-conduction python test_phase7.py && conda run -n heart-conduc
 
 ---
 
-## Phase 2: Cm-scaling validation (the discriminating test)
+## Phase 2: Cm-correctness validation (the discriminating test)
 
-**Goal**: Prove the fix is physically correct via the time-dilation invariant — scaling tissue Cm by k slows the whole solution by k (and ONLY then). This is the test V5.4 fails and V5.5 passes.
+> ⚠️ **CORRECTED 2026-05-30 (DONE).** The time-dilation framing below is PHYSICALLY FALSE
+> and was NOT used. The tissue Cm divides only the voltage update; gate kinetics (tau) and
+> concentration rates carry NO Cm, so scaling Cm does NOT rescale the system in time — the
+> AP morphology changes (APD does not scale; empirically APD 218→292 ms at k=2, not 2×).
+> Caught empirically during execution; both audit passes missed it.
+>
+> **What was actually built and PASSED** (`Engine_V5.5/test_phase10_cm_scaling.py`, 3/3):
+> 1. `test_0d_exact_cm_scaling` — from an identical state, one reaction step: `dV·Cm`
+>    invariant across Cm∈{0.5,1,2,4} to **3.55e-15** (machine-precision proof the reaction
+>    divides by Cm exactly). This is the rigorous core validation.
+> 2. `test_cm_matters_direction` — larger Cm slows the upstroke (peak dV/dt 368→211 mV/ms),
+>    APD changes (no dilation, as the corrected physics predicts).
+> 3. `test_bidomain_cross_validation` — absolute CV agreement vs Bidomain V1 (independent
+>    Formulation-B engine; ref in `_regression/bidomain_cm_ref.py`, separate process):
+>    Cm=1 54.35 vs 54.35 cm/s (0.0%); Cm=2 28.09 vs 27.77 cm/s (1.1%). Tol 5%.
+> Together with the Cm=1 golden (max|dV|=0) and the full existing suite, the fix is proven.
+> The sub-steps below (2.1–2.3) are the SUPERSEDED original (dilation-based) plan, retained
+> for history; the test file is the source of truth. See IDEALOG 2026-05-30.
+
+**Goal** (superseded): Prove the fix is physically correct via the time-dilation invariant — scaling tissue Cm by k slows the whole solution by k (and ONLY then). This is the test V5.4 fails and V5.5 passes.
 **Tier**: large
 **Estimated scope**: one new test script with a 0D test and a tissue-level CV/APD test
 
@@ -663,6 +682,11 @@ _(execution-time mutations go here: `**MUTATED {date}**: Step X.Y SKIPPED/SPLIT/
 - **MUTATED 2026-05-30**: Step 0.4 MODIFIED (audit LOW) — corrected the inaccurate "`_update_gates` used by Rush-Larsen" note (RushLarsen overrides it; ForwardEuler inlines; base becomes dead but harmless to keep).
 - **MUTATED 2026-05-30**: Steps 0.1/0.2/0.4 MODIFIED (audit LOW) — added explicit "N/A — pure file op" Pseudocode/Test Spec markers for the 9-section structural rule.
 - **MUTATED 2026-05-30**: Final Cleanup MODIFIED (audit LOW) — README target corrected from "migration plan" to the actual "## Completion Criteria" section.
+
+### Revision 2026-05-30 (pass 3) — Phase 2 physics correction (discovered during execution)
+- **MUTATED 2026-05-30**: Phase 2 REDESIGNED — the time-dilation invariant (V(x,t;Cm=k)==V(x,t/k;Cm=1); CV→CV/k; APD→k·APD) is PHYSICALLY FALSE: gate kinetics and concentration rates carry no tissue Cm, so scaling Cm changes AP morphology, not timescale. Empirically caught (0D APD ratio 1.34 ≠ 2.0). Both audit passes had wrongly "verified the physics sound." Steps 2.1/2.2/2.3 (dilation-based) SUPERSEDED.
+- **MUTATED 2026-05-30**: Phase 2 REBUILT as `test_phase10_cm_scaling.py` (3 tests, all pass): (1) exact one-step `dV·Cm` invariance to 3.55e-15; (2) Cm-direction (upstroke slows, APD changes); (3) Bidomain V1 absolute CV cross-validation (Cm=1 0.0%, Cm=2 1.1%). The FIX was correct throughout; only the validation strategy was wrong. CV~1/Cm does hold (eikonal: CV ∝ √(D_phys·rate), both ∝1/Cm), but APD does not.
+- **MUTATED 2026-05-30**: Step 2.3 reference engine changed — `cv_shared.run_monodomain_fdm` is NOT Cm-aware (no /Cm, no Cm arg), so it cannot be a Cm≠1 reference; used Bidomain V1 (`run_bidomain`) instead. Test reads D_EFF_input from the ref JSON to avoid hardcoded-sigma drift.
 
 ### Revision 2026-05-30 (pass 2) — second-audit findings (4 issues)
 - **MUTATED 2026-05-30**: Step 2.1 pseudocode MODIFIED (audit MEDIUM) — defined `t_peak_k = tk[argmax(Vk)]` (was referenced in the slow-phase mask but undefined; introduced by pass-1's own LOW rewrite).
