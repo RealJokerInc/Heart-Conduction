@@ -22,11 +22,11 @@ Bidomain/Engine_V1/            ← imports cardiac_core.ionic, cardiac_core.mesh
   solver/                      ← decoupled GS, 3-tier elliptic (unique to bidomain)
 Monodomain/Engine_V5.4/        ← imports cardiac_core.ionic, cardiac_core.mesh
   solver/                      ← CN/BDF/RK diffusion solvers (unique to monodomain)
-Monodomain/LBM_V1/             ← imports cardiac_core.ionic
+LBM/Engine_V1/                 ← imports cardiac_core.ionic
   collision/, streaming/       ← BGK/MRT, D2Q5/D2Q9 (unique to LBM)
 ```
 
-**Current state**: Phase 0 complete — API wrapper layer imports FROM engines (temporary). Engines still have their own copies. The `_prepare_engine()` function flushes `sys.modules` because both engines use the `cardiac_sim` namespace; eliminated in Phase 1.
+**Current state**: Phase 0 complete (API wrapper imports FROM engines; `_prepare_engine()` flushes `sys.modules` for the shared `cardiac_sim` namespace — eliminated in Phase 1). **Prerequisite done (2026-05-30): Monodomain V5.5** — a Cm-correct fork of V5.4 (reaction `/Cm`, dead LBM path dropped) is now the canonical monodomain to consolidate; V5.4 frozen. See "V5.5 Cm-correct fork". The consolidation (Phases 1–5) has not started.
 
 ### Chi/Cm Formulations (audited March 2026)
 
@@ -97,7 +97,7 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Formulation unification | **Keep both**, unify API | Converting V5.4 to B risks 77 tests; both correct |
+| Formulation unification | Keep V5.4 frozen; **fork V5.5** (Formulation-B reaction) | Converting V5.4 in place risked its 77 tests; instead forked V5.5 (2026-05-30) which divides the reaction by Cm. V5.5 is the Cm-correct monodomain to consolidate. See "V5.5 Cm-correct fork" below. |
 | Shared code | `cardiac_core/` package | Extract ionic/mesh/stimulus; don't merge solver internals |
 | ConductivityConfig | sigma → D in one place | chi/Cm appear only in ConductivityConfig |
 | Simulation protocol | `Simulation` protocol + `create_simulation()` factory | Optimizer/Surrogate call any engine interchangeably |
@@ -120,10 +120,22 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 
 **34 tests** (10 file format, 6 monodomain, 6 LBM, 7 bidomain, 5 integration). Wrapper output matches direct engine construction exactly (verified with `torch.allclose` at atol=1e-10). All 93 V5.4 tests and 10 bidomain spot-check tests still pass.
 
+### V5.5 Cm-correct fork (completed 2026-05-30)
+
+Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Engine_V5.5` — a full copy of V5.4 with ONE functional change: the operator-split reaction divides by the tissue Cm, `dV = -(Iion + Istim)/state.Cm` (Formulation B, matching Bidomain V1 / LBM V1). V5.4 stays the frozen baseline.
+
+- **Plumbing:** `SimulationState.Cm` (default 1.0) populated from `spatial.Cm` at construction (direct read, no `getattr` fallback → fails loud). All three schemes expose a `Cm` property; **FEM had to add `self._Cm`/`self._chi`** (it only baked them into `self.M`) — an audit-CRITICAL catch.
+- **Diffusion untouched:** the `chi·Cm` mass term already handled arbitrary Cm; only the reaction was broken.
+- **Dead LBM path removed:** V5.5's internal `cardiac_sim/simulation/lbm/` had zero importers/tests (boundary work uses the separate `LBM/Engine_V1`); deleted along with the now-dead `step_with_V`.
+- **Validation** (`test_phase10_cm_scaling.py`): Cm=1 bit-identical to V5.4 (golden, max|dV|=0); exact 1/Cm reaction scaling to 3.55e-15; Bidomain V1 cross-check CV 54.35 vs 54.35 cm/s (Cm=1), 28.09 vs 27.77 cm/s (Cm=2, 1.1%).
+
+**Physics correction (important):** there is NO Cm time-dilation invariant. Tissue Cm divides only the voltage update; gate time-constants and concentration rates carry no Cm. So scaling Cm changes AP **morphology**, not timescale: APD does NOT scale (218→292 ms at k=2, not 2×). CV *does* scale ~1/Cm, but by eikonal scaling (CV ∝ √(D_phys·upstroke_rate), both ∝1/Cm), not dilation. The original PLAN and both audit passes asserted the (false) dilation invariant; the empirical 0D test caught it. The fix was correct throughout — only the validation strategy was wrong.
+
 ### Migration plan (toward unified core)
 
 | Phase | What | Status |
 |-------|------|--------|
+| Prereq | **Monodomain V5.5 fork** — Cm-correct reaction; drop dead LBM | **DONE** (2026-05-30) |
 | Phase 0 | API layer + file format (wrapper, imports from engines) | **DONE** (2026-03-17) |
 | Phase 1 | Move ionic models into `cardiac_core/ionic/` (one copy) | Not started |
 | Phase 2 | Move mesh + stimulus into `cardiac_core/mesh/`, `cardiac_core/stimulus/` | Not started |
@@ -134,9 +146,10 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 
 ## Open Questions
 
-- Should V5.4 eventually convert to Formulation B? (Deferred, not blocking)
-- V5.4 LBM source term `/(chi·Cm)` should switch to `/Cm` when using ConductivityConfig (chi absorbed into D)
-- Stimulus overlap: V5.4 uses `=` (overwrite), Bidomain uses `+=` (accumulate) — which is correct?
+- ~~Should V5.4 eventually convert to Formulation B?~~ **RESOLVED (2026-05-30):** done in the V5.5 fork (V5.4 stays frozen). See "V5.5 Cm-correct fork" above.
+- ~~V5.4 LBM source term `/(chi·Cm)` should switch to `/Cm`~~ **MOOT for V5.5:** the dead internal LBM path was removed from V5.5. The canonical LBM (LBM V1) is already Formulation B. The `/(chi·Cm)` reconciliation only matters if cardiac_core ever revives a monodomain-LBM path under ConductivityConfig.
+- When consolidating, build `cardiac_core` against **V5.5** (Cm-correct), not V5.4.
+- Stimulus overlap: V5.4/V5.5 use `=` (overwrite), Bidomain uses `+=` (accumulate) — which is correct? (Still open.)
 
 ## Connections
 - **Engines**: All three + cardiac_core (target)

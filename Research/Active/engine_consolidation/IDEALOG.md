@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**V5.5 DETOUR (2026-05-29)** — before Phase 1, fork V5.4 → independent **Monodomain Engine_V5.5** that fixes the Formulation-A reaction bug (ionic step missing `/Cm`). V5.4 stays frozen as the validated baseline (77 tests, backup). V5.5 becomes the Cm-correct monodomain we develop on going forward. After V5.5 is validated, resume consolidation: extract shared code (ionic, mesh, stimulus, conductivity) into `cardiac_core/`, eliminate the 15+ duplicates and the `sys.modules` hack. Phase 0 (API wrapper, 34 tests) done.
+**V5.5 DETOUR COMPLETE (2026-05-30).** Forked V5.4 → `Monodomain/Engine_V5.5`, fixed the Formulation-A reaction Cm bug (reaction now `/state.Cm`), dropped the dead internal LBM path. Validated (Cm=1 golden max|dV|=0; exact 1/Cm scaling 3.55e-15; Bidomain V1 cross-check 0.0%/1.1%) — 4 commits on `main`. V5.5 is now the Cm-correct monodomain to consolidate; V5.4 stays the frozen baseline. **Next thread: the actual consolidation** — extract shared code (ionic, mesh, stimulus, conductivity) into `cardiac_core/`, eliminate the 15+ duplicates and the `sys.modules` hack, building against V5.5 (not V5.4).
 
 ## Next Step
-Blueprint + build **Engine_V5.5**: full copy of V5.4, then divide the reaction voltage update by tissue Cm in the two operator-split ionic steppers. Validate via (a) Cm=1 regression bit-identical to V5.4, (b) Cm≠1 time-dilation invariant. THEN return to consolidation Phase 1 (move ionic models into `cardiac_core/ionic/`).
+Resume consolidation **Phase 1**: move ionic models (TTP06, ORd + `base.py`/`lut.py`) into `cardiac_core/ionic/` as the single copy; rewire all engines (incl. V5.5) to import from there; delete engine-local copies; verify all tests pass. (Reconcile the live `cardiac_core/` drift first — it gained `geometry.py`/`io.py`/`analysis.py`/`run.py` since Phase 0, and `Engines/lbm_v1` symlink was deleted.)
 
 ## Thread
 ### 2026-03-16: The core tension is engine-centric vs. research-centric layout
@@ -79,8 +79,20 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 ## Failed Approaches
 - **Flat engine-centric structure** (2026-03-16) — failed because: engines serve multiple research questions, making it impossible to find all work related to a single question. No natural place for cross-engine experiments.
 - **First proposed restructure** (2026-03-16) — failed because: user wanted different groupings; initial Pipelines/Research separation didn't match actual workflow.
-- **Converting V5.4 to Formulation B** (2026-03-16) — rejected because: would risk 77 passing tests for zero practical benefit since Cm is always 1.0. Both formulations are mathematically correct.
+- **Converting V5.4 to Formulation B IN PLACE** (2026-03-16) — rejected: would risk V5.4's 77 passing tests. RESOLUTION (2026-05-30): instead FORKED V5.5 with the Formulation-B reaction; V5.4 stays frozen. (So Formulation B was the right target — just not destructively on V5.4.)
+- **Cm time-dilation invariant for validation** (2026-05-30) — FALSE. Assumed `V(x,t;Cm=k)==V(x,t/k;Cm=1)` (⇒ CV→CV/k, APD→k·APD). Tissue Cm divides only the voltage update; gate kinetics/concentration rates carry no Cm, so Cm changes AP morphology, not timescale (APD 218→292 ms at k=2, not 2×). Asserted by the plan AND both audit passes; caught empirically (0D APD ratio 1.34). Replaced with exact 1/Cm one-step scaling (machine precision) + Bidomain V1 absolute-CV cross-check. The fix was always correct; only this validation premise was wrong.
+- **`cv_shared.run_monodomain_fdm` as a Cm≠1 reference** (2026-05-30) — won't work: it has no `/Cm` and takes no Cm arg (hardcoded Cm=1). Used Bidomain V1 (`run_bidomain`) instead.
 - **Merging solver internals into cardiac_core** (2026-03-16) — rejected because: solvers are engine-specific (decoupled GS for bidomain, CN/BDF for monodomain, BGK/MRT for LBM). Only shared code (ionic, mesh, stimulus) should be unified.
 - **sys.modules hack as permanent solution** (2026-03-17) — recognized as temporary: `_prepare_engine()` flushes modules because both engines use `cardiac_sim` namespace. Acceptable for Phase 0 wrapper but must be eliminated when shared code moves into `cardiac_core/`.
 
 ## Session Log
+
+### 2026-05-30 Session
+**Worked on**: Reasoned through the chi/Cm audit (why chi is safe but Cm is the troublemaker — Cm couples to both operator-split halves, chi to only diffusion); decided the V5.5 detour; blueprinted it; ran two adversarial audit passes (11 + 4 findings, all applied); executed Phases 0–2.
+**Accomplished**:
+- **Engine_V5.5** forked from V5.4 (Phase 0): faithful clone, dead internal LBM path removed (zero importers; boundary work uses LBM/Engine_V1), Cm=1 regression golden captured (`_regression/`, max|dV|=0).
+- **Cm fix** (Phase 1): `SimulationState.Cm` plumbed from `spatial.Cm` (fail-loud, no getattr fallback); reaction divides by Cm in rush_larsen + forward_euler; FEM `_Cm`/`_chi` storage added (audit-CRITICAL — FEM only baked them into `self.M`). Cm=1 stays bit-identical; FDM/FEM/FVM all expose `.Cm`.
+- **Validation** (Phase 2): `test_phase10_cm_scaling.py` 3/3 — exact 1/Cm reaction scaling to 3.55e-15; Cm-direction; Bidomain V1 cross-check (CV 54.35 vs 54.35 cm/s @Cm=1, 28.09 vs 27.77 @Cm=2).
+- **Physics correction**: the Cm time-dilation invariant (assumed by the plan AND both audits) is FALSE — gate kinetics/concentrations carry no Cm, so Cm changes AP morphology, not timescale (APD 218→292 ms, not 2×). CV~1/Cm holds by eikonal scaling, not dilation. Caught empirically by the 0D test. The fix was correct throughout; only the validation strategy was wrong.
+- 4 commits on `main` (`ac30af55`→`5171bbce`) + plan archived; README/KNOWLEDGE updated.
+**Next**: Consolidation Phase 1 — move ionic models into `cardiac_core/ionic/` (build against V5.5). First reconcile the live `cardiac_core/` drift (added geometry/io/analysis/run; `Engines/lbm_v1` symlink deleted).
