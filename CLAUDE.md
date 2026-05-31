@@ -50,6 +50,8 @@ This is a **cardiac electrophysiology simulation** project with multiple engine 
 
 Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — do not modify.
 
+**Navigation indices:** `Engines/` and `Pipelines/` are symlink-only convenience indices (e.g. `Engines/bidomain_v1` → `Bidomain/Engine_V1`, `Pipelines/surrogate` → `Surrogate/`). Edit files in their real homes; the symlinks are for quick navigation only.
+
 ### Supporting Components
 
 | Component | Path | Purpose |
@@ -59,8 +61,10 @@ Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — 
 | **Surrogate** | `Surrogate/` | Neural operator pipeline (Ionic Transformer + Diffusion ResNet) replacing Bidomain V1 solver. Planning phase. |
 | **Research** | `Research/` | Literature reviews organized by question. `Research/INDEX.md` is the entry point. Papers in each question's `papers/` folder. |
 | **ResearchStatement** | `ResearchStatement/` | Grant materials. |
-| **Images** | `Images/` | Centralized copies of all project images, organized by source (see subdirectories below). Originals remain in place. |
-| **Videos** | `Videos/` | Centralized copies of all project videos, organized by source. |
+| **cardiac_core** | `cardiac_core/` | Unified cross-engine API (`monodomain()`/`bidomain()`/`lbm()`), mesh + analysis helpers, shared mesh file format. Engine-consolidation Phase 0 (34 tests). |
+| **cardiac_ml** | `cardiac_ml/` | Project-wide ML training harness (Hydra + MLflow + Optuna + SHAP). The config tree (`conf/`), entry points (`scripts/`), and run outputs (`mlruns/`, `outputs/`) live at **project root** by Hydra convention, not inside the package. |
+| **simulation** | `simulation/` | Storage-tank discrete-reduction harness for the boundary_conduction_speedup research (Zimmerman). `simulation/outputs/` is local-only (gitignored). |
+| **media** | `media/` | Single canonical home for ALL project images & videos: `media/{question}/{images\|videos}/{date}/{slug}_NN.ext`. Bulk regenerable `_sim_outputs/` is gitignored. Replaces the former Images/ + Videos/ centralized mirrors. Vendored repos (`Research/code_examples/`), Builder input assets, and `Monodomain/_archive/` figures are deliberately left in place. |
 
 ### Shared Module Pattern
 
@@ -239,8 +243,7 @@ Multi-phase engine rewrite (9 phases, 77 validation tests). Sessions frequently 
 | Algorithm details | `Research/openCARP_FDM_FVM/01-04_*.md` |
 | Reference implementations | `Research/code_examples/` |
 | V5.3 validated code | `Engine_V5.3/` |
-| All project images | `Images/` (subdirs by source engine/component) |
-| All project videos | `Videos/` (subdirs by source engine/component) |
+| All project images & videos | `media/{question}/{images\|videos}/{date}/` (consolidated; vendored/Builder/_archive assets left in place) |
 
 ### What NOT To Do
 
