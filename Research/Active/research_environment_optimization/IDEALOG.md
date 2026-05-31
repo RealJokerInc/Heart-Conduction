@@ -12,6 +12,19 @@ Design solutions for the three identified system pain points: (1) agentic task s
 
 ## Thread
 
+### 2026-05-30/31: Repository structure cleanup + venv history rewrite (executed)
+Big workspace-hygiene session. Audited all major folders (5 parallel agents), found the "mess" was ~80% undocumented-but-live dirs, ~15% half-done migrations (two of everything), ~5% real git debt. Planned in PLAN.md + two media plans, each adversarially audited (caught real bugs: name-only dedup → md5; advisory grep "gates" that didn't actually block → real `exit 1` guards; a backup step whose branch-switch silently reverted the working tree).
+
+**Root issue discovered mid-execution:** `.git` was 4.7 GB because a `venv/` of CUDA libs (7.6 GB across history) had been committed once (2026-04-09) then deleted-from-tree but stranded in history → blocked all pushes (GitHub 2 GiB pack cap). Split out PLAN_history_rewrite.md, audited it, executed: `git bundle --all` backup → `git filter-repo --path venv --invert-paths` → force-push. **`.git` 4.7 GB → 737 MB**, venv gone, full-history push works again. All commit SHAs changed; re-pinned MEMORY.md SHA references (drift-check `8f191f77`→`ebea5b5c`).
+
+**Media model (user decision):** abandoned the old "Images/ centralized copies" (stale + duplicated) for a single `media/{question}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext` tree. Moved 296 files repo-wide, dropped 50 byte-dups, renamed 187 to fixed format. Left vendored `code_examples/`, Builder inputs, and `Monodomain/_archive/` figures in place. 322 MB simulation bulk → `media/.../_sim_outputs/` (gitignored). Diagram *sources* (.tex/.py) → `Surrogate/docs/diagrams/`.
+
+**Also:** untracked 286 `.pyc`; deleted deprecated Q1–Q8, dead `harness_v1/`, dead nested `LBM/Engine_V1/ionic/ionic/`; migrated 4 LBM PDFs to `lbm_ep/papers/`; fixed broken `Engines/cardiac_core` symlink; documented `cardiac_core`/`cardiac_ml`/`simulation`/`media` + the Engines|Pipelines symlink convention in CLAUDE.md. Backups: `~/heart-conduction-PREWRITE-2026-05-30.bundle` (4.7 GB, verified) + `origin/main @ 9f7e6a7` (pre-cleanup state).
+
+**Incident/recovery (learned):** the original PLAN.md Phase 0 backup used `git switch -c backup → add -A → commit → switch main`, which REVERTS main's working tree (changes move to the backup branch). Recovered via `merge --ff-only` + `git reset`. Corrected method: snapshot without switching branches (`commit-tree`/stash). Logged in PLAN.md.
+
+**Open / next:** triage the 72 files in `media/_unmapped/` into questions; run engine test suites (Bidomain/LBM/V5.4) to confirm no script relied on a moved image path (none expected — moves were figures/outputs, golden `.npy` untouched); delete the prewrite bundle once confident; concurrent user commit `1f6c72e` (cardiac_core canonical ionic) coexists cleanly on main.
+
 ### 2026-05-11: Two-system architecture + Obsidian vault as sibling repo, coarse-first
 
 After community research on how Obsidian is used in AI-assisted academic workflows, three settled decisions:
