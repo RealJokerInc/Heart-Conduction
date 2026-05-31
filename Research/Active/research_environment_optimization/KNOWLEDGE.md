@@ -340,6 +340,49 @@ else echo "none"; fi
 | plans/ archive for completed PLANs | Preserves implementation history, findable by date |
 | Background agent writes in /reason | Maintains conversational flow, IDEALOG is append-only (no conflicts) |
 
+## Repository Structure & Health
+
+> Executed 2026-05-30/31. Plans (archived in `plans/`): `2026-05-30_history-rewrite.md`, `2026-05-30_media-consolidate.md`, `2026-05-30_media-rename.md`, plus the structure-cleanup PLAN.md.
+
+### Findings
+
+A 5-area folder audit found the workspace "mess" decomposed as ~80% undocumented-but-live dirs, ~15% half-finished migrations (two of everything), ~5% real git debt. The dominant problem was hidden: `.git` had ballooned to **4.7 GB** because a `venv/` of CUDA/PyTorch libs (**7.6 GB across history**) was committed once on 2026-04-09, then deleted from the tree but stranded in history — which also blocked all pushes (GitHub's 2 GiB pack cap).
+
+Subagent audits over-claimed in ways direct verification corrected: `Images/` was NOT 99% duplicate (41/140 files were authored diagram sources); `simulation/outputs/`, `MonthlyReport/`, and `WHITEBOARD.md` were already untracked, not git bloat. Lesson: verify agent claims against `git ls-files`/`md5sum` before acting.
+
+### Design
+
+**`media/` convention (single source of truth for images & videos):**
+```
+media/{question}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext
+```
+- One canonical home; replaces the old "Images/ centralized copies + originals stay in place" anti-pattern (which guaranteed duplication and went stale).
+- Session = dated subfolder (from git commit date / mtime). Filename = sanitized slug + 2-digit sequence.
+- Bulk regenerable `simulation` outputs → `media/{q}/_sim_outputs/` (gitignored).
+- Deliberately LEFT in place: vendored `Research/code_examples/`, `Builder/` input assets, `Monodomain/_archive/` legacy figures. Diagram *sources* (.tex/.py) live with their code at `Surrogate/docs/diagrams/`; only rendered images go to `media/`.
+- Unowned assets → `media/_unmapped/` triage bucket (never guessed into a wrong question).
+
+**Git hygiene established:** `venv/`, `media/**/_sim_outputs/`, `media/_manifest.csv` gitignored; 286 tracked `.pyc` untracked; deprecated `Q1–Q8/`, dead `harness_v1/`, nested `LBM/Engine_V1/ionic/ionic/`, root `Research/papers/` removed (PDFs migrated to per-question `papers/`).
+
+### Reference
+
+**History rewrite (one-time):** `git filter-repo --path venv --invert-paths` → `.git` 4.7 GB → **737 MB**; force-pushed `origin/main`. ALL commit SHAs changed → MEMORY.md pins re-pinned (drift-check `8f191f77`→`ebea5b5c`). Pre-rewrite backup: `~/heart-conduction-PREWRITE-2026-05-30.bundle` (verified). Full lesson in [[project-git-history-rewrite]] memory.
+
+**Outcome:** `.git` -84%; pushes work; LBM 32/32, Monodomain V5.4 14/14, Bidomain 88/88 tests green (fixed 2 pre-existing Bidomain failures found along the way: a stale `phi_e_spectral_eligible` assertion post-DCT+DST-solver upgrade, and a misnamed `test_6b` reporter pytest mis-collected).
+
+### Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Centralize media into `media/`, not figures-next-to-scripts | User preference; single browseable home grouped by question/date |
+| Strip venv via history rewrite before other cleanup | Root cause of 4.7 GB `.git` + push failures; everything else is downstream |
+| Backup via parentless `commit-tree`/bundle, NOT branch-switch | `git switch -c backup → add -A → commit → switch back` REVERTS the working tree (changes move to the backup branch). Learned the hard way; recovered via `merge --ff-only` + `git reset`. |
+| Leave vendored/Builder/_archive media in place | Moving images out of external repos / input-asset dirs / frozen archives corrupts them |
+| Bulk sim outputs moved-but-gitignored | Organize on disk without adding 322 MB to git |
+
+### Open loose ends (deferred, not mess)
+Local gitignored build cruft (`mlruns/`, `outputs/`, `__pycache__/`); undocumented `harness_mini_v1/` (stale MLflow PRD), `MonthlyReport/`, root `archive/`; stale `requirements*.txt` (conda env is canonical); 72 files in `media/_unmapped/` await triage; delete the prewrite bundle once confident.
+
 ## Maintenance
 
 When `/save-session` Job 2 edits this file, also verify:

@@ -33,6 +33,15 @@ Our multi-engine cardiac EP project has long-running research sessions that freq
 - [x] Add PreCompact hook + settings.json
 - [x] Update CLAUDE.md with three-document architecture, 16-skill table (247 lines)
 
+### Repository structure cleanup (2026-05-30/31)
+- [x] 5-area folder audit; planned + adversarially audited (PLAN.md + media + history-rewrite plans, archived in `plans/`)
+- [x] Strip committed `venv/` from history — `.git` 4.7 GB → 737 MB; full-history push restored
+- [x] Consolidate all images/videos into `media/{question}/{images|videos}/{date}/{slug}_NN.ext`
+- [x] Remove dead/deprecated: Q1–Q8, `harness_v1/`, nested LBM `ionic/ionic/`, root `papers/`, 286 tracked `.pyc`, Images/Videos/Media mirrors
+- [x] Document `cardiac_core`/`cardiac_ml`/`simulation`/`media` + Engines|Pipelines symlinks in CLAUDE.md; fix broken symlink
+- [x] All engine tests green (LBM 32, V5.4 14, Bidomain 88 — incl. 2 pre-existing Bidomain fixes)
+- [ ] Triage `media/_unmapped/` (72 files); tidy local build cruft + stale `requirements*.txt`/`harness_mini_v1` (deferred — see KNOWLEDGE § Repository Structure & Health)
+
 ## Sub-Questions
 
 | Sub-Question | Status | Key Finding |
