@@ -9,3 +9,5 @@ archive/*
 !archive/runs_legacy/
 !archive/runs_legacy/**
 venv/
+media/**/_sim_outputs/
+media/_manifest.csv
