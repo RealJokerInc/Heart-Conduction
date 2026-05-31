@@ -1,0 +1,43 @@
+{
+  "device": "cuda",
+  "compile": true,
+  "dt_ms": 0.01,
+  "n_steps": 30000,
+  "n_warmup": 200,
+  "scaffold": false,
+  "surrogate_inference_params": 7552,
+  "rows": [
+    {
+      "n_cells": 10,
+      "ttp06_cell_steps_per_sec": 65385.31171555911,
+      "ttp06_us_per_step_per_cell": 152.93954769998285,
+      "surrogate_cell_steps_per_sec": 47398.46215802418,
+      "surrogate_us_per_step_per_cell": 210.97730906670526,
+      "speedup_surr_over_ttp06": 0.7249099364122971
+    },
+    {
+      "n_cells": 100,
+      "ttp06_cell_steps_per_sec": 653092.604781055,
+      "ttp06_us_per_step_per_cell": 153.11764253328874,
+      "surrogate_cell_steps_per_sec": 472765.26684321446,
+      "surrogate_us_per_step_per_cell": 211.52146109998287,
+      "speedup_surr_over_ttp06": 0.7238870313065418
+    },
+    {
+      "n_cells": 1000,
+      "ttp06_cell_steps_per_sec": 6492454.19175265,
+      "ttp06_us_per_step_per_cell": 154.02496043334398,
+      "surrogate_cell_steps_per_sec": 2584707.6339923106,
+      "surrogate_us_per_step_per_cell": 386.89095309994934,
+      "speedup_surr_over_ttp06": 0.3981094910574277
+    },
+    {
+      "n_cells": 10000,
+      "ttp06_cell_steps_per_sec": 34128893.649780996,
+      "ttp06_us_per_step_per_cell": 293.00686106665427,
+      "surrogate_cell_steps_per_sec": 4244537.015559741,
+      "surrogate_us_per_step_per_cell": 2355.9695588333248,
+      "speedup_surr_over_ttp06": 0.12436784676103846
+    }
+  ]
+}

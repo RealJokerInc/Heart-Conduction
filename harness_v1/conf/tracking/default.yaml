@@ -1,0 +1,4 @@
+enabled: true
+experiment_name: default
+tracking_uri: ./mlruns
+checkpoint_every: 50

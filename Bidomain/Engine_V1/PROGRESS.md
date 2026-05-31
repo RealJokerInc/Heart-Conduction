@@ -213,7 +213,7 @@ Distinguish D2Q9 lattice artifact (~3% slowdown) from Kleber speedup (~13%).
 
 **Key references:**
 - `research/BOUNDARY_SPEEDUP_ANALYSIS.md` (Kleber derivation)
-- `Monodomain/LBM_V1/PROGRESS.md` (D2Q9 artifact documented in Phase 8)
+- `LBM/Engine_V1/PROGRESS.md` (D2Q9 artifact documented in Phase 8)
 
 **CRITICAL FIX REQUIRED:** chi*Cm convention — use chi=1.0, Cm=1.0 in bidomain
 (D_i, D_e already contain physical chi*Cm scaling). See CROSS_VALIDATION_PLAN.md §2.

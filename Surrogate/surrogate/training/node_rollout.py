@@ -20,6 +20,13 @@ from .loss_normalization import LossNormalizer
 # dependency on discrete training code. Same values: [Na_i, K_i, Ca_i, Ca_ss].
 INIT_CONC = torch.tensor([10.0, 138.0, 0.0001, 0.0002], dtype=torch.float64)
 
+# --- Physics-informed rest attractor (Session 27, PLAN Step 2.2) ---
+# ``f_θ(z=0, V=V_rest)`` should be zero. With the decoder bias frozen at
+# TTP06 rest (``IonicStage1.pin_rest_bias``), ``z=0`` decodes to rest, so the
+# regularizer anchors rest as a fixed point of the learned dynamics.
+V_REST_MV = -85.23
+LAMBDA_REST = 1e-2
+
 # AP landmark evaluation times (ms) — dense during upstroke where dynamics are stiff.
 # 10 points in first 5ms (upstroke), 10 in plateau/repol/diastole.
 NODE_T_EVAL_MS = torch.tensor(
@@ -127,12 +134,24 @@ def node_rollout(
             if k != 'loss':
                 component_sums[k] = component_sums.get(k, 0.0) + v.detach()
 
-    mean_loss = torch.stack(losses_per_eval).mean()
+    base_loss = torch.stack(losses_per_eval).mean()
+
+    # Rest-attractor regularizer (Session 27 physics-informed anchor).
+    # z_rest = [zeros(ionic_dim), INIT_CONC]; V=V_REST_MV. A trained model
+    # produces ``rate ≈ 0`` here; this term penalises deviation.
+    z_rest = torch.zeros(B, node.stage1.carried_dim, dtype=torch.float64, device=device)
+    z_rest[:, node.stage1.ionic_dim:] = INIT_CONC.to(device)
+    V_rest_batch = torch.full((B,), V_REST_MV, dtype=torch.float64, device=device)
+    rate_at_rest = node.stage1.dzdt(z_rest, V_rest_batch)
+    L_rest = rate_at_rest.pow(2).mean()
+
+    mean_loss = base_loss + LAMBDA_REST * L_rest
 
     result = {'loss': mean_loss}
     N_eval = len(t_eval)
     for k, v in component_sums.items():
         result[k] = v / N_eval
+    result['L_rest'] = L_rest.detach()
     return result
 
 

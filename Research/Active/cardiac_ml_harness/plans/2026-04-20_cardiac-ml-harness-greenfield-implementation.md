@@ -72,7 +72,7 @@ Build the project-wide ML training harness (`cardiac_ml/` package at repo root +
 **UNCHANGED (frozen inputs)**
 - `Surrogate/surrogate/model/*.py` — IonicNODE, IonicStage1, KAN, Nernst.
 - `Surrogate/surrogate/training/node_rollout.py`, `train_node.py`, `datasets.py`, `data_cache.py`, `rollout.py`, `phases.py`, `metrics.py`, `loss_normalization.py`, `monitor.py`, `checkpoint.py`, `training_log.py` — reusable primitives, referenced by `node_step.py` via import.
-- `Monodomain/*`, `Bidomain/*`, `LBM_V1/*` — no engine changes.
+- `Monodomain/*`, `Bidomain/*`, `LBM/*` — no engine changes.
 
 ## Known Failures (from IDEALOG — do NOT retry)
 - **Ad-hoc per-strategy scripts** (`Surrogate/runs/a1_*`, `a4_tbptt/`, `dt_v2/`, ...) — the entire reason this harness exists. Do not create new per-strategy folders under `Surrogate/runs/`. New runs land in `mlruns/` via MLflow.

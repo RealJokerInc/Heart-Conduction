@@ -12,6 +12,33 @@ Design solutions for the three identified system pain points: (1) agentic task s
 
 ## Thread
 
+### 2026-05-11: Two-system architecture + Obsidian vault as sibling repo, coarse-first
+
+After community research on how Obsidian is used in AI-assisted academic workflows, three settled decisions:
+
+**1. Two parallel systems, not one.** A user notebook (for human reading/navigating/thinking) and an AI memory KB (for Claude recall + behavioral learnings) are separate concerns with separate substrates. The current KNOWLEDGE.md / IDEALOG.md serve as pseudo AI-memory, but the actual fixes for pain points #1, #2, #4 belong in a structured AI-side memory system. The user notebook (Obsidian) is quality-of-life; the AI memory KB is where workflow leverage lives. Both designed separately, neither overloaded.
+
+**2. Obsidian vault is a sibling repo (Option C), mobile-carryable.** Lives at e.g. `~/Documents/Heart-Conduction-Vault/`, separate git history, independent backup, mobile sync via Obsidian Sync or self-hosted alternative. Keeps the cardiac simulation repo lean — no `.obsidian/workspace.json` churn polluting cardiac git history. Vault travels with the user across machines without dragging the engine code along.
+
+**3. One-way translation, start coarse, emergent atomization.** Research/ remains source of truth. Vault is a rendered downstream view. Translation skills run one-way only (Research → Vault); vault never writes back to Research/. Three-tier vault structure:
+
+- `Vault/Maps/{question}.md` — generated, mechanical translation of README + KNOWLEDGE.md (add frontmatter, convert section links to wikilinks, no rewriting)
+- `Vault/Journal/{date}_{question}.md` — generated, one dated note per IDEALOG Thread entry, verbatim prose
+- `Vault/Concepts/{slug}.md` — hand-authored only, NOT generated, NEVER auto-written
+- `Vault/Index.md` — generated root MOC linking all Maps
+
+Translation skill (`/obsidian-sync`) writes Maps + Journal + Index mechanically (lossless, no LLM rewriting → no AI ghosts in generated content). For Concepts/, the skill emits a *suggestions report* listing concepts that appear across ≥2 questions ("Kleber effect mentioned in 4 KNOWLEDGE files — promote to atomic concept?") but writes nothing. User authors Concepts/ by hand as concepts are re-encountered. This is the emergent-atomization pattern documented by Andy Matuschak (evergreen notes graduate, not start), Eric Ma (atomization emerges from rewriting), and Emile van Krieken (tags + typed links, minimal atomization).
+
+**Promotion criterion (empirically derived from cross-question grep):** a concept is atomic-worthy iff it appears in ≥2 active questions. Examples: Kleber speedup (4 questions), chi=1.0/Cm=1.0 convention (all engines), TTP06 ionic model (4+ questions), Rush-Larsen integration (all engines). Counter-examples that stay in their question: decoupled GS splitting, DST-I via odd-extension FFT, three-tier elliptic solver (all Bidomain-specific).
+
+**Rejected**: (a) mass atomization on day one — community consensus is this is the #1 documented failure mode; (b) two-way translation — invites drift, merge headaches, AI-ghost risk for IDEALOG voice; (c) AI plugins inside Obsidian (Copilot for Obsidian, Smart Connections write capabilities) — redundant with Claude Code and creates dual authoring surfaces; (d) Zotero integration for v1 — papers/ folders too sparse to justify the plumbing yet; (e) vault inside cardiac repo — `.obsidian/workspace.json` git noise + couples two unrelated lifecycles.
+
+**Anti-patterns to watch for**: AI ghosts in Concepts/ (Caspar Addyman field guide), "memory" marketing on plugins that are just file viewers (limitededitionjonathan's critique — markdown is text not a database), wikilink dialect drift in agent prompts (Eric Ma rule: markdown links by default, wikilinks only in human-curated MOCs), plugin sprawl (community-documented driver of Obsidian migration regret).
+
+**References worth following up**: Eric Ma's PKM-with-AI blog (ericmjl.github.io, closest stack match), Karpathy LLM-Wiki gist + AgriciDaniel/claude-obsidian (slash-command pattern mirrors our existing skills), Andy Matuschak evergreen notes (notes.andymatuschak.org), Emile van Krieken academic Obsidian (counter-voice: don't let AI write notes). Smart Connections + Dataview as the two plugins worth piloting; everything else deferred.
+
+**Next**: design `/obsidian-init`, `/obsidian-sync`, `/obsidian-status` skill API + worked example of what `Vault/Maps/{question}.md` actually contains. Then `/blueprint` for execution.
+
 ### 2026-03-30: Three systemic pain points identified from real-world usage
 
 After several weeks of daily use, three major issues have surfaced that the current architecture does not address:

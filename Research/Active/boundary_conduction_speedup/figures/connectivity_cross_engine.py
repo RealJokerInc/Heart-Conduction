@@ -189,79 +189,106 @@ print("[run] LBM row...", flush=True)
 lbm_results, lNx, lNy = run_lbm_row()
 
 print("\n[plot] building 3x3 figure...", flush=True)
-fig, axes = plt.subplots(3, 3, figsize=(15, 12), constrained_layout=True)
+fig, axes = plt.subplots(
+    3, 3, figsize=(16, 13),
+    constrained_layout=True,
+)
+# Reserve a left strip (4 % of fig width) for the row labels so the
+# constrained-layout engine doesn't push panels into the same column.
+fig.get_layout_engine().set(
+    w_pad=0.04, h_pad=0.04, hspace=0.03, wspace=0.03,
+    rect=(0.035, 0.0, 0.965, 1.0),
+)
 
 # Column titles
 col_titles = ["DEFICIT (Moore-8 + face_mirror)",
               "BASELINE (cardinal-4)",
               "FIX (iso + bounce-back)"]
 for c, title in enumerate(col_titles):
-    axes[0, c].set_title(title, fontsize=11, fontweight='bold')
+    axes[0, c].set_title(title, fontsize=11, fontweight='bold', pad=8)
 
-# Row 1: storage tank — isochrones
+# Row 1: storage tank — isochrones (shared colorbar)
+tank_vmin = min(np.nanmin(np.where(iso < 0, np.nan, iso.astype(float)))
+                for _, iso in tank_results)
+tank_vmax = max(np.nanmax(np.where(iso < 0, np.nan, iso.astype(float)))
+                for _, iso in tank_results)
+levels = np.linspace(tank_vmin, tank_vmax, 12)
+cs_last = None
 for c, (label, iso) in enumerate(tank_results):
     ax = axes[0, c]
     iso_plot = iso.astype(float)
     iso_plot[iso_plot < 0] = np.nan
-    # Show as filled contours of iso
-    levels = np.linspace(np.nanmin(iso_plot), np.nanmax(iso_plot), 12)
-    cs = ax.contourf(iso_plot, levels=levels, cmap='viridis')
-    cs2 = ax.contour(iso_plot, levels=levels[::2], colors='k', linewidths=0.4, alpha=0.5)
+    cs = ax.contourf(iso_plot, levels=levels, cmap='viridis', extend='neither')
+    ax.contour(iso_plot, levels=levels[::2], colors='k', linewidths=0.4, alpha=0.5)
+    cs_last = cs
     ax.set_xlabel("x (column)")
     if c == 0:
         ax.set_ylabel("y (row)")
     ax.set_aspect('equal')
-    plt.colorbar(cs, ax=ax, shrink=0.7, label="LAT step")
     ax.text(0.02, 0.98, label, transform=ax.transAxes,
             va='top', ha='left', fontsize=9,
-            bbox=dict(boxstyle='round', facecolor='white', alpha=0.85))
+            bbox=dict(boxstyle='round', facecolor='white',
+                      edgecolor='0.5', alpha=0.9))
+fig.colorbar(cs_last, ax=axes[0, :].tolist(), shrink=0.75,
+             label="LAT step", pad=0.015)
 
-# Row 2: monodomain — V field at snapshot_t
+# Row 2: monodomain — V field at snapshot_t (shared colorbar)
 mono_vmin = min(snap.min() for _, snap in mono_results)
 mono_vmax = max(snap.max() for _, snap in mono_results)
+im_mono = None
 for c, (label, snap) in enumerate(mono_results):
     ax = axes[1, c]
     im = ax.imshow(snap.T, origin='lower', extent=[0, 1.0, 0, 0.5],
                    cmap='inferno', vmin=mono_vmin, vmax=mono_vmax,
                    aspect='auto')
+    im_mono = im
     ax.set_xlabel("x (cm)")
     if c == 0:
         ax.set_ylabel("y (cm)")
-    plt.colorbar(im, ax=ax, shrink=0.7, label="V (mV)")
-    ax.text(0.02, 0.98, label, transform=ax.transAxes,
-            va='top', ha='left', fontsize=9, color='white',
-            bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
+    # Place label in upper-right (resting region, dark) so it doesn't
+    # overlap the depolarised wavefront on the left.
+    ax.text(0.98, 0.98, label, transform=ax.transAxes,
+            va='top', ha='right', fontsize=9, color='white',
+            bbox=dict(boxstyle='round', facecolor='black',
+                      edgecolor='none', alpha=0.7))
+fig.colorbar(im_mono, ax=axes[1, :].tolist(), shrink=0.75,
+             label="V (mV)", pad=0.015)
 
-# Row 3: LBM — V field at end
+# Row 3: LBM — V field at end (shared colorbar)
 lbm_vmin = min(V.min() for _, V in lbm_results)
 lbm_vmax = max(V.max() for _, V in lbm_results)
+im_lbm = None
 for c, (label, V) in enumerate(lbm_results):
     ax = axes[2, c]
     im = ax.imshow(V.T, origin='lower', extent=[0, 1.0, 0, 0.5],
                    cmap='inferno', vmin=lbm_vmin, vmax=lbm_vmax,
                    aspect='auto')
+    im_lbm = im
     ax.set_xlabel("x (cm)")
     if c == 0:
         ax.set_ylabel("y (cm)")
-    plt.colorbar(im, ax=ax, shrink=0.7, label="V (mV)")
-    ax.text(0.02, 0.98, label, transform=ax.transAxes,
-            va='top', ha='left', fontsize=9, color='white',
-            bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
+    ax.text(0.98, 0.98, label, transform=ax.transAxes,
+            va='top', ha='right', fontsize=9, color='white',
+            bbox=dict(boxstyle='round', facecolor='black',
+                      edgecolor='none', alpha=0.7))
+fig.colorbar(im_lbm, ax=axes[2, :].tolist(), shrink=0.75,
+             label="V (mV)", pad=0.015)
 
-# Row labels
-fig.text(0.005, 0.83, "Storage Tank",  rotation=90, va='center', ha='center',
-         fontsize=12, fontweight='bold')
-fig.text(0.005, 0.50, "Monodomain V5.4", rotation=90, va='center', ha='center',
-         fontsize=12, fontweight='bold')
-fig.text(0.005, 0.17, "LBM V1", rotation=90, va='center', ha='center',
-         fontsize=12, fontweight='bold')
+# Row labels — placed in the left strip reserved by `rect` above, so they
+# don't collide with the y-axis tick labels of the leftmost column.
+for y, name in [(0.83, "Storage tank"),
+                (0.50, "Monodomain V5.4"),
+                (0.17, "LBM V1")]:
+    fig.text(0.018, y, name, rotation=90, va='center', ha='center',
+             fontsize=12, fontweight='bold')
 
 fig.suptitle(
     "Connectivity-mediated boundary deficit across model classes\n"
-    "Same fewer-neighbours mechanism in all three; eliminated by cardinal-only "
-    "OR diagonal-aware bounce-back (LBM-style).\n"
-    f"Storage tank: line stim, 4000 steps. Monodomain: TTP06 EPI, "
-    f"snapshot at t={snapshot_t} ms. LBM: TTP06 EPI, snapshot at t=12 ms.",
+    "Same fewer-neighbours mechanism in all three; eliminated by "
+    "cardinal-only or diagonal-aware bounce-back (LBM-style).\n"
+    f"Storage tank: line stim, 4000 steps   |   "
+    f"Monodomain V5.4: TTP06 EPI, snapshot t={snapshot_t} ms   |   "
+    f"LBM V1: TTP06 EPI, snapshot t=12 ms",
     fontsize=12,
 )
 

@@ -1,0 +1,11 @@
+device=cuda  compile=True  dt=0.01ms  steps=30,000  warmup=200
+surrogate params (inference): 7,552
+
+ n_cells      TTP06 cs/s   TTP06 μs/step      Surr  cs/s   Surr  μs/step   speedup
+----------------------------------------------------------------------------------
+      10         65,385         152.94         47,398         210.98     0.72x
+     100        653,093         153.12        472,765         211.52     0.72x
+   1,000      6,492,454         154.02      2,584,708         386.89     0.40x
+  10,000     34,128,894         293.01      4,244,537        2355.97     0.12x
+
+wrote benchmarks/results/ttp06_vs_surrogate_gpu.json

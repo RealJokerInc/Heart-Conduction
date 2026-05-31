@@ -13,6 +13,21 @@
 Now start consolidation **Phase 1**: move ionic models (TTP06, ORd + `base.py`/`lut.py`) into `cardiac_core/ionic/` as the single copy; rewire all engines (incl. V5.5) to import from there; delete engine-local copies; verify all tests pass.
 
 ## Thread
+
+### 2026-05-30: Phase 1 scoped — ionic is ~unified across engines; full direct migration decided
+Verified the plan's "ionic identical across engines" assumption before executing. Findings:
+- **Classical engines (V5.5 ↔ Bidomain V1): shared model files byte-identical** — `base.py`, `lut.py`, `ttp06`, `ord`, `mhas13`, `phas13`. V5.5 only adds `paci` + `__init__` exports.
+- **LBM V1 ionic is NOT a fork** (initial diff misled): same `IonicModel` ABC (base.py byte-identical), same `ttp06/` structure (calcium/celltypes/currents/gating/model/parameters), `ord/model.py` byte-identical. Differs only by: (1) one keyword rename `cell_type_is_endo` (V5.5) vs `celltype_is_endo` (LBM) in a lut call; (2) top-level `ionic/` namespace vs `cardiac_sim.ionic`; (3) model subset (ttp06+ord only); (4) a dead stray `LBM/Engine_V1/ionic/ionic/` (imported by nothing).
+- **Rewire surface:** ~23 consumer sites (14 V5.5, 9 Bidomain V1) + LBM's, all relative imports of varying depth (`from ...ionic`, `from .....ionic.base`).
+
+DECISIONS (2026-05-30):
+- **Scope: all three engines** (divergence is trivial, not a fork). cardiac_core/ionic/ = canonical SUPERSET (include paci/mhas13/phas13; reconcile the one keyword rename to a single canonical name).
+- **Strategy: Option B — direct rewire, EXACT migration. NOT shims, NOT a sys.path trick.** User directive: "exact migration of all engines, not as path." Engine-local ionic copies DELETED; all consumers import `cardiac_core.ionic.*` absolutely; cardiac_core made a properly importable package (editable install / real package), not per-engine `sys.path.insert`.
+- **Sequencing: 1a** build canonical `cardiac_core/ionic/` superset → **1b** rewire+delete classical engines (V5.5 + Bidomain V1), run their suites → **1c** rewire+delete LBM V1 (handle top-level namespace, keyword, drop stray ionic/ionic), run its suite. Verify cardiac_core 77 + every engine suite green.
+- Rejected: re-export shim (A) and A-then-B staging — user wants the clean end-state directly.
+
+Baseline before Phase 1: cardiac_core 77/77 pass; classical/LBM suites green (this session).
+
 ### 2026-03-16: The core tension is engine-centric vs. research-centric layout
 Engines serve multiple research questions, but the directory structure forces navigation by engine. A single experiment may touch Bidomain V1 and Monodomain V5.4, yet there is no natural place for it. Proposed restructuring: `Engines/` top-level with `cardiac_core/` as the shared package, `Pipelines/` for optimizer/surrogate/builder, `Research/` for writing only.
 

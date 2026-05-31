@@ -200,7 +200,7 @@ class LBMAdapter(EngineAdapter):
   - (a) Accept LBM CV as "LBM-correct" and tune to LBM-adjusted targets
   - (b) Apply a correction factor derived from pure-diffusion benchmarks
 - **D2Q5 vs D2Q9**: D2Q5 is isotropic only (no D_xy cross-term). D2Q9 needed for full anisotropic tensor. For per-axis anisotropy (D_L ≠ D_T, D_xy = 0), D2Q5 with MRT suffices.
-- **tau_from_D()**: `tau = 0.5 + D / (cs² * dt)` where cs² = 1/3 for D2Q5. This conversion is in `Monodomain/LBM_V1/src/diffusion.py`.
+- **tau_from_D()**: `tau = 0.5 + D / (cs² * dt)` where cs² = 1/3 for D2Q5. This conversion is in `LBM/Engine_V1/src/diffusion.py`.
 - **Stability**: tau must be > 0.5. Very large tau (>2) causes numerical diffusion. Optimal range: 0.55-1.5.
 
 ---

@@ -22,6 +22,7 @@ class IonicNODE(nn.Module):
         self.stage1 = stage1
         self._V_traj: Optional[Tensor] = None   # (B, T) or (T,)
         self._t_grid: Optional[Tensor] = None   # (T,) cumulative times
+        self.nfe: int = 0  # number of function evaluations (reset per integrate())
 
     def set_v_trajectory(self, V_traj: Tensor, t_grid: Tensor) -> None:
         """Store V(t) for interpolation during integrate(). Call before integrate()."""
@@ -54,6 +55,7 @@ class IonicNODE(nn.Module):
 
     def forward(self, t: Tensor, z: Tensor) -> Tensor:
         """torchdiffeq interface: (scalar t, state z) -> dz/dt."""
+        self.nfe += 1
         V = self._interpolate_V(t)
         return self.stage1.dzdt(z, V)
 
@@ -73,6 +75,7 @@ class IonicNODE(nn.Module):
                 odeint (backprop through solver — more memory, stable early training).
         Returns: (N, B, carried_dim) or (N, carried_dim) if unbatched.
         """
+        self.nfe = 0  # reset for this integration
         if adjoint:
             return odeint_adjoint(
                 self, z0, t_eval,

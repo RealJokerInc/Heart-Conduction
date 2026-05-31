@@ -319,14 +319,32 @@ def test_8v6_end_to_end_scar_simulation():
 
 
 def test_8v7_backward_compatibility():
-    """8-V7: Scalar D path still works correctly (no regression)."""
+    """
+    8-V7: Scalar D path still works correctly (no regression).
+
+    NOTE (2026-04-29): The manufactured solution V = cos(pi*x)*cos(pi*y)
+    has zero normal derivative at the boundary NODES y=0, y=1 (and x=0, x=1),
+    not at face-centered walls. Therefore this O(h^2) convergence check is
+    valid only for the node-centered Neumann discretization
+    ('node_mirror_existing'). The new default 'face_mirror' places the wall
+    at y=-h/2 and would converge to a slightly different continuum problem
+    (error ~pi^2/2 * cos(pi*x) at the boundary, O(1) under this manufactured
+    solution). face_mirror is still a correct discrete Neumann operator —
+    just for a different boundary placement.
+
+    Test pinned to legacy mode so it remains a meaningful regression check
+    on the scalar-D / per-node-D path.
+    """
     # Test FDM with scalar D — basic convergence check
     D = 0.001
 
     errors = []
     for n in [11, 21, 41]:
         grid = StructuredGrid.create_rectangle(1.0, 1.0, n, n)
-        fdm = FDMDiscretization(grid, D=D, chi=1.0, Cm=1.0)
+        fdm = FDMDiscretization(
+            grid, D=D, chi=1.0, Cm=1.0,
+            boundary_mode='node_mirror_existing',
+        )
 
         # Apply to cos(pi*x)*cos(pi*y) — should give -2*pi^2*D*cos(pi*x)*cos(pi*y)
         x, y = grid.coordinates
@@ -352,7 +370,9 @@ def test_8v7_backward_compatibility():
     max_row_sum = row_sums.abs().max().item()
     assert max_row_sum < 1e-14, f"FVM row sums nonzero: {max_row_sum}"
 
-    # Test FDM row sums = 0
+    # Test FDM row sums = 0 — row sums vanish under any of the Neumann modes;
+    # use the new default (face_mirror) here to confirm the property holds
+    # without explicit mode selection.
     fdm = FDMDiscretization(grid, D=D, chi=1.0, Cm=1.0)
     L_dense = fdm.L.to_dense()
     fdm_row_sums = L_dense.sum(dim=1)
@@ -361,7 +381,7 @@ def test_8v7_backward_compatibility():
 
     print(f"  FDM convergence: errors = {[f'{e:.2e}' for e in errors]}")
     print(f"  FDM convergence ratios: {ratio1:.2f}, {ratio2:.2f}")
-    print(f"  FDM row sums max: {max_fdm_row:.2e}")
+    print(f"  FDM row sums max (face_mirror default): {max_fdm_row:.2e}")
     print(f"  FVM row sums max: {max_row_sum:.2e}")
     print("  PASS")
 

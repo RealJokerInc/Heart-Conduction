@@ -340,4 +340,4 @@ This becomes the production engine for ML-DO if Phase 3 shows ranking sensitivit
 | Experimental Validation | `Research/Infarct_Boundary_Speedup/Experimental_Validation.md` | Literature gap analysis |
 | Cross-Validation Plan | `Bidomain/Engine_V1/CROSS_VALIDATION_PLAN.md` | Phase 6 experiment design |
 | Bidomain Engine Progress | `Bidomain/Engine_V1/PROGRESS.md` | Phase 6 results (16/16 pass) |
-| LBM V1 Progress | `Monodomain/LBM_V1/PROGRESS.md` | D2Q9 artifact documented |
+| LBM V1 Progress | `LBM/Engine_V1/PROGRESS.md` | D2Q9 artifact documented |

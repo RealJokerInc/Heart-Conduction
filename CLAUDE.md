@@ -31,7 +31,7 @@ python test_phase8.py    # Per-node conductivity (7 tests)
 
 **LBM V1** (pytest or standalone):
 ```bash
-cd Monodomain/LBM_V1
+cd LBM/Engine_V1
 python -m pytest tests/ -v
 ```
 
@@ -46,7 +46,7 @@ This is a **cardiac electrophysiology simulation** project with multiple engine 
 | **Bidomain V1** | `Bidomain/Engine_V1/` | 6 phases DONE (38+ tests) | Full bidomain equations, decoupled GS splitting, three-tier spectral/PCG/GMG elliptic solver. Ground truth for Surrogate training. |
 | **Monodomain V5.3** | `Monodomain/Engine_V5.3/` | VALIDATED BASELINE | **Read-only.** Reference for V5.4 migration. Never modify. |
 | **Monodomain V5.4** | `Monodomain/Engine_V5.4/` | 9 phases DONE (77 tests) | Full rewrite: pluggable FEM/FDM/FVM, 6 diffusion solvers, Strang/Godunov splitting, LBM (D2Q5/D3Q7). |
-| **LBM V1** | `Monodomain/LBM_V1/` | 8 phases DONE (34 tests) | Lattice Boltzmann monodomain (D2Q5/D2Q9, BGK/MRT). Boundary speedup research. |
+| **LBM V1** | `LBM/Engine_V1/` | 8 phases DONE (34 tests) | Lattice Boltzmann monodomain (D2Q5/D2Q9, BGK/MRT). Boundary speedup research. |
 
 Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — do not modify.
 
@@ -99,7 +99,7 @@ MonodomainSimulation (orchestrator)
   → LBM path: LBMSimulation → Collision (BGK/MRT) + Streaming + BoundaryConditions
 ```
 
-### LBM V1 Architecture (`Monodomain/LBM_V1/`)
+### LBM V1 Architecture (`LBM/Engine_V1/`)
 
 Self-contained Lattice Boltzmann engine. Two-layer design: OOP classes for configuration, pure functions for `@torch.compile` kernel fusion.
 

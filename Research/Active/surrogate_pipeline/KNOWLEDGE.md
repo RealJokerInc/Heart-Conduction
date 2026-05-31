@@ -21,15 +21,17 @@ The diffusion step (94% of wall time) only needs I_ion. Stage 1 outputs (updated
 ```
 carried_state(t), Vm
   |-> Stage 1 (off critical path): dzdt(z, V) -> dz/dt rate -> euler_step -> carried_state(t+1)
-  |     Ionic: VoltageAttention(ionic_state, Vm) -> ionic_delta -> MLP correction -> ionic_rate
-  |     Conc:  KAN(ionic_state, Vm) -> conc_rate
-  |     Compression: _compress(carried_state) -> conductance_latent(t+1)
+  |     Ionic: IonicRateMLP(ionic_state(16), Vm) -> ionic_rate (dense MLP, internal residual)
+  |     Conc:  KANLayer(ionic_state(16), Vm) -> conc_rate (17 -> 4, grid=5, order=3)
+  |     Compression: _compress(carried_state(20)) -> conductance_latent(t+1) (8 dims)
   |     Nernst: concentrations(t+1) -> reversal_potentials(t+1)
   |     [runs during diffusion step]
   |
-  +-> Stage 2 (ON critical path):  current readout -> I_ion(t)
+  +-> Stage 2 (ON critical path):  ConductanceAttention + MLP -> I_ion(t)
                                     [must complete before diffusion step begins]
 ```
+
+> **Current code** reflects Session 25 (2026-04-07) refactor: VoltageAttention replaced by `IonicRateMLP` (832 params, dense MLP). See Section 3 for detail. **Session 27 pending pivot** (2026-04-19): unify `IonicRateMLP` + `conc_kan` into a single `StateRateMLP` + expand latent 16→20; see Section 3b.
 
 Stage 1 design prioritizes accuracy (can be as expressive as needed). Stage 2 design prioritizes speed.
 
@@ -88,28 +90,24 @@ carried_state = [ionic_state(16), Na_i, K_i, Ca_i, Ca_ss] = (20,)    [full-size:
 - Ca_SR dropped -- purely internal SR variable, not used in any reversal potential or readout feature. SR calcium load tracked implicitly by ionic_state.
 - **Working dim = 16 (TTP06 first run)** [full: 32]: TTP06 has 18 states, ORd has 41. 16 is sufficient for TTP06 first run. Scale to 32 for ORd. Increase to 48+ if needed -- cost stays in background.
 
-### Full Pipeline (current code, post-2026-04-07 refinements)
+### Full Pipeline (current code, Session 25 refactor; Session 27 pivot pending — see 3b)
 
 ```
 carried_state(t) = [ionic_state(16), concentrations(4)]     (20,)  [full-size: 32+4=36]
 
   IONIC PATH (16 dims):
-  -> n x 1 cross-attention to [Vm], attn_dim=4, IONIC DIMS ONLY
-      VoltageAttention returns RATE directly: gate*(target-z)  (not z + gate*(target-z))
-      ionic_delta = attention_rate                            (16,)  [full: 32]
-
-  -> learned-mix MLP + GELU (16->16->16), 1 hidden layer     cross-dim Markov correction
-      INPUT: ionic_delta (the attention rate, NOT z_mid)
-      No rms_norm — delta magnitude is informative (small at rest, large at upstroke)
-      correction = W2 @ GELU(W1 @ ionic_delta + b1) + b2
-      alpha = sigmoid(w)                                     per-dim mixing weight (16 params)  [full: 32]
-      ionic_rate = ionic_delta + alpha * correction          residual_bypass (additive, not convex)
+  -> IonicRateMLP: dense MLP (17 -> 16 -> 16 -> 16) with internal residual
+      INPUT: [ionic_state(16), Vm(1)]
+      fc1: 17 -> 16  + GELU                                  (288 params)
+      fc2: 16 -> 16  + GELU, residual: h = h + GELU(fc2(h))  (272 params)
+      fc3: 16 -> 16  zero-init last layer                    (272 params)
+      OUTPUT: ionic_rate (16,)                               Total: 832 params
 
   CONCENTRATION PATH (4 dims):
-  -> B-spline KAN: KANLayer(17->4, grid=5, order=3)         dedicated concentration rate network
-      Input: ionic_latent(16) + Vm(1)                        NO conc self-input (no feedback loop)
-      Each output dim = sum of independent B-spline functions of each input dim
-      No cross-communication between concentration dims (physics-aligned)
+  -> B-spline KAN: KANLayer(17 -> 4, grid=5, order=3)        dedicated conc rate network
+      Input: [ionic_latent(16), Vm(1)]                       NO conc self-input (historical; see 3b)
+      Each output dim = sum of independent B-splines over each input dim
+      No cross-communication between conc dims (physics-aligned: additively universal)
       612 params (544 spline weights + 68 base weights)
       conc_rate = conc_kan(cat[ionic_state, Vm])             (4,)
 
@@ -139,48 +137,27 @@ Scaffold decoders (training only, all annealed to zero in Phase D):
 
 ### Design Rationale
 
-**n x 1 cross-attention (ionic dims only):**
-- Each of 16 ionic_state dims [full: 32] independently queries Vm. Produces a per-dim gate (how much to update) and per-dim target (where to move toward).
-- **Returns rate directly**: `gate * (target(V) - z)`, NOT `z + gate * (target(V) - z)`. This eliminates the add-then-subtract roundtrip that existed when dzdt() had to recover the rate from attention output.
-- **Ionic-only (16 dims)**: Concentrations no longer go through attention. Clean separation — concentrations have their own dedicated KAN path.
-- dt removed from attention input for NODE pivot (Section 5b). The vector field f(z,V) is dt-independent.
-- Mathematically: `dz/dt = gate * (target(V) - z)` is a linear attractor, precisely the Rush-Larsen form. See Section 5b "Inherent Contraction".
-- **attn_dim = 4** (down from 8 in v2): Gate is one scalar from 1 input (Vm). Smooth sigmoid-like function -- 4 basis functions suffice.
-- **1 attention layer**: One voltage response is physically correct. Stacking applies contraction twice to same Vm -- numerically redundant.
-- **W_out rank-4 bottleneck concern (open)**: W_out is (attn_dim, ionic_dim) = (4, 16). Each target dim is a linear combination of only 4 value features. May limit expressiveness for 16 independent targets. Under investigation.
+**IonicRateMLP (ionic rate predictor, 17 → 16 → 16 → 16, dense MLP with internal residual):**
+- Replaced VoltageAttention + ionic_mixing_mlp + residual_bypass in Session 25 (2026-04-07) after mathematical + empirical proof that attention on scalar per-dim inputs collapsed to a switched linear ODE (32 effective params out of 136). See IDEALOG 2026-04-07 "VoltageAttention Redundancy — Mathematical Proof".
+- **Input**: `[ionic_state(16), Vm(1)]` = 17 dims. Vm is the only external driver; no dt (NODE pivot removed dt — vector field is dt-independent).
+- **Forward**:
+  ```
+  h = GELU(fc1(cat[z_ionic, Vm]))            # 17 → 16
+  h = h + GELU(fc2(h))                        # 16 → 16 residual block (one hidden)
+  ionic_rate = fc3(h)                         # 16 → 16, zero-init last layer
+  ```
+- **Zero-init last layer**: `fc3.weight = zeros`, `fc3.bias = zeros`. Rate field = 0 at init → ODE stable during first integration step. Model learns dynamics gradually. Critical — Xavier init on last layer caused 1e237 divergence on first integration.
+- **Why dense MLP over attention**: attention's `score_d = z_d · Vm · c_d` collapses to bilinear gate on scalar inputs; target is forced linear in Vm (can't represent sigmoid g_∞(V) without additional structure). MLP with GELU learns nonlinear V-dependent dynamics, cross-dim coupling, and contractive structure in one network. 832 params vs 176 for old attention, but each param does real work.
+- **Effective depth**: one hidden residual block (fc1 → fc2). fc3 is a linear readout. Thin for multi-timescale separation; adequate for fast-gate dynamics; known bottleneck for slow variables (see Section 3c diagnostic).
 
-**Markov MLP (16->16->16, 1 hidden layer, 1 GELU):**
-- Cross-dim correction over ionic_state dims only (16 dims) [full: 32]. No bottleneck -- architecture ALLOWS coupling but does not FORCE it.
-- **Input: ionic_delta** (the attention rate), NOT z_mid. Rationale: MLP is a rate corrector, should see rates not states. z_mid has a DC offset (the current latent value) that wastes the tiny MLP's capacity on scale correction instead of dynamics. With ionic_delta as input, alpha logit stays semantic (mixing on/off) instead of becoming a scale fixer.
-- **No rms_norm on input**: Delta magnitude is informative — small at rest, large during upstroke. Normalizing destroys this signal.
-- HH gates that need no coupling pass through residual unchanged.
-- One hidden layer captures pairwise interactions. Add second layer if insufficient.
-
-**Concentration KAN (B-spline, 17->4):**
-- Dedicated path for concentration rates, replacing both shared attention and conc_mlp.
-- **B-spline KAN** (`KANLayer(17->4, grid=5, order=3)`): each output dimension is a sum of independent nonlinear B-spline functions of each input dimension. This is physics-aligned: each concentration rate (e.g., dCa_i/dt) depends on ionic state variables and Vm through independent nonlinear channels, with no cross-communication between concentration dimensions.
-- **Input**: ionic_latent(16) + Vm(1) = 17 dims. No concentration self-input — avoids feedback loop through the ODE.
-- **No cross-communication**: Unlike an MLP, the KAN computes each output as a sum of univariate functions. Concentration dim i cannot see concentration dim j. This matches physics: Ca_i rate depends on gates and Vm, not on K_i.
+**Concentration KAN (B-spline, 17 → 4):**
+- Dedicated path for concentration rates, replacing shared attention and conc_mlp.
+- **B-spline KAN** (`KANLayer(17 → 4, grid=5, order=3)`): each output dimension is a sum of independent nonlinear B-spline functions of each input dimension. This is physics-aligned in the sense that each conc rate is an additive function of ionic state and Vm, BUT single-layer KAN cannot represent multiplicative cross-terms (NCX, CaL flux) — see Section 3b for Session 27 resolution.
+- **Input**: ionic_latent(16) + Vm(1) = 17 dims. No concentration self-input — historical: avoided feedback loop that exploded with earlier MLP + Xavier init. Session 27 restores conc self-input; the drop was bundled with the KAN switch, but only the KAN structure was strictly required for stability.
+- **No cross-communication**: each output = `Σⱼ φⱼ(xⱼ)`. Concentration dim i cannot see dim j through the KAN. Matches physics at the additive level; misses multiplicative couplings.
 - **612 params**: 544 spline weights + 68 base weights. File: `surrogate/model/kan.py`.
-- **Why not conc_mlp**: MLP cross-communicates all inputs to all outputs, violating the independence constraint. In practice, MLP with Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow (0.65 to 0.43 in 500 epochs). KAN is both physically correct and empirically better.
-- **Why not shared attention**: W_q and W_out are shared between ionic and conc dims. Training conc dims corrupts ionic weights. Concentrations need a dedicated path.
-
-**Residual bypass (evolved from DeepSeek hyper-connections):**
-
-```python
-alpha = sigmoid(w)                         # w learned per-dim (16,) [full: 32], alpha in (0,1)
-correction = MLP(ionic_delta)              # MLP input is the attention rate, no rms_norm
-ionic_rate = ionic_delta + alpha * correction   # additive bypass — identity always flows through
-```
-
-NOTE: Changed from convex combination `(1-alpha)*base + alpha*correction` to additive bypass `base + alpha*correction` for the NODE pivot. In the ODE formulation, the derivative is `dz/dt = attention_rate + alpha * mlp_correction` — a clean additive sum. Identity path is unconditional; MLP adds corrections on top. This breaks existing checkpoint compatibility (acceptable — A4 failed, no checkpoints worth preserving).
-
-Each ionic dim learns how much MLP correction to accept: alpha->0 for HH dims (pure attention attractor), alpha>0 for Markov-coupled dims. Init: w = large negative -> alpha~0 -> starts as near-pure attractor. 16 learned params [full: 32].
-
-Replaces three mechanisms from earlier design iterations:
-- ~~Spectral norm on MLP weights~~ -- not needed, attention contraction provides stability
-- ~~Zero-init of MLP output~~ -- not needed, alpha init handles it
-- ~~Gate-modulated correction~~ -- not needed, per-dim alpha is the learned gate
+- **Why not conc_mlp**: MLP cross-communicates all inputs to all outputs. In practice, MLP with Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow (0.65 → 0.43 in 500 epochs). KAN is both physically defensible (at additive level) and empirically better at training time.
+- **Why not shared attention**: W_q/W_out were shared between ionic and conc dims. Training conc dims corrupts ionic weights. Concentrations need a dedicated path.
 
 **Compression MLP (CARRIED_DIM->COMP_H1->COMP_H2->COND_DIM, 2 hidden layers, 2 GELUs):**
 - Takes FULL carried_state (ionic + concentrations) as input, NOT just ionic_state. Gives compression access to concentration context (e.g., Ca_ss for fCass-dependent conductances). Recomputed every step because gate products change and attention cannot compute cross-dim products (structural limitation).
@@ -193,6 +170,8 @@ Replaces three mechanisms from earlier design iterations:
 - gate_conductance_decoder (8->5): 5 effective gate products (G_Na(m³hj), G_CaL(dff2fCass), G_to(rs), G_Kr(Xr1·Xr2), G_Ks(Xs²)). [full-size: 16->5]
 - Both use MSE loss, annealed to zero in Phase D. No sigmoid (Ca_SR is unbounded). Linear only — weak decoder forces strong latent.
 - Both removed for production inference.
+
+**Decoder principle — clarification (Session 27, 2026-04-19):** a free `Linear(16 → 14)` guarantees the latent's 16-dim subspace **linearly spans** the 14 observables — not that `z[k] = observable[k]` (identity alignment). W is a fully learnable rotation/projection. The scaffold-discard contract (no nonlinearity in the decoder to launder knowledge into the throwaway part) still holds, but the stronger claim "latent dims resemble physical parameters" requires additional constraints on W (diagonal, identity-init + frozen, or orthogonality regularizer) which we are not imposing. Practical implication: CaSR failure cannot be blamed on decoder expressivity — the latent must simply fail to contain a CaSR-tracking direction, which is a rate-predictor capacity issue upstream.
 
 ### Nernst Computation (fixed physics, 0 learned params)
 
@@ -233,6 +212,134 @@ Differentiable (log and division). Gradients flow: I_ion -> readout -> E -> Nern
 - `conductance_latent` (16 values) is derived each step as the last part of Stage 1 pipeline
 - Stage 2 reads `conductance_latent(t)` (the OLD compressed, before this step's Stage 1 updates)
 - Reversal potentials are derived, not carried
+
+---
+
+## 3b. Stage 1 Pending Pivot — StateRateMLP (Session 27, 2026-04-19)
+
+Motivated by the Session 27 diagnostic (Section 3c): the integrator is not the bottleneck, model rate-field capacity is, with CaSR failing 10× worse than any other dim. The pending arch pivot unifies `IonicRateMLP` + `conc_kan` into a single `StateRateMLP`, expands the ionic latent, and moves the output nonlinearity into a KAN readout where per-dim rate shaping lives best.
+
+### Design
+
+```
+CONSTANTS (updated)
+  IONIC_DIM        = 20   (was 16)   — +4 slots for slow-variable tracking
+  CONC_DIM         =  4
+  CARRIED_DIM      = 24   (was 20)
+
+STAGE 1 · dzdt (unified StateRateMLP, Option B-simplified)
+  Input:  z_full(24) + Vm(1) = 25 dims               (conc self-input restored)
+  Output: dz/dt(24)                                   (ionic + conc, unified)
+
+  h    = GELU(Linear(25 → 32))                                     832 params
+  rate = KAN(32 → 24, grid=5, order=3, spline_weight zero-init)   6912 params
+                                                       dzdt total: 7744 params
+
+DOWNSTREAM (dims updated, structure unchanged)
+  ionic_state_decoder:      Linear(20 → 14)    free W, no activation      294
+  gate_conductance_linear:  Linear(24 →  8)    no bias                    192
+  gate_conductance_mlp:     Linear(24 → 12 → 12 → 8)  GELU×2              560
+  gate_conductance_logit:   (8,)                                            8
+  gate_conductance_decoder: Linear(8 → 5)                                  45
+
+TOTAL  ~8,843 training, ~8,504 inference.    vs pre-27: 2,407 / 2,124 → ~4× bigger.
+```
+
+### Rationale (Q&A from Session 27 — see IDEALOG for full detail)
+
+- **Unify ionic + conc rate paths.** Separation was scar tissue from the `conc_mlp` explosion (Xavier init → 1e237). The fix bundled two changes — drop conc self-input AND switch to no-cross-talk KAN — but only the second was strictly required. Unified MLP with zero-init last layer and proper structure handles both fine. Physical coupling (Ca_i ↔ Na_i via NCX, etc.) is real and the model should learn it.
+
+- **Restore conc self-input.** Physics requires it: I_NaCa depends on Na_i × Ca_i, Nernst potentials depend on conc, I_NaK is Na_i-saturating. Dropping it silently approximated all these to zero self-feedback.
+
+- **Single mixer + KAN readout (not stacked hidden, not stacked KAN).** A single `Linear(25 → 32) + GELU` provides the cross-input mixer (necessary for products like V × Ca_i). The KAN readout (~6.9K spline params) handles per-dim rate shaping — where smooth V-dependent curves live. Single KAN layer alone is additively universal but multiplicatively blind; pairing it with a GELU mixer upstream is the minimum capacity that covers both regimes. Option A (KAN as hidden `32 → 32`) is ~3K params more expensive for no physical benefit at 24-dim output.
+
+- **Latent expansion 16 → 20.** 16 latent dims for 14 targets is tight — the model has no incentive to reserve a CaSR-tracking slot when other dims fit easily. +4 dims adds trivial param cost and gives slack for slow variables to claim dedicated directions.
+
+- **Linear decoder preserved.** See Section 3 decoder-principle clarification. Linear span is sufficient for a 20-dim latent spanning 14 observables; adding nonlinearity to the decoder would break the scaffold-discard contract.
+
+- **Zero-init KAN spline_weight at readout.** Carries forward the stability pattern from `conc_kan`. Rate field ≈ 0 at init → ODE stable.
+
+### Implementation status
+
+- Design settled 2026-04-19. Implementation pending user greenlight.
+- Old checkpoints (`multi_bcl_002/best.pt`, etc.) become incompatible — state_dict keys `ionic_rate_mlp.*` and `conc_kan.*` disappear. Fresh training run required.
+- Files to touch: `Surrogate/surrogate/model/stage1.py` (constants + `StateRateMLP` class + `dzdt` rewire + `_init_weights`). `node_rollout.py` INIT_CONC indexing should auto-adapt. Tests need dim fixture updates.
+
+### What this does not fix
+
+- Distribution shift over long autoregressive rollouts (z at step N is not in the training distribution). Integrator design and rate capacity both improve single-step flow but not this compounding. Addressable via training-time interventions (scheduled sampling, noise injection on z0) if needed.
+- Inference-time V(t+dt) comes from the diffusion ResNet (not exact simulator V). The rate predictor will be trained with exact V and must be end-to-end fine-tuned (Phase C) to absorb the distribution shift.
+
+---
+
+## 3c. Model Capacity Diagnostic (Session 27, 2026-04-19)
+
+Quantitative measurement on held-out BCL=2000 trajectory (first 300 ms, dt=0.01 ms, checkpoint `multi_bcl_002/best.pt` at val_loss=0.0084). Script: `Surrogate/diagnostics/integrator_error_budget.py`. Artifacts at `Surrogate/diagnostics/artifacts/integrator_error_budget.pt`.
+
+### Integrator vs capacity error budget
+
+| Comparison | RMSE (14 ionic dims) | Interpretation |
+|---|---:|---|
+| Euler vs dopri5 | **0.00161** | Integrator truncation |
+| dopri5 vs truth | **0.34638** | Model capacity |
+| Euler vs truth | **0.34737** | Total inference error |
+
+**Truncation is 215× smaller than capacity error** aggregated. Time-resolved: 700× ratio at upstroke (t=2.5 ms), never better than 150× across the trajectory. Euler at native dt is essentially tracing the tight-tolerance solution — inference integrator is not the bottleneck. A learned integrator head (`g_φ`) would eliminate 0.16 % of total error; see Failed Approaches in IDEALOG.
+
+### Per-dim capacity error (normalized to physiological range from `loss_normalization.py`)
+
+| Dim | phys range | NRMSE% | Contrib to normalized MSE |
+|-----|-----------:|-------:|-----------------------:|
+| m   | 1.00 | 13.2 | 0.017 |
+| h   | 1.00 | 10.1 | 0.010 |
+| j   | 1.00 | 13.3 | 0.018 |
+| r   | 1.00 |  9.7 | 0.009 |
+| s   | 1.00 | 13.0 | 0.017 |
+| d   | 1.00 | 14.0 | 0.020 |
+| f   | 1.00 |  9.8 | 0.010 |
+| f2  | 1.00 | 10.9 | 0.012 |
+| fCass | 1.00 | 7.0 | 0.005 |
+| Xr1 | 1.00 | 13.3 | 0.018 |
+| Xr2 | 1.00 |  4.2 | 0.002 |
+| Xs  | 1.00 |  7.4 | 0.005 |
+| RR  | 1.00 | 10.8 | 0.012 |
+| **CaSR** | **4.50** | **27.4** | **0.075** |
+
+**CaSR contributes 4–10× more to the normalized MSE than any other dim.** Fast gates have converged uniformly to the ~10 % regime (Xr2 best at 4 %, d worst at 14 %). Slow variables lag: CaSR (27 %), RR (11 %), Xs (7 %). Pattern suggests latent-allocation failure on slow-timescale dynamics, not uniform undercapacity.
+
+### Conclusions
+
+1. **Don't redesign the integrator.** Euler is fine. Any effort spent on a learned flow map / dt-aware head is an expensive no-op on this problem.
+2. **CaSR is the bottleneck.** Fixes: rate-predictor capacity, latent expansion, optionally loss reweighting. The Session 27 pending pivot (Section 3b) targets items 1 and 2 directly; loss reweighting deferred to optional post-arch fine-tune.
+3. **The decoder is not the problem.** Linear-span universality means the decoder can recover any 14 observables from an adequately-encoding latent; the latent itself must fail to contain a CaSR direction. See decoder principle clarification (end of Section 3).
+4. **Generalizable lesson:** before redesigning integrators for "inference error buildup", measure Euler vs adaptive-solver RMSE against a trained checkpoint. The suspect may not be guilty.
+
+### v4 baseline (Session 28, 2026-04-20)
+
+v4 first measurement on `best.pt` (epoch 8, val_loss = 6.74e6). Training was killed at epoch 10 of 30 after noticeable NFE-driven slowdown. Per-dim NRMSE on the same held-out BCL=2000 / 300 ms trajectory used for Section 3c's v3 baseline:
+
+| Dim | v3 NRMSE % | v4 (undertrained) NRMSE % |
+|-----|-----------:|--------------------------:|
+| m    | 13.2 |   1303.2 |
+| h    | 10.1 |    658.7 |
+| j    | 13.3 |    277.9 |
+| r    |  9.7 |    551.0 |
+| s    | 13.0 |   1310.9 |
+| d    | 14.0 |    794.7 |
+| f    |  9.8 |    456.0 |
+| f2   | 10.9 |   2148.0 |
+| fCass|  7.0 |   1276.4 |
+| Xr1  | 13.3 |    195.9 |
+| Xr2  |  4.2 |    395.9 |
+| Xs   |  7.4 |    470.0 |
+| RR   | 10.8 |   1251.0 |
+| **CaSR** | **27.4** | **37.1** |
+
+v4 is *worse* than v3 across the board at this checkpoint because **v4 is overfitting the T1 training set** (5 BCLs × 5 beats = 25 trajectories). v3's 1,444 params reached val=0.00838 on the same train/val split; v4's 7,891 params (5.5×) memorise the training trajectories and fail to generalise. Signature: smooth monotone train-loss decrease (6.6e4 → 1.4e4 over 5 epochs, ~79 %/epoch) vs oscillating val-loss with no trend (1.3e7 → 1.3e7 over 10 epochs, 1000× gap). The Session 27 hypothesis that *extra* capacity fixes the CaSR bottleneck is **not yet validated**; a smaller v4 (closer to v3 in parameter count) has to be trained to convergence first before the capacity-vs-CaSR question can be tested.
+
+Integrator truncation remains negligible (aggregate Euler-vs-dopri5 = 8e-4), confirming Section 3c's conclusion across the v3→v4 transition: capacity, not integrator, dominates. Full artifact at `Surrogate/diagnostics/artifacts/integrator_error_budget_v4.pt`.
+
+**Infrastructure hotfix in v4 not anticipated by Session 27's design**: input centering. `IonicStage1` registers a non-trainable `input_ref` buffer = `[zeros(ionic_dim), INIT_CONC, V_REST_MV]`; `dzdt` subtracts it before `state_rate_mlp`. Without this, the gated skip path propagates raw `K_i = 138` and `Vm = -85 mV` magnitudes (0.42 Xavier weight × 138 = 58-magnitude outputs before the α = 0.007 gate), driving integrated latent out of physiological range at cold start. With the buffer, `rate(z_rest, V_rest)` is exactly zero at init (verified: `L_rest ≈ 1.6e-17`).
 
 ---
 

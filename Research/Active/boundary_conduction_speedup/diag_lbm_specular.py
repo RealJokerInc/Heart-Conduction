@@ -80,7 +80,7 @@ _parser.add_argument("--weights", default="canonical",
 _parser.add_argument("--bc", default="specular",
                      choices=["specular", "hbb", "horizontal", "horizontal_fixed",
                               "horizontal_donut", "horizontal_gradient",
-                              "horizontal_wnorm", "specular_up", "weighted"],
+                              "horizontal_wnorm", "specular_up", "combined", "weighted"],
                      help="boundary treatment at top/bottom walls")
 _parser.add_argument("--physics", default="ttp06",
                      choices=["ttp06", "diffusion"],
@@ -93,9 +93,13 @@ _parser.add_argument("--beta", type=float, default=None,
                      help="Specular weight in weighted BC")
 _parser.add_argument("--gamma", type=float, default=None,
                      help="Horizontal weight in weighted BC")
+_parser.add_argument("--combined-alpha", dest="combined_alpha", type=float,
+                     default=None,
+                     help="HBB weight for --bc combined (1=HBB forward, 0=same-cell-specular inverse)")
 _args, _ = _parser.parse_known_args()
 WEIGHTS_MODE = _args.weights
 BC_MODE = _args.bc
+COMBINED_ALPHA = _args.combined_alpha if _args.combined_alpha is not None else 0.0
 if BC_MODE == "weighted":
     if _args.alpha is None or _args.beta is None or _args.gamma is None:
         raise SystemExit("--bc weighted requires --alpha, --beta, --gamma (must sum to 1)")
@@ -123,6 +127,8 @@ else:
         ("uniform_8", "horizontal_wnorm"): "case_horiz_wnorm_u8",
         ("canonical", "specular_up"): "case_spec_up",
         ("uniform_8", "specular_up"): "case_spec_up_u8",
+        ("canonical", "combined"): "case_combined",
+        ("uniform_8", "combined"): "case_combined_u8",
     }[(WEIGHTS_MODE, BC_MODE)]
     PHYS_SUFFIX = "" if _args.physics == "ttp06" else f"_{_args.physics}"
     OUT_FILE = OUT_DIR / (
@@ -507,6 +513,49 @@ def lbm_step_horizontal_donut(f, V, R, dt, omega, w, bounce_masks_full, NX, NY):
     return f, V
 
 
+
+def apply_combined_top_bottom_d2q9(f, f_star, NX, NY, alpha):
+    """Combined HBB <-> same-cell-specular blend (2026-05-28 clean axis).
+
+    alpha = HBB weight:
+      alpha = 1  -> pure HBB                (forward crescent, slowdown)
+      alpha = 0  -> pure same-cell specular (inverse crescent, speedup)
+    Both vertices are rest-neutral, weight-matched, same-cell diagonal->diagonal
+    reflections, so EVERY convex blend is mass-conserving AND a no-op on a
+    uniform field (no wall pre-charge artifact at any alpha). Corrected
+    replacement for the old (HBB, specular-at-neighbor, horizontal) simplex.
+
+    Call AFTER apply_neumann_d2q9 (HBB filled the incoming diagonal slots);
+    this OVERWRITES them with the blend.
+
+    Top wall, non-corner i in [1, NX-2]:
+      f_7 (SW) = a * f_star_5 (NE, HBB) + (1-a) * f_star_6 (NW, same-cell spec)
+      f_8 (SE) = a * f_star_6 (NW, HBB) + (1-a) * f_star_5 (NE, same-cell spec)
+    Bottom wall: y-mirror.
+    """
+    a = float(alpha); b = 1.0 - a
+    f[7, 1:NX - 1, NY - 1] = (a * f_star[5, 1:NX - 1, NY - 1]
+                              + b * f_star[6, 1:NX - 1, NY - 1])
+    f[8, 1:NX - 1, NY - 1] = (a * f_star[6, 1:NX - 1, NY - 1]
+                              + b * f_star[5, 1:NX - 1, NY - 1])
+    f[5, 1:NX - 1, 0] = (a * f_star[7, 1:NX - 1, 0]
+                         + b * f_star[8, 1:NX - 1, 0])
+    f[6, 1:NX - 1, 0] = (a * f_star[8, 1:NX - 1, 0]
+                         + b * f_star[7, 1:NX - 1, 0])
+    return f
+
+
+def lbm_step_combined(f, V, R, dt, omega, w, bounce_masks_full, NX, NY, alpha):
+    """One step of the combined HBB<->same-cell-specular blend (alpha = HBB weight)."""
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks_full)
+    f = apply_combined_top_bottom_d2q9(f, f_star, NX, NY, alpha)
+    V = recover_voltage(f)
+    return f, V
+
+
 def apply_weighted_top_bottom_d2q9(f: torch.Tensor, f_star: torch.Tensor,
                                      alpha: float, beta: float, gamma: float,
                                      NX: int, NY: int) -> torch.Tensor:
@@ -654,6 +703,11 @@ def main():
             f, V = lbm_step_specular_up(
                 f, V, R, sim.dt, sim.omega, sim.w,
                 bounce_masks_full, NX, NY,
+            )
+        elif BC_MODE == "combined":
+            f, V = lbm_step_combined(
+                f, V, R, sim.dt, sim.omega, sim.w,
+                bounce_masks_full, NX, NY, COMBINED_ALPHA,
             )
         elif BC_MODE == "weighted":
             f, V = lbm_step_weighted(

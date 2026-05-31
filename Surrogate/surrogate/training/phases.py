@@ -34,15 +34,17 @@ class PhaseConfig:
     tbptt_window: int = 0           # truncated BPTT: backprop only last N steps (0 = all)
 
 
-# Ionic params (ionic rate MLP + scaffold decoder)
+# v4: unified StateRateMLP covers both ionic and concentration rates.
+# _HALF1_PARAMS trains the rate predictor + ionic_state_decoder WEIGHT only
+# (decoder bias is frozen at rest values — see stage1.TTP06_REST_IONIC_STATE).
 _HALF1_PARAMS = [
-    "stage1.ionic_rate_mlp.*",
-    "stage1.ionic_state_decoder.*",
+    "stage1.state_rate_mlp.*",
+    "stage1.ionic_state_decoder.weight",
 ]
 
-# Conc params (concentration KAN)
+# Legacy v3 conc-only params (unused in v4; kept for archive compatibility)
 _CONC_PARAMS = [
-    "stage1.conc_kan.*",
+    "stage1.state_rate_mlp.*",
 ]
 
 # Half 2 params (compression + conductance)

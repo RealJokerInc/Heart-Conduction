@@ -8,3 +8,4 @@ outputs/
 archive/*
 !archive/runs_legacy/
 !archive/runs_legacy/**
+venv/

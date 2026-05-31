@@ -11,7 +11,7 @@ import math
 # Path setup: add both engine roots
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BIDOMAIN_ROOT = os.path.join(_HERE, '..')
-_LBM_ROOT = os.path.join(_HERE, '..', '..', '..', 'Monodomain', 'LBM_V1')
+_LBM_ROOT = os.path.join(_HERE, '..', '..', '..', 'LBM', 'Engine_V1')
 
 if _BIDOMAIN_ROOT not in sys.path:
     sys.path.insert(0, _BIDOMAIN_ROOT)

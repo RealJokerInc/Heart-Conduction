@@ -27,10 +27,18 @@ logger = logging.getLogger(__name__)
 
 
 def apply_freeze(stage1: IonicStage1, trainable_patterns: list[str]) -> None:
-    """Freeze all params, then unfreeze those matching patterns."""
+    """Freeze all params, then unfreeze those matching patterns.
+
+    Re-pins the rest bias AFTER the freeze since the rest-attractor contract
+    (Session 27, 2026-04-19) requires ionic_state_decoder.bias to remain frozen
+    regardless of phase patterns. The bias is never in the trainable set.
+    """
     from fnmatch import fnmatch
     for name, p in stage1.named_parameters():
         p.requires_grad = any(fnmatch(name, pat) for pat in trainable_patterns)
+    # Rest-attractor invariant: decoder bias is permanently frozen at TTP06 rest
+    if hasattr(stage1, "pin_rest_bias"):
+        stage1.pin_rest_bias()
 
 
 PHASE_PARAMS = {

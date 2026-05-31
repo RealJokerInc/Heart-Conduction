@@ -1,0 +1,33 @@
+# NODE training group — Session 25 multi_bcl_002 oracle parity.
+# AdamW lr=1e-4 weight_decay=1e-4 matches log.jsonl epoch-0 lr (9.997e-05).
+# Scope trimmed per R4 reality check: oracle ran 8 epochs / ~15 min.
+epochs: 30
+seed: 42
+device: cuda
+dtype: float64
+phase_name: A1                # oracle multi_bcl_002 used phase A1 (ionic-only scaffold loss)
+ode_method: dopri5
+ode_rtol: 1e-3
+ode_atol: 1e-3
+ode_adjoint: false            # Session 23 finding: adjoint=True diverged
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1e-4
+  weight_decay: 1e-4
+
+train_step_fn:
+  _target_: hydra.utils.get_method
+  path: surrogate.training.node_step.node_train_step
+val_step_fn:
+  _target_: hydra.utils.get_method
+  path: surrogate.training.node_step.node_val_step
+
+callbacks:
+  - _target_: cardiac_ml.training.callbacks.EarlyStopping
+    monitor: val_loss
+    patience: 10
+  - _target_: cardiac_ml.training.callbacks.ModelCheckpoint
+    monitor: val_loss
+    every_n_epochs: 5
+  - _target_: cardiac_ml.training.callbacks.GradNormMonitor

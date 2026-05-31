@@ -175,7 +175,7 @@ questions: [{Q1, Q4, etc.}]
 - {Which engine(s) this connects to: Bidomain V1, Monodomain V5.4, LBM V1}
 - {Which specific files/modules implement what the paper describes}
   - e.g., "Their AMG preconditioner approach is implemented in `Bidomain/Engine_V1/cardiac_sim/simulation/classical/solver/linear_solver/pcg.py`"
-  - e.g., "Their LBM collision operator matches our `Monodomain/LBM_V1/src/collision/bgk.py`"
+  - e.g., "Their LBM collision operator matches our `LBM/Engine_V1/src/collision/bgk.py`"
 
 ### Agreements
 - {Where our implementation aligns with the paper's approach}

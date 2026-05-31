@@ -19,7 +19,7 @@ from .file_format import CardiacMeshData, load_cardiac_mesh
 _project_root = Path(__file__).resolve().parent.parent
 _V54_PATH = str(_project_root / "Monodomain" / "Engine_V5.4")
 _BIDOMAIN_PATH = str(_project_root / "Bidomain" / "Engine_V1")
-_LBM_PATH = str(_project_root / "Monodomain" / "LBM_V1")
+_LBM_PATH = str(_project_root / "LBM" / "Engine_V1")
 
 
 def _prepare_engine(engine_path: str):

@@ -1,0 +1,15 @@
+# @package _global_
+# Diffusion stub reusability proof — trains with default teacher_forced_step.
+# Proves the harness handles a convolutional model with zero Trainer changes.
+defaults:
+  - override /model: diffusion_resnet_stub
+  - override /data: synthetic_2d
+  - override /training: teacher_forced
+  - override /tracking: default
+
+training:
+  epochs: 10
+  device: cpu        # tiny model, CPU is fine and avoids GPU contention
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 1.0e-2

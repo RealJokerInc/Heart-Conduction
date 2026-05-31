@@ -1,0 +1,10 @@
+device=cpu  compile=False  dt=0.01ms  steps=30,000  warmup=200
+surrogate params (inference): 7,552
+
+ n_cells      TTP06 cs/s   TTP06 μs/step      Surr  cs/s   Surr  μs/step   speedup
+----------------------------------------------------------------------------------
+      10         16,257         615.11        119,870          83.42     7.37x
+     100        158,871         629.44        837,741         119.37     5.27x
+   1,000      1,170,867         854.07      3,934,451         254.17     3.36x
+Terminated
+ERROR conda.cli.main_run:execute(142): `conda run python -u benchmarks/speed_ttp06_vs_surrogate.py --device cpu --no-compile --output benchmarks/results/ttp06_vs_surrogate_cpu.json` failed. (See above for error)

@@ -107,11 +107,11 @@ class TestStage1:
 
         model = IonicStage1()
         B = 32
-        carried = torch.randn(B, 20)
+        carried = torch.randn(B, 24)
         Vm = torch.randn(B)
 
         cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
-        assert cs_out.shape == (B, 20)
+        assert cs_out.shape == (B, 24)
         assert cond_lat.shape == (B, 8)
         assert conc_new.shape == (B, 4)
         assert gf.shape == (B, 14)
@@ -124,58 +124,30 @@ class TestStage1:
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-        carried = torch.randn(20)
+        carried = torch.randn(24)
         Vm = torch.tensor(0.0)
 
         cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
-        assert cs_out.shape == (20,)
+        assert cs_out.shape == (24,)
         assert cond_lat.shape == (8,)
         assert conc_new.shape == (4,)
         assert gf.shape == (14,)
         assert gc.shape == (5,)
 
-    def test_stage1_ionic_rate_mlp(self):
-        """IonicRateMLP produces finite output and has internal residual."""
+    def test_stage1_state_rate_mlp(self):
+        """StateRateMLP produces finite rate of correct shape (v4)."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
         torch.manual_seed(42)
-        z = torch.randn(8, 20)
+        z = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         with torch.no_grad():
             dz = model.dzdt(z, Vm)
 
-        # Output is finite
         assert torch.isfinite(dz).all()
-        # Ionic rate comes from ionic_rate_mlp
-        ionic_rate = dz[:, :16]
-        assert ionic_rate.shape == (8, 16)
-
-    def test_stage1_ionic_conc_separate(self):
-        """Changing ionic MLP weights doesn't affect conc rate and vice versa."""
-        from surrogate.model.stage1 import IonicStage1
-
-        model = IonicStage1()
-        torch.manual_seed(7)
-        z = torch.randn(8, 20)
-        Vm = torch.randn(8)
-
-        with torch.no_grad():
-            dz1 = model.dzdt(z, Vm)
-            conc1 = dz1[:, 16:].clone()
-            ionic1 = dz1[:, :16].clone()
-
-        # Change ionic MLP weights
-        with torch.no_grad():
-            model.ionic_rate_mlp.fc1.weight.fill_(0.0)
-
-        with torch.no_grad():
-            dz2 = model.dzdt(z, Vm)
-            conc2 = dz2[:, 16:]
-
-        # Conc rate unchanged
-        assert torch.allclose(conc1, conc2, atol=1e-7)
+        assert dz.shape == (8, 24)
 
     def test_stage1_beta_zero(self):
         """gate_conductance_logit=-100 (sigmoid~0) makes cond_lat ~ linear path."""
@@ -186,7 +158,7 @@ class TestStage1:
             model.gate_conductance_logit.fill_(-100.0)
 
         torch.manual_seed(7)
-        carried = torch.randn(8, 20)
+        carried = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         with torch.no_grad():
@@ -200,57 +172,36 @@ class TestStage1:
             f"Max diff: {(cond_lat - expected).abs().max():.2e}"
         )
 
-    def test_stage1_conc_kan(self):
-        """Concentration KAN produces finite output with correct shape."""
+    def test_stage1_conc_rate_shape(self):
+        """Concentration slice of unified rate has correct shape (v4)."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
         torch.manual_seed(42)
-        z = torch.randn(8, 20)
+        z = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         with torch.no_grad():
             dz = model.dzdt(z, Vm)
-            conc_rate = dz[:, 16:]
+            conc_rate = dz[:, 20:]
 
         assert conc_rate.shape == (8, 4)
         assert torch.isfinite(conc_rate).all()
 
     def test_stage1_param_count(self):
-        """Parameter count matches expected for default small config."""
+        """Parameter count matches expected for v4 small config (Session 27)."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-
-        # Inference params (no scaffolds)
-        # ionic_rate_mlp: fc1(17*16+16=288), fc2(16*16+16=272), fc3(16*16+16=272) = 832
-        # conc_kan: spline(17*4*8=544), base(17*4=68) = 612
-        # gate_conductance_linear: 20*8=160 (no bias)
-        # gate_conductance_mlp[0]: 20*12+12=252, [2]: 12*12+12=156, [4]: 12*8+8=104
-        # gate_conductance_logit: 8
-        expected_inference = (
-            17 * 16 + 16   # ionic_rate_mlp.fc1
-            + 16 * 16 + 16 # ionic_rate_mlp.fc2
-            + 16 * 16 + 16 # ionic_rate_mlp.fc3
-            + 17 * 4 * 8   # conc_kan spline_weight (17 in, 4 out, 8 basis)
-            + 17 * 4       # conc_kan base_weight
-            + 20 * 8       # gate_conductance_linear (no bias)
-            + 20 * 12 + 12 # gate_conductance_mlp[0] weight + bias
-            + 12 * 12 + 12 # gate_conductance_mlp[2] weight + bias
-            + 12 * 8 + 8   # gate_conductance_mlp[4] weight + bias
-            + 8            # gate_conductance_logit
-        )
-        assert expected_inference == 2124
-        assert model.inference_param_count() == expected_inference
-
-        # Scaffold params
-        # ionic_state_decoder: 16*14+14=238, gate_conductance_decoder: 8*5+5=45
-        expected_scaffold = (16 * 14 + 14) + (8 * 5 + 5)
-        assert expected_scaffold == 283
-
         total = sum(p.numel() for p in model.parameters())
-        assert total == expected_inference + expected_scaffold
-        assert total == 2407
+        inference = model.inference_param_count()
+        # v4 targets: ~7891 total, ~7552 inference (no scaffold). Band [7800, 8100]
+        # is the single source of truth — matches PLAN.md Step 1.6 / Phase 1 Verification.
+        assert 7800 <= total <= 8100, f"total {total} outside expected band"
+        assert 7500 <= inference <= 7700, f"inference {inference} outside expected band"
+        # Scaffold: 20*14+14 + 8*5+5 = 294 + 45 = 339
+        scaffold = total - inference
+        assert scaffold == 339, f"scaffold {scaffold} != 339"
 
     def test_stage1_remove_scaffold(self):
         """remove_scaffold() drops decoders. Second call is idempotent."""
@@ -260,13 +211,13 @@ class TestStage1:
         assert hasattr(model, "ionic_state_decoder")
         assert hasattr(model, "gate_conductance_decoder")
         total_before = sum(p.numel() for p in model.parameters())
-        assert total_before == 2407
+        assert 7800 <= total_before <= 8100
 
         model.remove_scaffold()
         assert not hasattr(model, "ionic_state_decoder")
         assert not hasattr(model, "gate_conductance_decoder")
         total_after = sum(p.numel() for p in model.parameters())
-        assert total_after == 2124
+        assert total_after == total_before - 339  # scaffold = 294 + 45
 
         # Idempotent -- no error on second call
         model.remove_scaffold()
@@ -274,7 +225,7 @@ class TestStage1:
         assert not hasattr(model, "gate_conductance_decoder")
 
         # Forward still works after scaffold removal
-        carried = torch.randn(4, 20)
+        carried = torch.randn(4, 24)
         Vm = torch.randn(4)
         cs_out, cond_lat, conc_new, gf, gc = model(carried, Vm)
         assert gf is None
@@ -286,7 +237,7 @@ class TestStage1:
 
         model = IonicStage1()
         torch.manual_seed(99)
-        carried = torch.randn(8, 20)
+        carried = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         # Use dzdt for dynamics + forward for scaffold
@@ -298,6 +249,8 @@ class TestStage1:
         loss.backward()
 
         for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue  # frozen params (decoder bias in v4)
             assert p.grad is not None, f"No grad for {name}"
             assert torch.isfinite(p.grad).all(), f"NaN/Inf grad in {name}"
 
@@ -306,7 +259,7 @@ class TestStage1:
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1().double()
-        z = torch.randn(8, 20, dtype=torch.float64)
+        z = torch.randn(8, 24, dtype=torch.float64)
         Vm = torch.randn(8, dtype=torch.float64)
 
         dz = model.dzdt(z, Vm)
@@ -316,23 +269,25 @@ class TestStage1:
 
         # Unbatched
         dz_single = model.dzdt(z[0], Vm[0])
-        assert dz_single.shape == (20,)
+        assert dz_single.shape == (24,)
 
     def test_stage1_dzdt_numerical(self):
-        """dzdt produces ionic rate from MLP and conc rate from KAN."""
+        """dzdt(z, V) matches centered StateRateMLP call (v4 + Session 28 input-centering)."""
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
         torch.manual_seed(42)
-        z = torch.randn(16, 20)
+        z = torch.randn(16, 24)
         Vm = torch.randn(16)
 
         with torch.no_grad():
             dz = model.dzdt(z, Vm)
-            # Verify ionic rate matches ionic_rate_mlp directly
-            ionic_rate = model.ionic_rate_mlp(z[:, :16], Vm)
+            # dzdt now subtracts input_ref before calling state_rate_mlp
+            z_c = z - model.input_ref[: model.carried_dim]
+            V_c = Vm - model.input_ref[model.carried_dim]
+            dz_direct = model.state_rate_mlp(z_c, V_c)
 
-        assert torch.allclose(dz[:, :16], ionic_rate, atol=1e-7)
+        assert torch.allclose(dz, dz_direct, atol=1e-9)
 
     def test_stage1_forward_no_dynamics(self):
         """forward() returns carried_state unchanged (compression + scaffold only)."""
@@ -340,7 +295,7 @@ class TestStage1:
 
         model = IonicStage1()
         torch.manual_seed(0)
-        carried = torch.randn(8, 20)
+        carried = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         with torch.no_grad():
@@ -349,7 +304,7 @@ class TestStage1:
         # carried_state returned unchanged
         assert torch.allclose(cs_out, carried)
         # conc is just a slice of carried
-        assert torch.allclose(conc, carried[:, 16:])
+        assert torch.allclose(conc, carried[:, 20:])
         # cond_lat, gf, gc are derived but carried is not modified
         assert cond_lat.shape == (8, 8)
         assert gf.shape == (8, 14)
@@ -375,7 +330,7 @@ class TestStage1:
         from surrogate.model.stage1 import IonicStage1
 
         model = IonicStage1()
-        carried = torch.randn(8, 20)
+        carried = torch.randn(8, 24)
         Vm = torch.randn(8)
 
         with torch.no_grad():
@@ -496,7 +451,7 @@ class TestV3:
     def _make_inputs(self, B=32, seed=42):
         """Helper: create standard batched inputs for V3 forward."""
         torch.manual_seed(seed)
-        carried = torch.randn(B, 20)          # carried_dim = 16 + 4
+        carried = torch.randn(B, 24)          # carried_dim = 20 + 4  # = 24
         Vm = torch.randn(B)
         dt = torch.full((B,), 0.01)
         cond_lat_prev = torch.randn(B, 8)     # cond_dim
@@ -519,7 +474,7 @@ class TestV3:
 
         out = model(carried, Vm, dt, cond_lat_prev, conc_prev)
 
-        assert out["carried_state"].shape == (B, 20)
+        assert out["carried_state"].shape == (B, 24)
         assert out["conductance_latent"].shape == (B, 8)
         assert out["concentrations"].shape == (B, 4)
         assert out["I_ion"].shape == (B,)
@@ -567,6 +522,8 @@ class TestV3:
         loss.backward()
 
         for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue  # frozen params (decoder bias in v4)
             assert p.grad is not None, f"No grad for {name}"
             assert torch.isfinite(p.grad).all(), f"NaN/Inf grad in {name}"
 
@@ -630,7 +587,7 @@ class TestV3:
 
         # Change carried_state conc dims (affects NEW conc, not prev) -> I_ion unchanged
         carried2 = carried.clone()
-        carried2[:, 16:] = carried2[:, 16:] + 100.0  # modify conc dims in carried
+        carried2[:, 20:] = carried2[:, 20:] + 100.0  # modify conc dims in carried
         with torch.no_grad():
             out3 = model(carried2, Vm, dt, cond_lat_prev, conc_prev)
         assert torch.allclose(out1["I_ion"], out3["I_ion"]), (
@@ -678,11 +635,12 @@ class TestV3:
         )
         assert model.inference_param_count() == expected
 
-        # Verify known values: stage1=2124 (ionic MLP + conc KAN + compression), stage2=118
-        assert model.stage1.inference_param_count() == 2124
+        # v4 values: stage1 ~7552 (StateRateMLP + compression, no scaffold), stage2 = 118
+        stage1_inf = model.stage1.inference_param_count()
+        assert 7450 <= stage1_inf <= 7650, f"stage1 inference {stage1_inf}"
         stage2_params = sum(p.numel() for p in model.stage2.parameters())
         assert stage2_params == 118
-        assert model.inference_param_count() == 2124 + 118  # = 2242
+        assert model.inference_param_count() == stage1_inf + 118
 
     def test_v3_no_import_cascade(self):
         """v3 model import doesn't break existing data imports."""
@@ -708,7 +666,7 @@ class TestIonicNODE:
     def test_ionic_node_euler_shape(self):
         """euler_step(z, V, dt) returns same shape as z, float64, finite."""
         node = self._make_node()
-        z = torch.randn(8, 20, dtype=torch.float64)
+        z = torch.randn(8, 24, dtype=torch.float64)
         V = torch.randn(8, dtype=torch.float64)
         z_next = node.euler_step(z, V, 0.01)
         assert z_next.shape == z.shape
@@ -718,7 +676,7 @@ class TestIonicNODE:
     def test_ionic_node_euler_variable_dt(self):
         """Euler at dt=0.01, 0.1, 1.0 all produce finite output."""
         node = self._make_node()
-        z = torch.randn(4, 20, dtype=torch.float64)
+        z = torch.randn(4, 24, dtype=torch.float64)
         V = torch.randn(4, dtype=torch.float64)
         for dt in [0.01, 0.1, 1.0]:
             z_next = node.euler_step(z, V, dt)
@@ -728,7 +686,7 @@ class TestIonicNODE:
         """integrate(z0, t_eval) returns (N, B, D) with correct dims."""
         node = self._make_node()
         B = 4
-        z0 = torch.randn(B, 20, dtype=torch.float64)
+        z0 = torch.randn(B, 24, dtype=torch.float64)
         V_traj = torch.randn(B, 100, dtype=torch.float64)
         t_grid = torch.linspace(0, 1.0, 101, dtype=torch.float64)
         t_eval = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], dtype=torch.float64)
@@ -739,7 +697,7 @@ class TestIonicNODE:
         finally:
             node.clear_v_trajectory()
 
-        assert z_traj.shape == (5, B, 20)
+        assert z_traj.shape == (5, B, 24)
         assert z_traj.dtype == torch.float64
         assert torch.isfinite(z_traj).all()
 
@@ -747,7 +705,7 @@ class TestIonicNODE:
         """z_traj[-1].sum().backward() succeeds, grads exist on stage1 params."""
         node = self._make_node()
         B = 2
-        z0 = torch.randn(B, 20, dtype=torch.float64)
+        z0 = torch.randn(B, 24, dtype=torch.float64)
         V_traj = torch.randn(B, 50, dtype=torch.float64)
         t_grid = torch.linspace(0, 0.5, 51, dtype=torch.float64)
         t_eval = torch.tensor([0.0, 0.1, 0.3, 0.5], dtype=torch.float64)

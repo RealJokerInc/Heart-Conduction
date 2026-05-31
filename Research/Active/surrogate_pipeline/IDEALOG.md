@@ -5,13 +5,340 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**IonicRateMLP + KAN architecture validated. Multi-BCL training succeeds (val 0.008). T2 restitution training in progress.** VoltageAttention replaced by dense IonicRateMLP (17→16→16→16, 832 params) which achieved loss=0.022 with 5001 dense landmarks — better than attention's 0.047. Concentration path uses B-spline KAN (no cross-talk). Multi-BCL generalizes to unseen pacing rates. T2 (S1S2 restitution, 11,000ms protocols) stabilizing. Next architecture idea: learned contractive step (target+blend) to replace raw rate + Euler, enabling discrete BPTT without ODE solver.
+**Hybrid bidomain surrogate pivot (Session 29 late, 2026-04-21).** A benchmark of TTP06 compiled on GPU (n=10k: 34.1 M cell-steps/s) vs the v4 ionic surrogate Euler path (4.2 M cs/s) showed the ionic surrogate is 8× *slower* than the classical solver at tissue scale. KNOWLEDGE §1 had already noted that 94% of bidomain wall time is the elliptic solve, not the ionic step — the ionic surrogate was never the GPU speedup lever. Redirecting: keep classical TTP06 as the "ionic scaffold," build a neural surrogate for the bidomain **elliptic step** instead. Chosen architecture direction: dual CNN towers (one for Vm / intracellular domain, one for φ_e / extracellular) with cross-communication (Transformer attention or 1×1 cross-conv). Parabolic-elliptic first (v1); hyperbolic bidomain deferred to future Phase B.
+
+**Deprioritized from critical path:** v4 ionic overfitting fix, Data v2 single-cell T1-T12 regen, Stage 2 conductance attention, `SegmentDataset` rest-start rewrite. Ionic v4 keeps secondary roles only (CPU deployment 3-7× win confirmed, differentiable coupling, parameter optimization).
 
 ## Next Step
-- Monitor T2 training convergence (currently epoch 4, T2_val=0.92, still stabilizing).
-- Once T2 stable: evaluate combined T1+T2 generalization on held-out BCLs and S2 intervals.
-- Design and prototype learned contractive step: MLP outputs (target, blend) per dim, z_new = z + blend*(target - z). Contractive by construction, dt enters through blend.
-- Consider T3+ data tiers after T2 validates.
+
+**Design decisions outstanding for the dual-tower elliptic surrogate:**
+1. Cross-talk mechanism — full attention / windowed (Swin) / linear / Perceiver bottleneck tokens / 1×1 cross-conv / FiLM / bottleneck-only attention. Default lean: 1×1 cross-conv at every level + full self-attention at V-cycle bottleneck only (compute-friendly).
+2. Tower depth — V-cycle UGrid-style per tower vs plain encoder-decoder U-Net.
+3. Output semantics — full-field (Vm_{n+1}, φ_e_{n+1}), residual-to-classical (one Jacobi sweep + NN correction), or learned preconditioner for PCG (preserves convergence guarantee, safest).
+4. Input conditioning — each tower sees anisotropic D tensor fields (D_i, D_e), stimulus mask, boundary mask.
+
+**Data pipeline (new):**
+- Generate tissue-scale (Vm, φ_e) field trajectories from Bidomain V1 (the ground-truth simulator). Not T1-T12 single-cell data.
+- Define eval metrics: CV error (< 5% target), APD90 error, Kleber boundary ratio, elliptic residual norm, PCG iterations saved (if preconditioner path). Anchor CV/APD to Niederer 2011 N-version benchmark.
+
+**Literature to pull into `literature/`:**
+- UGrid (Li 2024, arXiv 2408.04846) — CNN V-cycle neural multigrid, most directly adoptable.
+- NPO (Cai 2025, arXiv 2502.01337) — neural preconditioner for Krylov, safer adoption path.
+- Ziarelli 2025 (arXiv 2512.13765) — Vm→ECG forward, confirms no one co-solves φ_e as a field.
+- Salvador 2025 CMAME (arXiv 2504.20479) — branched LNM for geometric variability (future Phase B).
+
+**Ionic side (paused, not abandoned):**
+- v4 overfitting fix (Session 28 options A/B/C) — only revisit if CPU ionic deployment story becomes a deliverable.
+- Data v2 T1 generation partial (batch 1 of 5 on disk at `/media/shared/norepinephrine/surrogate_data_v2/raw/tier01_epi.h5`) — preserved, not deleted. Can resume if needed.
+- INIT_CONC fix in `node_rollout.py:21` — still a 1-line correctness fix regardless of direction; do it when next touching that file.
+
+### 2026-04-21 (Session 29 late): TTP06 benchmark + hybrid bidomain pivot
+
+**Trigger**: ran a TTP06-vs-surrogate inference benchmark (`Surrogate/benchmarks/speed_ttp06_vs_surrogate.py`, results in `benchmarks/results/`).
+
+**Numbers (dt=0.01 ms, 30k-step benchmark, Blackwell RTX PRO 4500):**
+- GPU (torch.compile on):
+  - n=10:   TTP06 65k cs/s  vs surrogate 47k cs/s  → 0.72× (surrogate slower)
+  - n=100:  TTP06 653k      vs surrogate 473k     → 0.72×
+  - n=1k:   TTP06 6.5M      vs surrogate 2.6M     → 0.40×
+  - n=10k:  TTP06 34.1M     vs surrogate 4.2M     → **0.12× (surrogate 8× slower)**
+- CPU (no compile): surrogate wins 3.4–7.4× across n=10..1000.
+
+**Read**: TTP06 `model.step` fuses beautifully under `torch.compile` (~30 kernels into a few); per-step cost stays flat at ~150 μs up to n=1000. Our v4 `StateRateMLP + dzdt + Euler` has branching structure (sigmoid skip-blend, input_ref subtraction, Euler-add not compiled with dzdt), preventing fusion. At n=10k the MLP compute saturates and per-step cost explodes to 2356 μs. Implementation-level issue, not fundamental — but unless we spend engineering on CUDA-graphs / kernel fusion / CfC-style batched update, the gap persists.
+
+**KNOWLEDGE §1 already flagged** that bidomain elliptic = 94% wall-time, ionic ~6%. The benchmark confirms the project was attacking the wrong bottleneck with the ionic surrogate. Correction: the surrogate's real value proposition lives in the diffusion/elliptic component, not in replacing TTP06.
+
+**Research direction pivot (settled)**: hybrid bidomain surrogate.
+- **Ionic step**: classical TTP06 (compiled, already near kernel-launch limit).
+- **Diffusion/elliptic step**: neural surrogate (this is where the speedup lives).
+- **Parabolic-elliptic first, hyperbolic deferred.** Hyperbolic bidomain (second-time-derivative, Maxwell-Cattaneo / Feng-Bova form) makes classical solvers even harder (CFL-tight, no elliptic shortcut) — attractive target for NN but requires (a) a hyperbolic simulator we don't have, (b) TTP06 reformulation, (c) new data pipeline. Parabolic-elliptic first to validate the architecture.
+
+**Architecture direction**: dual CNN towers (INTRA for Vm / intracellular domain, EXTRA for φ_e / extracellular) with cross-communication. Physics-native — matches bidomain's two-domain structure. Cross-talk mechanism open: Transformer attention (full / windowed / linear / Perceiver bottleneck) or lightweight 1×1 cross-conv / FiLM. Strong lean: 1×1 cross-conv at every level + full self-attention at V-cycle bottleneck only (memory-feasible on 33 GB Blackwell).
+
+**Literature gap analysis (delegated to general-purpose Agent, 2026-04-21)**:
+- No published cardiac NN surrogate co-solves φ_e as a field. All 5 papers in our `literature/` are monodomain whole-PDE replacements.
+- Mature learned-Poisson literature exists in CFD context (Greenfeld 2019, Hsieh 2019, Ozbay 2019, UGrid 2024, NPO 2025, neural multigrid) for the analogous 80%-of-wall-time pressure-projection bottleneck. **Zero cardiac adoption.**
+- "Hybrid split-step" has no standard name in cardiac. Subagent suggested "learned elliptic sub-operator" to disambiguate from other senses of "hybrid."
+- All learned-Poisson work is isotropic Laplacian; anisotropic tensor D (bidomain requires `∇·((D_i+D_e)∇φ_e)`) is unhandled anywhere.
+- FNO is Neumann-BC-weak; bidomain matches CNN/U-Net/multigrid better.
+- No simulation-surrogate benchmark suite exists — we'd define our own (CV error, APD90, Kleber boundary ratio, elliptic residual norm, PCG iterations saved if preconditioner path). Anchor CV/APD to Niederer 2011 N-version benchmark.
+
+**Recommended output semantic (subagent): preconditioner first, not full inverse.** In a bidomain rollout, φ_e feeds back into the parabolic RHS every step. A learned preconditioner (NPO-style) preserves PCG's convergence guarantee — errors fail gracefully. A learned inverse (UGrid-style) is faster but lossy; phi_e errors compound into Vm errors into phi_e errors. Preconditioner is the safer v1.
+
+**4 new papers to pull into `literature/`**:
+- UGrid (Li 2024, arXiv 2408.04846) — CNN V-cycle neural multigrid, most adoptable architecture.
+- NPO (Cai 2025, arXiv 2502.01337) — neural preconditioner for Krylov, condition+residual loss.
+- Ziarelli 2025 (arXiv 2512.13765) — Vm→ECG forward surrogate, seq2seq attention, confirms field ignores φ_e.
+- Salvador 2025 CMAME (arXiv 2504.20479) — branched LNM on biventricular, cited for "surrogates are geometry-specific" — relevant if Phase B extends past structured grid.
+
+**Session-29-late artifacts**:
+- `Surrogate/benchmarks/speed_ttp06_vs_surrogate.py` + `benchmarks/results/{gpu,cpu}.{json,log}` — the benchmark evidence.
+- `Research/Active/surrogate_pipeline/WHITEBOARD.md` — current sketch is the dual-tower design.
+- **Folder cleanup**: `Surrogate/` root now holds only `README.md` + 7 organized dirs (`surrogate/`, `datagen/`, `benchmarks/`, `diagnostics/`, `tests/`, `docs/`, `archive/`). 9 obsolete root scripts → `archive/scripts/`. 11 stale root markdown → `docs/`. `improvement.md` → `docs/`. `run_multi_bcl.py` → `benchmarks/` (kept; Session 25 parity oracle per MEMORY.md).
+- Data v2 T1 partial gen on disk (batch 1 of 5 only, ~3.5 GB) — preserved, not deleted. Spec (`DATA_V2_SPEC.md`) + generator (`datagen/generate_t1_v2.py`) + schema module (`surrogate/data/schema.py`) all ready if we resume the ionic-side track.
+
+**Failed approaches added this session**:
+- **Chasing per-step ionic speed parity with TTP06 on GPU** — benchmark confirmed TTP06 compiled is 8× faster at tissue scale. Stop optimizing the MLP for kernel-launch efficiency; the gap is structural (branching + separate dzdt+Euler calls prevent fusion).
+- **"Surrogate replaces the whole bidomain solver" framing** — the ionic half is already at kernel-launch limits on GPU. Only the elliptic half is the real bottleneck.
+- **Full Data v2 regen now** — paused. Single-cell ionic data is only useful for ionic-side work, which is deprioritized. Partial batch 1 retained in case we resume.
+
+### 2026-04-21 (Session 29): Data v2 audit + T1 regeneration spec
+
+**Audit findings** (full matrix in DATA_V2_SPEC.md §Motivation):
+- v1 data pipeline loads only T1/T2/T3/T12 of the 12 tiers on disk (~30 GB / 612 GB, 5% utilization). T4 (551 GB random pacing), T11 (18 GB stitched) entirely unused.
+- `INIT_CONC = [Na_i=10, K_i=138, Ca_i=1e-4, Ca_ss=2e-4]` in `node_rollout.py:21` doesn't match simulator rest `[8.604, 136.890, 1.26e-4, 3.60e-4]`. `voltage_clamp_ss.py:36-40` already flagged this and uses V5.4's `_V54_REST` directly; fix never propagated to training. Creates systematic latent-rest mismatch.
+- "Steady state" is BCL-dependent: at beat 20 of BCL=2000, CaSR=1.23; at BCL=300, CaSR=4.73. Frozen decoder bias assumes CaSR=3.64. The rest-attractor contract is self-inconsistent across BCLs.
+- Two incompatible segment extractors in the repo: `run_multi_bcl.py` (beat-aligned, honors z0=rest) vs `SegmentDataset` (uniform stride, lands mid-AP). Harness + `train_node.py` use the broken one.
+- Splits are at protocol-name granularity; with 8 DIs and 3 held out, losing one = 12.5% of the tier. No test set possible at v1 density.
+
+**T1 v2 locked**:
+- Grid: 35 BCLs = {200..300 @ 10ms} ∪ {350..1000 @ 50ms} ∪ {1100..2000 @ 100ms}.
+- 50 beats/BCL (up from 20) — beats 15–49 are settled and usable. Extra beats capture slow CaSR/Na_i equilibration (60–120 s timescale).
+- Two-axis split: across-BCL (23 train / 6 val / 6 test, regime-stratified) × within-BCL (beats 0–14 warmup / 15–39 train / 40–44 val / 45–49 test on train BCLs).
+- Val BCLs: {220, 280, 450, 900, 1200, 1800}. Test BCLs: {240, 260, 550, 850, 1500, 1900}.
+- Effective: 575 train + 325 val + 325 test segments (~20× the Session 25 oracle's 25).
+
+**Design decisions baked into spec** (DATA_V2_SPEC.md):
+1. Per-(tier, celltype) h5 files. `tier01_epi.h5`, `tier01_endo.h5`.
+2. Short group names (`bcl200`, not `steady_bcl200_dt0.01`). Redundant axes live in file/group attrs.
+3. Column schema promoted from `preprocessor.py` constants to file-level `column_names`/`column_units` attrs + single source of truth in new `surrogate/data/schema.py`.
+4. Splits as editable sidecar JSON in `splits/tier{NN}_v2.json`. Loader reads sidecar, not h5, for split decisions.
+5. Gzip-4 compression, chunks (65536, 47) — ~60% size reduction.
+6. Quality flags (`capture_flag`, `alternans_flag`) computed at gen time.
+7. Per-tier provenance log in `provenance/{tier}_genlog.json`.
+8. Top-level `MANIFEST.yaml` idempotently regenerated on each tier completion.
+
+**Rejected during audit** (see DATA_V2_SPEC.md alternatives):
+- Pushing T1 past 35 BCLs — diminishing returns; BCL is a continuous scalar the model interpolates.
+- Reorganizing by semantic class (`rest_start_steady`, etc.) now — deferred until we know all tier designs.
+- Baking splits into h5 attrs — sidecar JSON wins on editability + version control.
+
+**Open** (blocking nothing immediate):
+- T2 DI grid spec after T1 generates.
+- Rewrite `SegmentDataset` to read v2 schema + honor rest-start contract (Session 29+).
+- Fix INIT_CONC in `node_rollout.py` (1-line; applies to both v1 and v2 training).
+
+### 2026-04-20 (quicksave): Session 28 post-mortem + harness issues + training-regime pivot
+
+**Overfitting framing**: earlier I called the Session 28 train/val gap a "BCL distribution" problem. Wrong — user pointed out v3 (1,444 params) converged on the same split. The 5.5× capacity bump (7,891 params) on 25 trajectories (5 BCLs × 5 beats) is memorising the training set. Classic fingerprint confirmed: smooth monotone train-loss descent, oscillating val-loss. IDEALOG / KNOWLEDGE / MEMORY entries corrected.
+
+**cardiac_ml harness issues surfaced during Session 28** (ordered by severity):
+1. **(fixed)** Factory didn't re-pin rest bias after `load_state_dict` — Step 3.0 patch added `pin_rest_bias()` call. Warm-starts before this would have silently broken the rest-attractor invariant.
+2. **Checkpoint format asymmetry** — `ModelCheckpoint` saves `trainer.model.state_dict()` *flat* (`stage1.*` prefix), but the factory's `load_state_dict` path expects the v3-era `{"stage1_state_dict": ...}` wrapper. Checkpoints can't round-trip through the factory. Diagnostic has dual-format loader; a future warm-start-from-harness-ckpt would hit this.
+3. **No NFE callback** — `GradNormMonitor` exists, no counter for `IonicNODE.nfe`. When training slowed after epoch 8 we couldn't confirm the "NFE ramp from stiff vector field" hypothesis. Fixable with a 10-line callback.
+4. `train.log` left empty (only MLflow is written) — tail-a-run workflow is broken; use `tail mlruns/*/metrics/val_loss` instead.
+5. CLI syntax trap: `experiment=ionic_node_smoke` not `+experiment=ionic_node_smoke` (the `+` is for NEW keys; experiment is already in defaults).
+
+**Decision**: **bypass the harness for now**. Use `Surrogate/surrogate/training/train_node.py` (argparse) directly for remaining v4 training. Rationale: the overfitting-fix loop needs fast iteration across architecture shrinks + regularizer tweaks, and the harness adds 3–4 min of Hydra / MLflow overhead per run for no benefit when we're not sweeping. `train_node.py` is v4-compatible (uses `state_rate_mlp`, `node.nfe`, `stage1_state_dict` wrapper ckpts). Harness remains the path for sweeps / final-parity runs.
+
+**Open question for next session**: which option to run first — shrink StateRateMLP to ~3K params (Option A, directly addresses overfitting), bump weight decay + λ_rest on current arch (Option B, keeps capacity hypothesis alive), or A→B sequence (Option C). Not yet committed.
+
+### 2026-04-20 (Session 28): v4 implementation + first end-to-end training
+
+**Worked on**: full PLAN execution — Phase 1 (architecture pivot), Phase 2 (rest attractor + z_ss grid), Phase 3 (first training run via cardiac_ml harness). New: input-centering hotfix that Session 27's PLAN did not anticipate.
+
+**Implementation status (all merged to working tree):**
+- Phase 1: `StateRateMLP` replacing `IonicRateMLP`+`conc_kan` (7,891 params, band [7800, 8100]), `IONIC_DIM` 16→20, `TTP06_REST_IONIC_STATE` constant, `pin_rest_bias()` method pinning decoder bias at rest. 143 Surrogate tests pass (1 xfail — legacy discrete rollout), 81 cardiac_ml tests pass. Negative grep `ionic_rate_mlp|conc_kan|MLP_HIDDEN|VoltageAttention|KANLayer` returns empty on `Surrogate/tests/`.
+- Phase 2: `Surrogate/surrogate/data/voltage_clamp_ss.py` uses V5.4's `compute_gate_steady_states`, `compute_gate_time_constants`, `compute_concentration_rates` primitives (thin composition, no RHS reimplementation); Rush-Larsen for gates + Euler for CaSR/RR (dt=0.01 ms). Converges to the held-V fixed point within 2000 ms at `rel_tol=1e-4`. `z_ss_grid.pt` saved. `L_rest` regularizer added to `node_rollout` with `V_REST_MV=-85.23`, `LAMBDA_REST=1e-2`, exposed as `result['L_rest']`.
+- Step 3.0: `cardiac_ml/model/ionic_node_factory.py` re-pins rest bias after `load_state_dict`. Dedicated test file `test_factory_rest_bias.py` covers cold-start + warm-start + v4 load.
+
+**Session 28 insight — the input-centering hotfix.** First t1 launch (LR=1e-4, dopri5, adjoint=False, 30 epochs, 5 train BCLs × 5 beats, 4 val BCLs × 3 beats) produced val_loss = 1.88e9 at epoch 0 with only ~24 %/epoch reduction by epoch 2. Diagnosis: the gated full-path skip (`alpha = sigmoid(-5) ≈ 0.007`) receives the raw carried-state as input. With `INIT_CONC` containing `K_i = 138` and `Vm ≈ -85 mV`, the skip output magnitude hit ~`0.42 × 138 = 58/dim` before the `α=0.007` gate, producing ~`0.4/dim` rate contributions during dopri5 integration — enough to blow the integrated latent out of range and decoder predictions out of physiological bounds. `skip_logit = BETA_INIT` (Phase 1 hotfix) was necessary but not sufficient.
+
+**Fix**: added a non-trainable `input_ref` buffer to `IonicStage1` (shape `(carried_dim + 1,)`). `dzdt` subtracts it before calling `state_rate_mlp`, so the skip path sees "deviation from rest input" — `[zeros(ionic_dim), INIT_CONC, V_REST_MV]` becomes exactly zero at rest. At rest with random weights, both deep and skip paths return zero → rate = 0 (verified in smoke: `L_rest ≈ 1.6e-17`, `rate.abs().max() = 0.0` at V=-85). Buffer is registered so `.double()` cascades correctly; uses `torch.get_default_dtype()` so float32 tests keep working.
+
+**Second t1 launch** (same config, model now with `input_ref`):
+- `train_loss` decreased cleanly: `6.57e4 → 5.20e4 → 3.80e4 → 2.06e4 → 1.38e4` (epochs 0–4, ~79 %/epoch reduction).
+- `val_loss` oscillated in millions: `1.27e7 → 2.18e7 → 2.43e7 → 2.03e7 → 1.62e7 → 1.32e7 → 2.08e7 → 2.13e7 → 6.74e6 → 2.30e7` (epochs 0–9). Best epoch = 8 at 6.74e6.
+- **Train/val gap ~1000× is overfitting, not a data-split issue.** Oracle `multi_bcl_002` (v3, 1,444 params) reached val=0.00838 on the *same* train/val split (incl. BCL=2000 in val). v4 at 5.5× the parameter count (7,891) memorises the 25-trajectory training set (5 BCLs × 5 beats each) and fails to generalise. The classic pattern is here: smooth monotone train-loss decrease and oscillating val-loss with no trend. Earlier framing in this entry that blamed "BCL distribution gap" was wrong — v3 handled the same gap fine; the difference is model capacity.
+- `L_rest` term works as designed: settles to ~`5e-5` by epoch 4 — rest is a fixed point of the learned dynamics.
+
+**Outcome**: v4 architecture and training infrastructure are functional; Success Criterion `val_loss < 0.02` is NOT met within the 30-epoch / 1e-4 LR budget. Criterion was written against the Session 25 oracle (v3, 1,444 params, 8 epochs, val=0.00838); v4's 5.5× larger capacity needs either more epochs, warm-start, or narrower training distribution to converge to that threshold. Training was killed at epoch 10 after noticeable NFE slowdown; `best.pt` corresponds to epoch 8 (val=6.74e6).
+
+**Integrator error-budget on `best.pt`** (held-out BCL=2000, 300 ms window, `rtol=atol=1e-8` dopri5 reference): `Surrogate/diagnostics/artifacts/integrator_error_budget_v4.pt`.
+- Aggregate Euler vs dopri5 = 0.0008 (truncation), dopri5 vs truth = **9.76** (capacity), Euler vs truth = 9.76.
+- **CaSR NRMSE = 37.11 %** (v3 baseline 27.4 %). v4 at this checkpoint is *worse* than v3. Several fast gates are also in the 200–2100 % NRMSE regime — predictions are multiples of the physiological range out. This reflects the latent-explosion-during-long-integration pattern already diagnosed by the millions-scale val_loss, not a fundamental architectural flaw: the model is undertrained under the current regime.
+- Time-resolved error grows monotonically: 0.51 → 0.79 → 1.88 → 7.34 → 12.14 → 14.28 at t = 2.5, 7.5, 22.5, 102.5, 202.5, 297.5 ms. Error accumulates across the integration horizon.
+- Conclusion: the v4 CaSR-capacity improvement hypothesized in Session 27 is not yet validated empirically. Running the full 30-epoch budget (or a warm-start / curriculum regime) before re-measuring is the next actionable step.
+
+**Settled next steps (to be opened as a new research thread), in rough priority:**
+1. **Shrink StateRateMLP back toward v3 scale.** Current capacity budget (7,891 params) is the dominant driver of the overfitting; H_STATE_MLP 32→16 and 5→3 hidden layers brings the count back to ~2.5–3K, within spitting distance of v3's 1,444. The Session 27 blueprint's capacity bump was a hypothesis, not an empirical requirement — the CaSR bottleneck identified in the diagnostic motivated it, but until we re-measure CaSR NRMSE on a *converged* v4 checkpoint we can't validate that extra capacity closes that specific gap. Smaller-v4 first so we have a trained baseline, then widen if CaSR stays stuck.
+2. **More data**, not a data-split change. T2/T3 caches already exist in `/media/HDD/norepinephrine/surrogate_data/raw/`; rebuild the cache pipeline to include them and the effective trajectory count per epoch goes up 3–12×. Orthogonal to (1) and complementary.
+3. Weight decay bump (1e-4 → 1e-3) as a cheap regulariser. Dropout is out (banned in PLAN / Failed Approaches — corrupts the vector field during adjoint).
+4. Curriculum over BCLs (short first, warm-start into long) is still on the table but deferred behind (1) because overfitting, not distribution, is the primary issue.
+5. Investigate whether `ode_rtol=1e-3` is stable enough at epochs 15+ — NFE may be climbing as the vector field stiffens. Orthogonal to capacity.
+
+**Failed approaches added this session**:
+- **Zero-centered raw inputs through the skip path** — magnitude spikes (`K_i=138`, `Vm=±80`) propagate un-gated during dopri5 integration. Fixed by `input_ref` buffer (non-trainable centering).
+- **v4 at 7,891 params on T1 only** (2026-04-20) — overfits 25 training trajectories. v3 (1,444 params) reached val=0.00838 on the same split. Fix: shrink the model toward v3 scale before claiming v4 capacity is needed.
+- **cardiac_ml harness checkpoints being compatible with the factory's warm-start loader** (2026-04-20) — `ModelCheckpoint` writes flat `stage1.*` keys, factory expects `{"stage1_state_dict": ...}` wrapper. Round-trip broken; warm-start-from-harness-best.pt would KeyError.
+
+### 2026-04-19 (Session 27): Integrator error budget + StateRateMLP arch pivot
+
+**Worked on**: (1) Quantifying whether inference-time Euler error buildup justifies a learned integrator redesign. (2) Root-cause of model underfitting, per dim. (3) Unified rate-predictor architecture to replace `IonicRateMLP` + `conc_kan`.
+
+**Questions raised and resolved**:
+
+**Q1. Does forward-Euler at dt=0.01ms accumulate enough truncation error to justify a learned integrator head `g_φ(rate, V_t, V_tdt, dt) → Δz` trained against dopri5 single-step flow?**
+
+*Resolution: No.* Diagnostic `Surrogate/diagnostics/integrator_error_budget.py` on held-out BCL=2000, 300 ms window, checkpoint `multi_bcl_002/best.pt` (val=0.0084):
+- Euler vs dopri5 RMSE: **0.00161** (truncation)
+- dopri5 vs truth RMSE: **0.34638** (model capacity)
+- Euler vs truth RMSE: **0.34737** (total)
+- Truncation is **215× smaller** than capacity error; ratio is **700×** at the upstroke (t=2.5 ms) and never drops below 150× across the trajectory. A learned integrator head would eliminate ~0.16 % of total error and leave 99.8 % untouched. Rejected as no-op. See Failed Approaches.
+
+**Q2. Which dims dominate the model failure?**
+
+*Resolution: CaSR (slow variable) dominates; RR/Xs also lag.* Per-dim NRMSE normalized to physiological range (`_RANGES` in `loss_normalization.py`):
+- Fast gates (m, h, j, r, s, d, f, f2, fCass, Xr1): 4–14 % per dim
+- Xr2: 4.2 % (best)
+- Xs: 7.4 %
+- RR: 10.8 %
+- **CaSR: 27.4 % — contributes 0.075 to normalized MSE, 4–10× any other dim.**
+- Pattern: fast gates converge to the ~10 % regime uniformly; slow variables (CaSR, RR, Xs) lag. Suggests a latent-allocation / rate-capacity issue on slow-timescale dynamics, not a uniform undercapacity.
+
+**Q3. Is the linear decoder the CaSR bottleneck?**
+
+*Resolution: No.* A free `Linear(16 → 14)` has **linear universality**: the 16-dim latent's linear span can contain any 14 target directions; `W` is a free rotation. CaSR failure is upstream — the latent doesn't encode a CaSR-tracking direction because the rate predictor can't produce it.
+
+*Refinement of prior claim:* "linear decoder ensures the latent encodes info similar to the parameters" = the latent must **linearly span** the 14 observables, **not** that `z[k] = param[k]` (identity alignment). Identity alignment would require constraining W (diagonal, or identity-init + frozen, or orthogonality regularizer). The scaffold-discard contract (no nonlinearity to launder knowledge into) still holds — this is a clarification, not a reversal.
+
+**Q4. Should the rate predictor take conc self-input back?**
+
+*Resolution: Yes.* Current `conc_kan(17 → 4)` feeds only ionic latent + Vm; conc self-input was dropped because an earlier `conc_mlp(20 → 4)` blew up (Xavier init → 1e237 in ODE feedback loop). That IDEALOG fix bundled *two* changes: (a) drop conc self-input and (b) switch to no-cross-talk KAN. Only (b) was strictly required. Zero-init on the last layer plus separable structure makes conc self-input stable. Physics needs it: `I_NaCa` depends on Na_i × Ca_i; Nernst potentials depend on conc; `I_NaK` is Na_i-saturating. Restore the 4 self-dims to the rate input.
+
+**Q5. Is a single KAN layer sufficient for conc dynamics?**
+
+*Resolution: No.* Single KAN layer is **additively universal** (each output is `Σⱼ φⱼ(xⱼ)`) but cannot represent multiplicative cross-terms. Conc physics has unavoidable products:
+- `I_NaCa ∝ exp(γVF/RT) · Na_i³ · Ca_o − (reverse) · Ca_i`  → V × Na_i × Ca_i product
+- `I_CaL flux = d·f·f2·fCass · Ca_ss · exp(VF/RT)`           → gate products × conc × exp(V)
+- `I_NaK`                                                     → saturating Na_i × Vm interaction
+
+None of these decompose into univariate sums. Need multiplicative capacity: stacked KAN, KAN + MLP hybrid, or a GELU mixer feeding a KAN readout.
+
+**Q6. Separate rate paths for ionic vs conc, or unified?**
+
+*Resolution: Unified.* Path separation was scar tissue from the MLP feedback-loop explosion — fixed by zero-init + no-cross-talk, not by path separation. Physical coupling (Ca_i ↔ Na_i via NCX) is real; the model should be allowed to learn it. Kill `conc_kan`, extend the rate predictor to full-state input and full-state output.
+
+**Q7. Depth/width of the rate predictor and activation structure at output?**
+
+*Resolution: `Linear(25 → 32) + GELU → KAN(32 → 24, grid=5, order=3, spline zero-init)` — single hidden mixer + KAN readout head (Option B, simplified).*
+- Cheaper than Option A (KAN as hidden `32 → 32` block): saves ~3K params because output dim is 24, not 32, so the KAN matrix is smaller.
+- Simpler than an earlier β proposal (3 hidden Linear+GELU layers before the KAN): a single GELU mixer trusts the KAN readout's spline capacity (~6.9K params) to handle per-dim rate shaping. If slow vars still underfit, revisit depth.
+- Zero-init on `spline_weight` + near-zero `base_weight` (KAN default) → rate field ≈ 0 at init → ODE stable at init (same trick as before, now at the readout).
+- GELU mixer produces 32 learned features from the 25-dim input — sufficient for the ~20–30 distinct physical cross-product interactions in TTP06.
+
+**Q8. Is 16-dim ionic latent enough, or expand?**
+
+*Resolution: Expand to 20.* With 16 latent dims for 14 targets there is no slack — the model has no incentive to reserve a CaSR-tracking slot when 15 other dims fit easily and redundancy is free. +4 dims adds trivial param cost (+80 MLP input, +80 decoder output) and gives explicit slack for slow variables to claim a dedicated direction.
+
+**Final design (StateRateMLP + latent 20, Option B-simplified)**:
+
+```
+CONSTANTS
+  IONIC_DIM        = 20   (was 16)
+  CONC_DIM         =  4
+  CARRIED_DIM      = 24   (was 20)
+
+STAGE 1 · dzdt (unified StateRateMLP)          Input: z(24) + Vm(1) = 25,  Output: 24
+  h    = GELU(Linear(25 → 32))                                            832 params
+  rate = KAN(32 → 24, grid=5, order=3, spline zero-init)                 6912 params
+                                                                dzdt total: 7744
+
+Downstream (updated dims, same structure):
+  ionic_state_decoder:      Linear(20 → 14)    free W, no activation      294
+  gate_conductance_linear:  Linear(24 →  8)    no bias                    192
+  gate_conductance_mlp:     Linear(24 → 12 → 12 → 8)  GELU×2              560
+  gate_conductance_logit:   (8,)                                            8
+  gate_conductance_decoder: Linear(8 → 5)                                  45
+
+TOTAL  ~8,843 training, ~8,504 inference.   vs current 2,407 / 2,124 → ~4× bigger.
+```
+
+**Decisions**:
+- `StateRateMLP` replaces `IonicRateMLP` + `conc_kan`.
+- `IONIC_DIM` 16 → 20; `CARRIED_DIM` 20 → 24.
+- Conc self-input restored — rate input is the full carried_state + Vm = 25 dims.
+- Decoder stays `nn.Linear(20 → 14)` — free W, no activation, linear-span contract preserved, scaffold still discardable.
+- Zero-init KAN `spline_weight` (was the pattern for `conc_kan`; carry forward to the readout).
+- `g_φ` learned integrator head **not** pursued (see Failed Approaches).
+- CaSR loss reweighting **deferred** — possible optional fine-tune after arch change lands. Up-weighting before arch is cheaper-looking but CaSR already dominates the gradient (~58 % of total loss signal); more capacity is the real fix.
+
+**Old checkpoints incompatible** — `state_dict` keys `ionic_rate_mlp.*` and `conc_kan.*` disappear. `multi_bcl_002/best.pt` etc. become unloadable against the new model. Fresh training from scratch required.
+
+**Files to touch in implementation**:
+- `Surrogate/surrogate/model/stage1.py` — constants, remove `IonicRateMLP` + `conc_kan`, add `StateRateMLP` class, rewire `dzdt`, update `_init_weights`.
+- `Surrogate/surrogate/training/node_rollout.py` — verify `INIT_CONC` indexing auto-adapts (uses `stage1.ionic_dim:`, should be fine).
+- `Surrogate/tests/*` — dim fixtures (16 → 20, 20 → 24).
+- `Surrogate/surrogate/training/loss_normalization.py` — **no changes** (decoder output dims unchanged at 14 + 4 + 5).
+
+**Diagnostic artifact**: `Surrogate/diagnostics/integrator_error_budget.py` + saved tensors at `Surrogate/diagnostics/artifacts/integrator_error_budget.pt` (V trajectory, Euler/dopri5/truth ionic states for plotting).
+
+**Next**: Implementation pending user greenlight. Pipeline formalization (Session 26) continues in parallel on a separate tmux pane.
+
+**Q9. What the trained model is actually learning (weight + trajectory analysis).**
+
+*Observation (from `multi_bcl_002/best.pt` at val=0.0084):*
+
+- `ionic_rate_mlp.fc3.weight` Frobenius norm = 0.22, max |w| = 0.04 — essentially at zero-init after 7 epochs.
+- `fc1`, `fc2` weights well-trained (norms 4.24, 4.15); `fc2` singular values give effective rank 14/16.
+- All 16 latent dims contribute to the decoder (column norms 0.32 to 0.62, mean 0.48) — no dead slots.
+- Per-dim prediction std vs truth std on held-out BCL=2000: fast gates match shape (ratio 0.5-1.6); **RR and CaSR oscillate 7× more in prediction than truth** — model is injecting AP-frequency noise into quantities that should be near-flat.
+- Prediction at t=0 (rest): m=-0.06 (truth 0.00), h=-0.19 (truth 0.74), CaSR=0.09 (truth 3.68). **At t=300ms (also rest): m=0.01, h=0.70** — near-perfect.
+- `decoder(z=0) = bias ≈ arbitrary values`; z=0 is an unlabeled convention the model never learns to map to physiological rest.
+
+*Resolution: the "frozen latent" framing was too cynical.* The rate field is small-magnitude but non-trivial; integrated over 30K steps it produces real latent motion. The model HAS learned AP-shape dynamics for fast gates. The failure modes are more specific:
+
+1. **Wrong initial state.** `decoder(z=0) = bias` never trained to equal physiological rest. Upstroke error (RMSE 0.70 at t=2.5ms) is dominated by this initial-state bleed-through, not failure to model the upstroke itself.
+2. **Single AP-oscillation signature applied uniformly.** The rate MLP learned one Vm-driven signature. Fast gates match by luck (they're supposed to oscillate at AP frequency). Slow gates (CaSR, RR) inherit spurious AP-frequency oscillation.
+3. **CaSR DC offset.** `pred_mean = 2.48 mM` vs `truth_mean = 3.69 mM`. Latent never reaches a z where `decoder(z)[CaSR] ≈ 3.7` — the rate field for CaSR-feeding latent dims never drives to the correct steady state.
+
+**Q10. Should we hard-code the latent to physical gate parameters (kill the scaffold)?**
+
+*Resolution: No — the multi-model goal (TTP06 + ORd) is load-bearing and hard-coding is a one-way door.* TTP06 and ORd have fundamentally different state sets (18 vs 41 states, different Markov parameterizations); committing to one model's gate structure abandons the universal-latent promise. Also violates Layer 0 maxim (HH gating is a modeling choice, not physical reality) and kills the optical-mapping transfer path.
+
+Evidence-based middle ground — *hybrid representation*: promote slow reservoirs (CaSR, plus ORd's jSR/nSR/CaMKt) out of the latent into the explicit named set alongside concentrations. Keep HH gates / Markov states as learned latent. Rationale: slow reservoirs have clear physical meaning in every ionic model and are the specific dims the discovered latent can't track; gate parameterizations vary across models and deserve latent flexibility.
+
+**Q11. Does weight-clamping the scaffold decoder help the observed gradient issues?**
+
+*Resolution: No.* The diagnosed pathology is gradient *underuse* at the rate MLP's `fc3`, not gradient *explosion* at the decoder. Clamping `W_d` would scale down `∂L/∂z = W_d^T @ residual`, making the rate MLP's gradient signal *smaller*, not larger — worsens the stuck-fc3 problem. Current decoder weight norm (1.94, max |w| ≈ 0.5) is not excessive; nothing needs clamping. If defensive regularization is ever needed, spectral norm on the decoder is the right tool — but I don't predict it changes outcomes here.
+
+**Q12. Physics-informed attractors — enforce z=0 → physiological rest, and what else?**
+
+*Resolution: Adopt two attractors; they compose into one regularizer.*
+
+**A. Rest attractor (decoder bias + rate regularizer).**
+- Initialize `ionic_state_decoder.bias = rest_ionic_state` (TTP06 rest values per dim) and **freeze**: `bias.requires_grad_(False)`.
+- Semantic effect: latent becomes "deviation from rest". `decoder(z=0) = rest` by construction. The latent has a meaningful origin.
+- Add rate attractor term: `L_rest = λ · || f_θ(z_rest, V_rest) ||²` where `z_rest = [zeros, INIT_CONC]`, `V_rest = -85.23 mV`. Ensures z=0 is a fixed point of the dynamics, not just a decoding convention.
+
+**B. Voltage-clamp steady-state attractor (generalization).**
+- For any V held constant, HH dynamics have a deterministic fixed point `z_ss(V)` with all gates at `g_∞(V)`.
+- Regularizer: `L_vclamp = E_V ~ pacing || f_θ(z_ss(V), V) ||²`.
+- Two ways to obtain `z_ss(V)`: precompute via simulator at V grid {-90, -60, -40, -20, 0, +20, +40, +60 mV}, integrating 500 ms to convergence (~30s offline); or mine from training data, using windows where V has been near-constant for >50 ms as empirical z_ss samples.
+- Rest attractor is a special case (V = V_rest). The two terms collapse into one unified `L_vclamp` evaluated at a V grid including V_rest.
+- Physical meaning: encodes the defining property of HH — for any constant V, the system relaxes to the V-dependent fixed-point manifold.
+
+**C. Optional layer on top (Tier 2, consider if errors persist).**
+- Contraction-toward-target: soft penalty on rate direction pointing away from the local steady state. `L_contract = λ · relu(-sign(z_ss(V) - z) · dz/dt).sum()`. Rush-Larsen's contraction principle as a soft constraint, not the rigid exponential form that was rejected before.
+- Decoded-gate bounds for the 12 HH rows: `relu(-decoded).sum() + relu(decoded - 1).sum()`. Cheap fix for prediction excursions outside [0, 1].
+
+**Skipped (Tier 3):**
+- Ca conservation — hard to implement cleanly with CaSR unbounded.
+- Cycle periodicity — useful later for multi-beat rollouts, not for single-AP training.
+
+**Multi-model consideration:** rest state values differ between TTP06 and ORd. Store per-model rest constants; select at training time via model-ID input. Decoder bias is per-model; rate predictor is shared. Clean factoring.
+
+**Implementation scope (to layer onto Session 27 StateRateMLP pivot):**
+- `Surrogate/surrogate/model/stage1.py`: ~10 lines to initialize + freeze `ionic_state_decoder.bias`. Add `TTP06_REST_IONIC_STATE` constant (14 values).
+- `Surrogate/surrogate/training/node_rollout.py`: add `L_rest` / `L_vclamp` term in loss computation. Pass (V_grid, z_ss_grid) in as a training-time constant. ~20 lines.
+- `Surrogate/surrogate/data/`: small preprocessing step to compute z_ss(V) once from the TTP06 simulator at the V grid, cache to disk.
+
+**Decisions (additive to prior Session 27 decisions):**
+- Freeze `ionic_state_decoder.bias` at TTP06 physiological rest values; latent becomes "deviation from rest".
+- Add voltage-clamp steady-state attractor regularizer `L_vclamp` with λ ≈ 1e-2 (tunable).
+- Tier 2 attractors (contraction, gate bounds) optional; evaluate after Tier 1 lands.
+- Hybrid explicit-slow-var proposal (promote CaSR out of latent) deferred — revisit after seeing if physics-informed attractors close the CaSR gap without it.
+- Hard-coded latent (neural Rush-Larsen) rejected — violates multi-model universality goal and Layer 0 maxim; the evidence isn't strong enough to take a one-way door.
 
 ### 2026-04-07 (Session 25): Architecture refinements + first multi-BCL and T2 training
 **Worked on**: Replaced VoltageAttention with IonicRateMLP, concentration KAN, dense landmarks, multi-BCL training, T2 restitution training, designed learned contractive step.
@@ -45,6 +372,52 @@
 
 **Decisions**: VoltageAttention archived, IonicRateMLP is the new ionic rate path. KAN for concentrations. Dense landmarks as default. Multi-BCL as standard training regime.
 **Next**: Monitor T2 convergence. Prototype learned contractive step. Consider T3+ tiers.
+
+### 2026-04-16 (Session 26): Pipeline formalization — direction settled
+
+**Worked on**: Analyzed the learned contractive step idea (rejected), then pivoted to the second topic — ML pipeline formalization with MLflow/Optuna/SHAP.
+
+**Accomplished**:
+
+1. **Contractive step formally rejected** (see Failed Approaches table). Both contractive and raw-rate formulations make the same frozen-neighbor approximation; Rush-Larsen's dt-independence only holds at the single-gate level. Current MLP can learn attractor dynamics implicitly. Added architectural complexity not justified.
+
+2. **Pipeline formalization direction settled**:
+   - **MLflow** is must-have (core organization layer), **Optuna + SHAP** are nice-to-have analysis overlays.
+   - Full rewrite, not a wrapper — archive old `runs/` folder, start fresh.
+   - **Hydra** chosen over plain YAML+dataclass: config composition with `_target_` instantiation eliminates factory code, `--multirun` enables native Optuna sweeps, CLI overrides come free.
+   - **Project-wide scope**: lives at project root as `cardiac_ml/` package, not `Surrogate/`-specific. Reusable across ionic surrogate, future diffusion ResNet, bidomain cross-skip, optimizer BayesOpt work.
+   - Model code stays where it is (`Surrogate/surrogate/model/`, future `Bidomain/...`, etc.); Hydra references it via `_target_: path.to.Class`.
+   - MLflow: file-backed (`./mlruns/`), `log_artifact` with state_dict (not `log_model`, avoids pickle fragility for custom classes), per-epoch metrics, auto-log git SHA + dirty flag as tags.
+   - Model-specific training logic stays near the model (e.g., `Surrogate/surrogate/training/node_rollout.py`), but USES the project-wide `cardiac_ml.Trainer` skeleton and callbacks.
+   - Single `Trainer` class with overridable `_train_step` method rather than unrelated trainer classes per task.
+
+3. **Proposed directory structure**:
+```
+Heart-Conduction/
+  cardiac_ml/                  # NEW project-wide pkg
+    training/ (trainer, callbacks, mlflow_logger)
+    analysis/ (shap_utils)
+    utils/
+  conf/                         # Hydra config tree at root
+    config.yaml
+    model/ data/ training/ optimizer/ experiment/
+  scripts/
+    train.py    # @hydra.main
+    sweep.py    # Optuna via hydra-sweeper
+    analyze.py  # SHAP
+  mlruns/                       # gitignored
+  outputs/                      # Hydra working dirs, gitignored
+  archive/runs_legacy/          # old runs/ preserved
+```
+
+**Decisions**:
+- Hydra over plain YAML (composition + CLI overrides + Optuna plugin).
+- Project-wide `cardiac_ml/` package, not Surrogate-specific.
+- File-backed MLflow, `log_artifact` with state_dict, per-epoch metrics.
+- Single flexible Trainer with overridable `_train_step`.
+- Archive old runs/, clean start.
+
+**Next**: Browse GitHub for existing Hydra+MLflow+Optuna ML research templates before committing to design. Then `/blueprint` the implementation.
 
 ### 2026-04-07: VoltageAttention Redundancy — Mathematical Proof + Weight Analysis
 **Worked on**: Advisor critique of attention layer prompted deep analysis of VoltageAttention mechanism and trained weights.
@@ -282,6 +655,14 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | VoltageAttention (n x 1 cross-attention on scalar inputs) | Collapses to 32 effective params (switched linear ODE) when operating on scalar per-dim inputs. Q_i = z_i * W_q[i,:], K = Vm * W_k are scalars in R^4 — dot product reduces to score_i = z_i * Vm * c_i (learned constant). Target is linear in Vm (t_i * Vm), cannot represent nonlinear sigmoid gate steady-states. Trained weights confirm: MLP correction unused (alpha stayed at init 0.007), gates saturate to binary switches. Replace with dense MLP(z_ionic, Vm) -> ionic_rate. |
 | conc_mlp (dense MLP for concentrations) | Cross-communicated concentration dimensions (each conc rate sees all other concs). Physics violation: concentration rates are independent functions of ionic state and Vm. Xavier init caused ODE feedback explosion (1e237). Zero last-layer init was stable but slow. Replaced by B-spline KAN layer with no cross-talk between concentration dims. |
 | Xavier init on last layer of rate MLP | ODE diverged on first integration step — initial vector field too large, solver immediately produces NaN/Inf. Fixed with zero-init on last layer (model starts as identity/zero-rate, gradually learns dynamics). Critical for any MLP used as ODE right-hand side. |
+| Learned contractive step (target + rate + exponential integrator) | Analyzed in Session 26 (2026-04-16). Mathematically cleaner than raw rate + Euler — factored as `z_new = z + (1-exp(-rate*dt)) * (target - z)`. BUT: it's a constrained parametrization of what current IonicRateMLP can already learn implicitly. Both formulations make the same frozen-neighbor assumption; Rush-Larsen's dt-independence only holds locally (single gate with constant V), not system-wide. Current MLP can learn attractor dynamics by outputting 0 at fixed point. Added structure would give training-stability benefit and guaranteed contraction at large dt, but doesn't solve the original dt-dependence concern (both formulations have frozen-neighbor errors that scale with dt). Added complexity (2x output dims, softplus rate, new integrator) not justified when current formulation works at fixed training dt. |
+| Learned `g_φ` integrator head (rate + dt → Δz trained against dopri5 single-step flow) | Rejected 2026-04-19 (Session 27) based on `Surrogate/diagnostics/integrator_error_budget.py` measurement on trained `multi_bcl_002/best.pt` (val=0.0084). Euler-vs-dopri5 RMSE was 0.00161; dopri5-vs-truth RMSE was 0.34638 — integrator truncation is **215× smaller** than model-capacity error on native dt=0.01ms, with 700× ratio at the upstroke and never better than 150× across the 300ms trajectory. A learned integrator head would eliminate 0.16% of total inference error and leave 99.8% untouched. The real bottleneck is rate-field capacity (CaSR at 27% NRMSE dominates the loss); fix is `StateRateMLP` pivot + latent expansion, not integrator redesign. Generalizable lesson: measure before redesigning integrators — the suspect may not be guilty. |
+| Single KAN layer for conc-rate prediction | Analyzed in Session 27 (2026-04-19). A single KAN layer is additively universal (each output = `Σⱼ φⱼ(xⱼ)`) but cannot represent multiplicative cross-terms like `I_NaCa = exp(γVF/RT)·Na_i³·Ca_i` or `I_CaL flux = d·f·f2·fCass·Ca_ss·exp(VF/RT)`. These are Layer-0 physics requirements, not model approximations. Replaced by `Linear(25→32)+GELU → KAN(32→24)`: the GELU mixer owns cross-product capture, KAN owns per-dim rate shaping at readout. |
+| Separate rate paths for ionic vs conc (`IonicRateMLP` + `conc_kan`) | Historical scar from a `conc_mlp(20→4)` that blew up due to Xavier init + ODE feedback loop → 1e237. The fix at the time bundled two changes: (a) drop conc self-input, (b) switch to no-cross-talk KAN. Only (b) was required for stability. Maintaining separate paths prevents the model from learning real Ca↔Na coupling via NCX, and forces asymmetric depth/width tuning for ionic vs conc rates. Replaced 2026-04-19 (Session 27) with a unified `StateRateMLP(z_full(24), Vm(1)) → dz/dt(24)`. |
+| Chasing per-step ionic speed parity with TTP06 on GPU | Benchmark 2026-04-21 (Session 29 late): TTP06 compiled @ n=10k = 34.1M cell-steps/s; v4 surrogate Euler @ n=10k = 4.2M cs/s — **surrogate 8× slower**. TTP06's `model.step` fuses into a handful of kernels under `torch.compile`; our `StateRateMLP + dzdt + Euler` has branching structure (sigmoid skip-blend, input_ref subtraction, Euler add not compiled with dzdt) that prevents equivalent fusion. Closing the gap would require CUDA-graph capture or CfC-style batched closed-form update — engineering effort disproportionate to the tiny fraction of wall-time this represents (ionic ≈ 6% of bidomain; KNOWLEDGE §1). Wrong bottleneck. Don't optimize ionic MLP for GPU speed; the win is elsewhere. |
+| "Neural surrogate replaces the whole bidomain" framing | Benchmark-grounded rejection 2026-04-21. The ionic half is already near kernel-launch limits on GPU with compiled TTP06. Only the elliptic half is slow (94% wall time per KNOWLEDGE §1). Correct framing: hybrid bidomain surrogate — classical ionic scaffold + neural elliptic/diffusion replacement. See Current Direction. |
+| Full Data v2 T1-T12 regen at this time | Paused 2026-04-21 after T1 batch 1 of 5 completed (~3.5 GB on disk). Single-cell T1-T12 data is only useful for the ionic surrogate track, which is deprioritized pending hybrid-bidomain architecture validation. Spec (`DATA_V2_SPEC.md`), generator (`datagen/generate_t1_v2.py`), schema module (`surrogate/data/schema.py`), and partial h5 are all preserved. Resume if the ionic CPU-deployment path becomes a deliverable. |
+| Hyperbolic bidomain as v1 surrogate target | Considered 2026-04-21 (Session 29 late). Maxwell-Cattaneo / Feng-Bova hyperbolic form (second time derivative on Vm and φ_e, finite propagation speed) is theoretically a better NN target — no elliptic shortcut, CFL crushes classical dt, NN's learned effective dt flexibility shines. Deferred to future Phase B. Reasons: (a) no hyperbolic simulator in project, (b) Bidomain V1's parabolic-elliptic data is ready now, (c) ionic scaffold (TTP06) is defined for parabolic V_m; reformulating in hyperbolic regime is extra work, (d) need to validate the dual-tower + cross-talk architecture on a simpler PDE first. |
 
 ## Session Log
 | Date | Session | Work Done |
@@ -306,6 +687,7 @@ Surveyed 5 surrogate approaches for cardiac EP. **No bidomain surrogates exist.*
 | 2026-04-07 | 23 | Architecture refinements: VoltageAttention returns rate (not state), ionic-only (16 dims), MLP takes ionic_delta (not z_mid), rms_norm removed. conc_mlp replaced by B-spline KAN (612 params). First training: ionic_state_mse 50.6→0.047 (500 epochs). Conc KAN: 147K→~5.6 best. Adjoint unstable→backprop-through-solver. dopri8→dopri5 (rtol/atol=1e-3). Params: 1988 inference, 2271 total. |
 | 2026-04-07 | 24 | VoltageAttention proven mathematically redundant: collapses to 32 effective params (switched linear ODE) on scalar inputs. Advisor critique + weight analysis of best.pt. MLP/residual bypass unused. Decision: replace with dense MLP. Checkpoint runs/single_ap_001/best.pt superseded. |
 | 2026-04-07 | 25 | VoltageAttention replaced by IonicRateMLP (832 params, loss=0.022 vs 0.047). conc_mlp replaced by B-spline KAN. Dense landmarks (5001 pts). Multi-BCL training val=0.008. T2 restitution training in progress (stabilizing at epoch 4). Learned contractive step designed (not yet implemented). |
+| 2026-04-16 | 26 | Learned contractive step rejected (frozen-neighbor equivalence, complexity not justified). Pivot to pipeline formalization: project-wide `cardiac_ml/` package at root, Hydra + MLflow + Optuna + SHAP. Model code stays in place, referenced via `_target_`. File-backed MLflow, single flexible Trainer. Archive old `runs/`. Next: survey existing open-source templates, then `/blueprint`. |
 
 ### 2026-03-23 — Session 12: Architecture v2 + T4-T12 data generation
 

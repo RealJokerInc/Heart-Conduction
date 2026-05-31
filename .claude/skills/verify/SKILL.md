@@ -18,7 +18,7 @@ Run `git diff --name-only HEAD` and `git status --short` to find changed files. 
 |--------|---------------|--------------|
 | Bidomain V1 | `Bidomain/Engine_V1/` | `cd Bidomain/Engine_V1 && conda run -n heart-conduction pytest tests/ -v` |
 | Monodomain V5.4 | `Monodomain/Engine_V5.4/` | `cd Monodomain/Engine_V5.4 && conda run -n heart-conduction python test_phase7.py && python test_phase8.py` (standalone scripts). Also check for pytest tests: `conda run -n heart-conduction pytest tests/ -v` if `tests/` dir exists. |
-| LBM V1 | `Monodomain/LBM_V1/` | `cd Monodomain/LBM_V1 && conda run -n heart-conduction python -m pytest tests/ -v` |
+| LBM V1 | `LBM/Engine_V1/` | `cd LBM/Engine_V1 && conda run -n heart-conduction python -m pytest tests/ -v` |
 
 If no changed files match any engine, ask the user which engine to verify. If multiple engines have changes, run all of them sequentially.
 
