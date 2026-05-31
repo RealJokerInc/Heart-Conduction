@@ -148,7 +148,8 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 |-------|------|--------|
 | Prereq | **Monodomain V5.5 fork** — Cm-correct reaction; drop dead LBM | **DONE** (2026-05-30) |
 | Phase 0 | API layer + file format (wrapper, imports from engines) | **DONE** (2026-03-17) |
-| Phase 1 | Move ionic models into `cardiac_core/ionic/` (one copy) | Not started |
+| Phase 1 (copy) | Canonical `cardiac_core/ionic/` superset copy + editable install + lazy `__init__` | **DONE** (2026-05-31, copy-only) |
+| Phase 1 (migrate) | Rewire engines to import `cardiac_core.ionic` + delete local copies + migrate Surrogate/Optimizer consumers | **DEFERRED** — audit found big-bang deletion breaks engine tests/examples + active Surrogate datagen + Optimizer. Must be done per-consumer, repo-wide discovery, never delete out from under a live consumer. |
 | Phase 2 | Move mesh + stimulus into `cardiac_core/mesh/`, `cardiac_core/stimulus/` | Not started |
 | Phase 3 | Add `ConductivityConfig` — sigma → D conversion in one place | Not started |
 | Phase 4 | Rewire engines to import from `cardiac_core` (delete their copies) | Not started |

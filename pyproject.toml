@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardiac-core"
+version = "0.1.0"
+description = "Unified cardiac simulation core: canonical ionic models + simulation API wrappers."
+requires-python = ">=3.11"
+
+# Package ONLY cardiac_core (+ its subpackages, incl. cardiac_core.ionic). The repo root
+# is a flat workspace with many non-package dirs (engines, Research, Surrogate, ...) — the
+# include filter keeps the install scoped to cardiac_core* and nothing else.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cardiac_core*"]

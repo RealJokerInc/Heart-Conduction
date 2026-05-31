@@ -10,7 +10,11 @@
 ## Next Step
 **cardiac_core drift RECONCILED (2026-05-30):** the post-Phase-0 additions (`run.py`/`analysis.py`/`geometry.py`/`io.py`) are a benign wrapper-level convenience layer (77 tests now, not 34); no shared-code packages yet, so Phase 1 is unblocked. `Engines/` symlink index fixed (cardiac_core un-broken; lbm_v1 → real `LBM/Engine_V1`; monodomain_v5.5 added). See KNOWLEDGE "cardiac_core drift reconciled".
 
-Now start consolidation **Phase 1**: move ionic models (TTP06, ORd + `base.py`/`lut.py`) into `cardiac_core/ionic/` as the single copy; rewire all engines (incl. V5.5) to import from there; delete engine-local copies; verify all tests pass.
+**Phase 1 (copy) DONE (2026-05-31):** `cardiac_core/ionic/` is the canonical superset copy (from V5.5; latent LUT keyword `cell_type_is_endo`→`celltype_is_endo` fixed); `cardiac_core/__init__` made lazy (PEP 562 — `import cardiac_core.ionic` is engine-free, no `_prepare_engine`); `pyproject.toml` + `pip install -e .` make cardiac_core a real importable package (cwd-independent, scoped to `cardiac_core*` — does NOT expose Builder/cardiac_ml/engines). 77 cardiac_core tests green; V5.5 golden still exact (engines untouched).
+
+**Scope pivot (post-audit, 2026-05-30):** the engine rewire+delete was DROPPED to copy-only after the audit found big-bang deletion breaks engine tests/examples AND active cross-project consumers (`Surrogate/surrogate/data/*_generator.py`, `Optimizer/V1/tuner/tissue_runner_bidomain.py` import `cardiac_sim.ionic` via the Bidomain path). User: "don't delete the originals — just copy them over."
+
+**Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
 

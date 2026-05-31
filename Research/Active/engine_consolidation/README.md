@@ -19,7 +19,7 @@ Three engines share ionic models (TTP06, ORd) as file-level copies. Any bug fix 
 - [x] Unified API design (ConductivityConfig, Simulation protocol, create_simulation factory)
 - [x] Phase 0: API layer + file format (wrapper over engines, 34 tests)
 - [x] **Prerequisite — Monodomain V5.5 fork (2026-05-30):** fixes the Formulation-A reaction Cm bug so `Cm != 1.0` is physically correct; drops the dead internal LBM path. Validated: Cm=1 bit-identical to V5.4 (golden, max|dV|=0), exact 1/Cm reaction scaling (3.55e-15), cross-validated vs Bidomain V1 (CV agree 0.0% / 1.1% at Cm=1/2). 4 commits on `main` (`ac30af55`→`5171bbce`).
-- [ ] Phase 1: ionic models in `cardiac_core/ionic/` (one copy, engines import from it)
+- [~] Phase 1: ionic models in `cardiac_core/ionic/` — **canonical copy DONE (2026-05-31, copy-only)**; cardiac_core editable-installed + lazy `__init__`. Engine rewire/delete + downstream-consumer (Surrogate/Optimizer) migration DEFERRED (audit found deletion breaks repo-wide consumers). Duplication knowingly retained for now.
 - [ ] Phase 2: mesh + stimulus in `cardiac_core/mesh/`, `cardiac_core/stimulus/`
 - [ ] Phase 3: ConductivityConfig (sigma → D in one place)
 - [ ] Phase 4: engines rewired, their copies deleted
