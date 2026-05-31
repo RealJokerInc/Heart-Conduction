@@ -52,8 +52,14 @@ def run_bidomain_insulated():
 # ============================================================
 # Tests
 # ============================================================
-def test_6b(results):
-    """Run all calibration tests on collected results."""
+def run_assertions(results):
+    """Run all calibration tests on collected results.
+
+    NOT named ``test_*`` on purpose: this is an expensive full-wave calibration
+    driven from ``__main__`` (matches the sibling phase6c/6d convention), not a
+    collectable pytest unit test. pytest would otherwise treat ``results`` as a
+    missing fixture and error.
+    """
     print("\n" + "=" * 68)
     print("Phase 6B: CV Calibration Results")
     print("=" * 68)
@@ -155,4 +161,4 @@ if __name__ == '__main__':
             print(f"Unknown engine: {key} (use mono / bidomain / d2q5)")
 
     if results:
-        test_6b(results)
+        run_assertions(results)

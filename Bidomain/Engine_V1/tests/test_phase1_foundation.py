@@ -109,12 +109,13 @@ def test_boundary_spec():
     for edge in Edge:
         assert bs.Vm[edge].bc_type == BCType.NEUMANN
 
-    # Bath-coupled edges (mixed)
+    # Bath-coupled edges (per-axis mixed): x=Neumann, y=Dirichlet
     bs = BoundarySpec.bath_coupled_edges([Edge.TOP, Edge.BOTTOM])
     assert bs.phi_e_has_null_space is False  # Has Dirichlet
-    assert bs.phi_e_spectral_eligible is False  # Mixed
-    assert bs.phi_e_uniform_bc is None
-    assert bs.spectral_transform is None
+    assert bs.phi_e_spectral_eligible is True  # per-axis uniform -> separable DCT(x) x DST(y)
+    assert bs.phi_e_uniform_bc is None  # no single uniform BC
+    assert bs.spectral_transform is None  # no single uniform transform
+    assert bs.spectral_transform_xy == ('dct', 'dst')  # DCT along x (Neumann), DST along y (Dirichlet)
 
     assert bs.phi_e[Edge.TOP].bc_type == BCType.DIRICHLET
     assert bs.phi_e[Edge.BOTTOM].bc_type == BCType.DIRICHLET
