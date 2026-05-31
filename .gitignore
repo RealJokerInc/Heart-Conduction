@@ -11,3 +11,4 @@ archive/*
 venv/
 media/**/_sim_outputs/
 media/_manifest.csv
+media/_rename_manifest.csv
