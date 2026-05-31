@@ -1,5 +1,0 @@
-# Trivial residual-CNN stub used to prove harness reusability across
-# structurally different models. NOT a real diffusion implementation.
-_target_: cardiac_ml.tests.stub_models.DiffusionResNetStub
-in_ch: 1
-hidden: 16

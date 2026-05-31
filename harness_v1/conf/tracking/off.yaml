@@ -1,6 +1,0 @@
-# Disable tracking for quick-iteration debugging (OPEN-8 resolution).
-# Trainer uses NullLogger, no mlruns/ writes.
-enabled: false
-experiment_name: default
-tracking_uri: ./mlruns
-checkpoint_every: 50

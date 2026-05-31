@@ -1,3 +1,0 @@
-# Adam optimizer stub. Instantiated with trainer.model.parameters() by Trainer.
-_target_: torch.optim.Adam
-lr: 1e-3

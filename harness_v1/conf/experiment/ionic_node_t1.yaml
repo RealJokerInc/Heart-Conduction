@@ -1,8 +1,0 @@
-# @package _global_
-# Compose NODE model + T1 multi-BCL data + NODE training + default tracking.
-# Override from CLI: python scripts/train.py +experiment=ionic_node_t1
-defaults:
-  - override /model: ionic_node
-  - override /data: t1_multi_bcl
-  - override /training: node
-  - override /tracking: default
