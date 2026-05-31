@@ -13,7 +13,8 @@ Input: $ARGUMENTS
 ### Project Structure Reference
 ```
 MASTER.md                              — project dashboard (update when adding questions)
-Research/Active/{question}/            — active research (README.md, KNOWLEDGE.md, literature/, papers/, figures/)
+Research/Active/{question}/            — active research (README.md, KNOWLEDGE.md, literature/, papers/, results/)
+media/{question}/{images|videos}/       — figures & videos for this question (see CLAUDE.md "Saving images & videos")
 Research/Complete/{question}/           — answered questions
 Research/Backlog/{question}/            — parked questions
 Research/Knowledge/                     — promoted knowledge files from Complete questions
@@ -65,9 +66,11 @@ Research/Active/{question_name}/
 ├── literature/          # Paper summaries go here
 ├── papers/              # PDFs go here
 ├── code_examples/       # Reference implementations (if any)
-├── results/             # Simulation outputs, data, plots
+├── results/             # Simulation output DATA (arrays, logs) — NOT images/videos
 └── plans/               # Archived completed PLAN.md files
 ```
+
+> Images & videos do NOT live in the question folder. They go to `media/{question}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext` (created lazily on first save; use `cardiac_core.media.media_path`). See CLAUDE.md "Saving images & videos". Do not scaffold a per-question `figures/` dir.
 
 ### For a sub-question:
 

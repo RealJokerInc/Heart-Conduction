@@ -13,7 +13,8 @@ Input: $ARGUMENTS
 ### Project Structure Reference
 ```
 MASTER.md                              — project dashboard (source of truth for status)
-Research/Active/{question}/            — README.md, KNOWLEDGE.md, literature/, papers/, figures/
+Research/Active/{question}/            — README.md, KNOWLEDGE.md, literature/, papers/, results/
+media/{question}/{images|videos}/       — figures & videos (see CLAUDE.md "Saving images & videos")
 Research/Complete/{question}/           — answered questions (KNOWLEDGE.md promoted to Knowledge/)
 Research/Backlog/{question}/            — parked questions
 Research/Knowledge/                     — promoted knowledge files (must sync with Complete sources)

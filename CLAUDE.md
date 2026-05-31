@@ -66,6 +66,29 @@ Legacy engines (V2–V5.2, Backup, Prototype) are in `Monodomain/_archive/` — 
 | **simulation** | `simulation/` | Storage-tank discrete-reduction harness for the boundary_conduction_speedup research (Zimmerman). `simulation/outputs/` is local-only (gitignored). |
 | **media** | `media/` | Single canonical home for ALL project images & videos: `media/{question}/{images\|videos}/{date}/{slug}_NN.ext`. Bulk regenerable `_sim_outputs/` is gitignored. Replaces the former Images/ + Videos/ centralized mirrors. Vendored repos (`Research/code_examples/`), Builder input assets, and `Monodomain/_archive/` figures are deliberately left in place. |
 
+### Saving images & videos (REQUIRED convention)
+
+Whenever you — or a script you write — create a NEW image or video for research, analysis, diagnostics, or reporting, it MUST be saved under `media/` in this format. Do **not** scatter figures next to scripts, and do **not** recreate `Images/`, `Videos/`, or `Media/` at the repo root.
+
+**Path:** `media/{question}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext`
+
+| Field | Meaning |
+|-------|---------|
+| `{question}` | active research-question slug (the `Research/Active/{question}/` folder). No clear owner → `media/_unmapped/`. |
+| `{images\|videos}` | by asset type (`.png/.jpg/.jpeg/.svg/.gif` → images; `.mp4/.webm/.mov` → videos). |
+| `{YYYY-MM-DD}` | the run/session date (today). |
+| `{slug}` | short kebab-case description: lowercase, non-alphanumeric → `-`. |
+| `{NN}` | 2-digit sequence (`01`, `02`, …) for files sharing a slug in the same dated folder. |
+
+Example: `media/boundary_conduction_speedup/videos/2026-05-31/inverse-crescent-bc_01.mp4`
+
+**Rules:**
+- In Python, build the path with this pattern and `os.makedirs(os.path.dirname(path), exist_ok=True)` before saving (`plt.savefig`, `cv2.VideoWriter`, etc.). A helper is available: `from cardiac_core.media import media_path` → `media_path(question, "images", "slug")` returns the dated, sequence-suffixed path.
+- **Bulk regenerable simulation output** → `media/{question}/_sim_outputs/...` (gitignored — never commit it).
+- **Leave in place** (do NOT move into `media/`): images inside vendored `Research/code_examples/`, `Builder/` input/mesh assets, and `Monodomain/_archive/` legacy figures — these are not "project figures."
+- **Diagram sources** (`.tex`/`.py`/`.sty`) live with their code (e.g. `Surrogate/docs/diagrams/`); only the *rendered* image goes to `media/`.
+- A regenerable engine TEST may keep writing diagnostics to its own `tests/.../` dir, but gitignore those; any figure you intend to keep or present goes in `media/`.
+
 ### Shared Module Pattern
 
 Ionic models (TTP06, O'Hara-Rudy) are copied across engines with identical interfaces:

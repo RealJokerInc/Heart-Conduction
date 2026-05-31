@@ -13,7 +13,8 @@ Input: $ARGUMENTS
 ### Project Structure Reference
 ```
 MASTER.md                              — project dashboard
-Research/Active/{question}/            — README.md, KNOWLEDGE.md, literature/, papers/, figures/
+Research/Active/{question}/            — README.md, KNOWLEDGE.md, literature/, papers/, results/
+media/{question}/{images|videos}/       — figures & videos (see CLAUDE.md "Saving images & videos")
 Research/Knowledge/                     — promoted knowledge files
 {Engine}/experiments/{experiment}/      — EXPERIMENT.md (backlinks to question + MASTER.md), run.py, outputs/
 Engines/cross_engine/{question}/        — cross-engine experiments
