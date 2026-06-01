@@ -5,7 +5,9 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**V5.5 DETOUR COMPLETE (2026-05-30).** Forked V5.4 → `Monodomain/Engine_V5.5`, fixed the Formulation-A reaction Cm bug (reaction now `/state.Cm`), dropped the dead internal LBM path. Validated (Cm=1 golden max|dV|=0; exact 1/Cm scaling 3.55e-15; Bidomain V1 cross-check 0.0%/1.1%) — 4 commits on `main`. V5.5 is now the Cm-correct monodomain to consolidate; V5.4 stays the frozen baseline. **Next thread: the actual consolidation** — extract shared code (ionic, mesh, stimulus, conductivity) into `cardiac_core/`, eliminate the 15+ duplicates and the `sys.modules` hack, building against V5.5 (not V5.4).
+**Designing the unified vocabulary + API toward the north-star** (conversational simulation builder for non-coders; see README North-Star Goals). Build order: **(1) ubiquitous language** — one canonical name per concept across the 3 engines (the ionic ABC proves the pattern) — **then (2) the unified API** (a `Simulation` interface/Protocol + idioms, written in that vocabulary), which the declarative `SimulationSpec` and the LLM wrapper then sit on. The 3-engine capability census is done (KNOWLEDGE "Cross-engine capability census"); the glossary is the immediate next artifact.
+
+DONE this session (committed to `main`): V5.5 Cm-correct fork (Phases 0–2); cardiac_core drift reconciled; consolidation Phase 1 COPY-ONLY (canonical `cardiac_core/ionic/` + editable install + lazy `__init__`). The original code-dedup consolidation (engines import from cardiac_core, delete copies) is the FOUNDATION but is DEFERRED — big-bang deletion breaks Surrogate/Optimizer (audit); do it per-consumer later. V5.5 is the canonical monodomain; V5.4 frozen.
 
 ## Next Step
 **cardiac_core drift RECONCILED (2026-05-30):** the post-Phase-0 additions (`run.py`/`analysis.py`/`geometry.py`/`io.py`) are a benign wrapper-level convenience layer (77 tests now, not 34); no shared-code packages yet, so Phase 1 is unblocked. `Engines/` symlink index fixed (cardiac_core un-broken; lbm_v1 → real `LBM/Engine_V1`; monodomain_v5.5 added). See KNOWLEDGE "cardiac_core drift reconciled".
@@ -17,6 +19,22 @@
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-05-31: Session vision — unified API + LLM wrapper → conversational simulation builder
+North star (now the question's main goal, see README). A non-coder converses with Claude to build cardiac sims and learn how conduction works. Two goals:
+1. **Unified construction API (Goal 1)** — one standardized, engine-agnostic, easy-to-construct way to declare + run: a declarative, validated, serializable **SimulationSpec** → run → **SimulationResult** → analysis. Consolidates today's split config (`CardiacMeshData` fields + `simulate()` call-args) into ONE object. Three field tiers: **required** (LLM asks) / **defaulted** (silent good values) / **derived** (computed).
+2. **Self-contained LLM wrapper (Goal 2)** — Claude skills + reference docs driving Goal 1 under a strict protocol (gather → validate → construct → run → verify → present).
+
+Key design insights (settled-ish; revisit when building Goal 2):
+- **Spec schema = the intake questionnaire.** Make spec fields self-describing (`{required?, prompt, options, default}`); the LLM "gather" step = ask the prompt of each unfilled required field. The questionnaire can't drift from what engines need (same schema). THE cross-goal leverage point.
+- **Pacing abstraction.** High-level protocol (`single` / `s1s2` / `regular(bcl, n_beats)`) that EXPANDS into the low-level stimulus list engines consume. Non-coder speaks in beats, not timestamps.
+- **Outputs drive the run.** What the user wants to MEASURE (CV / APD / LAT / reentry) feeds back into numerics/run (`save_every`, `t_end`), not just post-hoc analysis.
+- **Engine = explicit in spec, but LLM-inferred from the scientific question** + records rationale (auditable, overridable). e.g. bath/boundary effects → bidomain; fast/simple → monodomain.
+- **Defaults philosophy.** A minimal spec ("pace this sheet, measure CV") must RUN via physiological defaults (TTP06/EPI, dt=0.02, strang, CN/pcg, chi=1400, Cm=1) — "one obvious way".
+
+Deferred: user geometry input (Fiji drawing → Builder image→mesh; a designated drawings inbox; the Fiji-export→mask format contract). Assume geometry is provided for now.
+
+**Decided focus (2026-05-31):** build the foundational **API** FIRST — everything (the spec questionnaire, the LLM wrapper) is contingent on a clean, standardized construct + run + results surface in `cardiac_core`.
 
 ### 2026-05-30: Phase 1 scoped — ionic is ~unified across engines; full direct migration decided
 Verified the plan's "ionic identical across engines" assumption before executing. Findings:
@@ -107,6 +125,16 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 - **sys.modules hack as permanent solution** (2026-03-17) — recognized as temporary: `_prepare_engine()` flushes modules because both engines use `cardiac_sim` namespace. Acceptable for Phase 0 wrapper but must be eliminated when shared code moves into `cardiac_core/`.
 
 ## Session Log
+
+### 2026-06-01 Session (handoff)
+**Worked on**: Finished the V5.5 detour + consolidation Phase 1, then pivoted to the north-star (conversational simulation builder) and began designing the unified vocabulary/API — including a full 3-engine capability census.
+**Accomplished**:
+- **V5.5 Cm-correct fork** — Phases 0–2 done + committed (`ac30af55`→`5171bbce`); exact 1/Cm scaling (3.55e-15), Bidomain cross-check (0.0%/1.1%), Cm=1 golden exact. (Earlier this session.)
+- **cardiac_core drift reconciled** + committed (`8f032687`); Engines/ symlink index fixed.
+- **Consolidation Phase 1 — COPY-ONLY** + committed (`1f6c72e`): canonical `cardiac_core/ionic/` superset (keyword fix `cell_type_is_endo`→`celltype_is_endo`), lazy `__init__` (engine-free `import cardiac_core.ionic`), `pyproject.toml` + `pip install -e .`. Engine rewire + downstream (Surrogate/Optimizer) migration DEFERRED — audit found big-bang deletion breaks repo-wide consumers. README Phase-1 marked PARTIAL.
+- **North-star set** (now the question's main goal in README): Goal 1 unified construction API + Goal 2 self-contained LLM wrapper (skills+docs, strict protocol) → conversational builder for non-coders. Key insight: **spec schema = the intake questionnaire**. Build order REFRAMED: **vocabulary first** (a ubiquitous language across the 3 engines), **then** the unified API (interface/Protocol + idioms).
+- **3-engine capability census** run (read-only Explore agents) + synthesized into the cross-engine comparison (see KNOWLEDGE "Cross-engine capability census"). Found: ionic ABC + physical conventions + stimulus `+=` already aligned; divergence concentrated in construction, voltage naming (V/Vm), state, and the run/result contract; LBM is the consistent outlier.
+**Next (resume cold)**: build the **glossary** off the census — settle the highest-leverage divergences first: (1) voltage `V` vs `Vm` [lean `Vm`], (2) the `State` concept (dataclass vs LBM on-object), (3) the `run()`/result contract (generator vs `(times,V_history)` + flat-vs-grid output). Then the rest of the universal-tier vocabulary, then Goal 1's interface/idioms. Geometry input (Fiji→Builder) and the Optimizer downstream migration both remain DEFERRED.
 
 ### 2026-05-30 Session
 **Worked on**: Reasoned through the chi/Cm audit (why chi is safe but Cm is the troublemaker — Cm couples to both operator-split halves, chi to only diffusion); decided the V5.5 detour; blueprinted it; ran two adversarial audit passes (11 + 4 findings, all applied); executed Phases 0–2.

@@ -5,6 +5,8 @@
 
 ## Current Understanding
 
+The question has TWO layers (see "North-Star" below): the **foundation** is code-consolidation (unify the engines' shared code in `cardiac_core/`); the **goal on top** is a conversational simulation builder for non-coders (unified API + LLM wrapper). Build order is now vocabulary-first → unified API.
+
 Three engines solve cardiac electrophysiology with 15+ duplicated files (ionic models, mesh, stimulus, solvers). They use two chi/Cm formulations, both correct but internally incompatible.
 
 **Target architecture**: `cardiac_core/` is the unified codebase — it owns shared code (ionic models, mesh, stimulus, conductivity) and provides the public API. Engines import from `cardiac_core/`, not the other way around. Engine directories shrink to solver-specific code only.
@@ -93,6 +95,56 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 | Stimulus protocol | 2 | Bidomain uses += (accumulate), V5.4 uses = (overwrite) |
 | StructuredGrid | 2 | Bidomain adds boundary_spec |
 
+## North-Star: Conversational Simulation Builder (vocabulary-first → unified API)
+
+**Goal (now the question's main goal).** A non-coder converses with Claude, which both *builds* cardiac simulations and *teaches* how conduction works. Two layers:
+1. **Unified construction API (Goal 1)** — one standardized, engine-agnostic, easy-to-construct way to declare + run: a declarative, validated, serializable **SimulationSpec** → run → **SimulationResult** → analysis. Three field tiers: required (LLM asks) / defaulted (silent good values) / derived (computed).
+2. **Self-contained LLM wrapper (Goal 2)** — Claude skills + reference docs driving Goal 1 under a strict protocol (gather → validate → construct → run → verify → present).
+
+**Design insights (settled-ish):**
+- **Spec schema = the intake questionnaire.** Make spec fields self-describing (`{required?, prompt, options, default}`); the LLM "gather" step = ask each unfilled required field. Questionnaire can't drift from engine needs. The cross-goal leverage point.
+- **Pacing abstraction**: high-level `single`/`s1s2`/`regular(bcl,n_beats)` EXPANDS to the low-level stimulus list (the engines already have `add_s1s2_protocol`/`add_regular_pacing` — see census).
+- **Outputs drive the run**: what to MEASURE (CV/APD/LAT/reentry) feeds back into `save_every`/`t_end`, not just post-processing.
+- **Engine = explicit in spec, LLM-inferred from the scientific question** + recorded rationale.
+- **Defaults**: a minimal spec ("pace this sheet, measure CV") must run (TTP06/EPI, dt=0.02, strang, CN/pcg, chi=1400, Cm=1).
+
+**Build order (reframed 2026-05-31/06-01):** (1) **ubiquitous language** — one canonical name per concept across the 3 engines (the IonicModel ABC proves the pattern); (2) **unified API** — a `Simulation` interface/Protocol + idioms (declare/run/change/stimulate), written in that vocabulary; then the `SimulationSpec` and LLM wrapper sit on top. Vocabulary is the immediate next artifact (the glossary).
+
+**Deferred:** user geometry input (Fiji drawing → Builder image→mesh; a designated drawings inbox; the export→mask contract). Assume geometry provided for now.
+
+## Cross-Engine Capability Census (2026-06-01)
+
+Read-only census of all three engines' construct/run/state/stimulus/geometry surfaces, to ground the vocabulary + API. The **ionic layer and physical conventions are already a shared language; divergence is concentrated in construction, voltage naming, state, and the run/result contract.** LBM is the consistent outlier.
+
+| Concept | Monodomain V5.5 | Bidomain V1 | LBM V1 |
+|---|---|---|---|
+| **Construct** | `MonodomainSimulation(spatial, ionic_model, stimulus, dt, splitting, ionic_solver, diffusion_solver, linear_solver, cell_type, pcg_tol, pcg_max_iter)` | `BidomainSimulation(spatial, ionic_model, stimulus, dt, splitting, ionic_solver, diffusion_solver='decoupled', parabolic_solver, elliptic_solver='auto', theta, device)` | `LBMSimulation(Nx, Ny, dx, dt, D, ionic_model, Cm, lattice, weights_mode, bounce_masks)` |
+| **Spatial obj** | separate: `FDM/FEM/FVMDiscretization(grid, D, chi=1400, Cm=1, …)` | separate: `BidomainFDMDiscretization(grid, BidomainConductivity(D_i=0.00124,D_e=0.00446), Cm, stencil='5pt')` | **none** — Nx/Ny/dx/D inline |
+| **Voltage field** | `state.V` | `state.Vm` (+ `.V` alias) | `self.V` (= Σfᵢ) |
+| **State** | `SimulationState` dataclass | `BidomainState` dataclass (+phi_e) | on the sim object (`LBMState` dataclass exists, unused) |
+| **run()** | yields `SimulationState`; also `run_to_array(t_end,save_every)→(times,V) np` | yields `BidomainState`; no run_to_array | **returns** `(times list, V_history list of (Nx,Ny))` |
+| **step()** | `step(dt)` | via splitting | `step()` (no arg) |
+| **Voltage out** | flat `(n_dof,)` | flat `(n_dof,)` | grid `(Nx,Ny)` |
+| **Stimulus** | `StimulusProtocol` + region callables + `add_s1s2_protocol`/`add_regular_pacing` | `StimulusProtocol` + region helpers (`left_edge_region`…) | `add_stimulus(mask,…)` — raw mask, no protocol/pacing |
+| **Stim default amp** | −52 | −52 | −80 |
+| **Geometry** | `StructuredGrid.create_rectangle(Lx,Ly,Nx,Ny,device,dtype)` (+ TriangularMesh for FEM) | same `StructuredGrid` + `BoundarySpec` (insulated/bath_coupled/bath_coupled_edges) | Nx,Ny,dx inline + `bounce_masks` dict |
+| **Engine-specific knobs** | diffusion_solver (cn/bdf1/bdf2/fe/rk2/rk4), linear_solver (pcg/chebyshev/dct/fft/none), boundary_mode (face_mirror…), stencil (cardinal4/moore8_*) | parabolic_solver (pcg/chebyshev/spectral), elliptic_solver (auto/spectral/pcg_spectral/pcg_gmg), theta (0.5=CN/1=BDF1), stencil (5pt/mehrstellen), BoundarySpec | lattice (d2q5/d2q9), weights_mode (canonical/uniform_8), ω/τ derived from D (`tau_from_D`) |
+
+**Already aligned (free wins for the vocabulary):** IonicModel ABC (identical across all 3); `dt`, `Cm`, `device`, float64, `(Nx,Ny)` ij convention; stimulus **accumulate (`+=`) in all three** (resolves the old `=` vs `+=` open question); negative amplitude = depolarizing; reaction `/Cm` (all, post-V5.5-fix); `splitting` (strang/godunov) + `ionic_solver` (rush_larsen/forward_euler) names (mono+bidomain); `run(t_end, save_every)` exists on all three.
+
+**Divergent → decisions for the glossary/API:**
+1. Voltage name: `V` (mono/LBM) vs `Vm` (bidomain). [lean `Vm`]
+2. State: dataclass (mono/bidomain) vs on-object (LBM).
+3. `run()` contract: generator-of-state vs `(times, V_history)` tuple; + mono's `run_to_array`.
+4. Voltage output: flat `(n_dof,)` vs grid `(Nx,Ny)`; np vs tensor; list vs array.
+5. Construction shape: spatial-object (mono/bidomain) vs inline params (LBM); `StimulusProtocol` vs raw mask; conductivity (`D/chi/Cm` vs `BidomainConductivity(D_i,D_e)` vs inline `D`).
+6. Stimulus declaration: region-callable + pacing helpers vs raw mask; default amp −52 vs −80.
+7. Geometry input: `StructuredGrid(Lx,Ly,Nx,Ny)` vs raw `Nx,Ny,dx`.
+8. `chi` handling: exposed (mono) vs deprecated/absorbed-into-D (bidomain/LBM).
+9. Internal naming: `ionic_time_stepping` vs `ionic_stepping`.
+
+**Two-tier lens for the glossary:** UNIVERSAL concepts (every engine has them → one enforced name: transmembrane potential, ionic model, stimulus, dt, grid, orchestrator, step/run, ionic+diffusion stepper) vs ENGINE-SPECIFIC (canonical name, only where applicable: phi_e + elliptic solve = bidomain; f/distributions/lattice/collision = LBM).
+
 ## Key Decisions
 
 | Decision | Choice | Rationale |
@@ -161,7 +213,7 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 - ~~Should V5.4 eventually convert to Formulation B?~~ **RESOLVED (2026-05-30):** done in the V5.5 fork (V5.4 stays frozen). See "V5.5 Cm-correct fork" above.
 - ~~V5.4 LBM source term `/(chi·Cm)` should switch to `/Cm`~~ **MOOT for V5.5:** the dead internal LBM path was removed from V5.5. The canonical LBM (LBM V1) is already Formulation B. The `/(chi·Cm)` reconciliation only matters if cardiac_core ever revives a monodomain-LBM path under ConductivityConfig.
 - When consolidating, build `cardiac_core` against **V5.5** (Cm-correct), not V5.4.
-- Stimulus overlap: V5.4/V5.5 use `=` (overwrite), Bidomain uses `+=` (accumulate) — which is correct? (Still open.)
+- ~~Stimulus overlap: `=` vs `+=`?~~ **RESOLVED (2026-06-01 census):** ALL THREE engines accumulate (`+=`) — V5.5 (`_evaluate_Istim`, `Istim = Istim + …`), Bidomain (`Istim[mask] += …`), LBM (overlapping stimuli accumulate). Canonical = accumulate. (The earlier "V5.4 uses `=`" note was wrong or pre-fix.)
 
 ## Connections
 - **Engines**: All three + cardiac_core (target)
