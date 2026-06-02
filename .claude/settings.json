@@ -10,17 +10,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit|NotebookEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash -c 'f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-media-path.py\"; [ -f \"$f\" ] && exec python3 \"$f\" || exit 0'"
-          }
-        ]
-      }
     ]
   }
 }

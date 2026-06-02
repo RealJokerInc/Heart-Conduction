@@ -89,8 +89,6 @@ Example: `media/boundary_conduction_speedup/videos/2026-05-31/inverse-crescent-b
 - **Diagram sources** (`.tex`/`.py`/`.sty`) live with their code (e.g. `Surrogate/docs/diagrams/`); only the *rendered* image goes to `media/`.
 - A regenerable engine TEST may keep writing diagnostics to its own `tests/.../` dir, but gitignore those; any figure you intend to keep or present goes in `media/`.
 
-**Enforced:** a `PreToolUse` hook (`.claude/hooks/enforce-media-path.py`) blocks Write/Edit and literal Bash `savefig`/`cp`/`mv` that would create an image/video outside `media/` (allowed exceptions: `Research/code_examples/`, `Builder/`, `Monodomain/_archive/`, `Surrogate/docs/diagrams/`, test dirs, `/tmp`). It cannot see paths computed at runtime inside a script — `media_path()` keeps those compliant.
-
 ### Shared Module Pattern
 
 Ionic models (TTP06, O'Hara-Rudy) are copied across engines with identical interfaces:
