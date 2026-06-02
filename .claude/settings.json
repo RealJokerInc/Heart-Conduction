@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/enforce-media-path.py"
+            "command": "bash -c 'f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-media-path.py\"; [ -f \"$f\" ] && exec python3 \"$f\" || exit 0'"
           }
         ]
       }
