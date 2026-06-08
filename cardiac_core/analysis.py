@@ -447,3 +447,116 @@ def restitution_curve(
             APD_out.append(apd_list[i + 1])
 
     return torch.tensor(DI_list, dtype=torch.float64), torch.tensor(APD_out, dtype=torch.float64)
+
+
+# ---------------------------------------------------------------------------
+# Eikonal / source-sink metrics (source_sink_mismatch_investigation)
+#
+# Separate the dynamic curvature slowing (-D*kappa) from kinematic fanning, so a
+# diverging "fan" can be quantified rather than dismissed. Used by the Fig-4C/D
+# campaign (Research/Active/source_sink_mismatch_investigation/FIG4C_BLOCK_TEST_PLAN.md).
+#
+# Sign convention: n_hat = grad(LAT)/|grad(LAT)| points along propagation (LAT
+# increases downstream). kappa = div(n_hat) is +1/r for a convex/expanding front,
+# matching the eikonal relation  CV_n = CV0 - D*kappa.
+# ---------------------------------------------------------------------------
+
+def activation_time_interp(V, times, threshold: float = -40.0):
+    """Interpolated activation-time (LAT) map — numpy, sub-frame accurate.
+
+    Unlike :func:`activation_time` (nearest-frame, torch), this linearly
+    interpolates the threshold crossing between saved frames, which the eikonal
+    CV = 1/|grad LAT| needs to avoid frame-quantized velocity artifacts.
+
+    Parameters
+    ----------
+    V : array (n_saves, Nx, Ny) voltage history.
+    times : array (n_saves,) ms.
+    threshold : crossing level (mV). Default -40 (matches the diag scripts).
+
+    Returns
+    -------
+    np.ndarray (Nx, Ny) LAT in ms; NaN where never activated.
+    """
+    V = np.asarray(V)
+    times = np.asarray(times, dtype=float)
+    above = V >= threshold
+    ever = above.any(axis=0)
+    idx = np.argmax(above, axis=0)                 # first crossing frame
+    idxc = np.clip(idx, 1, len(times) - 1)
+    v1 = np.take_along_axis(V, idxc[None], 0)[0]
+    v0 = np.take_along_axis(V, (idxc - 1)[None], 0)[0]
+    t1 = times[idxc]
+    t0 = times[idxc - 1]
+    denom = np.where(v1 == v0, 1.0, v1 - v0)
+    lat = t0 + (threshold - v0) * (t1 - t0) / denom
+    lat[idx == 0] = times[0]
+    lat[~ever] = np.nan
+    return lat
+
+
+def _smooth3(a):
+    """NaN-aware 3x3 box mean (edge-padded). Reduces div(n_hat) noise."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    pad = np.pad(a, 1, mode="edge")
+    win = sliding_window_view(pad, (3, 3))
+    with np.errstate(invalid="ignore"):
+        out = np.nanmean(win, axis=(-1, -2))
+    return out
+
+
+def front_metrics(lat, dx: float, smooth: bool = True) -> dict:
+    """Front normal, normal conduction velocity, and curvature from a LAT map.
+
+    Parameters
+    ----------
+    lat : array (Nx, Ny) activation times (ms), NaN off-front.
+    dx  : grid spacing (cm).
+    smooth : 3x3-smooth the unit-normal field before taking div (curvature).
+
+    Returns
+    -------
+    dict with numpy (Nx, Ny) arrays:
+        cv_n  : 1/|grad LAT|  (cm/ms), front-normal conduction velocity
+        kappa : div(n_hat)    (1/cm),  + = convex/expanding
+        n_x, n_y : unit propagation-direction components
+    """
+    lat = np.asarray(lat, dtype=float)
+    gx, gy = np.gradient(lat, dx)                   # ms/cm
+    mag = np.hypot(gx, gy)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cv_n = np.where(mag > 1e-9, 1.0 / mag, np.nan)
+        nx = np.where(mag > 1e-9, gx / mag, np.nan)
+        ny = np.where(mag > 1e-9, gy / mag, np.nan)
+    if smooth:
+        nx, ny = _smooth3(nx), _smooth3(ny)
+    dnx, _ = np.gradient(nx, dx)
+    _, dny = np.gradient(ny, dx)
+    kappa = dnx + dny                              # 1/cm
+    return {"cv_n": cv_n, "kappa": kappa, "n_x": nx, "n_y": ny}
+
+
+def fit_eikonal(cv_n, kappa, mask=None) -> dict:
+    """Linear fit CV_n = CV0 - D*kappa over valid cells.
+
+    Returns dict(CV0 [cm/ms], D_eik [cm^2/ms], r2, r_star=D/CV0 [cm], n).
+    """
+    cv = np.asarray(cv_n, dtype=float).ravel()
+    k = np.asarray(kappa, dtype=float).ravel()
+    good = np.isfinite(cv) & np.isfinite(k)
+    if mask is not None:
+        good &= np.asarray(mask).ravel().astype(bool)
+    cv, k = cv[good], k[good]
+    if cv.size < 3:
+        return {"CV0": np.nan, "D_eik": np.nan, "r2": np.nan,
+                "r_star": np.nan, "n": int(cv.size)}
+    slope, intercept = np.polyfit(k, cv, 1)        # cv = slope*k + intercept
+    D_eik = -slope
+    CV0 = intercept
+    pred = slope * k + intercept
+    ss_res = float(np.sum((cv - pred) ** 2))
+    ss_tot = float(np.sum((cv - cv.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+    r_star = D_eik / CV0 if (np.isfinite(CV0) and abs(CV0) > 1e-12) else np.nan
+    return {"CV0": float(CV0), "D_eik": float(D_eik), "r2": float(r2),
+            "r_star": float(r_star), "n": int(cv.size)}
