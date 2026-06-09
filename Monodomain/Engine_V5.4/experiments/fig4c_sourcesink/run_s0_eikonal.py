@@ -45,8 +45,12 @@ def run_mono(device):
 
     mask = torch.ones((NX, NY), dtype=torch.bool, device=device)   # uniform sheet
     grid = StructuredGrid.from_mask(mask, DX, DX, device=str(device))
-    # isotropic 9-pt stencil: cardinal4 is anisotropic (axial vs diagonal CV differ),
-    # which on a "circle" injects directional scatter that swamps the curvature signal.
+    # isotropic 9-pt stencil. Modeled diffusion is isotropic (scalar D) either way;
+    # the cause is directional DIAGONAL CONNECTIVITY: cardinal4 has none, so its
+    # 5-point Laplacian carries flux only along axes (direction-dependent truncation
+    # error, NOT material/tensor anisotropy) -> the "circle" becomes a rounded square
+    # and directional scatter swamps the ~8% curvature signal. moore8_iso adds the
+    # 4:1-weighted diagonal channels that restore rotational isotropy.
     fdm = FDMDiscretization(grid, D=D, chi=1.0, Cm=1.0,
                             stencil='moore8_iso', boundary_mode='face_mirror_iso')
     proto = StimulusProtocol()

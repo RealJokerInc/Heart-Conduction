@@ -45,6 +45,19 @@ regime+excitability (block) still S2/S3. New code: `cardiac_core.analysis`
 `Monodomain/Engine_V5.4/experiments/fig4c_sourcesink/`. Next: Phase 2 = S1 dx sweep
 (critical nucleus) → lock dx_resolved (target ≤~45µm; 50µm borderline).
 
+### 2026-06-08: S0c — diagonal connectivity ≠ full story; r*/dx (diffusion-param) tuning is the other part
+Obstacle + planar wave, `moore8_iso`, leading/trailing boundary crescent vs r*/dx.
+Diagonal connectivity NOT decisive here: cardinal4≈moore8_iso at coarse dx (−110 vs
+−111µs lead) — opposite of S0b — because the planar wave runs along-axis (grid
+anisotropy bites off-axis only; S0b's radial wave samples all angles). The operative
+knob is **r*/dx = D/CV0 / dx**: leading inverse-crescent −110→−123→−163µs as r*/dx
+0.8→1.6→3.2, growing whether via D×4 OR finer dx. So YES there's a diffusion-parameter
+tuning process. Original semicircle ran dx=0.05 → r*/dx≈0.27 (under-resolved even with
+specular) → leading read "linear". diag_eikonal_circle had a connectivity mismatch
+(mono cardinal4 / LBM D2Q9). Story: need BOTH (A) diagonal connectivity (decisive for
+bulk off-axis curvature, S0b) AND (B) r* resolved vs dx (decisive for boundary crescent,
+S0c). Script: run_s0c_obstacle_tuning.py.
+
 ### 2026-06-07: agentic search — LBM & bidomain extensions + code hunt
 Fired 3 agentic searches on extending the thickness-weighted operator to LBM/bidomain.
 Findings (full synthesis in KNOWLEDGE.md "Extension to LBM & Bidomain"; sources in

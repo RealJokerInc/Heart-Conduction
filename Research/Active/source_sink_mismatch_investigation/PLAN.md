@@ -129,7 +129,7 @@ save CV vs kappa scatter+fit line -> media images ; print CV0,D_eik,r2,r_star
 
 #### Risk
 If fit fails (FAIL branch): numerics/measurement broken → STOP, debug pipeline before S1.
-**MUTATED 2026-06-08**: Step 1.2 — (a) used `moore8_iso` not `cardinal4` (anisotropy swamped the curvature signal); (b) acceptance via integrated `LAT(r)=r/CV0+(D/CV0²)ln r+c` fit, not dr/dLAT differentiation (low-SNR); (c) added npz cache under `_sim_outputs/` (gitignored). **Finding for S1:** r*≈134µm → dx ≤ ~45µm; S0's 50µm is borderline, sweep to ~35µm.
+**MUTATED 2026-06-08**: Step 1.2 — (a) used `moore8_iso` not `cardinal4` — cause is directional diagonal connectivity: cardinal4 has none, so its Laplacian carries flux only along axes (direction-dependent truncation error, NOT material/tensor anisotropy), distorting the circle and swamping the curvature signal; (b) acceptance via integrated `LAT(r)=r/CV0+(D/CV0²)ln r+c` fit, not dr/dLAT differentiation (low-SNR); (c) added npz cache under `_sim_outputs/` (gitignored). **Finding for S1:** r*≈134µm → dx ≤ ~45µm; S0's 50µm is borderline, sweep to ~35µm.
 
 ### Phase 1 Verification
 `/opt/miniforge3/bin/conda run -n heart-conduction python -m pytest cardiac_core/tests/test_eikonal_metrics.py -v` (3 pass) and S0 acceptance met (PASS).

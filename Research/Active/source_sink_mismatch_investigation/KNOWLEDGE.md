@@ -30,9 +30,13 @@ Expanding circular wave, Monodomain V5.4 FDM, TTP06 EPI, `moore8_iso`, dx=50µm:
 Three changes turned a failed measurement into a clean one:
 1. **Resolution**: dx 250 µm → **50 µm** (5×). r*/dx went 0.5 → 2.7 — the curvature
    zone went from sub-grid-cell to resolved.
-2. **Stencil**: `cardinal4` (anisotropic) → **`moore8_iso`** (Patra-Kałuża isotropic
-   9-pt). `cardinal4` makes the "circle" a rounded square; directional CV scatter
-   (~few %) swamps the ~8% curvature signal.
+2. **Stencil — directional diagonal connectivity**: `cardinal4` (no diagonal
+   connectivity) → **`moore8_iso`** (4:1-weighted diagonal connectivity, Patra-Kałuża).
+   Modeled diffusion is isotropic (scalar D) in BOTH; without diagonal channels the
+   5-point Laplacian carries flux only along axes → direction-dependent CV → the
+   "circle" becomes a rounded square, and that directional scatter (~few %) swamps the
+   ~8% curvature signal. NOT material/tensor anisotropy. See "The crucial cause:
+   directional diagonal connectivity" below.
 3. **Measurement**: integrated `LAT(r)` fit instead of differentiation/per-cell div.
 
 **S0b controlled isolation** — SAME expanding circle, vary only (dx, stencil):
@@ -54,6 +58,79 @@ clean geometry. **Scope:** this isolates resolution/stencil only; the hourglass 
 had a reservoir-fed over-driven source and healthy excitability (Conditions 2 & 3),
 which are separate factors still to be tested in S2/S3 (they govern *block*, not the
 curvature signal itself).
+
+### S0c — diagonal connectivity is necessary but NOT sufficient; r*/dx tuning is the other part
+Planar wave past a circular obstacle (the infarct-boundary geometry of
+diag_eikonal_circle / sim_semicircle), `moore8_iso`, measuring boundary-adjacent LAT
+minus bulk-at-same-x (negative = LEADS = inverse crescent = source-sink speedup at the
+obstacle edge; positive = LAGS = path-length shadow):
+
+| r*/dx | lead (µs) | trail (µs) | case |
+|---|---|---|---|
+| 0.80 | −110 | +1576 | coarse `cardinal4` (no diag) |
+| 0.80 | −111 | +1711 | coarse `moore8_iso` (diag only) |
+| 1.60 | −123 | +831 | coarse `moore8_iso`, **D×4 (tune D)** |
+| 3.21 | −163 | +1250 | fine `moore8_iso` (resolved) |
+
+Two findings:
+1. **Diagonal connectivity is NOT decisive here** — cardinal4 vs moore8_iso at the same
+   coarse dx are ≈identical (−110 vs −111 µs). Opposite of S0b (where the stencil flipped
+   the sign). **Why:** missing-diagonal grid anisotropy bites *off-axis* propagation; the
+   S0b radial wave samples all angles, but this planar wave runs *along the grid axis*
+   past the obstacle, where cardinal4 ≈ moore8_iso. So the stencil barely matters and the
+   resolution/diffusion knob dominates.
+2. **r*/dx (the diffusion-parameter / resolution knob) is the operative factor** — the
+   leading inverse-crescent strengthens monotonically −110 → −123 → −163 µs as r*/dx goes
+   0.8 → 1.6 → 3.2, and it grows whether reached by **raising D** (D×4 at fixed coarse
+   grid) OR **refining dx**. r* = D/CV0 (CV0 ∝ √D, so r* ∝ √D). This is the
+   "is-there-a-tuning-process-for-the-diffusion-parameter" question: **yes** — resolve r*
+   (raise D or refine dx) and the source-sink boundary effect emerges/sharpens.
+
+**Note on the original semicircle test:** it ran at **dx=0.05 cm → r*/dx ≈ 0.27** (even
+*with* D2Q9 specular diagonal connectivity) — badly under-resolved, so the leading
+source-sink curvature was sub-grid (read "linear") and only the gross trailing
+path-length shadow survived. Also `diag_eikonal_circle.py` had a **connectivity mismatch**
+(mono `cardinal4` = no diagonals; LBM `D2Q9` = diagonals), confounding that comparison.
+Figure: `media/.../images/2026-06-08/s0c-obstacle-rstar-tuning_01.png`.
+
+**Net corrected story:** the source-sink/curvature effect needs (A) directional diagonal
+connectivity — decisive for *bulk off-axis* curvature (S0b); AND (B) r* = D/CV0 resolved
+relative to dx — decisive for the *obstacle/boundary* crescent (S0c), tunable via D or dx.
+Neither alone is the full story.
+
+### The crucial cause: directional DIAGONAL CONNECTIVITY (not "anisotropy")
+The `cardinal4` failure is the **diagonal-connectivity** axis established in the
+boundary work (see §"Connectivity is the smoking gun: 8-neighbour vs 4-neighbour
+ablation") — the SAME mechanism, here in the bulk. It is NOT material/tensor
+anisotropy: with scalar D both stencils model the isotropic equation
+`∂V/∂t = D∇²V − I_ion`.
+
+- **`cardinal4` has no diagonal connectivity** → the discrete Laplacian can only carry
+  flux along the grid axes, so its truncation error is axis-locked and not rotationally
+  invariant:
+  ```
+     ∇²_h u = ∇²u + (h²/12)(u_xxxx + u_yyyy) + O(h⁴)
+     u_xxxx + u_yyyy = ∇⁴u − 2·u_xxyy        (∇⁴ = biharmonic, rotationally invariant)
+  ```
+  For a plane wave at angle θ the error scales as `cos⁴θ+sin⁴θ = 1 − ½sin²2θ` →
+  coefficient 1 on-axis, ½ on-diagonal: a factor-2 direction dependence → direction-
+  dependent numerical CV → **rounded-square wave**.
+- **`moore8_iso` adds directional diagonal connectivity** (4:1 cardinal:diagonal,
+  1/6 prefactor, Patra-Kałuża) → the diagonal channels carry the off-axis flux the
+  cardinal-only stencil cannot, making the leading error `∝ ∇⁴u` so `cos⁴θ+sin⁴θ → 1`
+  (θ-independent) → **circular wave**.
+
+So **directional diagonal connectivity is the crucial cause**; the
+non-rotationally-invariant truncation error ("grid/numerical anisotropy") is its
+mathematical manifestation, and direction-dependent CV is the effect. The S0b sign
+inversion (cardinal4 −0.93 vs moore8_iso +0.72 at the SAME 250µm) is this artifact:
+binning a rounded-square (diagonal-blind) wave by radius mixes fast-diagonal/slow-axial
+cells in r-varying proportion, faking an inverted curvature response.
+
+**Terminology rule:** reserve **"anisotropic" (unqualified) for the conductivity tensor
+`D_xy≠0`** (the codebase's own convention: `cardinal4` "anisotropic D support" = tensor;
+reduces to 5-point when `D_xy=0`). For the discretization effect, name the cause —
+**"(directional) diagonal connectivity"** — not "anisotropy".
 
 ---
 

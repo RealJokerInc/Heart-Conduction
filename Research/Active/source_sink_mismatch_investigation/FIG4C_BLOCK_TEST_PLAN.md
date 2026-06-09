@@ -248,9 +248,12 @@ Each stage's output is either a **tuned parameter** passed downstream (`r*`,
 **S0 method note:** the eikonal coefficient is robustly recovered by fitting the SMOOTH
 integrated form `LAT(r) = r/CV0 + (D/CV0²)·ln r + c` (R²=0.99997), NOT by differentiating
 binned LAT (an 8–13% curvature signal drowns in differentiation noise → R²≈0.13) nor by
-per-cell `div(n̂)` (R²≈0.04). `cardinal4` is anisotropic → use `moore8_iso` for circular
-waves. The `div(n̂)` estimator (`front_metrics`) is still needed for arbitrary geometries
-in S2–S4; bin/smooth it there.
+per-cell `div(n̂)` (R²≈0.04). Use `moore8_iso` for circular waves: the cause is
+**directional diagonal connectivity** — `cardinal4` has none, so its 5-point Laplacian
+carries flux only along axes (direction-dependent truncation error `cos⁴θ+sin⁴θ`,
+factor-2 axis-vs-diagonal), distorting the wave into a rounded square; NOT material/
+tensor anisotropy. The `div(n̂)` estimator (`front_metrics`) is still needed for
+arbitrary geometries in S2–S4; bin/smooth it there.
 
 ## 11. Deliverables
 
