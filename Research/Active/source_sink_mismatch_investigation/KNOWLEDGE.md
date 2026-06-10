@@ -15,6 +15,52 @@ needed. Active line is now [FIG4C_BLOCK_TEST_PLAN.md](FIG4C_BLOCK_TEST_PLAN.md) 
 [PLAN.md](PLAN.md). (Thickness-weighted/augmented monodomain + LBM/bidomain extension
 work is retained below as a separate optional 3-D-fidelity sub-question, NOT the main line.)
 
+## ⚑ CONSOLIDATED CONCLUSION 2026-06-10 — the control parameter is dx/r* (= dx·CV/D)
+
+The source-sink curvature/crescent effect is recreated correctly **iff the grid resolves
+the wavefront's own electrotonic length** `r* = D/CV0 ≈ 134–160 µm` (the eikonal-front /
+foot thickness). The single control parameter is
+
+```
+   dx / r*  =  dx · CV / D          (NOT dx/wavelength, NOT dx/constriction)
+```
+
+**Why the original engine failed:** it ran at dx = 250–500 µm > r* ≈ 134 µm, so the
+r*-thick boundary layer was sub-grid. Concrete criterion: **dx ≲ r*/3 ≈ 45 µm.**
+
+Evidence (converging-half wall-center crescent = clean metric, no geometric fan;
+hourglass, moore8_iso):
+- **S0f — dx sweep (fixed geometry):** crescent −115 → −236 µs as dx 250 → 25 µm
+  (r*/dx 0.5 → 5.4). **Converges, does NOT die** — physical under-resolved effect, the
+  opposite of a vanishing artifact.
+- **S0g (Step 2) — wavelength via APD (GKr/GKs, fixed CV, fixed dx):** crescent
+  **exactly −175 µs across a 3.9× λ swing** (APD 280→72 ms, λ 17→4.5 cm). **λ is inert.**
+  Mechanism: the crescent is an *activation/LAT* feature (set by the upstroke); APD is
+  repolarization and is absent from `r* = D/CV`. (So my earlier "resolution-dependent"
+  was right in direction; "wavelength-dependent" is wrong via the APD channel.)
+- **S0h — discriminator (scale geometry+dx together, dx/constriction FIXED at 0.17):**
+  crescent still moves −117 → −180 µs as r*/dx 0.67 → 2.68. **So it is NOT dx/constriction;**
+  the constriction sets the *magnitude* of the source-sink mismatch, but the *resolution
+  criterion* is dx/r*, independent of feature size.
+- **S0i — CV channel (GNa, fixed dx, fixed D):** crescent −338 → −90 µs as CV 49 → 81
+  cm/s (r* = D/CV 202 → 124 µm). **CV is the operative knob** because it enters r*. This
+  is why a "wavelength effect" only ever shows through CV, never APD: `λ = CV·APD`, and
+  only the CV factor reaches `r* = D/CV`. CV is itself grid-dependent ("fudgable" — sags
+  62→49 cm/s at coarse dx, S0b), so `dx/r* = dx·CV/D` couples dx and CV.
+
+**Caveat — not a single clean collapse across routes.** At the same r*/dx ≈ 2.4–2.7 the
+CV-route (S0i, −338 µs) and the dx-route (S0f, ~−210 µs) differ: the crescent is a *time*
+and a slower wave (lower CV) inflates the same spatial lead. The cleaner invariant is the
+**spatial lead ≈ 0.6–0.8·r\***. Headline (CV operative, APD inert, control = dx/r*) is
+solid; the exact non-dimensional form carries a 1/CV time-scaling.
+
+**Methodological lessons (see `feedback_visual_front_over_derived_metric`):** (1) the
+converging half is the real test — the diverging half makes a forward crescent trivially
+(geometric fan) that masks the boundary signal; (2) lead with the isochrone/video front,
+not derived scalars (my centerline/edge-inner metrics were blind to the inverse crescent
+the PI saw); (3) always match dx/dt/D when comparing configs — the first orig-vs-fixed
+video was dx-confounded.
+
 ### Phase 1 (S0) — the engine DOES obey the eikonal relation
 Expanding circular wave, Monodomain V5.4 FDM, TTP06 EPI, `moore8_iso`, dx=50µm:
 - **CV0 = 62.4 cm/s**, **D_eik = 0.00084 cm²/ms** (= 0.84·operator D=0.001; the ~16%
@@ -97,6 +143,29 @@ Figure: `media/.../images/2026-06-08/s0c-obstacle-rstar-tuning_01.png`.
 connectivity — decisive for *bulk off-axis* curvature (S0b); AND (B) r* = D/CV0 resolved
 relative to dx — decisive for the *obstacle/boundary* crescent (S0c), tunable via D or dx.
 Neither alone is the full story.
+
+### S0d — hourglass confirmation: the inverse crescent is RESOLUTION-dependent, not stencil-dependent (visually confirmed)
+Re-ran the actual hourglass (scaled) at controlled params. **Settled by direct visual
+inspection of the front (video + isochrones), which is the reliable diagnostic here:**
+- At **dx = 50 µm, BOTH `cardinal4` and `moore8_iso` show the dilation-wall inverse
+  crescent** (boundary speedup, edge leads). At **dx = 250 µm, neither does.**
+  → the inverse crescent is **resolution-dependent (needs r* resolved), NOT
+  stencil/diagonal-connectivity-dependent** for this axis-aligned geometry.
+- The original "orig vs fixed" video was **confounded**: `cardinal4`@250µm vs
+  `moore8_iso`@50µm — the apparent stencil difference was actually the dx difference.
+- Consistent with S0c: for axis-aligned boundary/obstacle source-sink, **r*/dx
+  resolution is the operative knob**; diagonal connectivity matters for *off-axis/radial*
+  curvature (S0b), not here.
+- Centerline dilation CV dip (convex fan, ~10%) was present even at 250µm; the *wall
+  inverse crescent* specifically required ~50µm. So at coarse dx the original missed the
+  boundary inverse-crescent due to resolution.
+
+**Measurement caveat (important):** every LAT-derived crescent metric I built — centerline
+CV, wall-minus-center, local edge-minus-inner — read "edge lags" while the front *visibly*
+shows the inverse crescent. **They did not capture the effect; visual front inspection
+(isochrones / V-field video) was the ground truth.** Trust the front, not the derived
+scalar, for boundary-crescent questions. Figures: `s0d4-isochrones-clean_01.png`;
+videos `s0d-hourglass-orig-vs-fixed_01.mp4`, `s0d-hourglass-matched-dx-cardinal-vs-moore8_01.mp4`.
 
 ### The crucial cause: directional DIAGONAL CONNECTIVITY (not "anisotropy")
 The `cardinal4` failure is the **diagonal-connectivity** axis established in the

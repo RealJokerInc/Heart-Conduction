@@ -45,6 +45,34 @@ regime+excitability (block) still S2/S3. New code: `cardiac_core.analysis`
 `Monodomain/Engine_V5.4/experiments/fig4c_sourcesink/`. Next: Phase 2 = S1 dx sweep
 (critical nucleus) → lock dx_resolved (target ≤~45µm; 50µm borderline).
 
+### 2026-06-10: CONTROL PARAMETER = dx/r* (= dx·CV/D). Not wavelength, not constriction.
+Closed the "why couldn't original recreate it" arc. Converging-half wall-center crescent
+(clean metric, no fan):
+- S0f dx sweep (fixed geom): −115→−236µs as dx 250→25µm — CONVERGES, doesn't die → physical
+  under-resolved effect (opposite of a vanishing artifact).
+- S0g (Step 2) wavelength via APD (GKr/GKs, CV fixed): crescent EXACTLY −175µs across 3.9×
+  λ (APD 280→72ms). λ INERT — crescent is an activation/LAT feature; APD is repolarization,
+  absent from r*=D/CV.
+- S0h discriminator (scale geom+dx together, dx/constriction FIXED): crescent still moves
+  −117→−180µs tracking r*/dx → NOT dx/constriction. Constriction sets magnitude; dx/r* sets
+  resolution.
+- S0i CV channel (GNa, fixed dx,D): crescent −338→−90µs as CV 49→81 → CV operative because
+  it enters r*=D/CV. "λ effect" only ever acts through CV, never APD. CV is grid-fudgable.
+Answer: original failed because dx(250–500µm) > r*(~134µm); criterion dx≲r*/3≈45µm. Caveat:
+no single collapse on r*/dx across routes (1/CV time-scaling); spatial lead ~0.6–0.8 r* is
+cleaner. Scripts: run_s0f/g/h/i_*.py. Full synthesis in KNOWLEDGE "CONSOLIDATED CONCLUSION".
+
+### 2026-06-10: S0d — hourglass inverse crescent is RESOLUTION-dependent, not stencil (visually confirmed)
+Re-ran actual hourglass at controlled params. PI visually confirmed: at dx=50µm BOTH
+cardinal4 and moore8_iso show the dilation-wall inverse crescent; at 250µm neither does.
+→ inverse crescent needs r* resolved (dx~50µm), NOT diagonal connectivity (axis-aligned
+geometry; matches S0c). Original orig-vs-fixed video was confounded (cardinal4@250 vs
+moore8@50) — apparent stencil effect was actually dx. CAVEAT: all my LAT-derived crescent
+metrics (centerline CV, wall-center, edge-inner) FAILED — read "edge lags" while the front
+visibly shows the inverse crescent. Visual front inspection (isochrones/video) is the
+ground truth for boundary crescents; don't trust the derived scalar. Scripts: run_s0d*,
+render_s0d_matched_video.
+
 ### 2026-06-08: S0c — diagonal connectivity ≠ full story; r*/dx (diffusion-param) tuning is the other part
 Obstacle + planar wave, `moore8_iso`, leading/trailing boundary crescent vs r*/dx.
 Diagonal connectivity NOT decisive here: cardinal4≈moore8_iso at coarse dx (−110 vs
