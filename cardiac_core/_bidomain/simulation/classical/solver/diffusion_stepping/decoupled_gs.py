@@ -1,0 +1,117 @@
+"""
+Decoupled Bidomain Diffusion Solver
+
+Gauss-Seidel splitting: parabolic solve for Vm, then elliptic solve for phi_e.
+Two sequential N x N SPD solves per time step.
+
+Step 1 (Parabolic — Formulation B, D-based):
+    (1/dt * I - theta*L_i) * Vm^{n+1} =
+        B_para * Vm^n + L_i * phi_e^n
+
+Step 2 (Elliptic):
+    -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
+
+Ref: improvement.md L960-1044
+"""
+
+from typing import TYPE_CHECKING
+
+from .base import BidomainDiffusionSolver
+from ..linear_solver.pcg import sparse_mv
+
+if TYPE_CHECKING:
+    from ...discretization.base import BidomainSpatialDiscretization
+    from ...state import BidomainState
+    from ..linear_solver.base import LinearSolver
+
+
+class DecoupledBidomainDiffusionSolver(BidomainDiffusionSolver):
+    """
+    Decoupled (Gauss-Seidel splitting) bidomain diffusion solver.
+
+    Parameters
+    ----------
+    spatial : BidomainSpatialDiscretization
+        Provides L_i, L_e stencils and parabolic/elliptic operators.
+    dt : float
+        Time step (ms)
+    parabolic_solver : LinearSolver
+        Solver for Vm sub-problem
+    elliptic_solver : LinearSolver
+        Solver for phi_e sub-problem
+    theta : float
+        Implicitness (0.5 = CN, 1.0 = BDF1)
+    pin_node : int
+        Node for null space pinning (Neumann only)
+    """
+
+    def __init__(self, spatial, dt, parabolic_solver, elliptic_solver,
+                 theta=0.5, pin_node=0):
+        super().__init__(spatial, dt)
+        self.theta = theta
+        self.parabolic_solver = parabolic_solver
+        self.elliptic_solver = elliptic_solver
+
+        # Read BCs from mesh
+        self._needs_pinning = spatial.grid.boundary_spec.phi_e_has_null_space
+        self._pin_node = pin_node
+
+        # Build operators
+        self._build_operators(spatial, dt)
+
+    def _build_operators(self, spatial, dt):
+        """Build parabolic and elliptic operators."""
+        self.A_para, self.B_para = spatial.get_parabolic_operators(dt, self.theta)
+        self.A_ellip = spatial.get_elliptic_operator()
+
+        # Null space pinning for Neumann phi_e
+        if self._needs_pinning:
+            self.A_ellip = self.apply_elliptic_pinning(
+                self.A_ellip, self._pin_node)
+
+    def step(self, state, dt):
+        """
+        Advance Vm and phi_e by one diffusion time step.
+
+        Step 1: Parabolic solve for Vm
+        Step 2: Elliptic solve for phi_e
+
+        Parameters
+        ----------
+        state : BidomainState
+        dt : float
+            Must match the dt used at construction (operators encode 1/dt).
+        """
+        if abs(dt - self._dt) > 1e-14 * self._dt:
+            raise ValueError(
+                f"GS: step dt={dt} != constructor dt={self._dt}. "
+                f"Call rebuild_operators() first.")
+        # --- Step 1: Parabolic (Vm) ---
+        # Coupling: L_i * phi_e^n (NOT theta * L_i * phi_e^n)
+        # From CN discretization of dVm/dt = L_i*(Vm + phi_e):
+        #   theta*L_i*phi_e^{n+1} + (1-theta)*L_i*phi_e^n
+        #   ≈ L_i*phi_e^n (since phi_e is lagged)
+        rhs_para = sparse_mv(self.B_para, state.Vm) \
+                   + self._spatial.apply_L_i(state.phi_e)
+        Vm_new = self.parabolic_solver.solve(self.A_para, rhs_para)
+
+        # --- Step 2: Elliptic (phi_e) ---
+        rhs_ellip = self._spatial.apply_L_i(Vm_new)
+        self._zero_dirichlet_rhs(rhs_ellip)
+        if self._needs_pinning:
+            rhs_ellip[self._pin_node] = 0.0
+        phi_e_new = self.elliptic_solver.solve(self.A_ellip, rhs_ellip)
+
+        # Post-subtract pinning for spectral solvers (Neumann)
+        if self._needs_pinning:
+            phi_e_new = phi_e_new - phi_e_new[self._pin_node]
+
+        # --- Update state in-place ---
+        state.Vm.copy_(Vm_new)
+        state.phi_e.copy_(phi_e_new)
+
+    def rebuild_operators(self, spatial, dt):
+        """Rebuild operators when dt changes."""
+        self._spatial = spatial
+        self._dt = dt
+        self._build_operators(spatial, dt)

@@ -1000,12 +1000,8 @@ def _build_stimulus_protocol_v54(data: CardiacMeshData, grid, device, dtype):
 
 
 def _build_stimulus_protocol_bidomain(data: CardiacMeshData, grid, device, dtype):
-    """Build bidomain StimulusProtocol from mesh data stimuli.
-
-    Bidomain uses the same StimulusProtocol pattern — import from bidomain engine.
-    """
-    # Bidomain's stimulus protocol has the same API
-    from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+    """Build the bidomain StimulusProtocol from mesh data stimuli (shared cardiac_core.stimulus)."""
+    from .stimulus.protocol import StimulusProtocol
 
     protocol = StimulusProtocol()
     mask_np = data.mask
@@ -1211,13 +1207,10 @@ def bidomain(
     timestep = dt or data.dt
     bc_type = boundary or data.boundary
 
-    # Import Bidomain V1 engine (clear module cache to avoid collision with V5.4)
-    _prepare_engine(_BIDOMAIN_PATH)
-    from cardiac_sim.simulation.classical import BidomainSimulation
-    from cardiac_sim.simulation.classical.discretization import BidomainFDMDiscretization
-    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
-    from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
-    from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
+    # Construct from the vendored bidomain solver + shared mesh (self-contained; no _prepare_engine).
+    from ._bidomain import BidomainSimulation, BidomainFDMDiscretization, BidomainConductivity
+    from .mesh.structured import StructuredGrid
+    from .mesh.boundary import BoundarySpec
 
     # Build grid with boundary spec
     mask_tensor = torch.tensor(data.mask, dtype=torch.bool)

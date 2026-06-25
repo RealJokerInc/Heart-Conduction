@@ -1,14 +1,8 @@
 """Tests for cardiac_core.api.bidomain() — simplified bidomain API."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
-
-_project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_project_root / "Bidomain" / "Engine_V1"))
 
 from cardiac_core import bidomain, create_cardiac_mesh, save_cardiac_mesh
 from cardiac_core.file_format import CardiacMeshData
@@ -114,12 +108,12 @@ class TestBidomainMatchesDirect:
 
     def test_matches_direct(self):
         """Same params → wrapper vs direct → identical V and phi_e after 3ms."""
-        from cardiac_sim.simulation.classical import BidomainSimulation
-        from cardiac_sim.simulation.classical.discretization import BidomainFDMDiscretization
-        from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
-        from cardiac_sim.tissue_builder.mesh.boundary import BoundarySpec
-        from cardiac_sim.tissue_builder.tissue.conductivity import BidomainConductivity
-        from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+        from cardiac_core._bidomain import (
+            BidomainSimulation, BidomainFDMDiscretization, BidomainConductivity,
+        )
+        from cardiac_core.mesh.structured import StructuredGrid
+        from cardiac_core.mesh.boundary import BoundarySpec
+        from cardiac_core.stimulus.protocol import StimulusProtocol
 
         dx = 0.05
         Lx, Ly = 1.0, 0.5
