@@ -140,6 +140,27 @@ The glossary's resolved vocabulary is now realized as a concrete interface in **
 
 **Still design-only (separate plans):** `SimulationSpec`/`create_simulation` (Goal-2 LLM intake), the consolidation-track engine rewire (Form-A→B convergence, delete `for_monodomain()`, FEM removal). The PLAN's "Phase 4" is API factory-wiring, **not** the consolidation-track Phase 4 in the migration table below.
 
+## cardiac_core unified ground-up package — SHIPPED (2026-06-25)
+
+`cardiac_core` is now a **single self-contained package**: the three engines are vendored IN (copied), the `_prepare_engine()` sys.modules hack is **deleted**, and no `cardiac_core/**` file imports `Monodomain/`/`Bidomain/`/`LBM/`. **137 tests green** (was 121; +16). Decision context: user chose **A2 (unified, flat, ground-up)** over relocate-keep-hack/rename-only, and **`cardiac_core` is the centralized home** (future engine dev happens here; the original engine folders freeze → no copy-drift). Backup before vendoring: tag `pre-consolidation-vendoring` + bundle `~/heart-conduction-PRE-CONSOLIDATION-2026-06-25.bundle`.
+
+**Final layout:**
+```
+cardiac_core/
+  api.py run.py conductivity.py grid.py simulation.py analysis.py geometry.py io.py file_format.py media.py
+  ionic/  mesh/  stimulus/        ← shared, one copy each
+  _monodomain/  _bidomain/  _lbm/  ← vendored solvers (underscore = private; don't shadow the factories)
+  tests/  (incl. _integrity/ goldens, test_self_contained.py guard)
+```
+
+**Key implementation facts (for future maintenance):**
+- **Underscore naming is load-bearing.** The solver packages MUST be `_monodomain`/`_bidomain`/`_lbm` — a non-underscore `cardiac_core/monodomain/` package SHADOWS the public `monodomain()` factory (`from cardiac_core import monodomain` returns the package, `'module' object is not callable`). Public surface unchanged: `monodomain()/bidomain()/lbm()` factories + `simulate(engine=...)`; users never import `_*`.
+- **Engines are pure-relative-import internally** (verified: 0 absolute `cardiac_sim`/`src`, 0 sys.path/importlib/__file__). So vendoring = copy the subtree + rewrite ONLY the solver→shared cross-imports (mono 8, bidomain 9, LBM 0 — it receives the ionic model as an object). The cross-ref rewrite regex MUST be `\b`-anchored (`from \.+(ionic|tissue_builder)\b`) or it corrupts `ionic_time_stepping`/`ionic_stepping` internal imports (hit this bug; caught + fixed).
+- **Shared reconciliations:** `mesh/structured.py` = bidomain superset (adds `boundary_spec` + `edge_masks`/`dirichlet_mask_phi_e`/`neumann_mask_phi_e`; shared methods byte-identical to mono). `stimulus/protocol.py` = bidomain's canonical `+=` accumulate (vs mono's `=`; differs only for OVERLAPPING stimuli — goldens use single stims so bit-identical). `_bidomain/tissue/` keeps `BidomainConductivity` (per-engine, not shared).
+- **Integrity gate (`tests/test_integrity.py`):** per-engine pre-vendor GOLDEN (atol=0, captured Phase 0 against the originals) + source-tree hash. Proved every vendored engine is BEHAVIOR-IDENTICAL and the originals byte-unchanged. `tests/test_self_contained.py` is the durable guard (matches real import lines + `_prepare_engine(` calls, NOT prose).
+- **One intentional exception:** `tests/_live_cv_gate_driver.py` still subprocess-drives the original V5.5 cable (firewall gate); excluded from the guard, documented in `cardiac_core/engines_SOURCE.md` (provenance + re-vendor recipe).
+- **Per-phase commits** on `main`: Phase 0 `935160b` → Phase 5 `37dc381`.
+
 ## Cross-Engine Capability Census (2026-06-01)
 
 Read-only census of all three engines' construct/run/state/stimulus/geometry surfaces, to ground the vocabulary + API. The **ionic layer and physical conventions are already a shared language; divergence is concentrated in construction, voltage naming, state, and the run/result contract.** LBM is the consistent outlier.

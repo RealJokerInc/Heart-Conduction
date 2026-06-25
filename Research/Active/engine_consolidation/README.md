@@ -11,7 +11,9 @@ How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `ca
 
 ## Status: Active
 
-> **Goal-1 unified construction API SHIPPED in code (2026-06-24)** — `ConductivityConfig`, `Grid`, `Simulation` Protocol, declarative `monodomain/bidomain/lbm` factories, `with_/reset/stimulate`, eager/batch `run()` → `SimulationResult` with analysis hooks. 121 cardiac_core tests pass (was 80). Engines unchanged. See KNOWLEDGE "Goal-1 Construction API — SHIPPED" + `PLAN.md` (API-track Phases 0–5). The criteria below are the **consolidation track** (engine rewire / dedup), a separate effort — NOT what the API-track PLAN delivered.
+> **Goal-1 unified construction API SHIPPED (2026-06-24)** — `ConductivityConfig`, `Grid`, `Simulation` Protocol, declarative factories, eager/batch `run()` → `SimulationResult`. See KNOWLEDGE "Goal-1 Construction API — SHIPPED".
+>
+> **Consolidation SHIPPED (2026-06-25)** — `cardiac_core` is now a **single self-contained package**: the 3 engines are vendored under `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, the `_prepare_engine()` hack is deleted, no cross-folder imports. 137 tests green; bit-identical integrity goldens; engine originals untouched (frozen; `cardiac_core` is the centralized home). See KNOWLEDGE "cardiac_core unified ground-up package — SHIPPED" + `plans/2026-06-25_*`. This satisfies the spirit of the consolidation-track criteria below (single home, no duplicated-yet-referenced shared code) by **copy-vendoring** rather than rewire-and-delete.
 
 ## Why It Matters
 Three engines share ionic models (TTP06, ORd) as file-level copies. Any bug fix or new model must be propagated manually to all three. The Optimizer and Surrogate need to call different engines with the same interface. Two different chi/Cm formulations coexist.
