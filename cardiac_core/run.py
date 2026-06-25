@@ -24,14 +24,47 @@ class SimulationResult:
     ----------
     times : torch.Tensor
         Save times (n_saves,) in ms.
-    V : torch.Tensor
-        Membrane potential history (n_saves, Nx, Ny).
+    Vm : torch.Tensor
+        Membrane potential history (n_saves, Nx, Ny). (Canonical name; ``.V`` is a read-only alias.)
     phi_e : torch.Tensor | None
         Extracellular potential history (n_saves, Nx, Ny). Bidomain only.
+    dx, dy : float | None
+        Grid spacing (cm) — set by the run helpers so analysis hooks have it.
+    ionic_states : torch.Tensor | None
+        Recorded ionic-state history (opt-in via ``record=``). None unless requested.
     """
     times: torch.Tensor
-    V: torch.Tensor
-    phi_e: Optional[torch.Tensor]
+    Vm: torch.Tensor
+    phi_e: Optional[torch.Tensor] = None
+    dx: Optional[float] = None
+    dy: Optional[float] = None
+    ionic_states: Optional[torch.Tensor] = None
+
+    @property
+    def V(self) -> torch.Tensor:
+        """Read-only deprecated alias for :attr:`Vm`."""
+        return self.Vm
+
+    # --- analysis hooks (thin delegators to cardiac_core.analysis) ---
+    def cv(self, x1: int, x2: int, y: int, **kw) -> float:
+        """Conduction velocity (cm/s) between x-indices ``x1`` and ``x2`` at row ``y``."""
+        from . import analysis
+        return analysis.conduction_velocity(self.Vm, self.times, self.dx, x1, x2, y, **kw)
+
+    def apd(self, **kw) -> torch.Tensor:
+        """APD map ``(Nx, Ny)`` (default APD90)."""
+        from . import analysis
+        return analysis.apd_map(self.Vm, self.times, **kw)
+
+    def lat(self, **kw) -> torch.Tensor:
+        """Local activation-time map ``(Nx, Ny)``."""
+        from . import analysis
+        return analysis.activation_time(self.Vm, self.times, **kw)
+
+    def restitution(self, ix: int, iy: int, **kw):
+        """APD restitution curve at node ``(ix, iy)`` from a multi-beat recording."""
+        from . import analysis
+        return analysis.restitution_curve(self.Vm, self.times, ix, iy, **kw)
 
 
 def _collect(sim, t_end, save_every, output_device):
@@ -41,9 +74,9 @@ def _collect(sim, t_end, save_every, output_device):
     phi_e_list = []
     has_phi_e = False
 
-    for snap in sim.run(t_end, save_every):
+    for snap in sim.snapshots(t_end, save_every):   # run() is now eager; snapshots() is the generator
         times.append(snap.t)
-        V_list.append(snap.V)
+        V_list.append(snap.Vm)
         if snap.phi_e is not None:
             has_phi_e = True
             phi_e_list.append(snap.phi_e)
@@ -240,4 +273,4 @@ def simulate(
 
     sim = ctor(mesh, device=device, **kwargs)
     times, V, phi_e = _collect(sim, t_end, save_every, output_device)
-    return SimulationResult(times=times, V=V, phi_e=phi_e)
+    return SimulationResult(times=times, Vm=V, phi_e=phi_e, dx=sim.dx, dy=sim.dy)

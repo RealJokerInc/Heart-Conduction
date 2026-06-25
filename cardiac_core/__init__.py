@@ -19,6 +19,12 @@ _LAZY = {
     # file_format
     'CardiacMeshData': 'file_format', 'save_cardiac_mesh': 'file_format',
     'load_cardiac_mesh': 'file_format', 'create_cardiac_mesh': 'file_format',
+    # conductivity (the chi/Cm + Formulation-A/B firewall)
+    'ConductivityConfig': 'conductivity',
+    # grid (structured-only geometry)
+    'Grid': 'grid',
+    # simulation (engine-agnostic runtime Protocol)
+    'Simulation': 'simulation',
     # api (engine wrappers — heavy: triggers _prepare_engine on use)
     'monodomain': 'api', 'bidomain': 'api', 'lbm': 'api',
     'CardiacSimulation': 'api', 'SimulationSnapshot': 'api', 'Distribution': 'api',

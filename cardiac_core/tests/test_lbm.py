@@ -22,7 +22,7 @@ class TestLBMFromData:
         mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005)
         sim = lbm(mesh, device='cpu')
 
-        snapshots = list(sim.run(5.0, save_every=1.0))
+        snapshots = list(sim.snapshots(5.0, save_every=1.0))
         assert len(snapshots) >= 4
 
         Nx = round(0.5 / 0.025) + 1  # 21
@@ -39,7 +39,7 @@ class TestLBMFromData:
         sim = lbm(mesh, device='cpu')
 
         times = []
-        for snap in sim.run(3.0, save_every=1.0):
+        for snap in sim.snapshots(3.0, save_every=1.0):
             times.append(snap.t)
 
         assert len(times) >= 2
@@ -57,7 +57,7 @@ class TestLBMFromData:
         )
         sim = lbm(mesh, device='cpu')
 
-        for snap in sim.run(5.0, save_every=1.0):
+        for snap in sim.snapshots(5.0, save_every=1.0):
             pass
         V_max = snap.V.max().item()
         assert V_max > -50.0, f"V_max={V_max}, stimulus didn't activate"
@@ -81,7 +81,7 @@ class TestLBMFromFile:
         save_cardiac_mesh(path, mesh)
 
         sim = lbm(path, device='cpu')
-        snapshots = list(sim.run(3.0, save_every=1.0))
+        snapshots = list(sim.snapshots(3.0, save_every=1.0))
         assert len(snapshots) >= 2
 
 
@@ -118,7 +118,7 @@ class TestLBMMatchesDirect:
         times_d, V_hist_d = sim_direct.run(t_end=3.0, save_every=3.0)
 
         V_wrapper = None
-        for snap in sim_wrapper.run(3.0, save_every=3.0):
+        for snap in sim_wrapper.snapshots(3.0, save_every=3.0):
             V_wrapper = snap.V.clone()
 
         V_direct = V_hist_d[-1]

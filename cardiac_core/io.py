@@ -8,6 +8,7 @@ Separate from the mesh file format — this is for post-simulation data.
     times, V, phi_e, meta = load_result("output.npz")
 """
 
+import warnings
 from typing import Optional
 import numpy as np
 import torch
@@ -16,8 +17,10 @@ import torch
 def save_result(
     path: str,
     times: torch.Tensor,
-    V: torch.Tensor,
+    Vm: Optional[torch.Tensor] = None,
     phi_e: Optional[torch.Tensor] = None,
+    *,
+    V: Optional[torch.Tensor] = None,
     **metadata,
 ) -> None:
     """Save simulation results to .npz.
@@ -28,17 +31,29 @@ def save_result(
         Output file path.
     times : torch.Tensor
         (n_saves,) time points in ms.
-    V : torch.Tensor
-        (n_saves, Nx, Ny) voltage history.
+    Vm : torch.Tensor
+        (n_saves, Nx, Ny) voltage history. Canonical name. The legacy positional/keyword
+        ``V`` is still accepted (with a DeprecationWarning when passed by keyword); the
+        voltage in positional slot 3 binds to ``Vm``.
     phi_e : torch.Tensor, optional
-        (n_saves, Nx, Ny) extracellular potential (bidomain).
+        (n_saves, Nx, Ny) extracellular potential (bidomain). Positional-or-keyword.
+    V : torch.Tensor, optional
+        Deprecated keyword alias for ``Vm``.
     **metadata
         Additional scalar/string metadata stored as numpy scalars.
         e.g. dx=0.025, engine='monodomain', ionic_model='ttp06'
     """
+    voltage = Vm if Vm is not None else V
+    if Vm is None and V is not None:
+        warnings.warn(
+            "save_result(V=...) is deprecated; pass Vm=... instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+    if voltage is None:
+        raise TypeError("save_result requires the voltage history (Vm=...).")
     d = {
         'times': times.cpu().numpy(),
-        'V': V.cpu().numpy(),
+        'V': voltage.cpu().numpy(),  # npz key stays 'V' so load_result is unchanged
     }
     if phi_e is not None:
         d['phi_e'] = phi_e.cpu().numpy()

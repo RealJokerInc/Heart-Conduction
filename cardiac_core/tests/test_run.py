@@ -107,3 +107,24 @@ class TestSimulate:
 
         assert torch.allclose(times_r, result.times)
         assert torch.allclose(V_r, result.V)
+
+    def test_vm_is_canonical(self):
+        """Vm is the canonical field; .V is a read-only alias (same tensor); dx/dy populated."""
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
+        result = simulate(mesh, t_end=3.0, engine='monodomain')
+
+        # Vm is the real field; V aliases it (identity, not a copy).
+        assert result.Vm is result.V
+        assert result.Vm.ndim == 3
+        # Run helpers now populate spacing for the analysis hooks.
+        assert result.dx == 0.05 and result.dy == 0.05
+        assert result.ionic_states is None
+
+    def test_snapshot_vm_alias(self):
+        """SimulationSnapshot.Vm is canonical; .V aliases it."""
+        from cardiac_core import monodomain
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
+        sim = monodomain(mesh, device='cpu')
+        snap = next(sim.snapshots(2.0, save_every=1.0))
+        assert snap.Vm is snap.V
+        assert snap.Vm.shape == (sim.Nx, sim.Ny)

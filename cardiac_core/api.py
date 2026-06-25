@@ -15,9 +15,14 @@ import numpy as np
 import torch
 
 from .file_format import CardiacMeshData, load_cardiac_mesh
+from .grid import Grid
+from .conductivity import ConductivityConfig
 
 _project_root = Path(__file__).resolve().parent.parent
-_V54_PATH = str(_project_root / "Monodomain" / "Engine_V5.4")
+# cardiac_core's monodomain path runs the Cm-correct V5.5 fork (Formulation-B reaction: dV /= Cm).
+# V5.4 remains the frozen validated baseline on disk, but is no longer imported here — every gate
+# value (CV 54.35/28.09) was measured against V5.5, so the delivered factory must run V5.5 too.
+_V55_PATH = str(_project_root / "Monodomain" / "Engine_V5.5")
 _BIDOMAIN_PATH = str(_project_root / "Bidomain" / "Engine_V1")
 _LBM_PATH = str(_project_root / "LBM" / "Engine_V1")
 
@@ -114,8 +119,8 @@ class SimulationSnapshot:
     ----------
     t : float
         Current simulation time (ms).
-    V : torch.Tensor
-        Membrane potential, shape (Nx, Ny).
+    Vm : torch.Tensor
+        Membrane potential, shape (Nx, Ny). (Canonical name; ``.V`` is a read-only alias.)
     phi_e : torch.Tensor | None
         Extracellular potential (Nx, Ny), bidomain only.
     Nx, Ny : int
@@ -124,12 +129,18 @@ class SimulationSnapshot:
         Grid spacing (cm).
     """
     t: float
-    V: torch.Tensor
+    Vm: torch.Tensor
     phi_e: Optional[torch.Tensor]
     Nx: int
     Ny: int
     dx: float
     dy: float
+    ionic_states: Optional[torch.Tensor] = None   # (n_states, Nx, Ny), opt-in via record=
+
+    @property
+    def V(self) -> torch.Tensor:
+        """Read-only deprecated alias for :attr:`Vm`."""
+        return self.Vm
 
 
 class CardiacSimulation:
@@ -147,11 +158,16 @@ class CardiacSimulation:
         The mesh data used to construct this simulation.
     """
 
-    def __init__(self, engine, engine_type: str, grid, data: CardiacMeshData):
+    def __init__(self, engine, engine_type: str, grid, data: CardiacMeshData,
+                 build_kwargs: Optional[dict] = None):
         self._engine = engine
         self._engine_type = engine_type
         self._grid = grid
         self._data = data
+        # Engine-construction knobs (dt/splitting/solver/device/...) — enough to replay the
+        # factory with `mesh=self._data` for reset()/with_()/stimulate(). The geometry,
+        # conductivity, and stimulus are already baked into `data`.
+        self._build_kwargs = dict(build_kwargs or {})
         self._Nx = data.mask.shape[0]
         self._Ny = data.mask.shape[1]
         self._probes: dict[str, dict] = {}   # name → {x, y, ix, iy, t[], V[]}
@@ -162,8 +178,13 @@ class CardiacSimulation:
     # Core simulation control
     # ========================================================================
 
-    def run(self, t_end: float, save_every: float = 1.0) -> Iterator[SimulationSnapshot]:
-        """Run simulation to t_end, yielding SimulationSnapshot at intervals.
+    def run(self, t_end: float, save_every: float = 1.0, *, batch: Optional[int] = None,
+            record=("Vm",), callback=None) -> "SimulationResult | Iterator[SimulationResult]":
+        """Run to ``t_end`` and return a :class:`~cardiac_core.run.SimulationResult`.
+
+        Eager by default (``batch=None``): drains the run, returns ONE ``SimulationResult`` with
+        ``Vm (T,Nx,Ny)`` (+ ``phi_e`` for bidomain, ``ionic_states`` if requested). With ``batch=k``,
+        returns an ``Iterator[SimulationResult]`` yielding chunks of ≤k save-points (k=1 = frame-by-frame).
 
         Parameters
         ----------
@@ -171,13 +192,54 @@ class CardiacSimulation:
             End time (ms).
         save_every : float
             Save interval (ms).
+        batch : int, optional
+            Chunk size for streaming. ``None`` = eager single result.
+        record : tuple[str, ...]
+            Fields to collect. ``"Vm"`` always; ``"ionic_states"`` opt-in (NotImplemented for LBM).
+        callback : callable, optional
+            ``callback(snapshot)`` per save-point; returning ``False`` stops early (eager mode).
+
+        Returns
+        -------
+        SimulationResult | Iterator[SimulationResult]
         """
+        it = self._iter_snapshots(t_end, save_every, record=record, callback=callback)
+        if batch is None:
+            return _result_from(list(it), record, self.dx, self.dy)
+
+        def _gen():
+            buf = []
+            for snap in it:
+                buf.append(snap)
+                if len(buf) == batch:
+                    yield _result_from(buf, record, self.dx, self.dy)
+                    buf = []
+            if buf:
+                yield _result_from(buf, record, self.dx, self.dy)
+        return _gen()
+
+    def snapshots(self, t_end: float, save_every: float = 1.0, *, record=("Vm",),
+                  callback=None) -> Iterator[SimulationSnapshot]:
+        """Frame-by-frame generator of :class:`SimulationSnapshot` (the pre-Phase-5 ``run()``).
+
+        Use this where you want to iterate snapshots lazily; ``run()`` is now eager and returns a
+        ``SimulationResult``.
+        """
+        return self._iter_snapshots(t_end, save_every, record=record, callback=callback)
+
+    def _iter_snapshots(self, t_end, save_every, *, record=("Vm",), callback=None):
         if self._engine_type == 'monodomain':
-            yield from self._run_monodomain(t_end, save_every)
+            gen = self._run_monodomain(t_end, save_every, record)
         elif self._engine_type == 'bidomain':
-            yield from self._run_bidomain(t_end, save_every)
+            gen = self._run_bidomain(t_end, save_every, record)
         elif self._engine_type == 'lbm':
-            yield from self._run_lbm(t_end, save_every)
+            gen = self._run_lbm(t_end, save_every, record)
+        else:
+            raise ValueError(f"unknown engine {self._engine_type!r}")
+        for snap in gen:
+            yield snap
+            if callback is not None and callback(snap) is False:
+                break
 
     def step(self):
         """Advance simulation by one time step."""
@@ -187,20 +249,40 @@ class CardiacSimulation:
             self._engine.step()
 
     def reset(self):
-        """Reset simulation to t=0 with initial conditions."""
-        raise NotImplementedError
+        """Reset to t=0 by rebuilding the engine from the stored construction record.
+
+        Works for BOTH the declarative and legacy ``mesh=`` paths: the engine is replayed from
+        ``self._data`` (which carries geometry + conductivity + the current ``stimuli``).
+        """
+        fresh = _factory_for(self._engine_type)(mesh=self._data, **self._build_kwargs)
+        self._engine = fresh._engine
+        self._grid = fresh._grid
+
+    def with_(self, **overrides) -> 'CardiacSimulation':
+        """Functional CHANGE: return a NEW simulation with ``overrides`` applied; ``self`` untouched.
+
+        Overrides are factory keyword args (e.g. ``dt``, ``splitting``, ``ionic_model``, ``device``).
+        Immutable / sweep-safe — no mutation of the receiver.
+        """
+        kwargs = {**self._build_kwargs, **overrides}
+        return _factory_for(self._engine_type)(mesh=self._data, **kwargs)
 
     # ========================================================================
     # State access — read
     # ========================================================================
 
     @property
-    def V(self) -> torch.Tensor:
+    def Vm(self) -> torch.Tensor:
         """Current membrane potential as (Nx, Ny) grid."""
         if self._engine_type == 'lbm':
             return self._engine.V
         V_flat = self._engine.state.V
         return self._grid.flat_to_grid(V_flat)
+
+    @property
+    def V(self) -> torch.Tensor:
+        """Read-only deprecated alias for :attr:`Vm`."""
+        return self.Vm
 
     @property
     def phi_e(self) -> Optional[torch.Tensor]:
@@ -266,6 +348,29 @@ class CardiacSimulation:
     # Stimulus / current injection
     # ========================================================================
 
+    def _grid_coords(self):
+        """Grid-shaped ``(x, y)`` coords ``(Nx, Ny)`` matching the engine ``ij`` convention."""
+        x1d = torch.linspace(0.0, self._data.dx * (self._Nx - 1), self._Nx, dtype=torch.float64)
+        y1d = torch.linspace(0.0, self._data.dy * (self._Ny - 1), self._Ny, dtype=torch.float64)
+        return torch.meshgrid(x1d, y1d, indexing='ij')
+
+    def stimulate(self, region, start_time: float = 0.0, duration: float = 1.0,
+                  amplitude: float = -52.0):
+        """STIMULATE idiom: append a stimulus and rebuild (so it takes effect from t=0).
+
+        ``region`` is a callable ``(x, y) -> bool mask`` or an ``(Nx, Ny)`` mask. Stored on
+        ``self._data.stimuli`` (the path both declarative and legacy construction share), so this
+        works identically regardless of how the sim was built.
+        """
+        entry = _normalize_stimulus(
+            {'region': region, 'start_time': start_time, 'duration': duration,
+             'amplitude': amplitude},
+            self._grid_coords(),
+        )[0]
+        entry['mask'] = entry['mask'] & self._data.mask
+        self._data.stimuli.append(entry)
+        self.reset()
+
     def add_stimulus(
         self,
         mask: 'np.ndarray | torch.Tensor',
@@ -273,20 +378,8 @@ class CardiacSimulation:
         duration: float,
         amplitude: float = -80.0,
     ):
-        """Add a stimulus region to the simulation.
-
-        Parameters
-        ----------
-        mask : (Nx, Ny) bool
-            Where to apply stimulus.
-        start_time : float
-            When stimulus begins (ms).
-        duration : float
-            How long stimulus lasts (ms).
-        amplitude : float
-            Stimulus current (µA/µF).
-        """
-        raise NotImplementedError
+        """Add a stimulus region. Thin alias over :meth:`stimulate` (mask form)."""
+        self.stimulate(mask, start_time=start_time, duration=duration, amplitude=amplitude)
 
     def add_pacing(
         self,
@@ -657,36 +750,65 @@ class CardiacSimulation:
         """Engine type: 'monodomain', 'bidomain', or 'lbm'."""
         return self._engine_type
 
+    @property
+    def dt(self) -> float:
+        """Time step (ms)."""
+        return getattr(self._engine, 'dt', None) or self._data.dt
+
+    @property
+    def Cm(self) -> float:
+        """Membrane capacitance (µF/cm²)."""
+        return self._data.Cm
+
+    @property
+    def ionic_model(self) -> str:
+        """Ionic model name (e.g. 'ttp06')."""
+        return self._data.ionic_model
+
     # --- Private generators ---
 
-    def _run_monodomain(self, t_end, save_every):
+    def _grid_ionic(self, state):
+        """Grid the engine's flat ionic_states (n_dof, n_states) → (n_states, Nx, Ny)."""
+        S = state.ionic_states
+        return torch.stack([self._grid.flat_to_grid(S[:, k]) for k in range(S.shape[1])])
+
+    def _run_monodomain(self, t_end, save_every, record=("Vm",)):
+        want_ionic = "ionic_states" in record
         for state in self._engine.run(t_end, save_every):
             V_grid = self._grid.flat_to_grid(state.V)
             yield SimulationSnapshot(
                 t=state.t,
-                V=V_grid,
+                Vm=V_grid,
                 phi_e=None,
                 Nx=self._Nx,
                 Ny=self._Ny,
                 dx=self._data.dx,
                 dy=self._data.dy,
+                ionic_states=self._grid_ionic(state) if want_ionic else None,
             )
 
-    def _run_bidomain(self, t_end, save_every):
+    def _run_bidomain(self, t_end, save_every, record=("Vm",)):
+        want_ionic = "ionic_states" in record
         for state in self._engine.run(t_end, save_every):
             V_grid = self._grid.flat_to_grid(state.Vm)
             phi_e_grid = self._grid.flat_to_grid(state.phi_e)
             yield SimulationSnapshot(
                 t=state.t,
-                V=V_grid,
+                Vm=V_grid,
                 phi_e=phi_e_grid,
                 Nx=self._Nx,
                 Ny=self._Ny,
                 dx=self._data.dx,
                 dy=self._data.dy,
+                ionic_states=self._grid_ionic(state) if want_ionic else None,
             )
 
-    def _run_lbm(self, t_end, save_every):
+    def _run_lbm(self, t_end, save_every, record=("Vm",)):
+        if "ionic_states" in record:
+            raise NotImplementedError(
+                "ionic_states recording is not supported for the LBM engine "
+                "(gates live on the sim object, no uniform per-node container)."
+            )
         dt = self._engine.dt
         save_interval = max(1, int(round(save_every / dt)))
         step_count = 0
@@ -696,7 +818,7 @@ class CardiacSimulation:
             if step_count % save_interval == 0:
                 yield SimulationSnapshot(
                     t=self._engine.t,
-                    V=self._engine.V.clone(),
+                    Vm=self._engine.V.clone(),
                     phi_e=None,
                     Nx=self._Nx,
                     Ny=self._Ny,
@@ -710,6 +832,131 @@ def _resolve_mesh(mesh: Union[str, CardiacMeshData]) -> CardiacMeshData:
     if isinstance(mesh, (str, Path)):
         return load_cardiac_mesh(str(mesh))
     return mesh
+
+
+def _normalize_stimulus(stimulus, coords) -> list:
+    """Convert a declarative ``stimulus`` arg into CardiacMeshData ``stimuli`` dicts.
+
+    Accepts ``None``, a single dict, or a list of dicts. Each dict carries a ``region``
+    (a callable ``(x, y) -> bool mask`` evaluated on the grid coordinates, OR an ``(Nx, Ny)``
+    array/mask) plus optional ``start_time``/``duration``/``amplitude``/``label``/``bcl``/``num_pulses``.
+    """
+    if stimulus is None:
+        return []
+    if isinstance(stimulus, dict):
+        stimulus = [stimulus]
+    out = []
+    for s in stimulus:
+        region = s.get('region', s.get('mask'))
+        if region is None:
+            raise ValueError("each stimulus needs a 'region' (callable or (Nx,Ny) mask)")
+        if callable(region):
+            x, y = coords
+            mask = region(x, y)
+        else:
+            mask = region
+        if hasattr(mask, 'cpu'):
+            mask = mask.cpu().numpy()
+        mask = np.asarray(mask).astype(bool)
+        out.append({
+            'mask': mask,
+            'label': s.get('label', 'stim'),
+            'amplitude': s.get('amplitude', -52.0),
+            'duration': s.get('duration', 1.0),
+            'start_time': s.get('start_time', 0.0),
+            'bcl': s.get('bcl', 0.0),
+            'num_pulses': s.get('num_pulses', 1),
+        })
+    return out
+
+
+def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: str) -> CardiacMeshData:
+    """Assemble a CardiacMeshData from (Grid, ionic_model, ConductivityConfig, stimulus).
+
+    Conductivity is mapped per the target engine (see Step 4.0):
+    - monodomain: ``for_monodomain()`` -> D=sigma_eff/chi, engine chi=1, real Cm (Form A).
+    - bidomain:   RAW sigma tuples ``(σ,σ,0)`` + real chi/Cm (the factory does σ→D internally; Form B).
+    - lbm:        ``for_lbm()`` -> D=D_eff (fully scaled), real Cm (Form B).
+    """
+    if not isinstance(geometry, Grid):
+        raise TypeError(
+            "geometry must be a Grid (structured-only). Pass a CardiacMeshData/path as `mesh=` "
+            "for the legacy path."
+        )
+    if conductivity is None or not isinstance(conductivity, ConductivityConfig):
+        raise ValueError("declarative construction requires conductivity=ConductivityConfig(...)")
+
+    Nx, Ny = geometry.Nx, geometry.Ny
+    dx, dy = geometry.dx, geometry.dy
+    if geometry.mask is not None:
+        mask = geometry.mask.cpu().numpy().astype(bool)
+    else:
+        mask = np.ones((Nx, Ny), dtype=bool)
+
+    sigma_i = sigma_e = None
+    if engine == 'monodomain':
+        emit = conductivity.for_monodomain()
+        D, chi, Cm = emit['D'], emit['chi'], emit['Cm']
+    elif engine == 'lbm':
+        emit = conductivity.for_lbm()
+        D, chi, Cm = emit['D'], conductivity.chi, emit['Cm']
+    elif engine == 'bidomain':
+        if conductivity.sigma_i is None or conductivity.sigma_e is None:
+            raise ValueError(
+                "bidomain construction needs ConductivityConfig.bidomain(sigma_i, sigma_e, ...)"
+            )
+        # sigma_* are (xx, yy, xy) FIELDS of shape (Nx, Ny) — the bidomain FDM indexes them [i,j].
+        si = float(conductivity.sigma_i)
+        se = float(conductivity.sigma_e)
+        zeros = np.zeros((Nx, Ny), dtype=np.float64)
+        sigma_i = (np.full((Nx, Ny), si), np.full((Nx, Ny), si), zeros)
+        sigma_e = (np.full((Nx, Ny), se), np.full((Nx, Ny), se), zeros.copy())
+        D, chi, Cm = conductivity.D_eff, conductivity.chi, conductivity.Cm
+    else:
+        raise ValueError(f"unknown engine {engine!r}")
+
+    if isinstance(D, tuple):
+        Dxx, Dyy, Dxy = D
+    else:
+        Dxx = Dyy = D
+        Dxy = 0.0
+    D_xx = np.full((Nx, Ny), Dxx, dtype=np.float64)
+    D_yy = np.full((Nx, Ny), Dyy, dtype=np.float64)
+    D_xy = np.full((Nx, Ny), Dxy, dtype=np.float64)
+
+    stimuli = _normalize_stimulus(stimulus, geometry.coordinates)
+    for s in stimuli:
+        s['mask'] = s['mask'] & mask  # intersect with tissue
+
+    return CardiacMeshData(
+        dx=dx, dy=dy, mask=mask,
+        D_xx=D_xx, D_yy=D_yy, D_xy=D_xy,
+        chi=chi, Cm=Cm,
+        ionic_model=ionic_model or 'ttp06',
+        dt=dt if dt is not None else 0.02,
+        stimuli=stimuli,
+        sigma_i=sigma_i, sigma_e=sigma_e,
+    )
+
+
+def _factory_for(engine_type: str):
+    """Return the public factory function for an engine type (for reset/with_ replay)."""
+    return {'monodomain': monodomain, 'bidomain': bidomain, 'lbm': lbm}[engine_type]
+
+
+def _result_from(snaps, record, dx, dy):
+    """Stack a list of SimulationSnapshot into a single SimulationResult."""
+    from .run import SimulationResult  # local import avoids api<->run circular import
+    if not snaps:
+        empty = torch.empty(0)
+        return SimulationResult(times=empty, Vm=empty, phi_e=None, dx=dx, dy=dy)
+    times = torch.tensor([s.t for s in snaps], dtype=torch.float64)
+    Vm = torch.stack([s.Vm for s in snaps])
+    phi_e = torch.stack([s.phi_e for s in snaps]) if snaps[0].phi_e is not None else None
+    ionic = None
+    if "ionic_states" in record and snaps[0].ionic_states is not None:
+        ionic = torch.stack([s.ionic_states for s in snaps])
+    return SimulationResult(times=times, Vm=Vm, phi_e=phi_e, dx=dx, dy=dy, ionic_states=ionic)
 
 
 def _build_stimulus_protocol_v54(data: CardiacMeshData, grid, device, dtype):
@@ -800,45 +1047,57 @@ def _build_stimulus_protocol_bidomain(data: CardiacMeshData, grid, device, dtype
 
 
 def monodomain(
-    mesh: Union[str, CardiacMeshData],
-    *,
+    geometry=None,
     ionic_model: Optional[str] = None,
+    conductivity: Optional[ConductivityConfig] = None,
+    stimulus=None,
+    *,
+    mesh: Union[str, CardiacMeshData, None] = None,
     dt: Optional[float] = None,
     splitting: str = 'strang',
     diffusion_solver: str = 'crank_nicolson',
     linear_solver: str = 'pcg',
     device: str = 'cpu',
 ) -> CardiacSimulation:
-    """Create a monodomain simulation from a cardiac mesh.
+    """Create a monodomain simulation.
+
+    Two construction idioms:
+    - **Declarative**: ``monodomain(Grid(...), 'ttp06', ConductivityConfig.bidomain(...), stimulus)``.
+    - **Legacy mesh**: ``monodomain(mesh)`` where ``mesh`` is a path or ``CardiacMeshData`` (a
+      positional ``CardiacMeshData``/``str`` is auto-detected and treated as ``mesh=``).
 
     Parameters
     ----------
-    mesh : str or CardiacMeshData
-        Path to .npz file or CardiacMeshData object.
+    geometry : Grid, optional
+        Structured grid for declarative construction.
     ionic_model : str, optional
-        Override ionic model from file.
-    dt : float, optional
-        Override time step from file.
-    splitting : str
-        Splitting strategy ('strang' or 'godunov').
-    diffusion_solver : str
-        Diffusion solver ('crank_nicolson', 'forward_euler', etc.).
-    linear_solver : str
-        Linear solver for implicit methods ('pcg', 'dct', etc.).
-    device : str
-        Compute device ('cpu' or 'cuda').
+        Ionic model name (declarative), or override the mesh's model (legacy).
+    conductivity : ConductivityConfig, optional
+        Conductivity/chi/Cm for declarative construction.
+    stimulus : dict or list[dict], optional
+        Declarative stimulus region(s).
+    mesh : str or CardiacMeshData, optional
+        Legacy path/data construction.
+    dt, splitting, diffusion_solver, linear_solver, device
+        Solver / runtime knobs.
 
     Returns
     -------
     CardiacSimulation
         Wrapper with .run() generator interface.
     """
-    data = _resolve_mesh(mesh)
+    # Back-compat type-sniff: a positional CardiacMeshData/str/path is the legacy `mesh`.
+    if isinstance(geometry, (str, Path, CardiacMeshData)):
+        mesh, geometry = geometry, None
+    if mesh is not None:
+        data = _resolve_mesh(mesh)
+    else:
+        data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'monodomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
 
-    # Import V5.4 engine (clear module cache to avoid collision with bidomain)
-    _prepare_engine(_V54_PATH)
+    # Import V5.5 engine (Cm-correct fork; clear module cache to avoid collision with bidomain)
+    _prepare_engine(_V55_PATH)
     from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
     from cardiac_sim.simulation.classical.discretization_scheme import FDMDiscretization
     from cardiac_sim.simulation.classical import MonodomainSimulation
@@ -895,13 +1154,18 @@ def monodomain(
         cell_type=cell_type,
     )
 
-    return CardiacSimulation(sim, 'monodomain', grid, data)
+    build_kwargs = dict(dt=timestep, splitting=splitting, diffusion_solver=diffusion_solver,
+                        linear_solver=linear_solver, device=device)
+    return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs)
 
 
 def bidomain(
-    mesh: Union[str, CardiacMeshData],
-    *,
+    geometry=None,
     ionic_model: Optional[str] = None,
+    conductivity: Optional[ConductivityConfig] = None,
+    stimulus=None,
+    *,
+    mesh: Union[str, CardiacMeshData, None] = None,
     dt: Optional[float] = None,
     sigma_ratio: float = 3.59,
     boundary: Optional[str] = None,
@@ -909,34 +1173,41 @@ def bidomain(
     theta: float = 0.5,
     device: str = 'cpu',
 ) -> CardiacSimulation:
-    """Create a bidomain simulation from a cardiac mesh.
+    """Create a bidomain simulation.
+
+    Declarative: ``bidomain(Grid(...), 'ttp06', ConductivityConfig.bidomain(σ_i, σ_e), stimulus)``.
+    Legacy: ``bidomain(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
 
     Parameters
     ----------
-    mesh : str or CardiacMeshData
-        Path to .npz file or CardiacMeshData object.
+    geometry : Grid, optional
+        Structured grid for declarative construction.
     ionic_model : str, optional
-        Override ionic model from file.
-    dt : float, optional
-        Override time step from file.
+        Ionic model name (declarative) or override (legacy).
+    conductivity : ConductivityConfig, optional
+        Must carry sigma_i/sigma_e (use ``ConductivityConfig.bidomain(...)``).
+    stimulus : dict or list[dict], optional
+        Declarative stimulus region(s).
+    mesh : str or CardiacMeshData, optional
+        Legacy construction.
     sigma_ratio : float
-        Ratio sigma_e/sigma_i for deriving bidomain D_i/D_e from effective D.
-        Only used when file lacks sigma_i/sigma_e.
+        Ratio sigma_e/sigma_i for deriving D_i/D_e from effective D (legacy, when sigma_i/e absent).
     boundary : str, optional
-        Override: 'insulated' or 'bath'.
-    elliptic_solver : str
-        Elliptic solver ('auto', 'spectral', 'pcg', etc.).
-    theta : float
-        Implicitness parameter (0.5 = Crank-Nicolson).
-    device : str
-        Compute device ('cpu' or 'cuda').
+        'insulated' or 'bath'.
+    elliptic_solver, theta, dt, device
+        Solver / runtime knobs.
 
     Returns
     -------
     CardiacSimulation
         Wrapper with .run() generator interface.
     """
-    data = _resolve_mesh(mesh)
+    if isinstance(geometry, (str, Path, CardiacMeshData)):
+        mesh, geometry = geometry, None
+    if mesh is not None:
+        data = _resolve_mesh(mesh)
+    else:
+        data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'bidomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
     bc_type = boundary or data.boundary
@@ -1041,27 +1312,41 @@ def bidomain(
         device=device,
     )
 
-    return CardiacSimulation(sim, 'bidomain', grid, data)
+    build_kwargs = dict(dt=timestep, sigma_ratio=sigma_ratio, boundary=boundary,
+                        elliptic_solver=elliptic_solver, theta=theta, device=device)
+    return CardiacSimulation(sim, 'bidomain', grid, data, build_kwargs)
 
 
 def lbm(
-    mesh: Union[str, CardiacMeshData],
-    *,
+    geometry=None,
     ionic_model: Optional[str] = None,
+    conductivity: Optional[ConductivityConfig] = None,
+    stimulus=None,
+    *,
+    mesh: Union[str, CardiacMeshData, None] = None,
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
     device: str = 'cpu',
 ) -> CardiacSimulation:
-    """Create an LBM simulation from a cardiac mesh.
+    """Create an LBM simulation.
+
+    Declarative: ``lbm(Grid(...), 'ttp06', ConductivityConfig.isotropic(σ), stimulus)``.
+    Legacy: ``lbm(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
 
     Parameters
     ----------
-    mesh : str or CardiacMeshData
-        Path to .npz file or CardiacMeshData object.
+    geometry : Grid, optional
+        Structured grid for declarative construction.
     ionic_model : str, optional
-        Override ionic model from file.
+        Ionic model name (declarative) or override (legacy).
+    conductivity : ConductivityConfig, optional
+        Conductivity (Form B: ``D_eff`` is fed straight to LBM).
+    stimulus : dict or list[dict], optional
+        Declarative stimulus region(s).
+    mesh : str or CardiacMeshData, optional
+        Legacy construction.
     dt : float, optional
-        Override time step from file. Note: LBM typically uses smaller dt (e.g. 0.005).
+        Time step (LBM typically uses smaller dt, e.g. 0.005).
     lattice : str
         Lattice type ('d2q5' or 'd2q9').
     device : str
@@ -1072,7 +1357,12 @@ def lbm(
     CardiacSimulation
         Wrapper with .run() generator interface.
     """
-    data = _resolve_mesh(mesh)
+    if isinstance(geometry, (str, Path, CardiacMeshData)):
+        mesh, geometry = geometry, None
+    if mesh is not None:
+        data = _resolve_mesh(mesh)
+    else:
+        data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'lbm')
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
 
@@ -1081,8 +1371,8 @@ def lbm(
         sys.path.insert(0, _LBM_PATH)
     from src.simulation import LBMSimulation
 
-    # Import ionic model from V5.4 (clear bidomain cache if present)
-    _prepare_engine(_V54_PATH)
+    # Import ionic model from V5.5 (Cm-independent — byte-identical to V5.4; clear bidomain cache if present)
+    _prepare_engine(_V55_PATH)
     from cardiac_sim.ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model
 
     # Instantiate ionic model
@@ -1140,4 +1430,5 @@ def lbm(
         else:
             sim.add_stimulus(stim_mask, stim['start_time'], stim['duration'], stim['amplitude'])
 
-    return CardiacSimulation(sim, 'lbm', None, data)
+    build_kwargs = dict(dt=timestep, lattice=lattice, device=device)
+    return CardiacSimulation(sim, 'lbm', None, data, build_kwargs)

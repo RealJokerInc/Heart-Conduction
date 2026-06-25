@@ -33,14 +33,14 @@ class TestAllEnginesSameMesh:
 
     def test_monodomain(self, mesh):
         sim = monodomain(mesh, device='cpu')
-        snaps = list(sim.run(5.0, save_every=1.0))
+        snaps = list(sim.snapshots(5.0, save_every=1.0))
         assert len(snaps) >= 4
         assert isinstance(snaps[0], SimulationSnapshot)
         assert snaps[-1].V.max() > -50.0
 
     def test_bidomain(self, mesh):
         sim = bidomain(mesh, device='cpu')
-        snaps = list(sim.run(5.0, save_every=1.0))
+        snaps = list(sim.snapshots(5.0, save_every=1.0))
         assert len(snaps) >= 4
         assert isinstance(snaps[0], SimulationSnapshot)
         assert snaps[0].phi_e is not None
@@ -48,7 +48,7 @@ class TestAllEnginesSameMesh:
 
     def test_lbm(self, mesh):
         sim = lbm(mesh, dt=0.005, device='cpu')
-        snaps = list(sim.run(5.0, save_every=1.0))
+        snaps = list(sim.snapshots(5.0, save_every=1.0))
         assert len(snaps) >= 4
         assert isinstance(snaps[0], SimulationSnapshot)
         assert snaps[-1].V.max() > -50.0
@@ -62,12 +62,12 @@ class TestAllEnginesSameMesh:
         sim_b = bidomain(mesh, device='cpu')
         sim_l = lbm(mesh, dt=0.005, device='cpu')
 
-        for snap in sim_m.run(2.0, save_every=2.0):
+        for snap in sim_m.snapshots(2.0, save_every=2.0):
             assert snap.V.shape == (Nx, Ny)
-        for snap in sim_b.run(2.0, save_every=2.0):
+        for snap in sim_b.snapshots(2.0, save_every=2.0):
             assert snap.V.shape == (Nx, Ny)
             assert snap.phi_e.shape == (Nx, Ny)
-        for snap in sim_l.run(2.0, save_every=2.0):
+        for snap in sim_l.snapshots(2.0, save_every=2.0):
             assert snap.V.shape == (Nx, Ny)
 
 
@@ -84,6 +84,6 @@ class TestFromFileSameMesh:
         sim_b = bidomain(path, device='cpu')
         sim_l = lbm(path, dt=0.005, device='cpu')
 
-        assert list(sim_m.run(2.0, save_every=2.0))
-        assert list(sim_b.run(2.0, save_every=2.0))
-        assert list(sim_l.run(2.0, save_every=2.0))
+        assert list(sim_m.snapshots(2.0, save_every=2.0))
+        assert list(sim_b.snapshots(2.0, save_every=2.0))
+        assert list(sim_l.snapshots(2.0, save_every=2.0))

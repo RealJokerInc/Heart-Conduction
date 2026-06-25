@@ -22,7 +22,7 @@ class TestBidomainFromData:
         mesh = create_cardiac_mesh(Lx=1.0, Ly=0.5, dx=0.05, D=0.001)
         sim = bidomain(mesh, device='cpu')
 
-        snapshots = list(sim.run(5.0, save_every=1.0))
+        snapshots = list(sim.snapshots(5.0, save_every=1.0))
         assert len(snapshots) >= 4
 
         Nx = round(1.0 / 0.05) + 1
@@ -42,7 +42,7 @@ class TestBidomainFromData:
         )
         sim = bidomain(mesh, device='cpu')
 
-        for snap in sim.run(5.0, save_every=1.0):
+        for snap in sim.snapshots(5.0, save_every=1.0):
             pass
         V_max = snap.V.max().item()
         assert V_max > -50.0, f"V_max={V_max}, stimulus didn't activate"
@@ -74,7 +74,7 @@ class TestBidomainWithSigma:
         )
 
         sim = bidomain(mesh, device='cpu')
-        snapshots = list(sim.run(3.0, save_every=1.0))
+        snapshots = list(sim.snapshots(3.0, save_every=1.0))
         assert len(snapshots) >= 2
         assert snapshots[0].phi_e is not None
 
@@ -88,7 +88,7 @@ class TestBidomainFromFile:
         save_cardiac_mesh(path, mesh)
 
         sim = bidomain(path, device='cpu')
-        snapshots = list(sim.run(3.0, save_every=1.0))
+        snapshots = list(sim.snapshots(3.0, save_every=1.0))
         assert len(snapshots) >= 2
         assert snapshots[0].phi_e is not None
 
@@ -100,12 +100,12 @@ class TestBidomainBoundary:
         mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
         sim = bidomain(mesh, device='cpu')
         # Should not raise
-        list(sim.run(2.0, save_every=2.0))
+        list(sim.snapshots(2.0, save_every=2.0))
 
     def test_bath_override(self):
         mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
         sim = bidomain(mesh, boundary='bath', device='cpu')
-        snapshots = list(sim.run(2.0, save_every=2.0))
+        snapshots = list(sim.snapshots(2.0, save_every=2.0))
         assert len(snapshots) >= 1
 
 
@@ -168,7 +168,7 @@ class TestBidomainMatchesDirect:
             phi_e_direct = state.phi_e.clone()
 
         V_wrapper = phi_e_wrapper = None
-        for snap in sim_wrapper.run(3.0, save_every=3.0):
+        for snap in sim_wrapper.snapshots(3.0, save_every=3.0):
             V_wrapper = snap.V.clone()
             phi_e_wrapper = snap.phi_e.clone()
 

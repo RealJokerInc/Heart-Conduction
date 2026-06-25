@@ -51,3 +51,37 @@ class TestResultIO:
         save_result(path, times, V)
         t2, V2, _, _ = load_result(path, device='cpu')
         assert V2.device.type == 'cpu'
+
+    def test_vm_keyword(self, tmp_path):
+        """The canonical Vm= keyword saves identically to the positional voltage."""
+        times = torch.tensor([1.0, 2.0])
+        Vm = torch.randn(2, 6, 4, dtype=torch.float64)
+
+        path = str(tmp_path / "vm.npz")
+        save_result(path, times, Vm=Vm)
+        _, V2, _, _ = load_result(path)
+        torch.testing.assert_close(V2, Vm)
+
+    def test_legacy_v_keyword_warns(self, tmp_path):
+        """Legacy V= keyword still works but emits a DeprecationWarning."""
+        import pytest
+        times = torch.tensor([1.0])
+        V = torch.randn(1, 5, 5, dtype=torch.float64)
+
+        path = str(tmp_path / "legacy.npz")
+        with pytest.warns(DeprecationWarning):
+            save_result(path, times, V=V)
+        _, V2, _, _ = load_result(path)
+        torch.testing.assert_close(V2, V)
+
+    def test_positional_phi_e_back_compat(self, tmp_path):
+        """AUDIT HIGH: save_result(path, times, V, phi_e) positional call must still work."""
+        times = torch.tensor([1.0, 2.0])
+        V = torch.randn(2, 5, 5, dtype=torch.float64)
+        phi_e = torch.randn(2, 5, 5, dtype=torch.float64)
+
+        path = str(tmp_path / "pos.npz")
+        save_result(path, times, V, phi_e)  # 4th arg positional — must not raise
+        _, V2, pe2, _ = load_result(path)
+        torch.testing.assert_close(V2, V)
+        torch.testing.assert_close(pe2, phi_e)
