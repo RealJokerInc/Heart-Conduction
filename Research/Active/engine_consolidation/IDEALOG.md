@@ -5,6 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**Goal 2 — the LLM layer — SHIPPED (2026-06-25).** The script-generating skill suite for wet-lab scientists is built + committed (`/sim-experiment` keystone + `/sim-preset` + `/sim-media` + `/sim-notebook` + `cardiac_core/API_CHEATSHEET.md` + `cardiac_core/viz.py`); 140 tests green; validated end-to-end (control/knockdown CV series). See KNOWLEDGE "Goal-2 LLM layer — SHIPPED". **Both north-star goals now delivered.** Remaining options: Layer-A `SimulationSpec`; programmatic claude-api; Form-A→B convergence; FEM removal. Keystone `/sim-experiment` to be `/audit`'d (the double-check gate).
+
+**(history) Goal 2 — DESIGNED, ready to blueprint (2026-06-25).** A SKILL SUITE for **wet-lab scientists** (cell culture, tissue-on-chip) that lowers coding complexity by GENERATING runnable `cardiac_core` scripts — NOT a non-coder conversational wizard (audience reframed; see the 2026-06-25 "Goal 2 design" thread entry + the `project-goal2-skill-suite` memory). Drives the shipped `cardiac_core` API directly; Layer-A `SimulationSpec` deferred; programmatic claude-api later. Keystone skill `/sim-experiment` has a mandatory **manifest + double-check accountability gate** (no vibe-coding runoff). Next: `/blueprint`.
+
 **Consolidation SHIPPED (2026-06-25).** `cardiac_core` is now a single self-contained package — 3 engines vendored under `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, no cross-folder imports. **137 tests green**; per-engine bit-identical integrity goldens; originals untouched (frozen). A2 ground-up layout, copy-not-delete, `cardiac_core` is the centralized home. Phases 0–5 committed `935160b`→`37dc381`. See KNOWLEDGE "cardiac_core unified ground-up package — SHIPPED" + the 2026-06-25 execution session log. **Candidate next:** Goal-2 `SimulationSpec`/LLM wrapper; or the Form-A→B convergence (delete `for_monodomain()`); or FEM/TriangularMesh removal — all now easy since the code is in one place.
 
 **Pending constraint (user 2026-06-24, discuss later):** ditch FEM → **structured-grid is the ONLY standard** (not just primary). Collapses the unstructured/flat-`(n_dof,)` secondary path, `TriangularMesh`, monodomain's FEM knob; may change how the engines are implemented (Phase-4 rewire). Flagged in `API_DESIGN.md` §9.
@@ -26,6 +30,33 @@ Deferred (separate efforts, not this plan): Goal-2 `SimulationSpec`/LLM wrapper;
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-06-25 (Goal 2 design): skill suite for wet-lab scientists — settled, ready to blueprint
+**Audience REFRAMED** (corrected the README "non-coder conversational builder" wording twice): target = WET-LAB scientists (cell culture, tissue-on-chip / lab-chip) WITHOUT computational-simulation exposure. Goal 2 = a SKILL SUITE that **lowers coding complexity by GENERATING runnable `cardiac_core` scripts** (code-gen, not an interactive wizard; no auto-teaching). Drives the shipped `cardiac_core` API directly — Layer-A `SimulationSpec`/`create_simulation` DEFERRED; programmatic claude-api comes later.
+
+**The suite (user's order):**
+1. `/sim-experiment` — free-form description → runnable `cardiac_core` script. (KEYSTONE)
+2. `/sim-preset` — save / store / reuse named parameter sets.
+3. `/sim-media` — standardized figures & videos (canonical `media/`).
+4. `/sim-notebook` — lab-notebook organization (master log + per-experiment folders).
+
+**`/sim-experiment` protocol (settled with user):**
+- RECEIVE free-form input (any shape — a sentence, a paragraph, a chip protocol).
+- INTERPRET → build `cardiac_core` params (infer engine + map to API); ask ONLY for genuine gaps.
+- MANIFEST → present a plain-**TEXT** summary of ALL params: goal, engine (+why), ionic model, geometry (Nx/Ny/dx), tissue (σ/χ/Cm), **delivery/stimulus method**, **sim length** (t_end/dt/save_every), measure, outputs, script path.
+- ⛔ **DOUBLE-CHECK GATE** — scientist confirms or corrects; the skill **NEVER runs without it**. THE accountability principle (user: "no crazy vibe coding runoff").
+- ON "GO" → create a **dedicated experiment folder**, write `MANIFEST.md` (the confirmed text, verbatim = the record) + `run.py`, append a one-line entry to the **master log**.
+- RUN (offer) → verify results are sane, save standardized media, write results back to manifest/log.
+
+**Folder structure:** `Lab/` (new top-level) — `Lab/NOTEBOOK.md` master log + per-experiment `Lab/{date}_{slug}/` (`MANIFEST.md`, `run.py`, `outputs/`). Skills 1 & 4 share this home (the notebook organizes itself as each run drops a folder + a log line).
+
+**Manifest fields:** the listed ones are core; extra fields (scientist/initials, hypothesis, expected runtime) are **OPTIONAL** (user: "make it optional") — include when relevant, never required.
+
+**Key asset = a MAINTAINED `api-cheatsheet`** (current, correct `cardiac_core` calls) in the skill bundle. This is what prevents the #1 LLM-sim-code failure mode (hallucinated API). Refresh it now that `cardiac_core` just shipped (137 tests). The existing `API_REFERENCE.md` predates the consolidation and is design-oriented — distill a CURRENT cheatsheet from the shipped API (`cc.Grid`, `cc.ConductivityConfig`, `cc.monodomain/bidomain/lbm`, `cc.simulate`, `result.run().cv()/.apd()`, `cc.media`).
+
+**Skill format:** `.claude/skills/{name}/SKILL.md` + a `reference/` folder — the FIRST *bundled* skill in this repo (all existing skills are single `SKILL.md`). Output = `.py` script (notebook option left open). Build ON existing conventions: `media/` + `cardiac_core.media.media_path`, the experiments pattern, the `Research/` doc architecture.
+
+**Next:** `/blueprint` the build — phased: api-cheatsheet → `/sim-experiment` (keystone) → `/sim-preset` → `/sim-media` → `/sim-notebook`. (User: "think we should blueprint.")
 
 ### 2026-06-25 (exec): consolidation EXECUTED — cardiac_core self-contained (Phases 0–5, 137 tests)
 Ran the vendoring plan phase-by-phase, each test+integrity-gated and committed. Backup first (tag `pre-consolidation-vendoring` + 739M bundle). Result: `cardiac_core` owns all 3 engines (`_monodomain`/`_bidomain`/`_lbm`) + shared `ionic`/`mesh`/`stimulus`; hack deleted; 137 green.

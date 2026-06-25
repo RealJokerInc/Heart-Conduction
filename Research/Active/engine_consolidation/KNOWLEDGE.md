@@ -161,6 +161,22 @@ cardiac_core/
 - **One intentional exception:** `tests/_live_cv_gate_driver.py` still subprocess-drives the original V5.5 cable (firewall gate); excluded from the guard, documented in `cardiac_core/engines_SOURCE.md` (provenance + re-vendor recipe).
 - **Per-phase commits** on `main`: Phase 0 `935160b` → Phase 5 `37dc381`.
 
+## Goal-2 LLM layer — script-generating skill suite — SHIPPED (2026-06-25)
+
+The "LLM wrapper" (north-star Goal 2), built for **wet-lab scientists** (cell-culture / tissue-chip, no computational-sim background) — a **transition tool that GENERATES runnable `cardiac_core` scripts**, NOT a conversational non-coder wizard (audience reframed; the README "non-coder conversational builder" wording was corrected). Drives the shipped `cardiac_core` API directly (Layer-A `SimulationSpec` deferred; programmatic claude-api later). **140 tests green** (+4 viz). Phases 1→5 committed `126ff25`→… on `main`.
+
+**The suite (`.claude/skills/`):**
+- **`/sim-experiment`** (keystone) — free-form description → INTERPRET (recipe + engine inference) → **MANIFEST** (plain text) → ⛔ **double-check gate** (never runs before the scientist confirms — the accountability principle, "no vibe-coding runoff") → generate `Lab/{date}_{slug}/{MANIFEST.md, run.py}` + append `Lab/NOTEBOOK.md` → offer run + verify. FIRST *bundled* skill in the repo (`SKILL.md` + `reference/{run-template.py, recipes.md, manifest-template.md}`).
+- **`/sim-preset`** — save/list/load named YAML parameter sets (`Lab/presets/{name}.yaml`); applied at GENERATION time (inline into `run.py`, self-contained); a loaded preset still passes the gate.
+- **`/sim-media`** — standardized visuals via `cardiac_core/viz.py` (`propagation_video` mp4, `apd_map_figure`, `activation_isochrones`); `bulk=True` → gitignored `media/lab/_sim_outputs/` (regenerable).
+- **`/sim-notebook`** — `index|summary|compare` over `Lab/`; manifests are source of truth, `NOTEBOOK.md` generated.
+
+**Key asset:** `cardiac_core/API_CHEATSHEET.md` — the maintained, canonical API reference the skills generate against (prevents hallucinated-API failures, the #1 LLM-sim-code failure mode). Canary: `Lab/_validate/smoke.py` (re-run after any API change). Co-located with the code so it can't drift.
+
+**New code:** `cardiac_core/viz.py` (headless Agg, float64, lazy-exported, tested) + `cardiac_core/API_CHEATSHEET.md`. Everything else is markdown skills + `Lab/` scaffolding — additive.
+
+**Demo seed:** `Lab/2026-06-25_cv-strip-{control,knockdown}` — control σ → CV 59.3, half-σ → CV 41.0 (eikonal √D); a real control/knockdown series the notebook compares.
+
 ## Cross-Engine Capability Census (2026-06-01)
 
 Read-only census of all three engines' construct/run/state/stimulus/geometry surfaces, to ground the vocabulary + API. The **ionic layer and physical conventions are already a shared language; divergence is concentrated in construction, voltage naming, state, and the run/result contract.** LBM is the consistent outlier.

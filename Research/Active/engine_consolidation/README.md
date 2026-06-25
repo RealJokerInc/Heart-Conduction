@@ -5,9 +5,9 @@ How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `ca
 
 ## North-Star Goals
 1. **Unified construction API** — one standardized, engine-agnostic, easy-to-construct way to declare + run a simulation (geometry + stimulus + ionic + solver → run → results); sensible defaults, validation, one obvious way.
-2. **Self-contained LLM wrapper** — a bundle of Claude skills + reference documents driving the API under a **strict protocol** (gather → validate → construct → run → verify → present, with guardrails). Self-contained: build protocol, API reference, conduction-physics knowledge, validation rules, recipe templates all live in the bundle.
+2. **Self-contained LLM wrapper** — a bundle of Claude skills + reference documents driving the API under a **strict protocol** (interpret → manifest → confirm → generate → run → verify), with guardrails. (REFRAMED 2026-06-25, see KNOWLEDGE/IDEALOG.)
 
-**End goal:** a conversational simulation builder — a non-coder talks to Claude, which both *builds* the simulation (via Goal 1) and *teaches* how conduction works (via Goal 2's docs). The original code-consolidation work (shared ionic/mesh/stimulus, single source of truth) is the foundation Goal 1 rests on.
+**End goal (reframed):** a **script-generating skill suite for wet-lab scientists** (cell-culture / tissue-chip, no computational-sim background) — a *transition* tool that lowers the coding barrier by generating runnable `cardiac_core` scripts behind a **manifest + double-check accountability gate**, NOT a hand-holding conversational wizard for non-coders. The unified construction API (Goal 1) is the foundation it generates against (via `cardiac_core/API_CHEATSHEET.md`).
 
 ## Status: Active
 
