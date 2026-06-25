@@ -1,0 +1,25 @@
+name: healthy_ventricle_strip
+description: Healthy human-ventricle strip — control conduction-velocity setup (CV ≈ 59 cm/s).
+recipe: R1
+engine: monodomain
+ionic: ttp06
+geometry:
+  length_cm: 2.0
+  width_cm: 0.5
+  dx: 0.01
+conductivity:
+  mode: bidomain
+  sigma_i: 1.74
+  sigma_e: 6.25
+  chi: 1400.0
+  Cm: 1.0
+stimulus:
+  region: left_edge
+  width_cm: 0.05
+  start_ms: 1.0
+  duration_ms: 2.0
+  amplitude: -80.0
+run:
+  t_end_ms: 40.0
+  save_every_ms: 0.5
+measure: cv
