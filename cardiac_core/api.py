@@ -960,8 +960,8 @@ def _result_from(snaps, record, dx, dy):
 
 
 def _build_stimulus_protocol_v54(data: CardiacMeshData, grid, device, dtype):
-    """Build V5.4 StimulusProtocol from mesh data stimuli."""
-    from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+    """Build the monodomain StimulusProtocol from mesh data stimuli (shared cardiac_core.stimulus)."""
+    from .stimulus.protocol import StimulusProtocol
 
     protocol = StimulusProtocol()
     mask_np = data.mask  # (Nx, Ny) bool
@@ -1096,11 +1096,10 @@ def monodomain(
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
 
-    # Import V5.5 engine (Cm-correct fork; clear module cache to avoid collision with bidomain)
-    _prepare_engine(_V55_PATH)
-    from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
-    from cardiac_sim.simulation.classical.discretization_scheme import FDMDiscretization
-    from cardiac_sim.simulation.classical import MonodomainSimulation
+    # Construct from the vendored monodomain solver + shared mesh (self-contained; no _prepare_engine).
+    # Private package _monodomain (underscore) so it doesn't shadow the public monodomain() factory.
+    from .mesh.structured import StructuredGrid
+    from ._monodomain import FDMDiscretization, MonodomainSimulation
 
     # Build grid
     mask_tensor = torch.tensor(data.mask, dtype=torch.bool)

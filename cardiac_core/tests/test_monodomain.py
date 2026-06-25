@@ -7,9 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-# Ensure engine is importable
-_project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_project_root / "Monodomain" / "Engine_V5.4"))
+# Engine is now vendored under cardiac_core.monodomain — no sys.path insert needed.
 
 from cardiac_core import monodomain, create_cardiac_mesh, save_cardiac_mesh
 
@@ -100,10 +98,10 @@ class TestEngineIsV55:
         sim = monodomain(mesh, device='cpu')
         model = sim._engine._ionic_model  # the actual TTP06Model instance
 
-        from cardiac_sim.simulation.classical.solver.ionic_time_stepping.rush_larsen import (
+        from cardiac_core._monodomain.simulation.classical.solver.ionic_time_stepping.rush_larsen import (
             RushLarsenSolver,
         )
-        from cardiac_sim.simulation.classical.state import SimulationState
+        from cardiac_core._monodomain.simulation.classical.state import SimulationState
 
         n = 4
         dt = 0.01
@@ -142,9 +140,11 @@ class TestEngineIsV55:
     def test_engine_module_under_v55(self):
         """Secondary (soft) check: the live rush_larsen module file is V5.5."""
         mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
-        monodomain(mesh, device='cpu')  # ensures V5.5 is the active cardiac_sim
-        import cardiac_sim.simulation.classical.solver.ionic_time_stepping.rush_larsen as rl
-        assert 'Engine_V5.5' in rl.__file__, f"rush_larsen loaded from {rl.__file__}"
+        monodomain(mesh, device='cpu')  # construct via the vendored cardiac_core._monodomain solver
+        import cardiac_core._monodomain.simulation.classical.solver.ionic_time_stepping.rush_larsen as rl
+        assert 'cardiac_core' in rl.__file__ and '_monodomain' in rl.__file__, \
+            f"rush_larsen not under cardiac_core/_monodomain: {rl.__file__}"
+        assert 'Engine_V5' not in rl.__file__   # the original engine folder is NOT on the import path
 
 
 class TestMonodomainMatchesDirect:
@@ -152,10 +152,9 @@ class TestMonodomainMatchesDirect:
 
     def test_matches_direct(self):
         """Same mesh → wrapper vs direct → identical V after 3ms."""
-        from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
-        from cardiac_sim.simulation.classical.discretization_scheme import FDMDiscretization
-        from cardiac_sim.simulation.classical import MonodomainSimulation
-        from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol
+        from cardiac_core.mesh.structured import StructuredGrid
+        from cardiac_core._monodomain import FDMDiscretization, MonodomainSimulation
+        from cardiac_core.stimulus.protocol import StimulusProtocol
 
         dx = 0.05
         Lx, Ly = 1.0, 0.5

@@ -1,16 +1,8 @@
 """Integration tests — same mesh → all 3 engines → correct snapshots."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
-
-_project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_project_root / "Monodomain" / "Engine_V5.4"))
-sys.path.insert(0, str(_project_root / "Bidomain" / "Engine_V1"))
-sys.path.insert(0, str(_project_root / "LBM" / "Engine_V1"))
 
 from cardiac_core import (
     monodomain, bidomain, lbm,
