@@ -27,11 +27,14 @@ Accept any shape — a sentence, a paragraph, a wet-lab protocol. Don't make the
 ## Step 2 — INTERPRET (build the parameters)
 
 - Match the description to the closest recipe in `reference/recipes.md` (R1 CV · R2 reentry · R3 restitution
-  · R4 edge/bath). If nothing fits, build the closest and FLAG the assumption.
-- **Infer the engine, don't ask:** `monodomain` by default; `bidomain` ONLY when the experiment is about the
-  surrounding bath / tissue edge / boundary loading. Record the one-line reason.
-- Compute concrete params from the recipe + `API_CHEATSHEET.md`: `Nx = round(Lx/dx)`, `Ny = round(Ly/dy)`,
-  stimulus dict, CV indices, and `t_end` long enough for the front (≈ 50 cm/s = 0.05 cm/ms; 1 cm ≈ 20 ms).
+  · R4 edge/bath). If nothing fits, ASK 1–2 clarifying questions to place it; only if still unplaceable, build
+  the closest recipe and FLAG the assumption in the manifest (the gate is the safety net). (Matches `recipes.md`.)
+- **Infer the engine, don't ask:** `monodomain` by default; `bidomain` when the experiment is about the
+  surrounding bath / tissue edge / boundary loading; `lbm` ONLY if the scientist explicitly asks for
+  lattice-Boltzmann (never auto-inferred). Record the one-line reason.
+- Compute concrete params from the recipe + `API_CHEATSHEET.md`: `Nx = round(Lx/dx) + 1`, `Ny = round(Ly/dy) + 1`
+  (so the grid spans exactly Lx × Ly — `Grid.Lx = dx*(Nx-1)`), stimulus dict, CV indices, and `t_end` long
+  enough for the front (≈ 50 cm/s = 0.05 cm/ms; 1 cm ≈ 20 ms).
 - Ask the scientist ONLY for genuine gaps (e.g. "what tissue size?" if unstated and no sensible default).
   Default silently for `dt`, `Cm`, χ, splitting, solvers.
 
@@ -49,7 +52,11 @@ Ask: **"Confirm, or tell me what to change."** Then STOP and wait.
 
 ## Step 5 — GENERATE (only after confirmation)
 
-- `slug` = kebab-case of the goal (≤ 40 chars); `dir = Lab/{today}_{slug}/` (today = current date, YYYY-MM-DD).
+- `slug` = kebab-case of the goal (≤ 40 chars). `today` = the current date (`YYYY-MM-DD`) from the harness
+  `currentDate` context — do NOT guess it; if unsure, ask. (It can advance mid-session.)
+- `dir = Lab/{today}_{slug}/`. **If `dir` already exists, do NOT overwrite it** (that would destroy a prior
+  confirmed `MANIFEST.md` — the accountability record). Suffix the slug (`{slug}-02`, `-03`, …) until `dir`
+  is new.
 - Write `dir/MANIFEST.md` = the confirmed manifest text, VERBATIM (the record).
 - Write `dir/run.py` = `reference/run-template.py` adapted to this recipe — fill the PARAMETERS block, set the
   engine/geometry/stimulus/measurement for the recipe, fill `{TITLE}/{DATE}/{GOAL}/{SLUG}`. Use ONLY
@@ -65,7 +72,10 @@ conda run -n heart-conduction python Lab/{today}_{slug}/run.py
 - VERIFY the result is sane before reporting it: a CV should be physiological (~tens of cm/s, not NaN/0);
   voltage should have activated. If it's NaN / 0 / blew up, say so and propose a fix (finer dx, longer t_end)
   — do NOT present a broken number as a result.
-- Update the `MANIFEST.md` and the `NOTEBOOK.md` row with the result + status `done`.
+- Record the outcome BOTH ways:
+  - **sane** → update `MANIFEST.md` + the `NOTEBOOK.md` row with the result, status `done`.
+  - **NaN / 0 / blew up** → update them with the bad value + status **`failed`** (so `/sim-notebook` flags it
+    and there's a failure trail — never leave a stale `built` row pretending nothing ran).
 - Offer `/sim-media` to render the propagation video + figures.
 
 ## Rules
@@ -76,7 +86,9 @@ conda run -n heart-conduction python Lab/{today}_{slug}/run.py
   drop it — never hallucinate a signature.
 - **The manifest is the record.** It is saved verbatim as `MANIFEST.md`; it must reflect exactly what `run.py`
   does.
-- **One experiment = one `Lab/{date}_{slug}/` folder + one `NOTEBOOK.md` row.** Keep them in sync.
+- **One experiment = one `Lab/{date}_{slug}/` folder + one `NOTEBOOK.md` row.** The `MANIFEST.md` is
+  CANONICAL (source of truth); the `NOTEBOOK.md` row is a best-effort convenience — if it ever drifts,
+  `/sim-notebook index` rebuilds it from the manifests. Never overwrite an existing experiment's `MANIFEST.md`.
 - **Verify before presenting.** A result you didn't sanity-check is not a result.
 - Generate `.py` scripts (not notebooks). Leave the `cardiac_core` calls intact; expose tunables in the
   PARAMETERS block so the scientist can iterate without touching the API.

@@ -29,7 +29,7 @@ SLUG           = "{SLUG}"  # media filename stem
 MAKE_MEDIA     = True      # render standardized propagation video + APD figure
 # ============================================================
 
-Nx, Ny = round(LENGTH_CM / DX), round(WIDTH_CM / DX)
+Nx, Ny = round(LENGTH_CM / DX) + 1, round(WIDTH_CM / DX) + 1   # Grid.Lx = dx*(Nx-1) → spans exactly Lx×Ly
 
 grid = cc.Grid(Nx, Ny, DX)
 cond = cc.ConductivityConfig.bidomain(SIGMA_I, SIGMA_E, chi=1400.0)

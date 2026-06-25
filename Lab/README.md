@@ -14,7 +14,8 @@ Lab/
   {YYYY-MM-DD}_{slug}/         ← one folder per experiment
     MANIFEST.md                ← the confirmed parameters — the accountability record
     run.py                     ← the generated, parameterized script (edit the PARAMETERS block)
-    outputs/                   ← results + media (bulk outputs gitignored)
+    outputs/                   ← (optional) your own saved files; standardized media goes to
+                                  media/lab/_sim_outputs/{videos,images}/ (gitignored, regenerable)
 ```
 
 ## The skills

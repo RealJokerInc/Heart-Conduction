@@ -25,7 +25,7 @@ SLUG           = "cv-strip-knockdown"
 MAKE_MEDIA     = True
 # ============================================================
 
-Nx, Ny = round(LENGTH_CM / DX), round(WIDTH_CM / DX)
+Nx, Ny = round(LENGTH_CM / DX) + 1, round(WIDTH_CM / DX) + 1
 
 grid = cc.Grid(Nx, Ny, DX)
 cond = cc.ConductivityConfig.bidomain(SIGMA_I, SIGMA_E, chi=1400.0)

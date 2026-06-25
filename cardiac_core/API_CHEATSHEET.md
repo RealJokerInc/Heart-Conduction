@@ -21,7 +21,8 @@ g.Lx, g.Ly                    # dx*(Nx-1), dy*(Ny-1)  (cm)
 g.coordinates                 # (x, y) tensors, shape (Nx, Ny), ij indexing  (x[-1,0] == Lx)
 g.n_dof                       # Nx*Ny, or mask.sum()
 ```
-A **strip 2 cm × 0.5 cm at dx=0.01**: `cc.Grid(200, 50, 0.01)`  (Nx = round(Lx/dx); 200×0.01 = 2.0 cm).
+`Grid.Lx = dx*(Nx-1)`, so for an exact **Lx × Ly cm** domain use `Nx = round(Lx/dx) + 1`,
+`Ny = round(Ly/dy) + 1`. A **2 cm × 0.5 cm strip at dx=0.01**: `cc.Grid(201, 51, 0.01)` (Lx = 0.01×200 = 2.0 cm).
 
 Optional `mask` (irregular tissue) — `(Nx, Ny)` bool from a helper:
 ```python
@@ -42,7 +43,8 @@ cond.D_eff       # derived diffusivity = sigma_eff/(chi*Cm)  (cm^2/ms)
 ```
 > ⚠️ **Units trap.** `sigma*` are **raw conductivities in mS/cm**. The diffusivity `D_eff` is DERIVED —
 > do NOT pass a pre-divided `D` as `sigma`. Healthy human ventricle: `sigma_i=1.74, sigma_e=6.25`
-> → `sigma_eff≈1.36` → `D_eff≈0.000972 cm²/ms` → CV ≈ 54 cm/s. Lower σ = weaker coupling (fibrosis-like).
+> → `sigma_eff≈1.36` → `D_eff≈0.000972 cm²/ms` → CV ≈ 55–60 cm/s (solver/dx-dependent; the strip
+> example below gives 59.3 at dx=0.01/CN-PCG). Lower σ = weaker coupling (fibrosis-like).
 
 ## 3. Stimulus — a plain dict (or a list of them)
 
@@ -94,12 +96,16 @@ rst = r.restitution(ix, iy)    # APD restitution at a node (multi-beat run)
 CV indices: choose `x1,x2` well inside the tissue and give the front time to reach `x2`
 (front ≈ 50 cm/s = 0.05 cm/ms; 1 cm ≈ 20 ms — set `t_end` accordingly).
 
-## 7. Media (path helper now; standardized figures/video land in Phase 4 `cc.viz`)
+## 7. Media — standardized figures & video (`cc.viz`)
 
 ```python
-from cardiac_core.media import media_path
-path = media_path("lab", "videos", "my-experiment-slug")   # dated, sequence-suffixed canonical path
-# Phase 4 adds: cc.propagation_video(r, slug), cc.apd_map_figure(r, slug), cc.activation_isochrones(r, slug)
+from cardiac_core import propagation_video, apd_map_figure, activation_isochrones
+propagation_video(result, slug, bulk=True)       # mp4 (gif fallback) of the wave
+apd_map_figure(result, slug, bulk=True)          # APD90 heatmap PNG
+activation_isochrones(result, slug, bulk=True)   # activation-time contours PNG
+# bulk=True → gitignored media/lab/_sim_outputs/... (regenerable; the normal case).
+# bulk=False → committed media/lab/... (a curated figure worth keeping).
+from cardiac_core.media import media_path        # raw path helper, if you save your own
 ```
 
 ## 8. Full example — measure conduction velocity in a strip (the smoke pattern)
@@ -107,7 +113,7 @@ path = media_path("lab", "videos", "my-experiment-slug")   # dated, sequence-suf
 ```python
 import cardiac_core as cc
 
-g    = cc.Grid(200, 50, 0.01)                                  # 2.0 × 0.5 cm strip
+g    = cc.Grid(201, 51, 0.01)                                  # 2.0 × 0.5 cm strip (Nx=round(Lx/dx)+1)
 cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)  # healthy ventricle σ
 stim = {"region": lambda x, y: x < 0.05, "start_time": 1.0, "duration": 2.0, "amplitude": -80.0}
 
