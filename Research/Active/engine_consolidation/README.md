@@ -1,9 +1,17 @@
 # Engine Consolidation
 
 ## Question
-How do we unify Bidomain V1, Monodomain V5.4, and LBM V1 into a single `cardiac_core/` package that owns shared code (ionic, mesh, stimulus, conductivity) and provides a unified simulation API?
+How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `cardiac_core/` package, expose a **standardized, easy-to-construct** simulation API, and wrap it in a **self-contained LLM layer** (skills + reference docs, strict protocol) so that someone with no coding background can build cardiac simulations conversationally and learn how conduction works?
+
+## North-Star Goals
+1. **Unified construction API** — one standardized, engine-agnostic, easy-to-construct way to declare + run a simulation (geometry + stimulus + ionic + solver → run → results); sensible defaults, validation, one obvious way.
+2. **Self-contained LLM wrapper** — a bundle of Claude skills + reference documents driving the API under a **strict protocol** (gather → validate → construct → run → verify → present, with guardrails). Self-contained: build protocol, API reference, conduction-physics knowledge, validation rules, recipe templates all live in the bundle.
+
+**End goal:** a conversational simulation builder — a non-coder talks to Claude, which both *builds* the simulation (via Goal 1) and *teaches* how conduction works (via Goal 2's docs). The original code-consolidation work (shared ionic/mesh/stimulus, single source of truth) is the foundation Goal 1 rests on.
 
 ## Status: Active
+
+> **Goal-1 unified construction API SHIPPED in code (2026-06-24)** — `ConductivityConfig`, `Grid`, `Simulation` Protocol, declarative `monodomain/bidomain/lbm` factories, `with_/reset/stimulate`, eager/batch `run()` → `SimulationResult` with analysis hooks. 121 cardiac_core tests pass (was 80). Engines unchanged. See KNOWLEDGE "Goal-1 Construction API — SHIPPED" + `PLAN.md` (API-track Phases 0–5). The criteria below are the **consolidation track** (engine rewire / dedup), a separate effort — NOT what the API-track PLAN delivered.
 
 ## Why It Matters
 Three engines share ionic models (TTP06, ORd) as file-level copies. Any bug fix or new model must be propagated manually to all three. The Optimizer and Surrogate need to call different engines with the same interface. Two different chi/Cm formulations coexist.
@@ -41,6 +49,10 @@ Files to read when resuming work on this question:
 
 | File | What it tells you |
 |------|-------------------|
+| `GLOSSARY.md` | **Ubiquitous language** (Goal 1 vocab): one canonical name per concept across the 3 engines + `cardiac_core`; decision table (resolved/open), naming principles P1/P2 |
+| `API_DESIGN.md` | **Unified `Simulation` interface** (Goal 1): 4 idioms, `Simulation` Protocol, factories, `ConductivityConfig` (chi/Form-A/B firewall + verified gate), `SimulationResult`, `SimulationSpec`/`create_simulation` (Goal-2 bridge), FEM-ditch (confirmed), Form-B convergence |
+| `API_REFERENCE.md` | **Library-style API reference**: every public class + function (Grid, ConductivityConfig, IonicModel, Stimulus, factories, Simulation, SimulationResult, SimulationSpec) with signatures, params, returns, examples + impl-status legend |
+| `Monodomain/Engine_V5.5/_probe_conductivity_firewall.py` | Firewall build-time gate: raw sigma → `for_monodomain()` → live V5.5 cable; arithmetic to 1.1e-19, CV 54.35/28.09 (matches bidomain ref). Keep-or-toss; permanent test lands in `cardiac_core/tests` at Phase 3 |
 | `cardiac_core/__init__.py` | Package exports: api (monodomain/bidomain/lbm), file_format, run, analysis, geometry, io |
 | `cardiac_core/file_format.py` | CardiacMeshData dataclass, save/load/create functions, .npz format v1 |
 | `cardiac_core/api.py` | Simplified API: monodomain(), bidomain(), lbm() + CardiacSimulation wrapper |

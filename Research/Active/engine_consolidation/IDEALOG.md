@@ -5,11 +5,16 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Designing the unified vocabulary + API toward the north-star** (conversational simulation builder for non-coders; see README North-Star Goals). Build order: **(1) ubiquitous language** — one canonical name per concept across the 3 engines (the ionic ABC proves the pattern) — **then (2) the unified API** (a `Simulation` interface/Protocol + idioms, written in that vocabulary), which the declarative `SimulationSpec` and the LLM wrapper then sit on. The 3-engine capability census is done (KNOWLEDGE "Cross-engine capability census"); the glossary is the immediate next artifact.
+**Goal-1 unified construction API is now SHIPPED in code** (toward the north-star conversational builder). Build order: **(1) ubiquitous language** [DONE — `GLOSSARY.md`] → **(2) the unified API** [DESIGNED `API_DESIGN.md`/`API_REFERENCE.md` → **IMPLEMENTED** as real `cardiac_core` code, PLAN.md API-track Phases 0–5, **121 tests green**] → (3) the LLM wrapper (Goal 2, `SimulationSpec`/`create_simulation` — NOT yet built). See KNOWLEDGE "Goal-1 Construction API — SHIPPED in code (2026-06-24)".
+
+**Pending constraint (user 2026-06-24, discuss later):** ditch FEM → **structured-grid is the ONLY standard** (not just primary). Collapses the unstructured/flat-`(n_dof,)` secondary path, `TriangularMesh`, monodomain's FEM knob; may change how the engines are implemented (Phase-4 rewire). Flagged in `API_DESIGN.md` §9.
 
 DONE this session (committed to `main`): V5.5 Cm-correct fork (Phases 0–2); cardiac_core drift reconciled; consolidation Phase 1 COPY-ONLY (canonical `cardiac_core/ionic/` + editable install + lazy `__init__`). The original code-dedup consolidation (engines import from cardiac_core, delete copies) is the FOUNDATION but is DEFERRED — big-bang deletion breaks Surrogate/Optimizer (audit); do it per-consumer later. V5.5 is the canonical monodomain; V5.4 frozen.
 
 ## Next Step
+**Goal-1 construction API SHIPPED (2026-06-24).** Candidate next moves: (a) **Goal-2** — `SimulationSpec`/`create_simulation` declarative intake + the LLM wrapper skill bundle (the conversational builder); (b) **consolidation-track** engine rewire (Form-A→B convergence, delete `for_monodomain()`, FEM removal) — distinct from the API track just shipped; (c) **commit** the uncommitted API-track work (branch + per-phase commits per PLAN.md). The firewall `for_monodomain()` asymmetry is INTENTIONALLY still present (deleted only at the consolidation Phase-4 rewire). Also: update `API_REFERENCE.md` status tags `[design]`→`[now]` for the delivered symbols.
+
+--- prior (consolidation track, still valid) ---
 **cardiac_core drift RECONCILED (2026-05-30):** the post-Phase-0 additions (`run.py`/`analysis.py`/`geometry.py`/`io.py`) are a benign wrapper-level convenience layer (77 tests now, not 34); no shared-code packages yet, so Phase 1 is unblocked. `Engines/` symlink index fixed (cardiac_core un-broken; lbm_v1 → real `LBM/Engine_V1`; monodomain_v5.5 added). See KNOWLEDGE "cardiac_core drift reconciled".
 
 **Phase 1 (copy) DONE (2026-05-31):** `cardiac_core/ionic/` is the canonical superset copy (from V5.5; latent LUT keyword `cell_type_is_endo`→`celltype_is_endo` fixed); `cardiac_core/__init__` made lazy (PEP 562 — `import cardiac_core.ionic` is engine-free, no `_prepare_engine`); `pyproject.toml` + `pip install -e .` make cardiac_core a real importable package (cwd-independent, scoped to `cardiac_core*` — does NOT expose Builder/cardiac_ml/engines). 77 cardiac_core tests green; V5.5 golden still exact (engines untouched).
@@ -19,6 +24,55 @@ DONE this session (committed to `main`): V5.5 Cm-correct fork (Phases 0–2); ca
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-06-24 (impl): PLAN.md executed — Goal-1 construction API shipped (Phases 0–5, 121 tests)
+After a 3rd `/audit` pass on PLAN.md (5 findings folded in: the HIGH `save_result` positional-`phi_e` break + 2 MED missing-section + 2 LOW), executed all 6 API-track phases end-to-end. Each phase: implement → targeted test → full-suite gate. No engine source touched (V5.3/V5.4/V5.5/Bidomain/LBM unchanged); cardiac_core grew `conductivity.py`, `grid.py`, `simulation.py` + refactored `api.py`/`run.py`/`io.py`. Result: **121 cardiac_core tests pass** (80→121), incl. the live-CV firewall gate.
+
+Key implementation decisions / gotchas (beyond the design):
+- **`ConductivityConfig.sigma_eff` is the PUBLIC property** (per API_REFERENCE), so the isotropic stored conductivity lives in a `sigma_iso` field (the plan's sketch had a `sigma_eff` field + `sigma_eff_value` property — would clash). Arithmetic mirrors the probe exactly.
+- **Live-CV gate runs in a SUBPROCESS** (`tests/_live_cv_gate_driver.py`) — running test_phase10's V5.5 cable inside the cardiac_core pytest session would collide on the shared `cardiac_sim` namespace (flushed by `_prepare_engine`). Subprocess isolates it; ~2 min, skips cleanly if the V5.5 dir / ref JSON is absent. (First run hit a `numpy.bool_` not-JSON-serializable bug → cast `bool()/float()`.)
+- **Bidomain σ-tuples must be `(Nx,Ny)` FIELDS, not scalars** — the bidomain FDM indexes `dxx[i,j]`; passing scalar σ gave a 0-d-array IndexError. `_build_mesh_data` now emits `np.full((Nx,Ny), σ)` tuples.
+- **`stimulate()`/`reset()`/`with_()` unified across both construction paths** by routing ALL stimuli through `data.stimuli` and replaying the factory with `mesh=self._data` + stored `_build_kwargs`. This made the audit-MEDIUM "must work for both paths" trivially true and sidestepped the LBM `start`/`start_time` audit-LOW (the existing LBM factory loop already reads `data.stimuli` positionally).
+- **`run()` eager flip needed a 34-site migration** `*.run(`→`*.snapshots(` across 6 test files + the production `run.py::_collect` (engine-direct `sim_direct.run` left alone). Done with a word-boundary regex script.
+- **CV smoke needed t_end=40ms** (front ~50 cm/s = 0.05 cm/ms; x2=1.0cm activates ~21ms) — at t_end=20 the far probe never activated → CV=nan.
+
+OPEN (handed back to user): git — all work is uncommitted on `main` alongside pre-existing unrelated changes (source_sink, MASTER.md, the design docs). Per harness rule I did NOT auto-commit to the default branch. The plan's per-phase commit points are ready to apply once a branch/commit strategy is chosen.
+
+### 2026-06-24: Unified API drafted — `Simulation` Protocol + 4 idioms + `SimulationSpec`
+Picked up from the glossary's 3 open items and produced **`API_DESIGN.md`** (Goal-1 interface in the resolved vocabulary). Settled the open items + drafted the interface.
+
+**Open glossary items resolved:**
+- **#9 default stim amplitude → −52** (user). Rationale: ionic model is byte-identical across engines and the stimulus enters the same `R=-(Iion+Istim)/Cm` term in the same units → an amplitude that depolarizes in M/B depolarizes identically in L. LBM's −80 was author drift; retire it. The glossary's "verify under L" is automatically satisfied.
+- **#5 internal live-State → unify + defer.** One internal `State(t, Vm, ionic_states, …, Cm, coords)` with optional `phi_e` (bidomain) / `f` (LBM); LBM adopts it. Zero public-contract impact (only `SimulationResult` is user-facing) → land in a code phase, not now.
+- **#12 ConductivityConfig interface — drafted, then source-verified + CORRECTED.** The class stores **physics** (`sigma_i/sigma_e/sigma_eff, chi, Cm, fiber_angle`) and emits per-engine inputs. Construction via classmethods `.isotropic/.bidomain/.anisotropic`. **#13 (chi only in ConductivityConfig) makes #12 work.**
+
+### 2026-06-24 (cont.): VERIFIED ConductivityConfig vs source — caught a Cm≠1 bug in my own draft
+Read the actual operators instead of trusting the KNOWLEDGE summary. Confirmed:
+- `fdm.py:195–238` (V5.5): implicit solve `(χ·Cm·I − ½dt·L)Vⁿ⁺¹ = (χ·Cm·I + ½dt·L)Vⁿ`, `L` built from input `D` (NOT χ·Cm). ⟹ **physical diffusivity = `D_input/(χ·Cm)`** (Form A confirmed). Reaction divides by `state.Cm` (V5.5 fix, test_phase10 @3.55e-15).
+- `BidomainConductivity` (`conductivity.py`): `D_i,D_e` PRE-scaled `=σ/(χ·Cm)`; has `get_effective_monodomain_D()=D_i·D_e/(D_i+D_e)` (the harmonic i/e collapse — the `D_eff` reduction). LBM `sigma_to_D`: `D=σ/(χ·Cm)` pre-scaled. (Form B confirmed.)
+- **BUG in my first §4 draft:** "feed `D_eff` with `chi=1, Cm=1` no-op" is correct ONLY at Cm=1. At Cm≠1, pinning the engine's `Cm=1` makes the **reaction** divide by 1 instead of the real Cm → silently wrong. **Same Cm-trap family as the false time-dilation invariant** (invisible at pinned Cm=1, bites otherwise). The real Cm must reach EVERY engine.
+- **Corrected mechanic:** only the *diffusion input's* Cm-scaling differs by formulation. Form-A monodomain scales diffusion by Cm internally (mass term) → feed it Cm-**un**scaled `D = D_eff·Cm = sigma_eff/chi`, with engine `chi=1` (chi folded in) and the **real Cm** (drives mass term + reaction). Form-B (bidomain/LBM) → feed fully-scaled `D = σ/(χ·Cm)` + real Cm. ConductivityConfig now exposes per-engine emitters `for_monodomain()/for_bidomain()/for_lbm()` so this arithmetic lives in ONE place. At Cm=1 all collapse to `D_eff = sigma_eff/chi` (= what the 2026-05-30 cross-engine test used: `D=D_EFF, chi=1`).
+- **Also fixed a units trap in the §7 smoke test:** `ConductivityConfig.isotropic(sigma=...)` takes raw CONDUCTIVITY (mS/cm), not pre-divided `D`. `0.00097` is the *D_eff*, not σ. Standard tissue σ_i=1.74, σ_e=6.25 → D_eff=0.000972.
+- **Build-time gate (still open):** confirm `for_monodomain()` reproduces test_phase10 CVs at Cm∈{1,2} once coded.
+
+### 2026-06-24 (cont.): DECISION — canonical formulation = B (converge in Phase 4)
+User asked: now that both A and B are physically correct, which is "good"? Reasoned it through: **the V5.5 reaction fix made the physics a TIE, so this is now a pure software-engineering decision** — and B wins on every axis: (1) consolidation alignment — B confines all χ/Cm scaling to `ConductivityConfig` (decision #13); A's engine is a *second* scaling authority (its χ·Cm mass term); (2) non-fragile — A scatters χ·Cm across FDM mass + FEM M + FVM Vol + DCT/FFT denominators + reaction (that scattering caused the V5.4 bug); B has one σ→D line; (3) majority — 2/3 engines already B; (4) clean operator `(I−θ·dt·L)` vs A carrying χ·Cm=1400 into the linear algebra. A's only edge (operator reads like the PDE) is a *docs* value, neutralized at the API (user passes σ/χ/Cm to ConductivityConfig either way).
+**DECISION (user): Form B target; converge in Phase 4.** Two-phase: keep both now (firewall `for_monodomain()` absorbs the asymmetry); convert monodomain Form-A diffusion→B *as part of* the Phase-4 rewire into cardiac_core (no new fork) → then DELETE `for_monodomain()`, ConductivityConfig collapses to one emitter (physical D + Cm). Recorded in KNOWLEDGE Key Decisions ("Canonical formulation = B") + migration-plan Phase 4 + API_DESIGN §4 + glossary.
+
+### 2026-06-24 (cont.): GATE CLOSED + FEM ditch CONFIRMED + API reference doc
+- **ConductivityConfig firewall gate — CLOSED (numerically).** Wrote `Monodomain/Engine_V5.5/_probe_conductivity_firewall.py`: raw `sigma_i=1.74, sigma_e=6.25, chi=1400` → `for_monodomain()` → live V5.5 cable (reuses `test_phase10.run_cable_v55`). Result: arithmetic `D=0.0009721973895941` = reference `D_EFF` to **1.1e-19** (Cm-independent ✓); CV(Cm=1)=**54.35** (0.00% vs bidomain ref), CV(Cm=2)=**28.09** vs 27.77 (**1.15%** < 5%). The Cm≠1 firewall path is correct in the live engine, not just on paper. (Probe is a keep-or-toss artifact; the permanent test lands in `cardiac_core/tests` when ConductivityConfig is built in Phase 3.)
+- **FEM ditch — CONFIRMED (user).** Structured grid is now the ONLY standard (P2→P2′). Drops the unstructured/flat-`(n_dof,)` geometry path, `TriangularMesh`, monodomain's `FEMDiscretization`. **FDM primary; FVM survives** (structured-grid-native); collapsing FVM→FDM is a SEPARATE later question. Composes with the Form-A→B convergence in the Phase-4 rewire. API_DESIGN §9 marked CONFIRMED.
+- **Deliverable: `API_REFERENCE.md`** — library-style reference (every class + function, signatures, params, returns, examples). Built from API_DESIGN.
+
+**New decisions (user, 2026-06-24):**
+- **CHANGE idiom = functional `sim.with_(**overrides)` → new Simulation** (immutable, sweep-safe; no mutable setters in the public API — clean for Optimizer).
+- **Construction = factories + spec, layered.** Per-model `monodomain()/bidomain()/lbm()` factories (programmer surface) AND `create_simulation(SimulationSpec)` on top (LLM-intake surface). Spec→factory; building the spec now keeps the questionnaire from drifting from engine needs ("spec schema = the intake questionnaire" — the cross-goal leverage point).
+
+**`API_DESIGN.md` structure:** §0 four idioms · §1 `Simulation` Protocol · §2 factories · §3 stimulus · §4 ConductivityConfig (the chi/Form-A/B firewall) · §5 `SimulationResult` (only public output; eager + `batch=`) · §6 `SimulationSpec`/`create_simulation` (3 tiers required/defaulted/derived; Goal-2 bridge) · §7 minimal-spec smoke test · §8 open/deferred · §9 the FEM-ditch pending note.
+
+**FEM-ditch flagged (user, discuss later):** all sims on structured grid → P2 strengthens to "structured ONLY." Drops the unstructured/flat path, `TriangularMesh`, FEM knob; simplifies State #5; touches engine implementation (Phase-4). Recorded as pending in `API_DESIGN.md` §9, not yet committed.
+
+**Next:** discuss the FEM-ditch (its knock-on for engine implementation) → then either (a) finalize `ConductivityConfig` class shape against source (verify the chi=1 no-op), or (b) start turning `API_DESIGN.md` into the actual `cardiac_core` `Simulation`/Protocol + factory code.
 
 ### 2026-05-31: Session vision — unified API + LLM wrapper → conversational simulation builder
 North star (now the question's main goal, see README). A non-coder converses with Claude to build cardiac sims and learn how conduction works. Two goals:
@@ -125,6 +179,27 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 - **sys.modules hack as permanent solution** (2026-03-17) — recognized as temporary: `_prepare_engine()` flushes modules because both engines use `cardiac_sim` namespace. Acceptable for Phase 0 wrapper but must be eliminated when shared code moves into `cardiac_core/`.
 
 ## Session Log
+
+### 2026-06-02 Session (glossary draft)
+**Worked on**: Built the **unified glossary** off the 2026-06-01 capability census, source-verified.
+**Accomplished**:
+- **`GLOSSARY.md` created** (new artifact for this question). Four parallel read-only census agents (one per surface: Monodomain V5.5, Bidomain V1, LBM V1, `cardiac_core`) harvested every public identifier with `file:line`. Synthesized into a 3-tier doc: Tier 1 universal concepts (one enforced name), Tier 2 engine-specific (canonical where applicable), Tier 3 internal-module rename targets. Each row tagged ✅ aligned / 🟡 minor / 🔴 decision / ⚙️ engine-specific.
+- **Census confirmed in source**: `IonicModel` ABC byte-identical across all 3 (the unification proof); `dt`/`Cm`/`(Nx,Ny)` ij/stimulus-accumulate(`+=`)/pacing-helpers(M+B) already aligned. Divergence concentrated in: voltage name, State container, run/result contract + output shape, conductivity input, χ handling, LBM-as-outlier (no grid obj, raw-mask stim, state on free attributes).
+- **New evidence surfaced**: `cardiac_core` already shipped **`V`** end-to-end (snapshot/result/analysis + 77 tests) — i.e. the existing wrapper had already (silently) decided the #1 contested name against the IDEALOG `Vm` lean.
+- **DECISION (user): voltage = `Vm`** (revokes the CC `V`). Glossary §2 RESOLVED. Migration: rename `V`→`Vm` in M+L, revert CC's `V` + tests, keep read-only `.V` alias then deprecate. Ionic-ABC positional `V` param left as-is (wide-blast rename = separate follow-up).
+- **DECISION (user): two naming principles** added to glossary (govern all rows):
+  - **P1 — mixed/subscripted notation** for any intra/extra/membrane quantity; bare symbol only when the concept is *identical across engines*. `Vm` qualifies (membrane potential is the same thing in mono+bidomain → bare `V` rejected). Bare `D` does NOT — mono/LBM carry the **effective** diffusivity, bidomain the **components**.
+  - **P2 — structured grid is the primary standard** (grid-shaped `(Nx,Ny)`, LBM-simple notation), since almost all our sims are structured; the unstructured/complex-mesh path (FEM, `TriangularMesh`, flat `(n_dof,)`) becomes the explicit *secondary* standard, not the default.
+- **Cascaded resolutions from P1/P2**:
+  - **#7 output shape RESOLVED → grid `(Nx,Ny)` torch f64** (structured primary; flat reserved for FEM path).
+  - **#12 conductivity NAMING RESOLVED → `D_eff` (mono/LBM), `D_i`/`D_e` (bidomain); inputs `sigma_*`** (bare `D` banned; user: "`D_i` is not true for monodomain, `D_eff` is more correct"). Interface (the `ConductivityConfig` class shape) still 🟡.
+  - **#13 chi RESOLVED → lives only inside `ConductivityConfig`**, never a free solver knob.
+  - **#6 partially resolved**: voltage field name/shape/type now fixed (`Vm`, grid, f64); only delivery style (eager `Result` vs generator vs both) still open.
+- **DECISION (user): #6 run/result contract RESOLVED** — `run()` is **eager by default** (returns one `SimulationResult`); streaming folded into the SAME method via **`batch=k`** (yields `Iterator[SimulationResult]` in chunks of ≤k save-points; k=1 = frame-by-frame). User: "rename stream as run(,,batch=x)". Consequences: **no separate `stream()` method, no `Snapshot` type** — a streamed chunk is just a `SimulationResult` with T≤k, so the ONLY public output type is `SimulationResult`. Added `record=("Vm",)` knob (phi_e auto for bidomain, ionic_states opt-in for Surrogate) + kept `callback` for eager early-stop. Accepted wart: return type varies with `batch`.
+- **#5 cascaded**: the batch model collapsed the old 3-object view (live State / Snapshot / Result) to **2** — public = `SimulationResult` ONLY (✅ RESOLVED; live mutable state never exposed, killing the yield-the-mutable-object footgun); internal live `State` = recommend one unified dataclass (LBM adopts, drops free attrs) but it's an internal refactor, **deferrable**.
+**Still open (🔴)**: #5 internal live-State unification (deferrable), #9 default stim amplitude (−52 vs −80; likely author drift), #12 ConductivityConfig interface shape.
+**Toolchain note**: a parallel research session's in-progress hook (`enforce-media-path.py`, project-root-relative path) deadlocked Write/Edit/Bash whenever cwd drifted out of repo root (python exit-2 = block). Recovered by user `cd` back to root. Not this question's bug.
+**Next (resume cold)**: settle #6 delivery style + #5 (coupled — the State the generator yields); then #9, #12 interface; then start Goal 1's `Simulation` interface/Protocol + idioms in this vocabulary. Also noted: most divergences trace to 4 root causes — (A) M+B shared lineage vs LBM independent, (B) physics dimensionality (bidomain's extra potential/conductivity), (C) Formulation A/B chi bookkeeping, (D) plain naming drift.
 
 ### 2026-06-01 Session (handoff)
 **Worked on**: Finished the V5.5 detour + consolidation Phase 1, then pivoted to the north-star (conversational simulation builder) and began designing the unified vocabulary/API — including a full 3-engine capability census.
