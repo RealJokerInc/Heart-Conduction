@@ -18,7 +18,8 @@ are (their own dev/tests). 121 cardiac_core tests stay green throughout.
 - [ ] `cardiac_core/{monodomain,bidomain,lbm}` hold the three solvers; `api.py` constructs them via `from cardiac_core.{monodomain,bidomain,lbm} import …` (no sys.path games).
 - [ ] `_prepare_engine()` + `_V55_PATH`/`_BIDOMAIN_PATH`/`_LBM_PATH` deleted; both classical engines importable simultaneously (no `cardiac_sim` collision).
 - [ ] `pip install -e .` still works (new subpackages discovered); the 3 engine originals are byte-unchanged.
-- [ ] All 121 existing cardiac_core tests pass (no regressions) + new structure/guard tests.
+- [ ] **INTEGRITY: each vendored engine is BEHAVIOR-IDENTICAL to its original** — a canonical sim reproduces the pre-vendor golden output bit-identically (atol=0), the vendored tree differs from its source ONLY by the enumerated cross-ref lines + facade `__init__`, and the original engine folders' content-hash is unchanged.
+- [ ] All 121 existing cardiac_core tests pass (no regressions) + new structure/guard/integrity tests.
 
 ## Architecture Changes
 - NEW: `cardiac_core/mesh/` — copy of the mono `tissue_builder/mesh/` (base, loader, structured, triangular) **+ bidomain's `boundary.py`**, with `structured.py` reconciled to the **superset** (supports `boundary_spec`).
@@ -41,6 +42,78 @@ are (their own dev/tests). 121 cardiac_core tests stay green throughout.
 - **Entangling FEM/TriangularMesh removal** — do NOT. FEM-ditch is a confirmed-but-separate cleanup. Bring `fem.py`/`triangular.py` over as-is so nothing breaks; remove later.
 - **Touching V5.3/V5.4/`_archive`** — read-only. **Modifying the reaction (`/Cm`) or any solver numerics** — out of scope; this is a code-move, byte-for-byte where not a cross-ref rewrite.
 - **Deleting `_prepare_engine()` before ALL THREE engines are vendored** — it's shared; deleting it early breaks the not-yet-moved engines. Delete in Phase 4 only.
+
+---
+
+## Phase 0: Git backup + integrity baseline (golden capture)
+
+**Goal**: A durable rollback point + per-engine GOLDEN outputs, so every later phase proves the vendored
+engine is BEHAVIOR-IDENTICAL to the original — not merely "imports resolve". This closes the gap left by
+repointing the `…MatchesDirect` tests (which, post-vendor, compare vendored-vs-vendored and cannot catch a
+numerics regression from the move).
+**Tier**: small
+**Estimated scope**: confirm the backup (already done) + one golden-capture script + an integrity test + a source-hash snapshot.
+
+### Phase Context
+- **Backup DONE (2026-06-25):** tags `cardiac-core-api-track-complete` (commit 3627836, 121 tests green) + `pre-consolidation-vendoring`; bundle `~/heart-conduction-PRE-CONSOLIDATION-2026-06-25.bundle` (`git bundle verify` → complete). Rollback: `git reset --hard pre-consolidation-vendoring` (or clone the bundle). Phase 0 only CONFIRMS these exist.
+- Goldens are captured ONCE here, against the CURRENT (pre-vendor) engines reached via `_prepare_engine`. They become the fixed reference each later phase must reproduce bit-identically. Because vendoring copies the engine byte-for-byte (only import lines change, which cannot alter numerics), the correct expectation is **exact equality (atol=0)**, not a tolerance.
+- The originals must stay byte-unchanged; snapshot a content-hash of the three source trees so an accidental in-place edit is caught.
+
+### Step 0.1: Capture goldens + source-tree hashes + integrity test
+**Model**: opus
+
+#### Read First
+- `cardiac_core/run.py` (`simulate`, `run_*`) — the deterministic API entry the golden uses.
+- `cardiac_core/tests/test_run.py` / `test_construction_api.py` — canonical small-sim setups to mirror (so the golden sim is cheap + deterministic).
+
+#### Why
+A golden pinned to the original engines is the ONLY check that proves the *move* is behavior-preserving;
+import-resolution and wrapper-vs-direct equality do not. Capturing it before any file moves is essential —
+after Phase 1 the originals are no longer the construction path.
+
+#### Implementation Spec
+**Files to create:**
+- `cardiac_core/tests/_integrity/make_goldens.py` — for engine in {monodomain, bidomain, lbm}: run a fixed, deterministic sim via the current `cardiac_core` API (fixed grid, stim, dt, t_end, cpu, float64); save `golden_{engine}.pt` = `{times, Vm, phi_e?}`. Also write `engine_src_sha.json` = a recursive sha256 over the sorted file contents of `Monodomain/Engine_V5.5/cardiac_sim`, `Bidomain/Engine_V1/cardiac_sim`, `LBM/Engine_V1/src`.
+- `cardiac_core/tests/test_integrity.py` — `test_{engine}_matches_golden` (×3): re-run the SAME canonical sim, assert `torch.equal(Vm, golden.Vm)` (atol=0) + times/phi_e equal; `test_originals_untouched`: recompute the three source hashes, assert == `engine_src_sha.json`.
+
+#### Pseudocode
+```
+make_goldens: for e in engines: r = canonical_sim(e); torch.save({times,Vm,phi_e}, golden_e.pt)
+              write engine_src_sha.json (sha256 of each original tree)
+test_{e}_matches_golden: g=load(golden_e); r=canonical_sim(e); assert torch.equal(r.Vm,g.Vm) and torch.equal(r.times,g.times)
+test_originals_untouched: assert recompute_hashes()==load(engine_src_sha.json)
+```
+
+#### Test Spec
+- `tests/test_integrity.py::test_monodomain_matches_golden` / `…bidomain…` / `…lbm…` — pass NOW (current == golden, trivially) and must keep passing after each vendoring phase.
+- `tests/test_integrity.py::test_originals_untouched` — the three source trees' hash matches the baseline.
+
+#### Checklist
+- [ ] backup tags + bundle confirmed present (`git tag -n1 | grep pre-consolidation`; `git bundle verify <bundle>`).
+- [ ] `make_goldens.py` run; `golden_{monodomain,bidomain,lbm}.pt` + `engine_src_sha.json` committed.
+- [ ] `test_integrity.py` green (4 tests) against the CURRENT engines.
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+git tag -n1 | grep -E "pre-consolidation|api-track-complete"
+conda run -n heart-conduction python cardiac_core/tests/_integrity/make_goldens.py
+conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v
+```
+
+#### Exit Criteria
+- [ ] backup verified; 3 goldens + source-hash captured; `test_integrity.py` green (the bit-identical baseline).
+
+#### Risk
+A non-deterministic canonical sim (e.g. CUDA nondeterminism, random init) would make the golden flaky. Mitigation: force CPU + float64 + fixed seeds + a deterministic ionic init; the existing API defaults are deterministic on CPU.
+
+### Phase 0 Verification / Exit / Cleanup
+```bash
+conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v
+```
+- [ ] goldens + integrity test committed; backup confirmed. (No code moved yet — this phase is capture-only.)
+
+**-> Commit point: git commit after Phase 0** (`test(cardiac_core): integrity goldens + source-hash baseline before vendoring`)
 
 ---
 
@@ -208,8 +281,13 @@ A missed cross-ref (e.g. a deeper `from ....tissue_builder`) → ImportError. Mi
 ### Phase 2 Verification / Exit / Cleanup
 ```bash
 conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
+# INTEGRITY GATE (monodomain):
+conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py::test_monodomain_matches_golden cardiac_core/tests/test_integrity.py::test_originals_untouched -v
+# Source fidelity: vendored vs original — ONLY the listed cross-refs + facade __init__ may differ:
+diff -rq Monodomain/Engine_V5.5/cardiac_sim/simulation cardiac_core/monodomain/simulation || true   # review every diff is an enumerated cross-ref
+git status --short Monodomain/Engine_V5.5/   # must be EMPTY (original untouched)
 ```
-- [ ] monodomain fully on `cardiac_core.monodomain`; no regressions; engine original untouched. float64. No `cardiac_sim` strings in `cardiac_core/monodomain`.
+- [ ] monodomain fully on `cardiac_core.monodomain`; no regressions; **`test_monodomain_matches_golden` bit-identical (atol=0)**; **source-fidelity diff = only enumerated cross-refs + facade `__init__`**; **`git status` on `Engine_V5.5/` EMPTY**. float64. No `cardiac_sim` import strings in `cardiac_core/monodomain`.
 
 **-> Commit point: git commit after Phase 2** (`feat(cardiac_core): vendor monodomain solver, drop V5.5 path`)
 
@@ -282,8 +360,12 @@ mesh superset must serve bidomain's `boundary_spec` path (the elliptic BC). Miti
 ### Phase 3 Verification / Exit / Cleanup
 ```bash
 conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
+# INTEGRITY GATE (bidomain):
+conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py::test_bidomain_matches_golden cardiac_core/tests/test_integrity.py::test_originals_untouched -v
+diff -rq Bidomain/Engine_V1/cardiac_sim/simulation/classical cardiac_core/bidomain/simulation/classical || true   # review each diff
+git status --short Bidomain/Engine_V1/   # must be EMPTY
 ```
-- [ ] bidomain on `cardiac_core.bidomain`; no regressions; original untouched. float64. grep clean.
+- [ ] bidomain on `cardiac_core.bidomain`; no regressions; **`test_bidomain_matches_golden` bit-identical**; **source-fidelity diff = only enumerated cross-refs + facade**; **`git status` on `Engine_V1/` EMPTY**. float64. grep clean.
 
 **-> Commit point: git commit after Phase 3** (`feat(cardiac_core): vendor bidomain solver, drop bidomain path`)
 
@@ -356,8 +438,12 @@ A residual `import sys` / `sys.path` use elsewhere in api.py → NameError after
 ### Phase 4 Verification / Exit / Cleanup
 ```bash
 conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q
+# FULL INTEGRITY GATE (all 3 engines now vendored, hack gone):
+conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v   # all 4: 3 goldens + originals_untouched
+diff -rq LBM/Engine_V1/src cardiac_core/lbm || true   # LBM: expect NO diffs (no cross-refs rewritten internally)
+git status --short Monodomain/ Bidomain/ LBM/   # must be EMPTY (all 3 originals untouched)
 ```
-- [ ] hack deleted; 121 green; grep CLEAN; 3 engine originals byte-unchanged (`git status` shows only `cardiac_core/` + docs).
+- [ ] hack deleted; 121 green; grep CLEAN; **all 3 goldens bit-identical + `test_originals_untouched` green**; **`git status` on all 3 engine dirs EMPTY** (byte-unchanged; working tree shows only `cardiac_core/` + docs).
 
 **-> Commit point: git commit after Phase 4** (`feat(cardiac_core): vendor LBM, delete _prepare_engine hack — self-contained`)
 
@@ -435,6 +521,7 @@ conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q
 
 ## Final Cleanup (cross-phase)
 - [ ] float64 consistency across all vendored/edited modules — no float32 leaks.
+- [ ] **INTEGRITY (final):** all 3 goldens reproduced bit-identically (`test_integrity.py` 4/4 green); `test_originals_untouched` green; `git status` on `Monodomain/Engine_V5.5/`, `Bidomain/Engine_V1/`, `LBM/Engine_V1/` all EMPTY. Backup tags (`pre-consolidation-vendoring`, `cardiac-core-api-track-complete`) + the bundle remain the rollback path.
 - [ ] V5.3/V5.4/`_archive` untouched; the 3 engine originals (`Engine_V5.5`, `Engine_V1` ×2) byte-identical (`git status` shows only `cardiac_core/` + research docs).
 - [ ] No real cross-folder **imports** (`^(from|import) (cardiac_sim|src)[. ]`) or `_prepare_engine(` calls anywhere under `cardiac_core/` (except the deliberately-excluded `_live_cv_gate_driver.py`). Docstring/path-string MENTIONS of `Engine_V5.5` (e.g. `conductivity.py:11`, the driver's `_V55` path) are OK and must NOT be flagged — the guard matches import statements, not substrings.
 - [ ] KNOWLEDGE.md migration table + IDEALOG session log updated with the unified layout that shipped; README status banner refreshed.
@@ -471,3 +558,9 @@ Revision pass 2026-06-25 — adversarial audit (`/audit`, 14 findings: 1 critica
 **MUTATED 2026-06-25**: Phase 2 + Phase 3 copy spec MODIFIED — audit MED+LOW. Copy the WHOLE `tissue/` dir per engine (`__init__` + `isotropic.py` [+ bidomain `conductivity.py`]) — don't cherry-pick by class name; and include the parent `simulation/__init__.py` when copying `simulation/classical/`.
 **MUTATED 2026-06-25**: Phase 1 Context/Spec MODIFIED — audit LOW. `mesh/__init__.py` is the UNION of mono+bidomain exports (`TriangularMesh` + boundary types `BoundarySpec/BCType/Edge/EdgeBC`) — neither engine's `__init__` works verbatim.
 **MUTATED 2026-06-25**: (audit LOW, no change) `lbm/__init__.py` facade re-exporting `LBMSimulation` confirmed necessary — the copied `src/__init__.py` is docstring-only.
+
+Revision pass 2 (2026-06-25) — user request: "make sure the prior thing is git backed up" + "include checks regarding integrity".
+
+**BACKED UP 2026-06-25**: pre-vendoring state captured — tags `cardiac-core-api-track-complete` (3627836, 121 green) + `pre-consolidation-vendoring`, and bundle `~/heart-conduction-PRE-CONSOLIDATION-2026-06-25.bundle` (verified complete). Rollback: `git reset --hard pre-consolidation-vendoring`.
+**MUTATED 2026-06-25 (pass 2)**: Phase 0 ADDED — integrity baseline. Captures per-engine GOLDEN outputs (bit-identical reference, atol=0) + a source-tree content-hash, via `make_goldens.py` + `test_integrity.py`. Closes the gap that the repointed `…MatchesDirect` tests (now vendored-vs-vendored) cannot catch a vendoring numerics regression; the golden pins the ORIGINAL-engine output.
+**MUTATED 2026-06-25 (pass 2)**: Phases 2/3/4 Verification MODIFIED — added the per-engine INTEGRITY GATE: `test_{engine}_matches_golden` (atol=0) + a source-fidelity `diff` (vendored vs original = only enumerated cross-refs + facade) + `git status` EMPTY on the original folder (`test_originals_untouched`). Added a Success Criterion + Final-Cleanup integrity item.
