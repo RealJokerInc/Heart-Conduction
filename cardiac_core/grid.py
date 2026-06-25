@@ -80,15 +80,9 @@ class Grid:
         return self.Nx * self.Ny
 
     def _structured_grid(self):
-        """Build (and cache) the engine ``StructuredGrid`` for factory construction.
-
-        Routed through ``api._prepare_engine`` so the shared ``cardiac_sim`` namespace resolves to
-        the V5.5 engine. The cached object survives later namespace flushes.
-        """
+        """Build (and cache) the shared ``StructuredGrid`` for factory construction."""
         if self._sg is None:
-            from .api import _prepare_engine, _V55_PATH
-            _prepare_engine(_V55_PATH)
-            from cardiac_sim.tissue_builder.mesh.structured import StructuredGrid
+            from .mesh.structured import StructuredGrid
             if self.mask is not None:
                 self._sg = StructuredGrid.from_mask(
                     self.mask, self.dx, self.dy, device=self.device, dtype=self.dtype
