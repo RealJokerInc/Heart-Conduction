@@ -1,15 +1,8 @@
 """Tests for cardiac_core.api.lbm() — simplified LBM API."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
-
-_project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_project_root / "Monodomain" / "Engine_V5.4"))
-sys.path.insert(0, str(_project_root / "LBM" / "Engine_V1"))
 
 from cardiac_core import lbm, create_cardiac_mesh, save_cardiac_mesh
 
@@ -90,8 +83,8 @@ class TestLBMMatchesDirect:
 
     def test_matches_direct(self):
         """Same params → wrapper vs direct → identical V after 3ms."""
-        from src.simulation import LBMSimulation
-        from cardiac_sim.ionic import TTP06Model
+        from cardiac_core._lbm.simulation import LBMSimulation
+        from cardiac_core.ionic import TTP06Model
 
         dx = 0.025
         Nx = 21

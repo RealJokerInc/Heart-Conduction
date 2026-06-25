@@ -8,8 +8,8 @@ Usage:
 
 Lazy package: public names are resolved on first access via PEP 562 ``__getattr__``.
 This is deliberate — importing a light submodule like ``cardiac_core.ionic`` must NOT
-drag in ``api`` (which calls ``_prepare_engine()`` and flushes the ``cardiac_sim``
-namespace). ``cardiac_core.ionic`` is a self-contained subpackage; import it directly.
+drag in ``api`` (which imports the heavy vendored solver packages). ``cardiac_core.ionic``
+is a self-contained subpackage; import it directly.
 """
 
 import importlib

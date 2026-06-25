@@ -6,7 +6,6 @@ a file path or CardiacMeshData and return a CardiacSimulation wrapper
 with a uniform generator interface.
 """
 
-import sys
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Iterator, Optional, Union
@@ -18,28 +17,9 @@ from .file_format import CardiacMeshData, load_cardiac_mesh
 from .grid import Grid
 from .conductivity import ConductivityConfig
 
-_project_root = Path(__file__).resolve().parent.parent
-# cardiac_core's monodomain path runs the Cm-correct V5.5 fork (Formulation-B reaction: dV /= Cm).
-# V5.4 remains the frozen validated baseline on disk, but is no longer imported here — every gate
-# value (CV 54.35/28.09) was measured against V5.5, so the delivered factory must run V5.5 too.
-_V55_PATH = str(_project_root / "Monodomain" / "Engine_V5.5")
-_BIDOMAIN_PATH = str(_project_root / "Bidomain" / "Engine_V1")
-_LBM_PATH = str(_project_root / "LBM" / "Engine_V1")
-
-
-def _prepare_engine(engine_path: str):
-    """Clear cached cardiac_sim modules and set correct engine path first.
-
-    Both V5.4 and Bidomain V1 use 'cardiac_sim' as their package name.
-    Before importing from either, we must flush the module cache so Python
-    picks up the correct package.
-    """
-    to_remove = [k for k in sys.modules if k == 'cardiac_sim' or k.startswith('cardiac_sim.')]
-    for k in to_remove:
-        del sys.modules[k]
-    if engine_path in sys.path:
-        sys.path.remove(engine_path)
-    sys.path.insert(0, engine_path)
+# cardiac_core is now self-contained: the three engines are vendored under cardiac_core/_monodomain,
+# _bidomain, _lbm — no sys.modules engine-path hack, no cross-folder imports. (The original engine
+# folders remain on disk, frozen; cardiac_core is the centralized home going forward.)
 
 
 @dataclass
@@ -1358,14 +1338,9 @@ def lbm(
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
 
-    # Import LBM V1 engine (needs LBM path for src.simulation)
-    if _LBM_PATH not in sys.path:
-        sys.path.insert(0, _LBM_PATH)
-    from src.simulation import LBMSimulation
-
-    # Import ionic model from V5.5 (Cm-independent — byte-identical to V5.4; clear bidomain cache if present)
-    _prepare_engine(_V55_PATH)
-    from cardiac_sim.ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model
+    # Construct from the vendored LBM solver + shared ionic (self-contained; no _prepare_engine).
+    from ._lbm.simulation import LBMSimulation
+    from .ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model
 
     # Instantiate ionic model
     model_map = {
