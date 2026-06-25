@@ -42,6 +42,8 @@ _LAZY = {
     'fiber_field_transmural': 'geometry',
     # io
     'save_result': 'io', 'load_result': 'io',
+    # viz (standardized result figures/videos)
+    'propagation_video': 'viz', 'apd_map_figure': 'viz', 'activation_isochrones': 'viz',
 }
 
 

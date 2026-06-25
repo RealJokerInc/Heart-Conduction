@@ -26,6 +26,7 @@ STIM_AMP       = -80.0     # µA/µF (negative = depolarizing)
 T_END_MS       = 40.0      # front ≈ 50 cm/s = 0.05 cm/ms; give it time to cross
 SAVE_EVERY_MS  = 0.5
 SLUG           = "{SLUG}"  # media filename stem
+MAKE_MEDIA     = True      # render standardized propagation video + APD figure
 # ============================================================
 
 Nx, Ny = round(LENGTH_CM / DX), round(WIDTH_CM / DX)
@@ -42,7 +43,8 @@ result = sim.run(t_end=T_END_MS, save_every=SAVE_EVERY_MS)
 cv = result.cv(x1=round(0.2 / DX), x2=round(1.0 / DX), y=Ny // 2)
 print(f"conduction velocity = {cv:.1f} cm/s")
 
-# --- standardized media (uncomment once Phase 4 /sim-media is built) ---
-# from cardiac_core import propagation_video, apd_map_figure
-# print("video:", propagation_video(result, SLUG))
-# print("apd:  ", apd_map_figure(result, SLUG))
+# --- standardized media (regenerable → gitignored media/lab/_sim_outputs/; set MAKE_MEDIA=False to skip) ---
+if MAKE_MEDIA:
+    from cardiac_core import propagation_video, apd_map_figure
+    print("video:", propagation_video(result, SLUG, bulk=True))
+    print("apd:  ", apd_map_figure(result, SLUG, bulk=True))
