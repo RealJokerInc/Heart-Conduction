@@ -7,10 +7,15 @@ name = "cardiac-core"
 version = "0.1.0"
 description = "Unified cardiac simulation core: canonical ionic models + simulation API wrappers."
 requires-python = ">=3.11"
+dependencies = ["mcp>=1.2.0"]   # for the bundled cardiac_mcp MCP server (see [project.scripts])
 
-# Package ONLY cardiac_core (+ its subpackages, incl. cardiac_core.ionic). The repo root
-# is a flat workspace with many non-package dirs (engines, Research, Surrogate, ...) — the
-# include filter keeps the install scoped to cardiac_core* and nothing else.
+[project.scripts]
+cardiac-mcp = "cardiac_mcp.__main__:main"
+
+# Package cardiac_core (+ subpackages, incl. cardiac_core.ionic) AND cardiac_mcp (the MCP server).
+# The repo root is a flat workspace with many non-package dirs (engines, Research, Surrogate, ...) —
+# the include filter keeps the install scoped to these two trees and nothing else.
+# (cardiac_mcp* also matches cardiac_mcp.tests — harmless for the editable install.)
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cardiac_core*"]
+include = ["cardiac_core*", "cardiac_mcp*"]

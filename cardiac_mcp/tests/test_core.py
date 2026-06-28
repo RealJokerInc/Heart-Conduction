@@ -116,6 +116,15 @@ def test_build_manifest_rejects_bad_date():
     assert res["slug"] == "x"
 
 
+def test_list_experiments_always_has_count(tmp_lab):
+    empty = core.list_experiments()
+    assert empty["count"] == 0 and empty["experiments"] == []
+    res = core.build_manifest(goal="lx", date="2026-06-28")
+    core.commit_experiment(res["experiment_token"], confirmed=True)
+    one = core.list_experiments()
+    assert one["count"] == 1
+
+
 def test_server_metadata():
     # serverInfo.version is our package version (not the SDK's), and annotations are set per-tool.
     import asyncio

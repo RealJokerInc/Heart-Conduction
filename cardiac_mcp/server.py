@@ -44,3 +44,24 @@ def cheatsheet() -> str:
 def notebook() -> str:
     """The Lab notebook index — every recorded experiment (date, slug, goal, engine, status, result)."""
     return core.read_notebook()
+
+
+# Prompts — reusable workflow templates (the project's "recipes" as first-class MCP entry points).
+@mcp.prompt(title="Measure conduction velocity")
+def measure_cv(tissue: str = "healthy ventricle") -> str:
+    """Guide a CV measurement through the accountability gate."""
+    return (
+        f"I want to measure conduction velocity in {tissue}. "
+        "Read the cardiac://cheatsheet resource, then call build_manifest, show me the manifest, "
+        "and only call commit_experiment after I confirm."
+    )
+
+
+@mcp.prompt(title="Control vs knockdown CV series")
+def control_vs_knockdown(control_sigma_i: float = 1.74, knockdown_fraction: float = 0.5) -> str:
+    """Guide a paired control/knockdown CV experiment + comparison."""
+    return (
+        "Run a paired CV experiment: a control strip and a knockdown strip with sigma_i scaled by "
+        f"{knockdown_fraction}x (control sigma_i={control_sigma_i}). Use build_manifest for each, "
+        "gate each, then compare the two CVs."
+    )

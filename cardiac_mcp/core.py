@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LAB = REPO_ROOT / "Lab"
@@ -45,6 +46,50 @@ Two tracks:
       4. (optional) `run_experiment(experiment_dir)` -> executes the script, records the result.
   NEVER call commit_experiment before the scientist confirms the manifest. That gate is the point.
 """
+
+
+# ----------------------------------------------------------------------------- tool result models
+# Typed returns so FastMCP emits an MCP `outputSchema` and returns `structuredContent` (spec SHOULD).
+# Values are unchanged — only the annotations are new (nested variable shapes stay `dict[str, Any]`).
+class SimulateResult(TypedDict):
+    engine: str
+    ionic: str
+    grid: dict[str, Any]
+    conductivity: dict[str, Any]
+    cv_cm_per_s: float | None
+    cv_indices: dict[str, int]
+    activated: bool
+    frames: list[int]
+    note: str
+
+
+class ManifestResult(TypedDict):
+    manifest_text: str
+    slug: str
+    experiment_token: str
+    next: str
+
+
+class CommitResult(TypedDict):
+    experiment_dir: str
+    files: list[str]
+    status: str
+    next: str
+
+
+class RunResult(TypedDict):
+    experiment_dir: str
+    status: str
+    cv_cm_per_s: float | None
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class ListResult(TypedDict):
+    count: int
+    experiments: list[str]
+
 
 _ENGINE_WHY = {
     "monodomain": "single potential, fast — default",
@@ -92,7 +137,7 @@ def simulate(
     stim_width_cm: float = 0.05,
     t_end_ms: float = 30.0,
     save_every_ms: float = 0.5,
-) -> dict:
+) -> SimulateResult:
     """Run a quick conduction-velocity simulation on a tissue strip and return the result.
 
     EXPLORATION tool — ephemeral: returns numbers, writes no Lab/ record. Use it to try parameters
@@ -264,7 +309,7 @@ def build_manifest(
     date: str | None = None,
     scientist: str | None = None,
     hypothesis: str | None = None,
-) -> dict:
+) -> ManifestResult:
     """Build (but do NOT run) a recorded experiment: compute params, render the manifest, return a token.
 
     This is step 1 of the accountability gate. Show the returned ``manifest_text`` to the scientist;
@@ -306,7 +351,7 @@ def build_manifest(
     }
 
 
-def commit_experiment(experiment_token: str, confirmed: bool = False) -> dict:
+def commit_experiment(experiment_token: str, confirmed: bool = False) -> CommitResult:
     """Write a recorded experiment to Lab/ — the gated step. REQUIRES scientist confirmation.
 
     Refuses unless ``confirmed=True`` AND the ``experiment_token`` from ``build_manifest`` verifies
@@ -361,7 +406,7 @@ def commit_experiment(experiment_token: str, confirmed: bool = False) -> dict:
     }
 
 
-def run_experiment(experiment_dir: str, timeout_s: int = 900) -> dict:
+def run_experiment(experiment_dir: str, timeout_s: int = 900) -> RunResult:
     """Execute a committed experiment's run.py, sanity-check the result, and record it.
 
     Runs the script with the same Python/env from the repo root, parses the conduction velocity,
@@ -401,10 +446,10 @@ def run_experiment(experiment_dir: str, timeout_s: int = 900) -> dict:
     }
 
 
-def list_experiments() -> dict:
+def list_experiments() -> ListResult:
     """List recorded experiments in Lab/ (folders containing a MANIFEST.md)."""
     if not LAB.exists():
-        return {"experiments": []}
+        return {"count": 0, "experiments": []}
     names = sorted(p.parent.name for p in LAB.glob("*/MANIFEST.md"))
     return {"count": len(names), "experiments": names}
 

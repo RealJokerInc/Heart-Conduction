@@ -15,7 +15,7 @@ packaging, and docs.
 
 ## Success Criteria
 - [x] Phase 1: all 5 tools carry intentional `ToolAnnotations`; `serverInfo.version == "0.1.0"`; markdown resources serve `text/markdown`; `run_experiment`/`commit_experiment` reject path-traversal inputs; new tests prove it. **DONE 2026-06-28 — 13/13 tests green.**
-- [ ] Phase 2: tools return typed results → MCP `outputSchema` + `structuredContent` populated; `cardiac_mcp/README.md` exists; ≥1 prompt registered; server installs as a `cardiac-mcp` console script and `.mcp.json` no longer needs `PYTHONPATH`.
+- [x] Phase 2: tools return typed results → MCP `outputSchema` + `structuredContent` populated; `cardiac_mcp/README.md` exists; ≥1 prompt registered; server installs as a `cardiac-mcp` console script and `.mcp.json` no longer needs `PYTHONPATH`. **DONE 2026-06-28 — 14 tests; 5 tools all w/ outputSchema; 2 prompts; console-script stdio init verified.**
 - [ ] Phase 3: `run_experiment` runs under resource limits + a provenance check; an HTTP transport switch exists (localhost-bound); `cardiac_mcp/REMOTE_DEPLOY.md` documents the auth/security stack required before any non-localhost deploy.
 - [ ] Phase 4 (optional): `server.json` + README ownership marker + LICENSE validate with the MCP Inspector.
 - [ ] All existing tests pass (no regressions): `cardiac_mcp/tests/` + `cardiac_core/tests/`.

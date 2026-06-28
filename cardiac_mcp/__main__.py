@@ -5,5 +5,11 @@ same tools over HTTP); no change to core/server.
 """
 from cardiac_mcp.server import mcp
 
-if __name__ == "__main__":
+
+def main():
+    """Console-script entry point (`cardiac-mcp`) — runs the stdio MCP server."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
