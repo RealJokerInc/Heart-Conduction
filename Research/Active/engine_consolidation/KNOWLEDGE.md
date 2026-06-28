@@ -231,6 +231,17 @@ Audited `cardiac_mcp` against the **official MCP spec, revision 2025-11-25** (4 
 
 **FastMCP (1.28.0) mechanics pinned for the plan:** ctor has `website_url` but **no `version`/`title`** ⇒ set `mcp._mcp_server.version = "0.1.0"` (verified flows to `serverInfo.version`); `mcp.add_tool(fn, annotations=ToolAnnotations(...))` (fields: title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint); `@mcp.resource(uri, mime_type=…)`; structured output via typed returns or `add_tool(..., structured_output=True)`.
 
+### Standardization — SHIPPED Tiers 1–3 (2026-06-28)
+
+Executed the 4-tier PLAN on branch `mcp-standardization` (5 commits: docs `66263a8` → T1 `38d3178` → T2 `8458046` → T3 `2c4bc3a` → record `64c333d`). **Phase 4 (registry publishing) SKIPPED** by user choice (server fully usable locally + documented; publishing only adds public discoverability). **16 `cardiac_mcp` + 140 `cardiac_core` tests green; HTTP mode live-verified.**
+
+- **T1 (metadata + security):** per-tool `ToolAnnotations` (read-only `simulate`/`build_manifest`/`list_experiments`; `commit_experiment` additive; `run_experiment` destructive); `serverInfo.version=0.1.0` via `mcp._mcp_server.version`; resources `text/markdown`; **two path-traversal guards** — `run_experiment` must resolve inside `Lab/` (`is_relative_to`), `build_manifest` date must match `^\d{4}-\d{2}-\d{2}$`.
+- **T2 (completeness):** `TypedDict` returns → `outputSchema`+`structuredContent` on all 5 tools (FastMCP auto-emits from typed returns — no `structured_output=True` needed); `list_experiments` always returns `count`; 2 prompts (`measure_cv`, `control_vs_knockdown`); `cardiac_mcp/README.md`; **Option B packaging** — extended the ROOT `pyproject.toml` (`include=["cardiac_core*","cardiac_mcp*"]`, `dependencies=["mcp>=1.2.0"]`, `[project.scripts] cardiac-mcp`); single `pip install -e .`; `.mcp.json` now launches the `cardiac-mcp` console script (no `PYTHONPATH`).
+- **T3 (remote-readiness):** `run_experiment` provenance-marker check (only runs cardiac-core-generated scripts) + `RLIMIT_CPU`(loose, `timeout_s*ncpu`)/`RLIMIT_FSIZE` preexec — **NO `RLIMIT_AS`** (caps virtual AS → aborts torch); `CARDIAC_MCP_TRANSPORT=http` → localhost-bound Streamable HTTP (uvicorn 127.0.0.1, DNS-rebinding protection, unauthenticated-warning to stderr); `cardiac_mcp/REMOTE_DEPLOY.md` (spec-cited OAuth/Origin/SSRF/sandbox checklist + deploy gate).
+- **Execution note:** `RLIMIT_CPU` loosened from the plan's `≈timeout_s` to `timeout_s*ncpu` (it sums CPU-time across torch threads → would false-kill a real run); verified by `test_run_experiment_under_limits` (the one test exercising the real subprocess+limits path).
+
+The plan (PLAN.md + Mutation Log) was hardened through 3 audit rounds to CONVERGENCE: CLEAR before execution; archived in `plans/2026-06-28_*`.
+
 ## Cross-Engine Capability Census (2026-06-01)
 
 Read-only census of all three engines' construct/run/state/stimulus/geometry surfaces, to ground the vocabulary + API. The **ionic layer and physical conventions are already a shared language; divergence is concentrated in construction, voltage naming, state, and the run/result contract.** LBM is the consistent outlier.
