@@ -95,11 +95,13 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 | Stimulus protocol | 2 | Bidomain uses += (accumulate), V5.4 uses = (overwrite) |
 | StructuredGrid | 2 | Bidomain adds boundary_spec |
 
-## North-Star: Conversational Simulation Builder (vocabulary-first → unified API)
+## North-Star: lab-facing simulation platform (BOTH goals SHIPPED — see the two "SHIPPED" sections above)
 
-**Goal (now the question's main goal).** A non-coder converses with Claude, which both *builds* cardiac simulations and *teaches* how conduction works. Two layers:
+> **Status (2026-06-25): both north-star goals delivered.** Goal 1 = the unified construction API (shipped + the engines consolidated into one self-contained `cardiac_core`). Goal 2 = the LLM layer, **REFRAMED** from "non-coder conversational builder" to a **script-generating skill suite for wet-lab scientists** (cell-culture / tissue-chip) — it GENERATES runnable `cardiac_core` scripts behind a manifest + double-check gate, not a teaching wizard. The original two-layer vision below is retained for the design rationale it still informs (the deferred Layer-A `SimulationSpec`).
+
+**Original vision (informs the deferred Layer-A `SimulationSpec`):** two layers —
 1. **Unified construction API (Goal 1)** — one standardized, engine-agnostic, easy-to-construct way to declare + run: a declarative, validated, serializable **SimulationSpec** → run → **SimulationResult** → analysis. Three field tiers: required (LLM asks) / defaulted (silent good values) / derived (computed).
-2. **Self-contained LLM wrapper (Goal 2)** — Claude skills + reference docs driving Goal 1 under a strict protocol (gather → validate → construct → run → verify → present).
+2. **LLM wrapper (Goal 2)** — Claude skills + reference docs driving Goal 1 under a strict protocol. *Shipped form:* the `/sim-*` skill suite (interpret → manifest → confirm → generate → run → verify), driving the factories directly; `SimulationSpec` deferred.
 
 **Design insights (settled-ish):**
 - **Spec schema = the intake questionnaire.** Make spec fields self-describing (`{required?, prompt, options, default}`); the LLM "gather" step = ask each unfilled required field. Questionnaire can't drift from engine needs. The cross-goal leverage point.
@@ -176,6 +178,58 @@ The "LLM wrapper" (north-star Goal 2), built for **wet-lab scientists** (cell-cu
 **New code:** `cardiac_core/viz.py` (headless Agg, float64, lazy-exported, tested) + `cardiac_core/API_CHEATSHEET.md`. Everything else is markdown skills + `Lab/` scaffolding — additive.
 
 **Demo seed:** `Lab/2026-06-25_cv-strip-{control,knockdown}` — control σ → CV 59.3, half-σ → CV 41.0 (eikonal √D); a real control/knockdown series the notebook compares.
+
+## Goal-2 MCP server — `cardiac-core` — SHIPPED local (2026-06-26)
+
+An **MCP (Model Context Protocol) server** that exposes the shipped `cardiac_core` API to *any* MCP host (Claude Desktop, Claude Code, IDEs) — the portability step the Claude-Code-only `/sim-*` skills could not provide (skills run only inside the Claude Code terminal; the terminal is itself the barrier for the wet-lab audience). The server is a **thin adapter over `cardiac_core`** — the same relationship the PubMed/Drive MCP connectors have to their APIs.
+
+**Layout (`cardiac_mcp/` at repo root, sibling to `cardiac_core`/`cardiac_ml`):**
+```
+cardiac_mcp/
+  core.py        ← ALL logic, transport-agnostic + unit-testable (imports cardiac_core LAZILY)
+  server.py      ← FastMCP wrapper: registers core.* as tools/resources (no logic)
+  __main__.py    ← `python -m cardiac_mcp` → stdio; HTTP later = one-line transport swap
+  tests/test_core.py  (10 tests, gate logic fast + 1 slow end-to-end simulate)
+.mcp.json        ← registers "cardiac-core" with Claude Code (env python, stdio, PYTHONPATH=repo)
+```
+
+**Two design decisions (user, 2026-06-26):**
+- **Local stdio now, remote-HTTP later.** Achieved by keeping every behaviour in `core.py` pure functions; `server.py` only binds them to a transport; `__main__` chooses it. Promote to remote = `mcp.run()` → `mcp.run(transport="streamable-http")`, zero tool changes.
+- **Both tracks, as separate tools** (the user's "quick look" vs "recorded" split):
+  - **DIRECT** — `simulate(...)` → ephemeral CV measurement, **no `Lab/` record**, defaults to coarse `dx=0.02` (~8s; fine `dx=0.01` ~38s). Returns `{cv_cm_per_s, activated, grid, conductivity, note}` with a sanity `note` (mirrors the skill's "verify before presenting").
+  - **GATED** — `build_manifest(...)` → `commit_experiment(token, confirmed=True)` → `run_experiment(dir)`. Ports the `/sim-experiment` **double-check gate STRUCTURALLY**: `build_manifest` returns a plain-text manifest + a **self-signed `experiment_token`** (base64 of `{manifest_text, params, sig=sha256}`); `commit_experiment` **refuses unless `confirmed=True` AND the token verifies intact**, so the written `Lab/{date}_{slug}/{MANIFEST.md, run.py}` is *provably* the manifest the scientist reviewed (the model cannot commit a script differing from what it showed). Reuses the skill conventions: slug-overwrite guard (never clobber a prior `MANIFEST.md`), `NOTEBOOK.md` row (built→done|failed), `run.py` generated from `API_CHEATSHEET.md` only. `run_experiment` runs the script in-env from repo root, parses CV, records the outcome both ways.
+
+**Resources:** `cardiac://cheatsheet` (the canonical `API_CHEATSHEET.md` — the anti-hallucination asset, now available to *any* host, not just Claude Code) and `cardiac://notebook` (`Lab/NOTEBOOK.md`).
+
+**Maintenance facts:**
+- `mcp` SDK **1.28.0** installed in the `heart-conduction` env (`pip install "mcp>=1.2.0"`; bundles `FastMCP`). The server imports `cardiac_core` (torch) **lazily** inside `simulate`/`run_experiment` only → fast MCP handshake (no torch load on boot).
+- FastMCP derives each tool's JSON schema from the `core` function's **signature + docstring** → the cheatsheet-accurate signatures are the contract. Bare-`dict` returns arrive as JSON **text content** (`structuredContent` only populated for typed-model returns); the host model reads the text — fine.
+- **Validation (2026-06-26):** 10 `cardiac_mcp` tests pass (gate refusal w/o confirm, tampered-token refusal, folder+notebook write, no-overwrite, status update, end-to-end `simulate` CV in range); server boots with 5 tools + 2 resources; real stdio client↔server roundtrip OK (`build_manifest` + cheatsheet read over the wire).
+- **Activation in Claude Code:** project-scoped `.mcp.json` → Claude Code prompts to approve the `cardiac-core` server on next start; once approved its tools/resources appear. (Server logs to stderr; stdout is the protocol channel.)
+
+**Deferred (next MCP increments):** more resources/prompts (presets, `GLOSSARY.md`, a control-vs-knockdown prompt template); a media tool wrapping `cardiac_core.viz`; reentry/restitution recipes in the gated path (v1 is CV-strip only); the **streamable-HTTP transport + hosting/auth** for remote wet-lab scientists (the "end product").
+
+## Goal-2 MCP server — standardization audit (2026-06-28)
+
+Audited `cardiac_mcp` against the **official MCP spec, revision 2025-11-25** (4 parallel spec-research agents, verified against modelcontextprotocol.io + `schema.ts`, not memory). **Core insight:** a *running* server only needs code; a *standardized* one adds (1) a per-primitive **metadata layer** and (2) **distribution documents** — the latter is the "list of supporting materials" intuition. All audited features (annotations, outputSchema, mimeType) exist in the installed SDK `mcp` 1.28.0 (they predate 2025-11-25).
+
+**Authoritative requirements that matter for our server (MUST/SHOULD):**
+- **Tools** — MUST: `name` + valid non-null `inputSchema`; declare `tools` capability; validate inputs; recoverable failures returned as `isError: true` tool-results (NOT JSON-RPC errors — those are for protocol faults). SHOULD: `description`; `outputSchema` + conforming `structuredContent` for structured returns; tool **annotations** set intentionally. **Annotation defaults are a trap:** unset ⇒ `readOnlyHint=false, destructiveHint=true, idempotentHint=false, openWorldHint=true` (annotations are untrusted hints, but a good server sets them so careful hosts gate correctly).
+- **Resources** — MUST: `uri` + `name`; SHOULD: `mimeType`. Templates use RFC 6570 `uriTemplate`. Declare `subscribe`/`listChanged` only if you actually emit them.
+- **Prompts** — MUST: `name`; each argument MUST have `name`. Optional but high-fit for our recipes.
+- **Lifecycle/serverInfo** — MUST: `serverInfo.name` + `version`. (FastMCP leaves `version=None` ⇒ falls back to the SDK version `1.28.0`; set it.) `instructions` optional/recommended (we have it).
+- **Transports** — stdio (local, current) is correct; auth SHOULD NOT be used for stdio (env creds). Streamable HTTP (remote) carries the heavy obligations below. stdio MUST keep `stdout` clean (FastMCP logs to stderr — OK; `run_experiment` captures the child's stdout — OK).
+- **Security (server)** — MUST validate all tool inputs; host MUST get user consent before invoking a tool; a code-executing tool SHOULD be sandboxed with filesystem restricted (to `Lab/`) and least privilege; MUST NOT accept tokens not issued to this server (no passthrough).
+- **Remote (HTTP) delta** — auth flips from "SHOULD NOT" to a MUST stack: OAuth 2.1 + PKCE(S256), RFC 9728 Protected Resource Metadata, RFC 8707 Resource Indicators (audience binding), per-request `Authorization`, secure non-deterministic session IDs (MUST NOT authenticate via session), `Origin` validation → 403 (DNS-rebinding; FastMCP auto-enables for localhost binds), SSRF defenses.
+- **Distribution (REQUIRED only to publish to the registry)** — `server.json` manifest (reverse-DNS `name` e.g. `io.github.<user>/cardiac-core`, immutable semver `version`, `packages[]`/`remotes[]`), README + ownership marker (`<!-- mcp-name: … -->`), `pyproject` console-script, LICENSE, Dockerfile, committed `uv.lock`; validate with the MCP Inspector (`uv run mcp dev`).
+
+**`cardiac_mcp` gaps found (→ the 4-tier PLAN, 2026-06-28):**
+- **Tier 1 (correctness, now):** tool annotations unset (all 5 advertised destructive/open-world); `serverInfo.version` defaults to SDK's; resource `mimeType` defaults to text/plain (cheatsheet/notebook are markdown); **two path-traversal input-validation bugs** — `run_experiment` runs any `run.py` (absolute/`..` `experiment_dir` escapes via `REPO_ROOT/experiment_dir`), `commit_experiment` folder uses the unsanitized model-supplied `date`.
+- **Tier 2 (completeness):** bare-`dict` returns ⇒ no `outputSchema`/`structuredContent` (type the returns); no `cardiac_mcp/README.md`; 0 prompts (recipes are a natural fit); relies on a `PYTHONPATH` hack in `.mcp.json` instead of an installed console-script.
+- **Tier 3 (remote-readiness):** `run_experiment` unsandboxed (local-OK, remote = RCE); the full OAuth/Origin/session/SSRF stack unbuilt — a project unto itself, do when a real HTTP deployment target exists.
+- **Tier 4 (publishing, optional):** no `server.json`/reverse-DNS name/LICENSE/Dockerfile/Inspector validation — only needed for public registry discoverability.
+
+**FastMCP (1.28.0) mechanics pinned for the plan:** ctor has `website_url` but **no `version`/`title`** ⇒ set `mcp._mcp_server.version = "0.1.0"` (verified flows to `serverInfo.version`); `mcp.add_tool(fn, annotations=ToolAnnotations(...))` (fields: title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint); `@mcp.resource(uri, mime_type=…)`; structured output via typed returns or `add_tool(..., structured_output=True)`.
 
 ## Cross-Engine Capability Census (2026-06-01)
 
@@ -261,6 +315,8 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 **Physics correction (important):** there is NO Cm time-dilation invariant. Tissue Cm divides only the voltage update; gate time-constants and concentration rates carry no Cm. So scaling Cm changes AP **morphology**, not timescale: APD does NOT scale (218→292 ms at k=2, not 2×). CV *does* scale ~1/Cm, but by eikonal scaling (CV ∝ √(D_phys·upstroke_rate), both ∝1/Cm), not dilation. The original PLAN and both audit passes asserted the (false) dilation invariant; the empirical 0D test caught it. The fix was correct throughout — only the validation strategy was wrong.
 
 ### Migration plan (toward unified core)
+
+> **SUPERSEDED (2026-06-25).** This original "rewire engines to import from cardiac_core, delete their copies" plan was NOT executed as written. The unified core was instead achieved by **A2 copy-vendoring** — the engines were COPIED into `cardiac_core/_monodomain/_bidomain/_lbm` (originals frozen, not deleted/rewired), the `_prepare_engine` hack deleted, shared `ionic/mesh/stimulus` extracted. See "cardiac_core unified ground-up package — SHIPPED". The deferred cleanups below that DO remain: Phase-4 Form-A→B convergence + delete `for_monodomain()`, and the Phase-1 downstream consumer (Surrogate/Optimizer) migration off the engine-local `cardiac_sim.ionic`. Table kept for historical context.
 
 | Phase | What | Status |
 |-------|------|--------|

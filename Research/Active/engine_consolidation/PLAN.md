@@ -1,566 +1,792 @@
-# PLAN: cardiac_core unified ground-up package (Approach A2 — dissolve cardiac_sim)
+# PLAN: cardiac_mcp standardization — Tiers 1–4 (MCP spec 2025-11-25 audit)
 
-Created: 2026-06-25
-Engine(s): cardiac_core (vendor-in); Monodomain V5.5 / Bidomain V1 / LBM V1 read as COPY SOURCES only (originals untouched)
+Created: 2026-06-28
+Engine(s): None (the `cardiac_mcp/` MCP server + `.mcp.json`; drives the shipped `cardiac_core` API — engines untouched)
 Research question: [engine_consolidation](README.md)
-Source: [IDEALOG.md](IDEALOG.md) — 2026-06-25 thread entry ("consolidation = unified ground-up package (Approach A2)")
+Source: [IDEALOG.md](IDEALOG.md) — 2026-06-28 "MCP audit + blueprint" thread entry; reference table in KNOWLEDGE "Goal-2 MCP server — standardization audit (2026-06-28)"
 
 ## Objective
-Make `cardiac_core/` a single self-contained package: dissolve the engines' `cardiac_sim`/`src`
-packages INTO it as one flat unified layout, extract the shared `ionic`+`mesh`+`stimulus` once, and
-**delete the `_prepare_engine()` sys.modules hack**. After this, no file under `cardiac_core/` imports
-from `Monodomain/`, `Bidomain/`, or `LBM/`. Copy-only — the three engine folders stay exactly as they
-are (their own dev/tests). 121 cardiac_core tests stay green throughout.
+Bring `cardiac_mcp` (the cardiac-core MCP server, shipped 2026-06-26) from "working" to "standardized" against the
+official MCP spec **revision 2025-11-25**. Four tiers, each a phase: (1) honest metadata + two path-traversal input-
+validation fixes, (2) completeness (output schemas, README, prompts, installable packaging), (3) remote-readiness
+(sandbox the code-executing tool + HTTP transport + an auth design doc), (4) optional registry publishing artifacts.
+The public tool/resource surface and all `cardiac_core` behaviour stay unchanged — this is metadata, validation,
+packaging, and docs.
 
 ## Success Criteria
-- [ ] `cardiac_core/` is import-self-contained: a guard asserts **no `cardiac_core/**` `.py` references `Monodomain/`/`Bidomain/`/`LBM/` paths, `_prepare_engine`, `cardiac_sim`, or `from src.`**.
-- [ ] Shared `cardiac_core/{ionic,mesh,stimulus}` are the single home for those modules (ionic already exists; mesh is a bidomain+mono **superset** incl. `boundary_spec`; stimulus unified).
-- [ ] `cardiac_core/{monodomain,bidomain,lbm}` hold the three solvers; `api.py` constructs them via `from cardiac_core.{monodomain,bidomain,lbm} import …` (no sys.path games).
-- [ ] `_prepare_engine()` + `_V55_PATH`/`_BIDOMAIN_PATH`/`_LBM_PATH` deleted; both classical engines importable simultaneously (no `cardiac_sim` collision).
-- [ ] `pip install -e .` still works (new subpackages discovered); the 3 engine originals are byte-unchanged.
-- [ ] **INTEGRITY: each vendored engine is BEHAVIOR-IDENTICAL to its original** — a canonical sim reproduces the pre-vendor golden output bit-identically (atol=0), the vendored tree differs from its source ONLY by the enumerated cross-ref lines + facade `__init__`, and the original engine folders' content-hash is unchanged.
-- [ ] All 121 existing cardiac_core tests pass (no regressions) + new structure/guard/integrity tests.
+- [x] Phase 1: all 5 tools carry intentional `ToolAnnotations`; `serverInfo.version == "0.1.0"`; markdown resources serve `text/markdown`; `run_experiment`/`commit_experiment` reject path-traversal inputs; new tests prove it. **DONE 2026-06-28 — 13/13 tests green.**
+- [ ] Phase 2: tools return typed results → MCP `outputSchema` + `structuredContent` populated; `cardiac_mcp/README.md` exists; ≥1 prompt registered; server installs as a `cardiac-mcp` console script and `.mcp.json` no longer needs `PYTHONPATH`.
+- [ ] Phase 3: `run_experiment` runs under resource limits + a provenance check; an HTTP transport switch exists (localhost-bound); `cardiac_mcp/REMOTE_DEPLOY.md` documents the auth/security stack required before any non-localhost deploy.
+- [ ] Phase 4 (optional): `server.json` + README ownership marker + LICENSE validate with the MCP Inspector.
+- [ ] All existing tests pass (no regressions): `cardiac_mcp/tests/` + `cardiac_core/tests/`.
 
 ## Architecture Changes
-- NEW: `cardiac_core/mesh/` — copy of the mono `tissue_builder/mesh/` (base, loader, structured, triangular) **+ bidomain's `boundary.py`**, with `structured.py` reconciled to the **superset** (supports `boundary_spec`).
-- NEW: `cardiac_core/stimulus/` — copy of `tissue_builder/stimulus/` (StimulusProtocol; already aligned across engines).
-- NEW: `cardiac_core/monodomain/` — V5.5 solver subtree (`simulation/`, `utils/`, `tissue/` IsotropicTissue) + facade `__init__.py`.
-- NEW: `cardiac_core/bidomain/` — Bidomain V1 solver subtree (`simulation/`, `utils/`, `tissue/` BidomainConductivity) + facade `__init__.py`.
-- NEW: `cardiac_core/lbm/` — LBM V1 `src/` contents (simulation, collision, streaming, boundary, lattice, solver) + facade `__init__.py`.
-- MOD: `cardiac_core/api.py` — replace each `_prepare_engine(... ) ; from cardiac_sim… import …` / `from src… import …` block with `from cardiac_core.{…} import …`; delete `_prepare_engine`, `_V55_PATH`, `_BIDOMAIN_PATH`, `_LBM_PATH` (final phase). **(audit HIGH) ALSO the two stimulus-helper imports** `cardiac_core/api.py:964` (`_build_stimulus_protocol_v54`) + `:1008` (`_build_stimulus_protocol_bidomain`), each `from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol` → `from cardiac_core.stimulus.protocol import StimulusProtocol` (these run inside the factory bodies after `_prepare_engine`; they break when it's deleted). 964 repointed in Phase 2, 1008 in Phase 3.
-- MOD: `cardiac_core/grid.py` — `_structured_grid()` imports `from cardiac_core.mesh.structured import StructuredGrid` (drop the `_prepare_engine` call).
-- MOD: solver cross-imports (≈16 lines total) — rewrite `from …ionic` → `from cardiac_core.ionic`, `from …tissue_builder.mesh…` → `from cardiac_core.mesh…`, `from …tissue_builder.stimulus…` → `from cardiac_core.stimulus…`. **Solver-internal relative imports (`from .state`, `from ..ionic_time_stepping`, `from .solver…`) are NOT touched** — the subtree moves intact.
-- MOD: `cardiac_core/tests/*` — module-top `sys.path.insert(... Engine_*)` lines removed (**audit MED: this includes `test_run.py:10-12` and `test_integration.py:11-13`, not just `test_monodomain/test_bidomain/test_lbm`**); the `…MatchesDirect` tests import the "direct" classes from `cardiac_core.{monodomain,bidomain,lbm}` instead of `cardiac_sim`/`src`. **(audit CRITICAL) `test_monodomain.py::test_engine_module_under_v55` asserts `'Engine_V5.5' in rl.__file__` — repoint to assert the live `rush_larsen` module resolves under `cardiac_core/monodomain/` (Phase 2).**
-- MOD: `pyproject.toml` — confirm `setuptools` discovers the new `cardiac_core.{ionic,mesh,stimulus,monodomain,bidomain,lbm}` subpackages.
+- MOD: `cardiac_mcp/server.py` — replace the `add_tool` loop with per-tool `add_tool(fn, annotations=ToolAnnotations(...))`; set `mcp._mcp_server.version`; add `mime_type` to both `@mcp.resource`; register prompts (P2); add HTTP transport switch (P3).
+- MOD: `cardiac_mcp/core.py` — input validation in `run_experiment` (~376) + `build_manifest` (~282); typed `TypedDict` return models (P2); subprocess hardening in `run_experiment` (P3).
+- MOD: `cardiac_mcp/__main__.py` — add `main()` entry point (console script) + transport selection (P2/P3).
+- MOD: `cardiac_mcp/tests/test_core.py` — add validation tests (P1); structured-output assertions (P2).
+- MOD: `.mcp.json` — switch to the `cardiac-mcp` console script, drop `PYTHONPATH` (P2).
+- MOD: `./pyproject.toml` (repo root) — add `cardiac_mcp*` to the package include, a `cardiac-mcp` console script, and the `mcp>=1.2.0` dependency (P2; **Option B** — no separate `cardiac_mcp/pyproject.toml`).
+- NEW: `cardiac_mcp/README.md` — tools/resources/prompts + config snippet (P2).
+- NEW: `cardiac_mcp/REMOTE_DEPLOY.md` — auth/security checklist for HTTP (P3).
+- NEW: `cardiac_mcp/server.json`, `LICENSE`, `Dockerfile` (P4, optional).
 
-## Known Failures (from IDEALOG — do NOT retry / reintroduce)
-- **Approach B (relocate-but-keep-hack)** — rejected: leaves nested `cardiac_core/engines/X/cardiac_sim/…` blobs + a packaging-exclusion + the hack. User wants flat/unified, not nested.
-- **Rename-only (A1)** — rejected: renames the `cardiac_sim` silos but leaves `ionic`/`mesh`/`stimulus` **triplicated** inside each engine. Not unified.
-- **"~70 absolute-import rewrites" estimate** — FALSE. The engines are 100% relative-import internally (0 absolute `cardiac_sim`/`src`, 0 `sys.path`, 0 `importlib`, 0 `__file__`, 0 name-as-string). Only the ≈16 solver→shared cross-refs change; everything else survives the move untouched.
-- **Flattening `simulation/classical/` to reduce depth** — do NOT, in this plan. Collapsing levels changes relative-import dot-counts and forces internal rewrites (the thing we're avoiding). Preserve the subtree; expose a clean surface via the package `__init__.py`. A deeper flatten is a SEPARATE optional follow-up.
-- **Deleting the engine originals** — NO. Copy only; `Monodomain/Engine_V5.5/`, `Bidomain/Engine_V1/`, `LBM/Engine_V1/` stay byte-identical.
-- **Entangling FEM/TriangularMesh removal** — do NOT. FEM-ditch is a confirmed-but-separate cleanup. Bring `fem.py`/`triangular.py` over as-is so nothing breaks; remove later.
-- **Touching V5.3/V5.4/`_archive`** — read-only. **Modifying the reaction (`/Cm`) or any solver numerics** — out of scope; this is a code-move, byte-for-byte where not a cross-ref rewrite.
-- **Deleting `_prepare_engine()` before ALL THREE engines are vendored** — it's shared; deleting it early breaks the not-yet-moved engines. Delete in Phase 4 only.
+## Known Failures / Pitfalls (from IDEALOG + audit)
+- **Do NOT conflate the official SDK's vendored FastMCP 1.x (`mcp.server.fastmcp`) with the community `fastmcp` 2.x (gofastmcp.com).** This plan targets the installed `mcp` 1.28.0 only.
+- **FastMCP has no `version`/`title` constructor kwarg** — earlier assumption was wrong. `serverInfo.version` MUST be set via `mcp._mcp_server.version` (verified 2026-06-28: it flows into `create_initialization_options().server_version`).
+- **Tool annotations are untrusted hints** — set them for honest UX/gating, but never rely on a *client* honoring them; the server-side validation (P1 path checks, P3 limits) is the real safety boundary.
+- **stdio MUST keep stdout clean** — never `print()` to stdout in the server process; FastMCP logs to stderr (OK), and `run_experiment` MUST keep `capture_output=True` so the child's stdout never reaches the server's stdout.
 
 ---
 
-## Phase 0: Git backup + integrity baseline (golden capture)
+## Phase 1: Tier 1 — Honest metadata + input-validation fixes
 
-**Goal**: A durable rollback point + per-engine GOLDEN outputs, so every later phase proves the vendored
-engine is BEHAVIOR-IDENTICAL to the original — not merely "imports resolve". This closes the gap left by
-repointing the `…MatchesDirect` tests (which, post-vendor, compare vendored-vs-vendored and cannot catch a
-numerics regression from the move).
-**Tier**: small
-**Estimated scope**: confirm the backup (already done) + one golden-capture script + an integrity test + a source-hash snapshot.
-
-### Phase Context
-- **Backup DONE (2026-06-25):** tags `cardiac-core-api-track-complete` (commit 3627836, 121 tests green) + `pre-consolidation-vendoring`; bundle `~/heart-conduction-PRE-CONSOLIDATION-2026-06-25.bundle` (`git bundle verify` → complete). Rollback: `git reset --hard pre-consolidation-vendoring` (or clone the bundle). Phase 0 only CONFIRMS these exist.
-- Goldens are captured ONCE here, against the CURRENT (pre-vendor) engines reached via `_prepare_engine`. They become the fixed reference each later phase must reproduce bit-identically. Because vendoring copies the engine byte-for-byte (only import lines change, which cannot alter numerics), the correct expectation is **exact equality (atol=0)**, not a tolerance.
-- The originals must stay byte-unchanged; snapshot a content-hash of the three source trees so an accidental in-place edit is caught.
-
-### Step 0.1: Capture goldens + source-tree hashes + integrity test
-**Model**: opus
-
-#### Read First
-- `cardiac_core/run.py` (`simulate`, `run_*`) — the deterministic API entry the golden uses.
-- `cardiac_core/tests/test_run.py` / `test_construction_api.py` — canonical small-sim setups to mirror (so the golden sim is cheap + deterministic).
-
-#### Why
-A golden pinned to the original engines is the ONLY check that proves the *move* is behavior-preserving;
-import-resolution and wrapper-vs-direct equality do not. Capturing it before any file moves is essential —
-after Phase 1 the originals are no longer the construction path.
-
-#### Implementation Spec
-**Files to create:**
-- `cardiac_core/tests/_integrity/make_goldens.py` — for engine in {monodomain, bidomain, lbm}: run a fixed, deterministic sim via the current `cardiac_core` API (fixed grid, stim, dt, t_end, cpu, float64); save `golden_{engine}.pt` = `{times, Vm, phi_e?}`. Also write `engine_src_sha.json` = a recursive sha256 over the sorted file contents of `Monodomain/Engine_V5.5/cardiac_sim`, `Bidomain/Engine_V1/cardiac_sim`, `LBM/Engine_V1/src`.
-- `cardiac_core/tests/test_integrity.py` — `test_{engine}_matches_golden` (×3): re-run the SAME canonical sim, assert `torch.equal(Vm, golden.Vm)` (atol=0) + times/phi_e equal; `test_originals_untouched`: recompute the three source hashes, assert == `engine_src_sha.json`.
-
-#### Pseudocode
-```
-make_goldens: for e in engines: r = canonical_sim(e); torch.save({times,Vm,phi_e}, golden_e.pt)
-              write engine_src_sha.json (sha256 of each original tree)
-test_{e}_matches_golden: g=load(golden_e); r=canonical_sim(e); assert torch.equal(r.Vm,g.Vm) and torch.equal(r.times,g.times)
-test_originals_untouched: assert recompute_hashes()==load(engine_src_sha.json)
-```
-
-#### Test Spec
-- `tests/test_integrity.py::test_monodomain_matches_golden` / `…bidomain…` / `…lbm…` — pass NOW (current == golden, trivially) and must keep passing after each vendoring phase.
-- `tests/test_integrity.py::test_originals_untouched` — the three source trees' hash matches the baseline.
-
-#### Checklist
-- [ ] backup tags + bundle confirmed present (`git tag -n1 | grep pre-consolidation`; `git bundle verify <bundle>`).
-- [ ] `make_goldens.py` run; `golden_{monodomain,bidomain,lbm}.pt` + `engine_src_sha.json` committed.
-- [ ] `test_integrity.py` green (4 tests) against the CURRENT engines.
-
-#### Verify
-```bash
-cd /home/norepinephrine/Documents/Heart-Conduction
-git tag -n1 | grep -E "pre-consolidation|api-track-complete"
-conda run -n heart-conduction python cardiac_core/tests/_integrity/make_goldens.py
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v
-```
-
-#### Exit Criteria
-- [ ] backup verified; 3 goldens + source-hash captured; `test_integrity.py` green (the bit-identical baseline).
-
-#### Risk
-A non-deterministic canonical sim (e.g. CUDA nondeterminism, random init) would make the golden flaky. Mitigation: force CPU + float64 + fixed seeds + a deterministic ionic init; the existing API defaults are deterministic on CPU.
-
-### Phase 0 Verification / Exit / Cleanup
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v
-```
-- [ ] goldens + integrity test committed; backup confirmed. (No code moved yet — this phase is capture-only.)
-
-**-> Commit point: git commit after Phase 0** (`test(cardiac_core): integrity goldens + source-hash baseline before vendoring`)
-
----
-
-## Phase 1: Shared `cardiac_core/mesh/` + `cardiac_core/stimulus/`
-
-**Goal**: The two shared leaf packages exist as canonical copies (ionic already does). Nothing consumes
-them yet, so this phase is purely additive — 121 tests must still pass unchanged.
+**Goal**: Every primitive carries correct, intentional metadata, and the two path-traversal holes are closed. Cheap, high-value, ships the honest safety profile. Independently deliverable.
 **Tier**: medium
-**Estimated scope**: 2 new packages (~6 + ~2 files) + reconcile one superset file; update `grid.py`.
+**Estimated scope**: 2 steps — server.py metadata (annotations + version + MIME); core.py input validation + tests.
 
 ### Phase Context
-- `cardiac_core/ionic/` already exists (Phase-1 canonical copy; `celltype_is_endo` reconciled). Reuse it; do not re-copy.
-- Mono mesh files: `base.py loader.py structured.py triangular.py`. Bidomain mesh files: `base.py boundary.py structured.py`. The shared `mesh/` = **union**: `base, loader, structured(superset), triangular, boundary`.
-- **`structured.py` superset (audit MED — bidomain IS a strict superset, take it as the base).** Bidomain's `structured.py` adds, beyond mono's: the `boundary_spec` attribute AND the `edge_masks`, `dirichlet_mask_phi_e`, `neumann_mask_phi_e` properties, plus `field`/`Dict` imports and a `from .boundary import …` line. No mono-only method is dropped, so **start from bidomain's `structured.py`** and confirm by diff that every mono public method/property survives; verify by running BOTH engines' suites (Phases 2–3).
-- **`mesh/__init__.py` is a UNION, not a copy (audit LOW).** Mono exports `Mesh, TriangularMesh, StructuredGrid`; bidomain exports `Mesh, StructuredGrid, BoundarySpec, BCType, Edge, EdgeBC` (no TriangularMesh). The shared `__init__` re-exports the union: `StructuredGrid, TriangularMesh, Mesh, BoundarySpec, BCType, Edge, EdgeBC`. Neither engine's `__init__.py` works verbatim.
-- **`stimulus/` is NOT just `protocol.py` (audit HIGH).** The stimulus `__init__.py` does `from .regions import rectangular_region, circular_region, left_edge_region, point_stimulus` — so copy `regions.py` too (or drop the regions re-export from the `__init__`). Copying both `protocol.py` + `regions.py` + `__init__.py` is safest.
-- These packages are leaves: `mesh`/`stimulus` do not import `ionic` or any solver. Confirm with a grep before copying; if a stray cross-ref exists, rewrite it to `cardiac_core.*`.
-- float64 throughout; copy verbatim except the superset reconciliation.
+- The server is `cardiac_mcp/server.py`: `mcp = FastMCP("cardiac-core", instructions=core.SERVER_INSTRUCTIONS)`, then a `for _fn in (...): mcp.add_tool(_fn)` loop registering 5 tools, then two `@mcp.resource(...)` functions.
+- All tool LOGIC lives in `cardiac_mcp/core.py` (transport-agnostic). Do NOT move logic into server.py.
+- FastMCP 1.28.0 verified signatures: `add_tool(fn, name=None, title=None, description=None, annotations: ToolAnnotations | None = None, icons=None, meta=None, structured_output=None)`; `resource(uri, *, name=None, title=None, description=None, mime_type: str | None = None, ...)`. `ToolAnnotations` fields: `title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint` (import from `mcp.types`).
+- Package version is `cardiac_mcp.__version__ = "0.1.0"` (in `cardiac_mcp/__init__.py`).
+- Tests run with: `conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q` (set `PYTHONPATH=` repo root until Phase 2 makes it installable).
+- Annotation policy (the truth table for our 5 tools):
+  | tool | readOnlyHint | destructiveHint | idempotentHint | openWorldHint |
+  |------|---|---|---|---|
+  | `simulate` | True | (n/a) | (n/a) | False |
+  | `list_experiments` | True | (n/a) | (n/a) | False |
+  | `build_manifest` | True | (n/a) | (n/a) | False |
+  | `commit_experiment` | False | False | False | False |
+  | `run_experiment` | False | True | False | False |
+  (`destructiveHint`/`idempotentHint` are only meaningful when `readOnlyHint=False`; omit them for the read-only tools.)
 
-### Step 1.1: Create `cardiac_core/mesh/` (superset) + `cardiac_core/stimulus/`
+### Step 1.1: server.py — set version, per-tool annotations, resource MIME types
 **Model**: opus
 
 #### Read First
-- `Monodomain/Engine_V5.5/cardiac_sim/tissue_builder/mesh/` (all files) and `Bidomain/Engine_V1/cardiac_sim/tissue_builder/mesh/structured.py` + `boundary.py` — to build the union + superset `structured.py`.
-- `Monodomain/Engine_V5.5/cardiac_sim/tissue_builder/stimulus/protocol.py` and the Bidomain one — confirm they are equivalent (IDEALOG: stimulus aligned, all accumulate `+=`).
-- `cardiac_core/grid.py:_structured_grid` — the one current consumer pattern to repoint.
+- `cardiac_mcp/server.py` (whole file, ~40 lines) — the `add_tool` loop + two resource decorators.
+- `cardiac_mcp/__init__.py` — confirm `__version__`.
 
 #### Why
-Extracting the shared geometry/stimulus ONCE is what makes the result "unified" rather than three
-renamed silos. mesh is the only non-trivial merge (the `boundary_spec` superset); doing it first, in
-isolation, de-risks Phases 2–3 which both consume it.
+Unset annotations make FastMCP fall back to spec defaults (`destructiveHint=true, openWorldHint=true`) for ALL tools — dishonest for `simulate`/`build_manifest`/`list_experiments` (pure reads) and it fails to single out `run_experiment` (the only code-runner). `serverInfo.version` is `None` → reports the SDK's `1.28.0`, misidentifying the server. Markdown served as `text/plain` renders poorly in hosts.
 
 #### Implementation Spec
-**Files to create:**
-- `cardiac_core/mesh/__init__.py` — re-export `StructuredGrid`, `BoundarySpec`/`BCType`/`Edge` (from boundary), `TriangularMesh` (FEM, kept for now).
-- `cardiac_core/mesh/{base,loader,structured,triangular,boundary}.py` — copies; `structured.py` = bidomain superset; `__init__.py` = union (incl. `TriangularMesh` + boundary types).
-- `cardiac_core/stimulus/__init__.py` + `cardiac_core/stimulus/protocol.py` + **`cardiac_core/stimulus/regions.py`** (the `__init__` re-exports `.regions`).
-**Files to modify:**
-- `cardiac_core/grid.py` — `_structured_grid()`: `from cardiac_core.mesh.structured import StructuredGrid` (drop `_prepare_engine`/`_V55_PATH` use here).
-**Interfaces:** unchanged class APIs (`StructuredGrid.create_rectangle/from_mask/coordinates/flat_to_grid`, `StimulusProtocol.add_stimulus`).
+**Files to modify:** `cardiac_mcp/server.py`.
+**Interfaces / Signatures:**
+- `from mcp.types import ToolAnnotations`
+- `from cardiac_mcp import __version__`
+- After `mcp = FastMCP("cardiac-core", instructions=core.SERVER_INSTRUCTIONS)` add: `mcp._mcp_server.version = __version__`.
+- Replace the `for _fn in (...): mcp.add_tool(_fn)` loop with 5 explicit calls, each passing `annotations=ToolAnnotations(...)` per the truth table, plus a human `title=`.
+- Add `mime_type="text/markdown"` to both `@mcp.resource(...)` decorators.
 
 #### Pseudocode
-```
-copy mono tissue_builder/mesh/*  -> cardiac_core/mesh/
-add  bidomain mesh/boundary.py   -> cardiac_core/mesh/boundary.py
-structured.py: start from whichever is the superset; ensure boundary_spec attr + mask + fibers all present
-fix any internal cross-ref inside mesh/ (e.g. structured importing boundary) to relative (within mesh/) or cardiac_core.mesh.*
-copy stimulus/protocol.py -> cardiac_core/stimulus/
-grid.py: _structured_grid -> from cardiac_core.mesh.structured import StructuredGrid
+```python
+from mcp.types import ToolAnnotations
+from cardiac_mcp import __version__
+
+mcp = FastMCP("cardiac-core", instructions=core.SERVER_INSTRUCTIONS)
+mcp._mcp_server.version = __version__   # FastMCP exposes no version kwarg (verified 2026-06-28)
+
+_RO = dict(readOnlyHint=True, openWorldHint=False)   # read-only, closed-world
+mcp.add_tool(core.simulate,          title="Run quick CV simulation",      annotations=ToolAnnotations(**_RO))
+mcp.add_tool(core.build_manifest,    title="Build experiment manifest",    annotations=ToolAnnotations(**_RO))
+mcp.add_tool(core.list_experiments,  title="List recorded experiments",    annotations=ToolAnnotations(**_RO))
+mcp.add_tool(core.commit_experiment, title="Commit experiment to Lab/",
+             annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
+                                         idempotentHint=False, openWorldHint=False))
+mcp.add_tool(core.run_experiment,    title="Execute a committed experiment",
+             annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True,
+                                         idempotentHint=False, openWorldHint=False))
+
+@mcp.resource("cardiac://cheatsheet", mime_type="text/markdown")
+def cheatsheet() -> str: ...
+@mcp.resource("cardiac://notebook", mime_type="text/markdown")
+def notebook() -> str: ...
 ```
 
 #### Test Spec
-- `tests/test_mesh_shared.py::test_structured_superset` — `cardiac_core.mesh.StructuredGrid.create_rectangle(...)` builds; `.coordinates`, `.flat_to_grid`, and a `boundary_spec` assignment all work.
-- `tests/test_mesh_shared.py::test_stimulus_import` — `from cardiac_core.stimulus import StimulusProtocol`; `add_stimulus` accumulates.
-- existing `tests/test_grid.py` — must pass UNCHANGED (grid now builds via shared mesh).
+- `cardiac_mcp/tests/test_core.py::test_server_metadata` — import `cardiac_mcp.server.mcp`; assert `mcp._mcp_server.version == "0.1.0"`; `list_tools()` returns a `list`, so build `tools = {t.name: t for t in asyncio.run(mcp.list_tools())}` and assert `tools["simulate"].annotations.readOnlyHint is True` and `tools["run_experiment"].annotations.destructiveHint is True`. Importing the server is torch-free (`core` imports `cardiac_core` lazily) so the test is fast. (Audit M4/L5: gives this pure-wiring step its own automated check; R2-L2: look the tool up by name — `list_tools` is a list, not a name-keyed dict.)
 
 #### Checklist
-- [ ] `cardiac_core/mesh/` (5 files + union `__init__`) created; `structured.py` = bidomain superset (boundary_spec + edge_masks/dirichlet/neumann props).
-- [ ] `cardiac_core/stimulus/` (`protocol.py` + `regions.py` + `__init__`) created; `import cardiac_core.stimulus` succeeds (regions re-export resolves).
-- [ ] internal mesh cross-refs resolved (no `cardiac_sim`/`tissue_builder` strings remain in `cardiac_core/mesh`).
-- [ ] `grid.py` builds via `cardiac_core.mesh`; `_prepare_engine` no longer called from grid.py.
-- [ ] new tests + `test_grid.py` green.
+- [ ] Import `ToolAnnotations` + `__version__`.
+- [ ] Set `mcp._mcp_server.version`.
+- [ ] Replace loop with 5 annotated `add_tool` calls (correct truth-table values).
+- [ ] Add `mime_type="text/markdown"` to both resources.
+- [ ] Add `test_server_metadata` (version + annotations) to `tests/test_core.py`.
 
 #### Verify
 ```bash
 cd /home/norepinephrine/Documents/Heart-Conduction
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_grid.py cardiac_core/tests/test_mesh_shared.py -v
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
+PYTHONPATH=$PWD conda run -n heart-conduction python -c "
+import asyncio; from cardiac_mcp.server import mcp
+print('version', mcp._mcp_server.version)
+ts = asyncio.run(mcp.list_tools())
+for t in ts: print(t.name, t.annotations.readOnlyHint, t.annotations.destructiveHint, t.annotations.openWorldHint)
+"
 ```
+Expect `version 0.1.0`; `simulate/build_manifest/list_experiments` → `readOnlyHint=True … openWorldHint=False`; `run_experiment` → `readOnlyHint=False destructiveHint=True`.
 
 #### Exit Criteria
-- [ ] Shared mesh/stimulus import cleanly; `grid.py` uses them; 120 (+live gate) tests green.
+- [ ] `serverInfo.version` is `0.1.0`.
+- [ ] All 5 tools report annotations matching the truth table.
+- [ ] Both resources report `text/markdown`.
 
 #### Risk
-`structured.py` superset misses a mono-only or bidomain-only method → an engine breaks in Phase 2/3.
-Mitigation: diff both originals line-by-line; the superset must contain the union of public methods; the
-real proof is Phases 2–3 running each engine's suite against it.
+`mcp._mcp_server` is a private attribute — a future SDK bump could rename it. Mitigation: it's verified for 1.28.0; the version assertion in Verify catches a break immediately.
+
+### Step 1.2: core.py — close the two path-traversal holes + tests
+**Model**: opus
+
+#### Read First
+- `cardiac_mcp/core.py:362-398` — `run_experiment`; the `d = (REPO_ROOT / experiment_dir).resolve()` at ~376.
+- `cardiac_mcp/core.py:246-305` — `build_manifest`; `date = date or _today()` at ~282.
+- `cardiac_mcp/core.py:14-30` — module constants (`REPO_ROOT`, `LAB`), confirm `re` is imported.
+
+#### Why
+Spec MUST: validate all tool inputs. `(REPO_ROOT / experiment_dir)` resets to absolute if `experiment_dir` is absolute (`Path("/x")` semantics) and `..` segments escape — so `run_experiment` will execute ANY `run.py` on disk. `commit_experiment` builds `LAB / f"{date}_{slug}"` from the model-supplied `date`, which is unsanitized (only `slug` is `_slugify`'d) — a `date` like `../../x` traverses out of `Lab/`. Both are low-risk locally but become real attack surface the moment the server is remote (Phase 3); fix at the source now.
+
+#### Implementation Spec
+**Files to modify:** `cardiac_mcp/core.py`.
+- In `run_experiment`, after computing `d`, before the `run.py` existence check: reject `d` not under `LAB`.
+- In `build_manifest`, right after `date = date or _today()`: reject a `date` not matching `^\d{4}-\d{2}-\d{2}$`.
+**Interfaces:** use `Path.is_relative_to` (Python 3.11). `LAB` and `REPO_ROOT` already module-level.
+
+#### Pseudocode
+```python
+# run_experiment, after: d = (REPO_ROOT / experiment_dir).resolve()
+if not d.is_relative_to(LAB.resolve()):
+    raise ValueError(f"run_experiment(): experiment_dir must be inside Lab/ (got {experiment_dir!r}).")
+
+# build_manifest, after: date = date or _today()
+if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+    raise ValueError(f"build_manifest(): date must be YYYY-MM-DD (got {date!r}).")
+```
+
+#### Test Spec
+- `cardiac_mcp/tests/test_core.py::test_run_experiment_rejects_traversal` — assert BOTH an absolute path `core.run_experiment("/etc")` AND a `..`-escape `core.run_experiment("../../etc")` raise `ValueError` matching "inside Lab/". The guard is lexical after `.resolve()`, so it raises whether or not `Lab/` exists and never executes a subprocess. (Audit M3: keep it robust by asserting both input shapes; the test does not depend on the real `Lab/` contents.)
+- `cardiac_mcp/tests/test_core.py::test_build_manifest_rejects_bad_date` — `core.build_manifest(goal="x", date="../../x")` raises `ValueError` matching "YYYY-MM-DD"; a valid `date="2026-06-28"` still succeeds.
+
+#### Checklist
+- [ ] Add the `is_relative_to(LAB)` guard in `run_experiment`.
+- [ ] Add the date-regex guard in `build_manifest`.
+- [ ] Add both tests.
+- [ ] Confirm `re` is imported (it is — used by `_slugify`/`_parse_cv`).
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+PYTHONPATH=$PWD conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q
+```
+Expect all tests pass (prior 10 + Step 1.1's `test_server_metadata` + 2 traversal/date tests = 13).
+
+#### Exit Criteria
+- [ ] Traversal inputs raise before any subprocess/file write.
+- [ ] Valid inputs unaffected (existing gate/commit tests still green).
+
+#### Risk
+`is_relative_to` on a non-existent path is fine (pure lexical after `.resolve()`). Mitigation: `.resolve()` is called first so symlink games are normalized.
 
 ### Phase 1 Verification
 ```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
+cd /home/norepinephrine/Documents/Heart-Conduction
+PYTHONPATH=$PWD conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q
 ```
+
 ### Phase 1 Exit Criteria
-- [ ] `cardiac_core/mesh` + `cardiac_core/stimulus` exist + tested; grid.py repointed; no regressions.
+- [ ] All new tests pass; all existing `cardiac_mcp` tests pass (10 prior + 3 new = 13 total).
+- [ ] `serverInfo.version == 0.1.0`, annotations correct, resources `text/markdown`.
+- [ ] Path-traversal inputs rejected.
+
 ### Phase 1 Cleanup
-- float64; V5.3/V5.4 untouched; engine originals untouched; no leftover `cardiac_sim`/`tissue_builder` strings in the new packages.
+- [ ] No `print()` to stdout added anywhere in the server process.
+- [ ] No `cardiac_core`/torch import added at server.py top level (keep the lazy import in core).
+- [ ] Annotation truth-table values double-checked against the Phase Context table.
 
-**-> Commit point: git commit after Phase 1** (`feat(cardiac_core): shared mesh + stimulus packages`)
-
----
-
-## Phase 2: Vendor the monodomain solver → `cardiac_core/monodomain/`
-
-**Goal**: The monodomain factory constructs from `cardiac_core.monodomain` (V5.5 solver), consuming the
-shared `cardiac_core.{ionic,mesh,stimulus}`. No `_prepare_engine(_V55_PATH)` for monodomain.
-**Tier**: large
-**Estimated scope**: copy one solver subtree + rewrite ~7 cross-refs + repoint the monodomain factory + the MatchesDirect test.
-
-### Phase Context
-- **Move the subtree INTACT** to preserve solver-internal relative imports. Copy from V5.5
-  `cardiac_sim/`: `simulation/` (**including the parent `simulation/__init__.py`** — audit LOW — and the whole `classical/` tree), `utils/`, and the **WHOLE** `tissue_builder/tissue/` dir (audit MED — `__init__.py` + `isotropic.py`; do NOT cherry-pick by class name) → `cardiac_core/monodomain/{simulation,utils,tissue}/`. Do NOT bring `ionic`, `tissue_builder/mesh`, `tissue_builder/stimulus` (those are now shared).
-- **Rewrite ONLY these cross-refs** (verified 2026-06-25) to absolute `cardiac_core.*`:
-  - `simulation/classical/monodomain.py:45` `from ...ionic import …` → `from cardiac_core.ionic import …`
-  - `simulation/classical/monodomain.py:48` `from ...tissue_builder.stimulus.protocol import StimulusProtocol` → `from cardiac_core.stimulus.protocol import StimulusProtocol`
-  - `simulation/classical/solver/ionic_time_stepping/{rush_larsen,base,forward_euler}.py` `from .....ionic.base import IonicModel` → `from cardiac_core.ionic.base import IonicModel` (TYPE_CHECKING blocks)
-  - `simulation/classical/discretization_scheme/fdm.py:18`, `fvm.py:23` `from ....tissue_builder.mesh.structured import StructuredGrid` → `from cardiac_core.mesh.structured import StructuredGrid`
-  - `simulation/classical/discretization_scheme/fem.py:15` `from ....tissue_builder.mesh.triangular import TriangularMesh` → `from cardiac_core.mesh.triangular import TriangularMesh`
-- **Do NOT touch** `from ..ionic_time_stepping…`, `from .state`, `from .discretization_scheme…`, `from .solver…` — these are solver-internal (note: `ionic_time_stepping` ≠ `ionic`).
-- `cardiac_core/monodomain/__init__.py` exposes the clean surface: `from .simulation.classical import MonodomainSimulation, SimulationState; from .simulation.classical.discretization_scheme import FDMDiscretization`.
-- `cardiac_core/monodomain/tissue/` holds IsotropicTissue (mono-specific; NOT shared).
-- The `_prepare_engine`/`_V55_PATH` STAY in api.py this phase (bidomain/lbm still need them); only the monodomain factory + the LBM-ionic import switch off V5.5. Actually keep LBM-ionic on the old path until Phase 4; only the monodomain ENGINE import switches here.
-
-### Step 2.1: Copy the monodomain solver subtree + rewrite cross-refs
-**Model**: opus
-
-#### Read First
-- `Monodomain/Engine_V5.5/cardiac_sim/simulation/classical/monodomain.py` (full) — the construction entry + its imports.
-- the cross-ref list above (each file/line).
-- `cardiac_core/api.py` monodomain factory (the `_prepare_engine(_V55_PATH)` block + the `MonodomainSimulation/FDMDiscretization/StructuredGrid/StimulusProtocol/ionic` imports + grid build).
-
-#### Why
-This is the first real engine dissolve. Preserving the subtree (only cross-refs change) is what keeps
-the ~85 files importing correctly with zero internal edits; tests are the proof.
-
-#### Implementation Spec
-**Files to create:** `cardiac_core/monodomain/` (copied `simulation/` incl. parent `__init__`, `utils/`, whole `tissue/` + facade `__init__.py`).
-**Files to modify:** the ~7 cross-ref lines (above); `cardiac_core/api.py` monodomain factory; **`cardiac_core/api.py:964` `_build_stimulus_protocol_v54` — `from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol` → `from cardiac_core.stimulus.protocol import StimulusProtocol`** (audit HIGH — it runs inside the monodomain factory body).
-**Interfaces:** `from cardiac_core.monodomain import MonodomainSimulation, FDMDiscretization`; the factory builds the engine grid via `from cardiac_core.mesh.structured import StructuredGrid` and stimulus via `from cardiac_core.stimulus.protocol import StimulusProtocol`.
-
-#### Pseudocode
-```
-cp -r V5.5 simulation/ utils/ tissue_builder/tissue/  ->  cardiac_core/monodomain/{simulation,utils,tissue}
-rewrite the 7 cross-ref lines -> cardiac_core.{ionic,mesh,stimulus}.*
-write cardiac_core/monodomain/__init__.py (facade re-exports)
-api.py monodomain(): delete _prepare_engine(_V55_PATH); imports become
-    from cardiac_core.monodomain import MonodomainSimulation, FDMDiscretization
-    from cardiac_core.mesh.structured import StructuredGrid
-    (stimulus builder already builds StimulusProtocol -> point at cardiac_core.stimulus)
-```
-
-#### Test Spec
-- existing `tests/test_monodomain.py` (incl. `TestEngineIsV55` Cm-behavioral gate + `TestMonodomainMatchesDirect`) — update the `MatchesDirect` "direct" imports from `cardiac_sim…` → `cardiac_core.monodomain…`/`cardiac_core.mesh…`; remove the module-top `sys.path.insert(... Engine_V5.4)`. All must pass.
-- **(audit CRITICAL) `test_monodomain.py::test_engine_module_under_v55` (≈line 144-148)** asserts `'Engine_V5.5' in rl.__file__` for the live `rush_larsen` module — this FAILS after vendoring (module now resolves under `cardiac_core/monodomain/`). Repoint the assertion to `'cardiac_core' in rl.__file__ and 'monodomain' in rl.__file__` (and `'Engine_V5' not in rl.__file__`). The behavioral `test_reaction_divides_by_cm` gate already proves Cm-correctness and is unaffected.
-- **(audit MED) `tests/test_run.py:10-12` and `tests/test_integration.py:11-13`** also have module-top `sys.path.insert(... Engine_V5.4 / Bidomain/Engine_V1 / LBM/Engine_V1)` — remove these too (they become dangling/dead and trip the Phase-5 guard).
-- existing `tests/test_integration.py`, `test_run*.py`, `test_construction_api.py` monodomain paths — green.
-
-#### Checklist
-- [ ] subtree copied (simulation+parent `__init__`, utils, whole tissue); 7 cross-refs rewritten; `__init__` facade added; IsotropicTissue under `monodomain/tissue/`.
-- [ ] monodomain factory imports from `cardiac_core.monodomain` + `cardiac_core.mesh`/`stimulus`; **`api.py:964` stimulus helper repointed to `cardiac_core.stimulus`**; no `_prepare_engine(_V55_PATH)` in the monodomain factory.
-- [ ] `test_monodomain.py` MatchesDirect repointed; **`test_engine_module_under_v55` repointed to `cardiac_core/monodomain`**; module-top engine `sys.path.insert` removed (incl. `test_run.py:10-12`, `test_integration.py:11-13`).
-- [ ] grep: `cardiac_core/monodomain/` has no `cardiac_sim`/`tissue_builder` import strings.
-
-#### Verify
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_monodomain.py cardiac_core/tests/test_integration.py cardiac_core/tests/test_run.py cardiac_core/tests/test_run_contract.py cardiac_core/tests/test_construction_api.py -v
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
-```
-
-#### Exit Criteria
-- [ ] monodomain runs from `cardiac_core.monodomain`; Cm-behavioral gate still passes; all tests green.
-
-#### Risk
-A missed cross-ref (e.g. a deeper `from ....tissue_builder`) → ImportError. Mitigation: after copy, `grep -rn "tissue_builder\|from \.\+ionic\b\|cardiac_sim" cardiac_core/monodomain` and rewrite every hit; tests catch the rest. Superset mesh missing a method → mono breaks here (fix in Phase 1's structured.py).
-
-### Phase 2 Verification / Exit / Cleanup
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
-# INTEGRITY GATE (monodomain):
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py::test_monodomain_matches_golden cardiac_core/tests/test_integrity.py::test_originals_untouched -v
-# Source fidelity: vendored vs original — ONLY the listed cross-refs + facade __init__ may differ:
-diff -rq Monodomain/Engine_V5.5/cardiac_sim/simulation cardiac_core/monodomain/simulation || true   # review every diff is an enumerated cross-ref
-git status --short Monodomain/Engine_V5.5/   # must be EMPTY (original untouched)
-```
-- [ ] monodomain fully on `cardiac_core.monodomain`; no regressions; **`test_monodomain_matches_golden` bit-identical (atol=0)**; **source-fidelity diff = only enumerated cross-refs + facade `__init__`**; **`git status` on `Engine_V5.5/` EMPTY**. float64. No `cardiac_sim` import strings in `cardiac_core/monodomain`.
-
-**-> Commit point: git commit after Phase 2** (`feat(cardiac_core): vendor monodomain solver, drop V5.5 path`)
+**-> Commit point: `git commit` after Phase 1 passes** (suggested branch: `mcp-standardization`; we are on `main`).
 
 ---
 
-## Phase 3: Vendor the bidomain solver → `cardiac_core/bidomain/`
+## Phase 2: Tier 2 — Completeness (schemas, prompts, README, installable)
 
-**Goal**: bidomain factory constructs from `cardiac_core.bidomain`; no `_prepare_engine(_BIDOMAIN_PATH)`.
-**Tier**: large
-**Estimated scope**: same pattern as Phase 2; ~9 cross-refs; `BidomainConductivity` stays per-engine.
-
-### Phase Context
-- Copy from Bidomain V1 `cardiac_sim/`: `simulation/` (**incl. parent `simulation/__init__.py`** — audit LOW — and the `classical/` bidomain tree: `bidomain.py`, `state.py`, `discretization/`, `solver/ionic_stepping/`, `solver/splitting/`, elliptic solvers), `utils/`, the **WHOLE** `tissue_builder/tissue/` dir (audit MED — `__init__.py` + `isotropic.py` + `conductivity.py`; bidomain's `tissue/__init__` re-exports BOTH `IsotropicTissue` and `BidomainConductivity`, so don't cherry-pick) → `cardiac_core/bidomain/{simulation,utils,tissue}/`. Skip `simulation/lbm/` (dead), `ionic`, `tissue_builder/mesh`, `tissue_builder/stimulus` (shared).
-- **Rewrite these cross-refs** (verified) → `cardiac_core.*`:
-  - `simulation/classical/bidomain.py:133,136` `from ...ionic import TTP06Model/ORdModel` → `from cardiac_core.ionic import …`
-  - `simulation/classical/solver/ionic_stepping/{base,rush_larsen,forward_euler}.py` `from ....ionic.base import IonicModel` → `from cardiac_core.ionic.base import IonicModel`
-  - `simulation/classical/discretization/base.py:15`, `fdm.py:46` `from ....tissue_builder.mesh.structured import StructuredGrid` → `from cardiac_core.mesh.structured import StructuredGrid`
-  - `simulation/classical/discretization/fdm.py:47` `from ....tissue_builder.mesh.boundary import BoundarySpec, BCType, Edge` → `from cardiac_core.mesh.boundary import BoundarySpec, BCType, Edge`
-  - `simulation/classical/discretization/fdm.py:48` `from ....tissue_builder.tissue.conductivity import BidomainConductivity` → **`from ...tissue.conductivity import BidomainConductivity`** (stays per-engine — adjust the relative depth to the new `cardiac_core/bidomain/tissue/`, OR `from cardiac_core.bidomain.tissue.conductivity import …`).
-- **Do NOT touch** `from ..ionic_stepping…`, `from .state`, `from .discretization…`, `from .solver…` (internal).
-- `cardiac_core/bidomain/__init__.py` re-exports `BidomainSimulation`, `BidomainFDMDiscretization`, `BoundarySpec` (re-export from `cardiac_core.mesh`), `BidomainConductivity`.
-- The api.py bidomain factory currently does its own σ→D math + `BidomainConductivity(...)`; only the import source changes (`from cardiac_core.bidomain import BidomainSimulation, BidomainFDMDiscretization, BidomainConductivity` + `from cardiac_core.mesh import StructuredGrid, BoundarySpec`).
-
-### Step 3.1: Copy bidomain subtree + rewrite cross-refs + repoint factory
-**Model**: opus
-
-#### Read First
-- `Bidomain/Engine_V1/cardiac_sim/simulation/classical/bidomain.py` + `discretization/fdm.py` (the cross-refs).
-- `cardiac_core/api.py` bidomain factory (the `_prepare_engine(_BIDOMAIN_PATH)` block + `BidomainSimulation/BidomainFDMDiscretization/StructuredGrid/BoundarySpec/BidomainConductivity` imports + the σ→D block).
-- `cardiac_core/tests/test_bidomain.py` (MatchesDirect + module-top sys.path inserts).
-
-#### Why
-Bidomain is the second classical engine sharing `cardiac_sim`; once it's on `cardiac_core.bidomain`, the
-two no longer collide, unlocking the hack deletion in Phase 4.
-
-#### Implementation Spec
-**Files to create:** `cardiac_core/bidomain/` (`simulation/`, `utils/`, `tissue/` + `__init__.py`).
-**Files to modify:** the ~9 cross-refs; `api.py` bidomain factory; **`api.py:1008` `_build_stimulus_protocol_bidomain` — `from cardiac_sim.tissue_builder.stimulus.protocol import StimulusProtocol` → `from cardiac_core.stimulus.protocol import StimulusProtocol`** (audit HIGH — runs inside the bidomain factory body); `test_bidomain.py`.
-**Interfaces:** `from cardiac_core.bidomain import BidomainSimulation, BidomainFDMDiscretization, BidomainConductivity`; `from cardiac_core.mesh import StructuredGrid, BoundarySpec`.
-
-#### Pseudocode
-```
-cp bidomain simulation/(classical only) utils/ tissue_builder/tissue/ -> cardiac_core/bidomain/{simulation,utils,tissue}
-rewrite the 9 cross-refs (ionic+mesh -> cardiac_core.*; conductivity -> bidomain-local)
-write cardiac_core/bidomain/__init__.py
-api.py bidomain(): delete _prepare_engine(_BIDOMAIN_PATH); import from cardiac_core.bidomain + cardiac_core.mesh
-```
-
-#### Test Spec
-- `tests/test_bidomain.py` — repoint MatchesDirect "direct" imports to `cardiac_core.bidomain`/`cardiac_core.mesh`; drop module-top engine `sys.path.insert`. All pass.
-- bidomain paths in `test_run*.py`, `test_integration.py`, `test_construction_api.py` — green (incl. the declarative `test_bidomain_from_grid`).
-
-#### Checklist
-- [ ] subtree copied (no `simulation/lbm`); 9 cross-refs rewritten; BidomainConductivity under `bidomain/tissue/`; `__init__` facade.
-- [ ] bidomain factory imports from `cardiac_core.bidomain` + `cardiac_core.mesh`; **`api.py:1008` stimulus helper repointed to `cardiac_core.stimulus`**; no `_prepare_engine(_BIDOMAIN_PATH)`.
-- [ ] `test_bidomain.py` repointed; grep clean (`cardiac_core/bidomain` has no `cardiac_sim`/`tissue_builder` strings).
-
-#### Verify
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_bidomain.py cardiac_core/tests/test_integration.py cardiac_core/tests/test_construction_api.py -v
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
-```
-
-#### Exit Criteria
-- [ ] bidomain runs from `cardiac_core.bidomain`; monodomain + bidomain coexist without `_prepare_engine` between them; all tests green.
-
-#### Risk
-mesh superset must serve bidomain's `boundary_spec` path (the elliptic BC). Mitigation: `test_bidomain` boundary/bath tests exercise it; if a `BoundarySpec` method is mono-absent, it's already in the shared `boundary.py` (copied from bidomain). Relative-depth slip on the `tissue.conductivity` cross-ref → ImportError; mitigation: prefer the absolute `from cardiac_core.bidomain.tissue.conductivity import …`.
-
-### Phase 3 Verification / Exit / Cleanup
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q --deselect cardiac_core/tests/test_conductivity.py::test_live_cv_gate
-# INTEGRITY GATE (bidomain):
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py::test_bidomain_matches_golden cardiac_core/tests/test_integrity.py::test_originals_untouched -v
-diff -rq Bidomain/Engine_V1/cardiac_sim/simulation/classical cardiac_core/bidomain/simulation/classical || true   # review each diff
-git status --short Bidomain/Engine_V1/   # must be EMPTY
-```
-- [ ] bidomain on `cardiac_core.bidomain`; no regressions; **`test_bidomain_matches_golden` bit-identical**; **source-fidelity diff = only enumerated cross-refs + facade**; **`git status` on `Engine_V1/` EMPTY**. float64. grep clean.
-
-**-> Commit point: git commit after Phase 3** (`feat(cardiac_core): vendor bidomain solver, drop bidomain path`)
-
----
-
-## Phase 4: Vendor LBM → `cardiac_core/lbm/` + DELETE the hack
-
-**Goal**: LBM constructs from `cardiac_core.lbm`; `_prepare_engine()` and all three path constants are
-deleted. cardiac_core is now import-self-contained.
-**Tier**: large
-**Estimated scope**: copy `src/`→`lbm/` (easiest — no internal ionic refs); repoint factory; ionic now from `cardiac_core.ionic`; delete hack.
-
-### Phase Context
-- Copy LBM `src/` contents → `cardiac_core/lbm/` directly (simulation, collision/, streaming/, boundary/, lattice/, solver/). Internal imports are relative (`from .solver.rush_larsen import ionic_step`) → survive untouched. LBM has **no internal ionic import** (it receives an ionic_model object), so zero cross-ref rewrites inside lbm/.
-- The LBM factory's ionic instance currently comes from `_prepare_engine(_V55_PATH); from cardiac_sim.ionic import TTP06Model, …`. Switch to `from cardiac_core.ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model`. Switch `from src.simulation import LBMSimulation` → `from cardiac_core.lbm.simulation import LBMSimulation`.
-- After all three engines + ionic are off the hack: **delete `_prepare_engine`, `_V55_PATH`, `_BIDOMAIN_PATH`, `_LBM_PATH`** from api.py, plus any remaining `import sys`/`sys.path` use that existed only for the hack (verify before removing `import sys`).
-- `cardiac_core/lbm/__init__.py` re-exports `LBMSimulation`.
-
-### Step 4.1: Copy LBM + repoint factory + delete `_prepare_engine`
-**Model**: opus
-
-#### Read First
-- `LBM/Engine_V1/src/simulation.py` head (its relative imports).
-- `cardiac_core/api.py` lbm factory (the `_LBM_PATH` sys.path insert + `from src.simulation import LBMSimulation` + `_prepare_engine(_V55_PATH); from cardiac_sim.ionic import …`).
-- `cardiac_core/api.py:25-37` (`_prepare_engine` + the 3 path constants — to delete).
-- `cardiac_core/tests/test_lbm.py` (MatchesDirect uses `sim_direct.run` returning a tuple; module-top inserts).
-
-#### Why
-LBM is the last engine on the hack; removing it lets the hack and all cross-folder paths die — the
-success criterion of the whole plan.
-
-#### Implementation Spec
-**Files to create:** `cardiac_core/lbm/` (copied `src/` contents + `__init__.py`).
-**Files to modify:** `api.py` lbm factory + DELETE `_prepare_engine`/`_V55_PATH`/`_BIDOMAIN_PATH`/`_LBM_PATH`; `test_lbm.py`.
-**Interfaces:** `from cardiac_core.lbm.simulation import LBMSimulation`; ionic from `cardiac_core.ionic`.
-
-#### Pseudocode
-```
-cp -r LBM/Engine_V1/src/*  ->  cardiac_core/lbm/
-write cardiac_core/lbm/__init__.py
-api.py lbm(): from cardiac_core.lbm.simulation import LBMSimulation; from cardiac_core.ionic import (models)
-DELETE _prepare_engine, _V54/_V55/_BIDOMAIN/_LBM_PATH; drop now-dead `import sys` if unused
-```
-
-#### Test Spec
-- `tests/test_lbm.py` — repoint MatchesDirect "direct" import to `cardiac_core.lbm`; drop module-top engine inserts. Pass.
-- `tests/test_run_contract.py::test_record_ionic_states_lbm_not_implemented` + LBM paths in `test_run/integration/construction_api` — green.
-
-#### Checklist
-- [ ] `cardiac_core/lbm/` copied; `__init__` facade; LBM factory imports from `cardiac_core.lbm` + `cardiac_core.ionic`.
-- [ ] `_prepare_engine` + 3 path constants DELETED; `import sys` removed if now unused.
-- [ ] `test_lbm.py` repointed.
-
-#### Verify
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q   # FULL suite incl. live gate
-# Guard matches only REAL imports / hack calls — NOT docstring path-mentions (audit HIGH).
-# conductivity.py:11 docstring references "Monodomain/Engine_V5.5/..." legitimately; do NOT flag it.
-grep -rnE "^[[:space:]]*(from|import)[[:space:]]+(cardiac_sim|src)[. ]|_prepare_engine\(" \
-  cardiac_core --include=*.py | grep -v "tests/_live_cv_gate_driver.py" \
-  && echo "FOUND cross-folder import/hack — NOT self-contained" || echo "CLEAN — no cross-folder imports"
-```
-
-#### Exit Criteria
-- [ ] All 121 tests pass with the hack GONE; the grep prints CLEAN.
-
-#### Risk
-A residual `import sys` / `sys.path` use elsewhere in api.py → NameError after deletion. Mitigation: grep `sys\.` in api.py before removing `import sys`. LBM `src` is a generic name — ensure nothing else imports top-level `src` after the move.
-
-### Phase 4 Verification / Exit / Cleanup
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q
-# FULL INTEGRITY GATE (all 3 engines now vendored, hack gone):
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_integrity.py -v   # all 4: 3 goldens + originals_untouched
-diff -rq LBM/Engine_V1/src cardiac_core/lbm || true   # LBM: expect NO diffs (no cross-refs rewritten internally)
-git status --short Monodomain/ Bidomain/ LBM/   # must be EMPTY (all 3 originals untouched)
-```
-- [ ] hack deleted; 121 green; grep CLEAN; **all 3 goldens bit-identical + `test_originals_untouched` green**; **`git status` on all 3 engine dirs EMPTY** (byte-unchanged; working tree shows only `cardiac_core/` + docs).
-
-**-> Commit point: git commit after Phase 4** (`feat(cardiac_core): vendor LBM, delete _prepare_engine hack — self-contained`)
-
----
-
-## Phase 5: Seal — guard test, packaging, drift note
-
-**Goal**: Lock self-containment with an automated guard; confirm the editable install; document drift.
+**Goal**: Structured outputs, discoverable docs, prompt templates, and a proper installable package so `.mcp.json` drops the `PYTHONPATH` hack. Independently deliverable.
 **Tier**: medium
-**Estimated scope**: 1 guard test + pyproject check + a SYNC note.
+**Estimated scope**: 4 steps.
 
 ### Phase Context
-- The guard is the durable success criterion — it should FAIL if any future edit re-introduces a cross-folder import or the hack.
-- pyproject: the new subpackages must be discoverable. With proper `__init__.py` chains they are real `cardiac_core.*` subpackages; confirm `pip install -e .` re-resolves and `import cardiac_core.monodomain` works from an arbitrary cwd.
+- Tools currently return bare `dict` → FastMCP emits no `outputSchema` and returns results as JSON **text** only (`structuredContent` is `None`; verified in the 2026-06-26 roundtrip).
+- FastMCP derives `outputSchema` + returns `structuredContent` when the tool's return is a typed structure (`TypedDict`/dataclass/pydantic). Alternatively `add_tool(..., structured_output=True)` forces it.
+- `cardiac_core` is editable-installed (scoped to `cardiac_core*`); `cardiac_mcp` is NOT a package yet (reached via `PYTHONPATH` in `.mcp.json`).
+- Keep the public surface identical — typing returns must not change field names/values.
 
-### Step 5.1: Guard test + packaging confirm + SYNC note
+### Step 2.1: Typed return models → `outputSchema` + `structuredContent`
 **Model**: opus
 
 #### Read First
-- `pyproject.toml` (the `cardiac_core*` package-find config).
-- `cardiac_core/__init__.py` (lazy export map — add no engine internals).
+- `cardiac_mcp/core.py` — the `return {...}` of `simulate` (~141), `build_manifest` (~298), `commit_experiment` (~354), `run_experiment` (~389), `list_experiments` (~404). (Audit L2: anchors corrected to actual lines.)
+- FastMCP behaviour: confirm with `python -c "from mcp.server.fastmcp import FastMCP; help(FastMCP.add_tool)"` that `structured_output` + typed returns produce an output schema.
 
 #### Why
-Without the guard, the `_prepare_engine` hack or a stray `Monodomain/` import can silently creep back.
+Spec SHOULD: provide `outputSchema` and return conforming `structuredContent` for structured results — it lets any host validate + parse results structurally instead of re-parsing JSON text. This is the single highest-value completeness item for multi-host use.
 
 #### Implementation Spec
-**Files to create:** `cardiac_core/tests/test_self_contained.py`; `cardiac_core/engines_SOURCE.md` (a short re-vendor/drift note: which engine + commit each package was copied from, and the `cp` recipe to re-sync).
-**Files to modify:** `pyproject.toml` if discovery misses the new subpackages.
+**Files to modify:** `cardiac_mcp/core.py`.
+- Define `TypedDict` result models (top of core, after imports): `SimulateResult`, `ManifestResult`, `CommitResult`, `RunResult`, `ListResult`. Use concrete field types; nested objects may be `dict[str, Any]` where shape varies (still yields a valid object schema).
+- Annotate each tool's return type (`-> SimulateResult`, etc.). Do NOT change the returned values.
+- If FastMCP does not auto-emit a schema from `TypedDict` alone, pass `structured_output=True` in the corresponding `add_tool` call in `server.py`.
 
 #### Pseudocode
+```python
+from typing import TypedDict, Any
+class SimulateResult(TypedDict):
+    engine: str; ionic: str; grid: dict[str, Any]; conductivity: dict[str, Any]
+    cv_cm_per_s: float | None; cv_indices: dict[str, int]; activated: bool
+    frames: list[int]; note: str
+# ... ManifestResult{manifest_text:str, slug:str, experiment_token:str, next:str}
+# ... CommitResult{experiment_dir:str, files:list[str], status:str, next:str}
+# ... RunResult{experiment_dir:str, status:str, cv_cm_per_s:float|None, returncode:int, stdout:str, stderr:str}
+# ... ListResult{count:int, experiments:list[str]}  (always include count → stable schema)
+def simulate(...) -> SimulateResult: ...
 ```
-test_no_cross_folder_refs: walk cardiac_core/**/*.py
-    # match ONLY real cross-folder IMPORTS or hack CALLS — never docstrings / path-string literals.
-    bad = re.compile(r'^\s*(from|import)\s+(cardiac_sim|src)[.\s]') OR substring '_prepare_engine('
-    for each .py line: assert not bad  (skip tests/_live_cv_gate_driver.py)
-test_subpackages_importable: import cardiac_core.{ionic,mesh,stimulus,monodomain,bidomain,lbm}
-```
-> **Guard scope (audit HIGH + MED):** match the IMPORT-STATEMENT form, NOT bare `Engine_V5`/`Engine_V1`
-> substrings. Otherwise it false-positives on legitimate path-MENTIONS: `conductivity.py:11` docstring
-> ("…`Monodomain/Engine_V5.5/_probe…`"), the `_live_cv_gate_driver.py` path-string `_V55 = …Engine_V5.5`,
-> and any remaining test path literals. Those are not imports → the import-line regex ignores them.
-> `_prepare_engine(` is matched as a CALL (the def is deleted in Phase 4, so any call is a real bug; a
-> stray comment wouldn't survive cleanup anyway). Still exclude `_live_cv_gate_driver.py` belt-and-suspenders.
 
 #### Test Spec
-- `tests/test_self_contained.py::test_no_cross_folder_refs` — passes (CLEAN).
-- `tests/test_self_contained.py::test_subpackages_importable` — all 6 import.
+- `cardiac_mcp/tests/test_core.py::test_structured_output_via_client` (slow/integration, optional) — spawn the stdio server, `call_tool("build_manifest", {...})`, assert `res.structuredContent` is a dict with `slug`. (build_manifest writes nothing — safe.)
+- `cardiac_mcp/tests/test_core.py::test_list_experiments_always_has_count` (Audit M1) — with `tmp_lab` empty → `core.list_experiments()["count"] == 0`; after one committed experiment → `count == 1`. Covers the empty-case shape change (no prior test existed for `list_experiments`).
+- Minimum: a boot check that each tool's `outputSchema` is non-None via `list_tools()`.
 
 #### Checklist
-- [ ] guard test added + green; `_live_cv_gate_driver.py` excluded/handled.
-- [ ] `pip install -e .` re-run; `python -c "import cardiac_core.monodomain"` from `/tmp` works.
-- [ ] `engines_SOURCE.md` records source engine + re-vendor recipe.
+- [ ] Define 5 `TypedDict` models.
+- [ ] Annotate the 5 return types (values unchanged).
+- [ ] Make `list_experiments` always return `count` (so the schema is stable).
+- [ ] Add `test_list_experiments_always_has_count` (empty + non-empty `tmp_lab`).
+- [ ] If needed, set `structured_output=True` per tool in server.py.
+- [ ] Verify `outputSchema` present + `structuredContent` populated.
 
 #### Verify
 ```bash
-conda run -n heart-conduction pip install -e . -q && cd /tmp && conda run -n heart-conduction python -c "import cardiac_core.monodomain, cardiac_core.bidomain, cardiac_core.lbm; print('self-contained OK')"; cd -
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q
+cd /home/norepinephrine/Documents/Heart-Conduction
+PYTHONPATH=$PWD conda run -n heart-conduction python -c "
+import asyncio; from cardiac_mcp.server import mcp
+ts = asyncio.run(mcp.list_tools()); print({t.name: bool(t.outputSchema) for t in ts})"
+PYTHONPATH=$PWD conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q
+```
+Expect every tool `True` (has outputSchema); tests green.
+
+#### Exit Criteria
+- [ ] All tools expose `outputSchema`; calls return `structuredContent`.
+- [ ] No renames or value changes to EXISTING fields. (Audit M1 — intentional, documented exception: `list_experiments` now ALWAYS includes `count` — a schema-stabilizing addition to the previously-`count`-less empty case, covered by `test_list_experiments_always_has_count`.)
+
+#### Risk
+Over-typing nested dicts can make FastMCP's schema generation brittle. Mitigation: use `dict[str, Any]` for variable nested shapes; only the top-level fields need precise types.
+
+### Step 2.2: Register prompt templates
+**Model**: opus
+
+#### Read First
+- `cardiac_mcp/server.py` — where resources are registered (add prompts alongside).
+- `.claude/skills/sim-experiment/reference/recipes.md` — the recipe vocabulary (R1 CV, R4 edge/bath) to mirror.
+
+#### Why
+Prompts are user-controlled workflow templates — exactly our "recipes." Optional in the spec but high-fit: they let a host surface "measure CV" / "control vs knockdown" as first-class entry points, reinforcing the guided, accountable workflow.
+
+#### Implementation Spec
+**Files to modify:** `cardiac_mcp/server.py`.
+- Add `@mcp.prompt()` functions returning a `str` (a user message).
+- `measure_cv(tissue: str = "healthy ventricle")` — guides `build_manifest` → gate → `commit_experiment`.
+- `control_vs_knockdown(control_sigma_i: float = 1.74, knockdown_fraction: float = 0.5)` — guides a paired CV series + comparison.
+
+#### Pseudocode
+```python
+@mcp.prompt(title="Measure conduction velocity")
+def measure_cv(tissue: str = "healthy ventricle") -> str:
+    return (f"I want to measure conduction velocity in {tissue}. "
+            "Read cardiac://cheatsheet, then call build_manifest, show me the manifest, "
+            "and only commit_experiment after I confirm.")
+
+@mcp.prompt(title="Control vs knockdown CV series")
+def control_vs_knockdown(control_sigma_i: float = 1.74, knockdown_fraction: float = 0.5) -> str:
+    return ("Run a paired CV experiment: a control strip and a knockdown strip with sigma_i scaled by "
+            f"{knockdown_fraction}× (control sigma_i={control_sigma_i}). Use build_manifest for each, "
+            "gate each, then compare the two CVs.")
+```
+
+#### Test Spec
+- Boot check: `asyncio.run(mcp.list_prompts())` returns ≥2 prompts with the expected names.
+
+#### Checklist
+- [ ] Add 2 `@mcp.prompt()` functions with titles.
+- [ ] Verify they list.
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+PYTHONPATH=$PWD conda run -n heart-conduction python -c "
+import asyncio; from cardiac_mcp.server import mcp
+print([p.name for p in asyncio.run(mcp.list_prompts())])"
+```
+Expect `measure_cv` and `control_vs_knockdown` present.
+
+#### Exit Criteria
+- [ ] ≥2 prompts registered and listable; server still boots.
+
+#### Risk
+Prompt arg types must be simple (str/float/int) for schema gen. Mitigation: keep args primitive.
+
+### Step 2.3: `cardiac_mcp/README.md`
+**Model**: sonnet
+
+#### Read First
+- `cardiac_mcp/core.py` docstrings (tool descriptions) + `server.py` (resources/prompts) — to list the surface accurately.
+- `.mcp.json` — to copy the exact config snippet.
+
+#### Why
+The README is the core "supporting document" the audit flagged — and the registry's ownership check (Phase 4) keys off it. It's how any host/user learns the surface without reading code.
+
+#### Implementation Spec
+**Files to create:** `cardiac_mcp/README.md` — sections: what it is (adapter over `cardiac_core`), Tools (5, one-line each + annotation), Resources (2), Prompts (2), the accountability gate (build→confirm→commit), Install/run (`python -m cardiac_mcp` + the `.mcp.json` snippet), Testing (pytest + MCP Inspector `uv run mcp dev` / `npx @modelcontextprotocol/inspector`).
+Note (R2-L4): the `.mcp.json` snippet here is PROVISIONAL until Step 2.4 finalizes the launch command — 2.4's checklist re-syncs it. If practical, author the Install/run section last (after 2.4) to avoid a brief stale snippet.
+
+#### Pseudocode
+```markdown
+# cardiac-core MCP server
+Adapter exposing the `cardiac_core` simulation API over MCP.
+## Tools     simulate [read-only] · build_manifest [read-only] · commit_experiment · run_experiment [destructive] · list_experiments [read-only]
+## Resources cardiac://cheatsheet · cardiac://notebook   (text/markdown)
+## Prompts   measure_cv · control_vs_knockdown
+## Accountability gate   build_manifest → (you confirm) → commit_experiment
+## Install / run         <.mcp.json snippet — provisional until Step 2.4>
+## Testing               pytest cardiac_mcp/tests · MCP Inspector: `uv run mcp dev`
+```
+
+#### Test Spec
+- None (doc). Lint: markdown renders; the `.mcp.json` snippet matches the real file.
+
+#### Checklist
+- [ ] Tools/resources/prompts lists match the code.
+- [ ] Config snippet matches `.mcp.json` (update after Step 2.4 if the command changes).
+
+#### Verify
+```bash
+test -f /home/norepinephrine/Documents/Heart-Conduction/cardiac_mcp/README.md && echo OK
 ```
 
 #### Exit Criteria
-- [ ] guard green; editable install resolves new subpackages; 121 tests pass.
+- [ ] README accurately lists the current surface.
 
 #### Risk
-setuptools flat-layout/duplicate-top-level complaints from the vendored trees. Mitigation: the trees are nested under `cardiac_core.*` (not top-level), so standard `find` includes them; if discovery misbehaves, set explicit `packages.find` include `cardiac_core*`.
+README drifts from code. Mitigation: re-check at each phase commit.
 
-### Phase 5 Verification / Exit / Cleanup
-```bash
-conda run -n heart-conduction python -m pytest cardiac_core/tests/ -q
+### Step 2.4: Make `cardiac_mcp` installable via the ROOT package; simplify `.mcp.json`
+**Model**: opus
+
+#### Read First
+- `cardiac_mcp/__main__.py` — current `if __name__ == "__main__": mcp.run()`.
+- `./pyproject.toml` (REPO ROOT — the ONLY pyproject; `name="cardiac-core"`, setuptools backend, `[tool.setuptools.packages.find] where=["."] include=["cardiac_core*"]`, `requires-python=">=3.11"`, no `[project.scripts]`/`dependencies` yet). **There is NO `cardiac_core/pyproject.toml`.**
+- `.mcp.json` — current `command`/`args`/`env`.
+- Confirm the existing single editable install: `conda run -n heart-conduction pip list --editable` (expect exactly one: `cardiac-core` rooted at the repo).
+
+#### Why
+The `PYTHONPATH` hack in `.mcp.json` is fragile/non-standard; the SDK convention is a console-script entry point. **Option B (audit H1+H2):** extend the EXISTING root `cardiac-core` editable rather than create a SECOND editable for `cardiac_mcp` — two editables over the same repo tree risk shadowing (audit flagged it), and the earlier plan also pointed at a non-existent `cardiac_core/pyproject.toml` and prescribed hatchling while the repo uses setuptools. One install, one console script, the repo's existing setuptools backend (no hatchling divergence, no `requires-python` mismatch — resolves L1). **Accepted trade-off:** the `cardiac-core` distribution now contains `cardiac_mcp` and depends on `mcp` — fine for this single-repo workspace (the user wants them together).
+
+#### Implementation Spec
+**Files to modify:**
+- `./pyproject.toml` (repo root):
+  - `[tool.setuptools.packages.find]` → `include = ["cardiac_core*", "cardiac_mcp*"]`
+  - add to `[project]` → `dependencies = ["mcp>=1.2.0"]`
+  - add `[project.scripts]` → `cardiac-mcp = "cardiac_mcp.__main__:main"`
+  - leave `requires-python = ">=3.11"` (matches the 3.11.14 env; code uses `is_relative_to` (3.9+) and `X | None` (3.10+) — both fine).
+- `cardiac_mcp/__main__.py` — add `def main(): mcp.run()`; keep `if __name__ == "__main__": main()`.
+- `.mcp.json` — set `command` to the env console script (`/home/norepinephrine/.conda/envs/heart-conduction/bin/cardiac-mcp`), drop `args`/`PYTHONPATH`, keep `"type": "stdio"`.
+**Reinstall:** `conda run -n heart-conduction pip install -e .` at the repo ROOT (refreshes the `cardiac-core` editable to also expose `cardiac_mcp` + the console script).
+**Do NOT create** a separate `cardiac_mcp/pyproject.toml`.
+
+#### Pseudocode
+```toml
+# ./pyproject.toml — additions to the EXISTING file
+[project]
+# ...existing name/version/description/requires-python (>=3.11)...
+dependencies = ["mcp>=1.2.0"]
+
+[project.scripts]
+cardiac-mcp = "cardiac_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cardiac_core*", "cardiac_mcp*"]
 ```
-- [ ] self-contained guard green; full suite green; engine originals untouched.
+```python
+# cardiac_mcp/__main__.py
+def main():
+    mcp.run()
+if __name__ == "__main__":
+    main()
+```
 
-**-> Commit point: git commit after Phase 5** (`test(cardiac_core): self-containment guard + packaging + drift note`)
+#### Test Spec
+- After reinstall: BOTH `import cardiac_core` and `import cardiac_mcp` resolve (the existing cardiac-core editable not clobbered), `cardiac-mcp` is on the env PATH, and it launches the stdio server (spawn + initialize via the stdio client, then exit).
+
+#### Checklist
+- [ ] Edit the ROOT `./pyproject.toml` (include filter + `mcp` dependency + console script).
+- [ ] Add `main()` to `cardiac_mcp/__main__.py`.
+- [ ] `pip install -e .` at the repo root.
+- [ ] Assert `import cardiac_core; import cardiac_mcp` BOTH succeed (no clobber).
+- [ ] Update `.mcp.json` to the console-script command; drop PYTHONPATH.
+- [ ] Re-run a stdio client roundtrip with the new launch command.
+- [ ] Update `cardiac_mcp/README.md` snippet to match.
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+conda run -n heart-conduction pip install -e . -q
+conda run -n heart-conduction python -c "import cardiac_core, cardiac_mcp; print('both import OK')"
+conda run -n heart-conduction which cardiac-mcp
+conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q   # no PYTHONPATH now
+```
+Expect `both import OK`; a `cardiac-mcp` path; tests green without `PYTHONPATH`.
+
+#### Exit Criteria
+- [ ] `import cardiac_core` AND `import cardiac_mcp` both work without `PYTHONPATH`.
+- [ ] `cardiac-mcp` console script launches the stdio server.
+- [ ] `.mcp.json` no longer sets `PYTHONPATH`; still exactly one editable install.
+
+#### Risk
+Re-running `pip install -e .` could in principle disturb the cardiac-core install. Mitigation: the dual-`import` assertion in Verify catches any clobber immediately; the change is additive (wider include + new script + dep), not a rename. (R2-L1 note: `cardiac_mcp*` also matches `cardiac_mcp.tests` — harmless for the editable install, exactly as `cardiac_core*` already captures `cardiac_core.tests`; if a Phase-4 published wheel should omit test code, add an `exclude=["*.tests*"]` to the find filter then.)
+
+### Phase 2 Verification
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q
+conda run -n heart-conduction python -c "import asyncio; from cardiac_mcp.server import mcp; \
+print('tools', [(t.name, bool(t.outputSchema)) for t in asyncio.run(mcp.list_tools())]); \
+print('prompts', [p.name for p in asyncio.run(mcp.list_prompts())])"
+```
+
+### Phase 2 Exit Criteria
+- [ ] outputSchema/structuredContent on all tools; ≥2 prompts; README present; installable console script; `.mcp.json` simplified; all tests green.
+
+### Phase 2 Cleanup
+- [ ] Exactly one editable install (`cardiac-core` at root, now exposing `cardiac_mcp`); `mcp` pinned once in the root pyproject; no separate `cardiac_mcp/pyproject.toml` left behind.
+- [ ] README surface matches code exactly.
+- [ ] `.mcp.json` and README config snippet identical.
+
+**-> Commit point: `git commit` after Phase 2 passes.**
+
+---
+
+## Phase 3: Tier 3 — Remote-readiness (sandbox + transport + auth design)
+
+**Goal**: Make the code-executing tool safe under resource limits + provenance now, add a localhost-bound HTTP transport switch, and DOCUMENT the full auth/security stack required before any non-localhost deploy. The auth implementation itself is deferred to a real deployment target.
+**Tier**: large
+**Estimated scope**: 3 steps (3.1 implement; 3.2 implement minimal + design; 3.3 design doc).
+
+### Phase Context
+- `run_experiment` (core.py ~362) runs `subprocess.run([sys.executable, run_py], cwd=REPO_ROOT, capture_output=True, timeout=...)`. Phase 1 already restricts `experiment_dir` to `Lab/`.
+- Spec: a code-executing tool SHOULD be sandboxed (filesystem restricted, least privilege); stdio needs no auth (env creds) but HTTP requires the full OAuth 2.1 stack + Origin checks + secure sessions + SSRF defenses.
+- FastMCP auto-enables DNS-rebinding protection when `host` ∈ {127.0.0.1, localhost, ::1} (verified in the constructor source). Keep HTTP localhost-only until auth lands.
+- This phase does NOT make the server safely public — it makes it *hardened locally* and *documented for remote*.
+
+### Step 3.1: Harden `run_experiment` (resource limits + provenance)
+**Model**: opus
+
+#### Read First
+- `cardiac_mcp/core.py:362-398` — `run_experiment` (post-Phase-1, with the `is_relative_to(LAB)` guard).
+- `cardiac_mcp/core.py` `render_run_script` — the generated header line (used as the provenance marker).
+
+#### Why
+Even local, a code-runner should fail safe: bound CPU/memory/output so a runaway/malformed script can't hang or OOM the host, and only run scripts WE generated (not arbitrary `run.py` dropped in `Lab/`). The concrete, now-deliverable slice of the spec's "sandbox code execution"; full containerization is deferred to 3.3.
+
+#### Implementation Spec
+**Files to modify:** `cardiac_mcp/core.py` (`run_experiment`).
+- Provenance: read `run.py`; require the EXACT generated-header marker `"generated by the cardiac-core MCP server"` (verified present at `core.py:194` in `render_run_script` — match it literally). Else raise.
+- Resource limits (POSIX only): `preexec_fn` setting `RLIMIT_CPU` (≈ `timeout_s`) and `RLIMIT_FSIZE` (cap any file the script writes). **Do NOT set `RLIMIT_AS`** (Audit M2) — it caps *virtual* address space, which CUDA/torch reserve in the tens of GB at import, so it aborts torch init even when real memory use is tiny. Real RSS/memory isolation belongs in the Step 3.3 container, not here. Guard `preexec_fn=None` on non-POSIX.
+- Keep `timeout`, `capture_output=True`, `cwd=REPO_ROOT`.
+
+#### Pseudocode
+```python
+import resource, platform
+def _limits():
+    resource.setrlimit(resource.RLIMIT_CPU, (CPU_SECONDS, CPU_SECONDS))      # ~ timeout_s
+    resource.setrlimit(resource.RLIMIT_FSIZE, (FSIZE_BYTES, FSIZE_BYTES))    # cap output file size
+    # NO RLIMIT_AS — virtual-AS cap aborts torch/CUDA init even at tens of GB (Audit M2)
+
+# in run_experiment, after the Phase-1 LAB guard + run_py existence:
+if "generated by the cardiac-core MCP server" not in run_py.read_text():
+    raise ValueError("run_experiment(): run.py is not a cardiac-core-generated script; refusing to execute.")
+preexec = _limits if platform.system() != "Windows" else None
+proc = subprocess.run([sys.executable, str(run_py)], cwd=str(REPO_ROOT),
+                      capture_output=True, text=True, timeout=timeout_s, preexec_fn=preexec)
+```
+
+#### Test Spec
+- `test_run_experiment_rejects_foreign_script` (Audit H3) — under `tmp_lab` (which monkeypatches `core.LAB` to a tmp dir), create `tmp_lab/"2026-06-28_x"/run.py` whose content LACKS the marker, then call `core.run_experiment(str(tmp_lab / "2026-06-28_x"))` — i.e. pass the **ABSOLUTE** dir so `(REPO_ROOT / abs).resolve()` collapses to that path and PASSES the Phase-1 `is_relative_to(LAB)` guard, reaching the provenance check; assert `ValueError` matching "not a cardiac-core-generated script". (A relative `"Lab/..._x"` would be rejected by the LAB guard first — passing for the WRONG reason / wrong message.)
+- `test_run_experiment_under_limits` (slow, **MANDATORY for this step** — Audit R2-L5) — under `tmp_lab`, `build_manifest`→`commit_experiment` a real small-grid experiment, then `run_experiment(experiment_dir)`; assert `status=="done"` with a physiological CV. This is the ONLY test that exercises the actual **subprocess + `preexec_fn` limits path**: the in-process `test_simulate_end_to_end` calls `core.simulate()` directly and never touches `run_experiment`. Confirms the CPU/FSIZE limits don't break a real torch run in the child process.
+
+#### Checklist
+- [ ] Provenance marker check (exact string from `render_run_script`, `core.py:194`).
+- [ ] `_limits` helper (CPU + FSIZE only, NO `RLIMIT_AS`) + `preexec_fn` (POSIX-guarded).
+- [ ] Foreign-script test passes the ABSOLUTE `tmp_lab` dir (H3).
+- [ ] `test_run_experiment_under_limits` (commit→run a real experiment through the subprocess) — MANDATORY.
+- [ ] Tune CPU limit ≥ `timeout_s`; FSIZE generous (e.g. ≥1 GB for media).
+- [ ] Tests.
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+# The @slow end-to-end is NOT auto-deselected (conftest only registers the marker), so a plain run
+# EXECUTES it — and it is the ONLY check that the CPU/FSIZE limits don't break torch init. Confirm it ran.
+conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q -v | grep -i "under_limits\|foreign"
+```
+Expect both `test_run_experiment_rejects_foreign_script` and `test_run_experiment_under_limits` PASSED.
+
+#### Exit Criteria
+- [ ] Foreign/non-generated scripts refused; a real committed experiment completes `done` THROUGH the subprocess under the CPU/FSIZE limits (`test_run_experiment_under_limits` actually ran — it's not auto-deselected).
+
+#### Risk
+Dropping `RLIMIT_AS` leaves no virtual-memory cap (intentional — it would break torch). A runaway-memory script is bounded only by `RLIMIT_CPU`/`timeout`/OS until the 3.3 container lands. Mitigation: documented; CPU+timeout bound runtime; true memory isolation is explicitly a container concern (3.3).
+
+### Step 3.2: HTTP transport switch (localhost-only) + Origin protection
+**Model**: opus
+
+#### Read First
+- `cardiac_mcp/__main__.py` — `main()`.
+- FastMCP `run` signature: `python -c "from mcp.server.fastmcp import FastMCP; import inspect; print(inspect.signature(FastMCP.run))"` (confirm `transport` arg + `streamable-http`).
+
+#### Why
+Delivers "structured for remote later" without a rewrite: select transport by env var, bind HTTP to 127.0.0.1 (FastMCP then auto-enables DNS-rebinding/Origin protection). Stays local-only/unauthenticated by design until 3.3's auth lands.
+
+#### Implementation Spec
+**Files to modify:** `cardiac_mcp/__main__.py`.
+- `main()` reads `CARDIAC_MCP_TRANSPORT` (default `stdio`); if `http`/`streamable-http`, call `mcp.run(transport="streamable-http")` (host stays FastMCP default 127.0.0.1 → DNS-rebinding protection on). Print a one-line stderr warning that HTTP is unauthenticated/localhost-only.
+
+#### Pseudocode
+```python
+import os, sys
+def main():
+    t = os.environ.get("CARDIAC_MCP_TRANSPORT", "stdio")
+    if t in ("http", "streamable-http"):
+        print("WARNING: HTTP transport is UNAUTHENTICATED — localhost only. See REMOTE_DEPLOY.md.", file=sys.stderr)
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()
+```
+
+#### Test Spec
+- Smoke (manual/optional): `CARDIAC_MCP_TRANSPORT=http` starts and serves on `http://127.0.0.1:8000/mcp`.
+
+#### Checklist
+- [ ] Env-var transport switch.
+- [ ] stderr warning for HTTP mode.
+- [ ] Confirm `streamable-http` is the correct transport string for 1.28.0.
+
+#### Verify
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+# Launch HTTP mode with the Bash tool's run_in_background (do NOT use a foreground `sleep` — the
+# sandbox blocks it). Capture the child PID for a targeted kill (never a blanket pkill).
+CARDIAC_MCP_TRANSPORT=http conda run -n heart-conduction cardiac-mcp    # run_in_background: true
+# once listening, probe the DEFAULT FastMCP endpoint (port=8000, streamable_http_path="/mcp"):
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/mcp
+# then kill ONLY that child PID.
+```
+Expect a non-200 (e.g. 400/406 without the MCP `Accept` header) — proves it's listening + rejecting non-MCP requests.
+
+#### Exit Criteria
+- [ ] stdio unchanged (default); HTTP mode serves on localhost with rebinding protection.
+
+#### Risk
+Port conflict / lingering process; the curl target hardcodes the FastMCP DEFAULTS (`port=8000`, `streamable_http_path="/mcp"`) — a `FASTMCP_PORT`/`FASTMCP_*` settings override would change them (Audit L3). Mitigation: kill the specific child PID (process-kill-safety); document the port assumption; derive the URL from the configured port if non-default.
+
+### Step 3.3: `REMOTE_DEPLOY.md` — auth/security checklist (design, deferred impl)
+**Model**: opus
+
+#### Read First
+- KNOWLEDGE "Goal-2 MCP server — standardization audit (2026-06-28)" — the Remote (HTTP) delta + Security bullets.
+
+#### Why
+Going public is a project unto itself; the responsible deliverable now is a precise, spec-cited checklist so a future deploy can't skip a MUST. It also records WHY HTTP stays localhost-only today.
+
+#### Implementation Spec
+**Files to create:** `cardiac_mcp/REMOTE_DEPLOY.md` — sections, each citing the 2025-11-25 spec:
+- Auth: OAuth 2.1 + PKCE(S256); RFC 9728 Protected Resource Metadata; RFC 8707 Resource Indicators (audience binding); per-request `Authorization` bearer (never via session); registered exact redirect URIs.
+- Transport/session: `Origin` validation → 403; secure non-deterministic session IDs; MUST NOT authenticate via session; bind `<user_id>:<session_id>`.
+- Network: SSRF defenses (HTTPS, block private/loopback/link-local incl. 169.254.169.254); no token passthrough (validate audience == this server).
+- Code-execution: containerize `run_experiment` (filesystem scoped to `Lab/`, no network, non-root, per-call ephemeral) — REQUIRED before remote, not just local limits.
+- A "do NOT expose to non-localhost until all the above are MUST-complete" gate.
+
+#### Pseudocode
+```markdown
+# REMOTE_DEPLOY.md   (spec revision: MCP 2025-11-25)
+## Auth        OAuth 2.1 + PKCE(S256) · RFC 9728 Protected Resource Metadata · RFC 8707 resource indicators · per-request Authorization bearer
+## Transport   Origin header → 403 · secure non-deterministic session IDs · MUST NOT authenticate via session
+## Network     SSRF: HTTPS only, block private/loopback/link-local (incl. 169.254.169.254) · no token passthrough (audience == this server)
+## Code-exec   containerize run_experiment: filesystem scoped to Lab/, no network, non-root, per-call ephemeral
+## GATE        do NOT expose beyond localhost until EVERY MUST above is complete
+```
+
+#### Test Spec
+- None (design doc).
+
+#### Checklist
+- [ ] All MUST items from the audit captured with spec citations.
+- [ ] The "localhost-only until complete" gate stated.
+
+#### Verify
+```bash
+test -f /home/norepinephrine/Documents/Heart-Conduction/cardiac_mcp/REMOTE_DEPLOY.md && echo OK
+```
+
+#### Exit Criteria
+- [ ] Checklist complete and spec-cited; referenced from README + the HTTP-mode stderr warning.
+
+#### Risk
+Doc rots vs. spec revisions. Mitigation: stamp the spec revision (2025-11-25) at the top.
+
+### Phase 3 Verification
+```bash
+cd /home/norepinephrine/Documents/Heart-Conduction
+conda run -n heart-conduction python -m pytest cardiac_mcp/tests/test_core.py -q
+test -f cardiac_mcp/REMOTE_DEPLOY.md && echo doc-ok
+```
+
+### Phase 3 Exit Criteria
+- [ ] `run_experiment` hardened (limits + provenance); foreign scripts refused.
+- [ ] HTTP transport switch works, localhost-bound; stdio default unchanged.
+- [ ] `REMOTE_DEPLOY.md` complete; all tests green.
+
+### Phase 3 Cleanup
+- [ ] No secrets/paths leaked in logs or tool outputs.
+- [ ] HTTP mode prints the unauthenticated/localhost warning.
+- [ ] Resource-limit values documented in `run_experiment` docstring.
+
+**-> Commit point: `git commit` after Phase 3 passes.**
+
+---
+
+## Phase 4: Tier 4 — Registry publishing artifacts (OPTIONAL)
+
+**Goal**: Only if public discoverability is wanted — the artifacts that make `cardiac-mcp` publishable to the official MCP registry. Skippable; nothing else depends on it.
+**Tier**: medium
+**Estimated scope**: 2 steps.
+
+### Phase Context
+- Required ONLY to publish to registry.modelcontextprotocol.io; the server is fully usable (local + the docs above) without it.
+- Reverse-DNS name: `io.github.<user>/cardiac-core`; `server.json` version immutable + semver; README needs an ownership marker for the PyPI/registry check.
+
+### Step 4.1: `server.json` + README ownership marker + reverse-DNS name
+**Model**: opus
+#### Read First
+- The CURRENT `server.json` schema — WebFetch `https://static.modelcontextprotocol.io/schemas/<current>/server.schema.json` and the registry "generic-server-json" + "package-types" docs (field names + the PyPI ownership-marker rule).
+- `cardiac_mcp/README.md` (P2.3) and the ROOT `./pyproject.toml` (`name`/`version` to mirror).
+- The user's GitHub handle (for the reverse-DNS namespace) — ASK if unknown.
+#### Why
+`server.json` is the registry manifest; the README marker proves ownership. The concrete "supporting documents" for distribution. **Option-B consequence:** the publishable PyPI package is `cardiac-core` (it now bundles `cardiac_mcp`), so the manifest `packages.identifier` and the ownership marker live with the **root** `cardiac-core` package — NOT a separate `cardiac-mcp` PyPI dist. (If you later want `cardiac_mcp` published independently, that reopens the 2-package question from Step 2.4; default to the bundled dist.)
+#### Implementation Spec
+**Files to create:** `cardiac_mcp/server.json` — `$schema` (current static URL), `name="io.github.<user>/cardiac-core"`, `description`, `version="0.1.0"`, `repository`, `packages[{registryType:"pypi", identifier:"cardiac-core", version:"0.1.0", transport:{type:"stdio"}}]`.
+**Files to modify:** the ROOT package README (the one PyPI publishes — i.e. the repo `README` for the `cardiac-core` dist) gets `<!-- mcp-name: io.github.<user>/cardiac-core -->`; mirror it in `cardiac_mcp/README.md` for discoverability. The marker MUST match `server.json` `name`.
+#### Pseudocode
+```json
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/<current>/server.schema.json",
+  "name": "io.github.<user>/cardiac-core",
+  "description": "Run cardiac electrophysiology simulations (cardiac_core) over MCP.",
+  "version": "0.1.0",
+  "repository": {"url": "https://github.com/<user>/Heart-Conduction", "source": "github"},
+  "packages": [{"registryType": "pypi", "identifier": "cardiac-core", "version": "0.1.0",
+                "transport": {"type": "stdio"}}]
+}
+```
+#### Test Spec
+- Validate `server.json` against the published schema (`mcp-publisher --dry-run` if installed, else JSON-Schema validate).
+#### Checklist
+- [ ] Resolve the reverse-DNS name (GitHub handle).
+- [ ] Write `cardiac_mcp/server.json` (identifier = `cardiac-core` per Option B).
+- [ ] Add the ownership marker to the published README; mirror in `cardiac_mcp/README.md`.
+- [ ] Confirm marker == `server.json` `name`.
+#### Verify
+```bash
+conda run -n heart-conduction python -c "import json; json.load(open('cardiac_mcp/server.json')); print('valid json')"
+```
+#### Exit Criteria
+- [ ] `server.json` parses; `name` matches the README marker; reverse-DNS chosen; identifier = the bundled `cardiac-core` dist.
+#### Risk
+Publishing requires the PyPI package to exist first, and bundling `cardiac_mcp` into `cardiac-core` couples their release cadence. Mitigation: keep Phase 4 dry-run only unless actually publishing; revisit a split package if independent release is needed.
+
+### Step 4.2: LICENSE + Dockerfile + MCP Inspector validation
+**Model**: sonnet
+#### Read First
+- Repo root — check whether a `LICENSE` already exists (`ls LICENSE*`); confirm the project's license policy before adding one (ASK the user if unstated — do not invent a license).
+- ROOT `./pyproject.toml` (the install target inside the container) and the env `cardiac-mcp` console script.
+- MCP Inspector docs (`modelcontextprotocol.io/docs/tools/inspector`).
+#### Why
+Reference-quality servers ship a LICENSE + Dockerfile; the Inspector is the standard interactive validator. Under Option B the container installs the ROOT package (brings `cardiac_core` + `cardiac_mcp` + `mcp`) and uses the `cardiac-mcp` entrypoint.
+#### Implementation Spec
+**Files to create:**
+- `LICENSE` (match the repo's chosen policy — confirm first).
+- `cardiac_mcp/Dockerfile` — `python:3.11-slim`; copy the repo; `pip install .` at root (installs `cardiac-core` incl. `cardiac_mcp` + CPU-only torch); `ENTRYPOINT ["cardiac-mcp"]`.
+**Validate:** `npx @modelcontextprotocol/inspector cardiac-mcp` (or `uv run mcp dev`) — exercise tools/resources/prompts interactively.
+#### Pseudocode
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir .
+ENTRYPOINT ["cardiac-mcp"]
+```
+#### Test Spec
+- Manual via Inspector: lists 5 annotated tools, 2 `text/markdown` resources, 2 prompts; a `simulate` call returns `structuredContent`.
+#### Checklist
+- [ ] Confirm + add `LICENSE`.
+- [ ] Write `cardiac_mcp/Dockerfile` (CPU-only torch, root install, `cardiac-mcp` entrypoint).
+- [ ] Run the MCP Inspector against `cardiac-mcp`; spot-check the surface.
+- [ ] (Optional) build the image to confirm it succeeds.
+#### Verify
+```bash
+test -f cardiac_mcp/Dockerfile && test -f LICENSE && echo OK
+```
+#### Exit Criteria
+- [ ] Inspector validates the full surface; LICENSE present; Dockerfile builds (CPU-only).
+#### Risk
+Docker torch image size / GPU assumptions. Mitigation: CPU-only wheel index (the server defaults to CPU); document image size; this step is optional (publishing only).
+
+### Phase 4 Exit Criteria
+- [ ] `server.json` + marker + LICENSE + Dockerfile present and consistent; Inspector-validated.
+
+### Phase 4 Cleanup
+- [ ] `server.json` `name`/`version` consistent with `pyproject` + README marker.
+
+**-> Commit point: `git commit` after Phase 4 (if pursued).**
 
 ---
 
 ## Final Cleanup (cross-phase)
-- [ ] float64 consistency across all vendored/edited modules — no float32 leaks.
-- [ ] **INTEGRITY (final):** all 3 goldens reproduced bit-identically (`test_integrity.py` 4/4 green); `test_originals_untouched` green; `git status` on `Monodomain/Engine_V5.5/`, `Bidomain/Engine_V1/`, `LBM/Engine_V1/` all EMPTY. Backup tags (`pre-consolidation-vendoring`, `cardiac-core-api-track-complete`) + the bundle remain the rollback path.
-- [ ] V5.3/V5.4/`_archive` untouched; the 3 engine originals (`Engine_V5.5`, `Engine_V1` ×2) byte-identical (`git status` shows only `cardiac_core/` + research docs).
-- [ ] No real cross-folder **imports** (`^(from|import) (cardiac_sim|src)[. ]`) or `_prepare_engine(` calls anywhere under `cardiac_core/` (except the deliberately-excluded `_live_cv_gate_driver.py`). Docstring/path-string MENTIONS of `Engine_V5.5` (e.g. `conductivity.py:11`, the driver's `_V55` path) are OK and must NOT be flagged — the guard matches import statements, not substrings.
-- [ ] KNOWLEDGE.md migration table + IDEALOG session log updated with the unified layout that shipped; README status banner refreshed.
-- [ ] Decide: keep `_live_cv_gate_driver.py` driving V5.5, or repoint it at `cardiac_core.monodomain` (then it too is self-contained). Note the choice.
+- [ ] No `print()` to stdout anywhere in the server process; logs to stderr only.
+- [ ] `cardiac_core` engines untouched (V5.3 read-only; this plan is server/packaging/docs only).
+- [ ] No code duplication — server logic stays in `cardiac_mcp/core.py`; `cardiac_core` API unchanged.
+- [ ] README, `.mcp.json`, `server.json` config all mutually consistent.
+- [ ] All tests green: `conda run -n heart-conduction python -m pytest cardiac_mcp/tests/ cardiac_core/tests/ -q`.
+- [ ] Update KNOWLEDGE "Goal-2 MCP server — standardization audit" with the SHIPPED status + which tiers landed.
 - [ ] Archive this plan:
 ```bash
 mkdir -p Research/Active/engine_consolidation/plans
-cp Research/Active/engine_consolidation/PLAN.md "Research/Active/engine_consolidation/plans/$(date +%Y-%m-%d)_cardiac-core-unified-ground-up-package.md"
+cp Research/Active/engine_consolidation/PLAN.md "Research/Active/engine_consolidation/plans/$(date +%Y-%m-%d)_cardiac-mcp-standardization-tiers-1-4.md"
 ```
-- [ ] Revert the bottom tmux pane from PLAN.md back to WHITEBOARD.md:
-```bash
-tmux send-keys -t 2 C-c
-sleep 0.3
-tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/engine_consolidation/WHITEBOARD.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/engine_consolidation/WHITEBOARD.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter
-```
-
-## Out of Scope (follow-up plans)
-- Deeper flatten (collapse `simulation/classical/` levels) — optional, requires internal relative-import rewrites.
-- FEM / `TriangularMesh` removal (structured-only) — confirmed-but-separate.
-- Form-A→B monodomain convergence + delete `ConductivityConfig.for_monodomain()`.
-- Collapsing the per-engine `tissue/` (IsotropicTissue vs BidomainConductivity) or the duplicate ionic-inside-LBM stray.
-- Goal-2 `SimulationSpec` / LLM wrapper.
+- [ ] Revert the bottom tmux pane from PLAN.md back to WHITEBOARD.md (see skill command).
 
 ## Mutation Log
 
-Revision pass 2026-06-25 — adversarial audit (`/audit`, 14 findings: 1 critical, 4 high, 6 medium, 3 low). No steps completed; all changes are spec patches (missed edit-sites + guard scope). The auditor independently verified the solver cross-ref enumeration is EXACT/complete, the relative-import assumption holds, dependency ordering is sound, and all 9 sections are present.
+**MUTATED 2026-06-28**: Step 2.4 MODIFIED — audit **H1+H2+L1**: replaced the non-existent `cardiac_core/pyproject.toml` anchor + hatchling divergence + a 2nd overlapping editable install with **Option B** — extend the ROOT `./pyproject.toml` (widen `include` to `cardiac_mcp*`, add a `cardiac-mcp` console script + `mcp>=1.2.0` dep), single `pip install -e .`, assert BOTH `import cardiac_core` and `import cardiac_mcp`. Keeps setuptools + `requires-python>=3.11` (resolves L1). Architecture-Changes line updated (NEW pyproject → MOD `./pyproject.toml`); Phase-2 Cleanup reworded.
+**MUTATED 2026-06-28**: Step 3.1 MODIFIED — audit **M2**: dropped `RLIMIT_AS` (virtual-AS cap aborts torch/CUDA init); keep `RLIMIT_CPU`+`RLIMIT_FSIZE`+`timeout`; real memory isolation deferred to the 3.3 container; Verify now ensures the `@slow` end-to-end is actually run (not deselected). Audit **H3**: foreign-script test now passes an ABSOLUTE `tmp_lab` dir so it clears the Phase-1 `is_relative_to(LAB)` guard before reaching the provenance check.
+**MUTATED 2026-06-28**: Step 1.1 MODIFIED — audit **M4/L5**: added `test_server_metadata` (asserts `serverInfo.version=="0.1.0"` + tool annotations) so the pure-wiring step has its own automated Test Spec instead of deferring to a manual verify.
+**MUTATED 2026-06-28**: Step 2.1 MODIFIED — audit **M1**: added `test_list_experiments_always_has_count` and reworded the exit criterion ("no renames/value-changes to EXISTING fields"; the `count` addition is an intentional, tested schema stabilization). Audit **L2**: corrected the `simulate` return anchor (~150 → ~141; others verified).
+**MUTATED 2026-06-28**: Step 1.2 MODIFIED — audit **M3**: clarified the traversal test asserts the raise for BOTH absolute and `..` inputs and does not depend on `Lab/` existing.
+**MUTATED 2026-06-28**: Step 3.2 MODIFIED — audit **L3**: noted port 8000 + `/mcp` are FastMCP DEFAULTS (a `FASTMCP_PORT`/settings override changes them); replaced the foreground `sleep` probe with a background-launch + targeted-PID kill (sandbox blocks foreground `sleep`).
+**MUTATED 2026-06-28**: Steps 4.1 & 4.2 MODIFIED — audit **L5**: added the missing Read First / Pseudocode / Checklist sections (now full 9-section structure); fixed the Option-B publishing consequence (publishable dist = bundled `cardiac-core`, so `server.json` `identifier`/marker reference it, not a separate `cardiac-mcp` PyPI package).
+**MUTATED 2026-06-28**: test counts MODIFIED — audit **L4**: Phase-1 total 12 → 13 (10 prior + 3 new); Step-1.2 verify count updated.
 
-**MUTATED 2026-06-25**: Phase 2 Test Spec MODIFIED — audit CRITICAL. `test_monodomain.py::test_engine_module_under_v55` asserts `'Engine_V5.5' in rl.__file__`, which FAILS after vendoring (module resolves under `cardiac_core/monodomain/`). Repoint the assertion to `cardiac_core`+`monodomain` (and `Engine_V5 not in`). Behavioral Cm gate unaffected.
-**MUTATED 2026-06-25**: Phase 2 + Phase 3 Implementation Spec/Checklist MODIFIED — audit HIGH. Added the two api.py stimulus-helper edit sites as concrete: `api.py:964` `_build_stimulus_protocol_v54` (Phase 2) and `api.py:1008` `_build_stimulus_protocol_bidomain` (Phase 3), each `from cardiac_sim.tissue_builder.stimulus.protocol …` → `cardiac_core.stimulus.protocol`. They run inside the factory bodies and break when `_prepare_engine` is deleted. Mirrored in Architecture Changes.
-**MUTATED 2026-06-25**: Phase 1 Context/Spec/Checklist MODIFIED — audit HIGH. `cardiac_core/stimulus/` must copy `regions.py` too (the stimulus `__init__` re-exports `.regions`), else `import cardiac_core.stimulus` raises ImportError.
-**MUTATED 2026-06-25**: Phase 4 verify + Phase 5 guard + Final Cleanup MODIFIED — audit HIGH+MED. Re-scoped the self-containment guard to match only real IMPORT statements (`^(from|import) (cardiac_sim|src)[. ]`) and `_prepare_engine(` calls — NOT bare `Engine_V5`/`Engine_V1` substrings — so it no longer false-positives on the `conductivity.py:11` docstring path-mention, the `_live_cv_gate_driver.py` `_V55` path string, or test literals.
-**MUTATED 2026-06-25**: Phase 1 Context MODIFIED — audit MED. `structured.py` superset carries (beyond `boundary_spec`) the `edge_masks`/`dirichlet_mask_phi_e`/`neumann_mask_phi_e` properties + `field`/`Dict` imports + `from .boundary import`; bidomain's IS the strict superset → take it as the base.
-**MUTATED 2026-06-25**: Phase 2 + Phase 3 test-edit list MODIFIED — audit MED. Also remove module-top `sys.path.insert(... Engine_*)` from `test_run.py:10-12` and `test_integration.py:11-13` (not just the three per-engine test files).
-**MUTATED 2026-06-25**: Phase 2 + Phase 3 copy spec MODIFIED — audit MED+LOW. Copy the WHOLE `tissue/` dir per engine (`__init__` + `isotropic.py` [+ bidomain `conductivity.py`]) — don't cherry-pick by class name; and include the parent `simulation/__init__.py` when copying `simulation/classical/`.
-**MUTATED 2026-06-25**: Phase 1 Context/Spec MODIFIED — audit LOW. `mesh/__init__.py` is the UNION of mono+bidomain exports (`TriangularMesh` + boundary types `BoundarySpec/BCType/Edge/EdgeBC`) — neither engine's `__init__` works verbatim.
-**MUTATED 2026-06-25**: (audit LOW, no change) `lbm/__init__.py` facade re-exporting `LBMSimulation` confirmed necessary — the copied `src/__init__.py` is docstring-only.
-
-Revision pass 2 (2026-06-25) — user request: "make sure the prior thing is git backed up" + "include checks regarding integrity".
-
-**BACKED UP 2026-06-25**: pre-vendoring state captured — tags `cardiac-core-api-track-complete` (3627836, 121 green) + `pre-consolidation-vendoring`, and bundle `~/heart-conduction-PRE-CONSOLIDATION-2026-06-25.bundle` (verified complete). Rollback: `git reset --hard pre-consolidation-vendoring`.
-**MUTATED 2026-06-25 (pass 2)**: Phase 0 ADDED — integrity baseline. Captures per-engine GOLDEN outputs (bit-identical reference, atol=0) + a source-tree content-hash, via `make_goldens.py` + `test_integrity.py`. Closes the gap that the repointed `…MatchesDirect` tests (now vendored-vs-vendored) cannot catch a vendoring numerics regression; the golden pins the ORIGINAL-engine output.
-**MUTATED 2026-06-25 (pass 2)**: Phases 2/3/4 Verification MODIFIED — added the per-engine INTEGRITY GATE: `test_{engine}_matches_golden` (atol=0) + a source-fidelity `diff` (vendored vs original = only enumerated cross-refs + facade) + `git status` EMPTY on the original folder (`test_originals_untouched`). Added a Success Criterion + Final-Cleanup integrity item.
+--- round-2 audit (0 critical / 0 high / 0 medium / 5 low; all 9 round-1 fixes verified CORRECT) ---
+**MUTATED 2026-06-28**: Step 3.1 MODIFIED — audit **R2-L5**: replaced the soft "and/or" end-to-end note with a MANDATORY `test_run_experiment_under_limits` (commit→run a real experiment through the subprocess) — the in-process `test_simulate_end_to_end` never touches `run_experiment`, so it didn't cover the `preexec_fn` limits path. Verify/Checklist/Exit updated.
+**MUTATED 2026-06-28**: Step 1.1 MODIFIED — audit **R2-L2**: `test_server_metadata` now looks tools up by name (`{t.name: t for t in list_tools()}`) — `list_tools()` returns a list, not a name-keyed dict.
+**MUTATED 2026-06-28**: Steps 2.3 & 3.3 MODIFIED — audit **R2-L3**: added the missing `#### Pseudocode` (doc-skeleton) so the two doc-only steps are 9/9 like the rest.
+**MUTATED 2026-06-28**: Step 2.3 MODIFIED — audit **R2-L4**: noted the `.mcp.json` snippet is provisional until Step 2.4 (author Install/run last to avoid a brief stale snippet).
+**MUTATED 2026-06-28**: Step 2.4 MODIFIED — audit **R2-L1**: noted `cardiac_mcp*` also matches `cardiac_mcp.tests` (harmless for editable; add `exclude=["*.tests*"]` only if a Phase-4 wheel should omit test code).
