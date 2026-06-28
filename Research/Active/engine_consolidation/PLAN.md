@@ -16,7 +16,7 @@ packaging, and docs.
 ## Success Criteria
 - [x] Phase 1: all 5 tools carry intentional `ToolAnnotations`; `serverInfo.version == "0.1.0"`; markdown resources serve `text/markdown`; `run_experiment`/`commit_experiment` reject path-traversal inputs; new tests prove it. **DONE 2026-06-28 — 13/13 tests green.**
 - [x] Phase 2: tools return typed results → MCP `outputSchema` + `structuredContent` populated; `cardiac_mcp/README.md` exists; ≥1 prompt registered; server installs as a `cardiac-mcp` console script and `.mcp.json` no longer needs `PYTHONPATH`. **DONE 2026-06-28 — 14 tests; 5 tools all w/ outputSchema; 2 prompts; console-script stdio init verified.**
-- [ ] Phase 3: `run_experiment` runs under resource limits + a provenance check; an HTTP transport switch exists (localhost-bound); `cardiac_mcp/REMOTE_DEPLOY.md` documents the auth/security stack required before any non-localhost deploy.
+- [x] Phase 3: `run_experiment` runs under resource limits + a provenance check; an HTTP transport switch exists (localhost-bound); `cardiac_mcp/REMOTE_DEPLOY.md` documents the auth/security stack required before any non-localhost deploy. **DONE 2026-06-28 — 16 tests (incl. subprocess-limits run); HTTP mode verified (406, uvicorn on 127.0.0.1).**
 - [ ] Phase 4 (optional): `server.json` + README ownership marker + LICENSE validate with the MCP Inspector.
 - [ ] All existing tests pass (no regressions): `cardiac_mcp/tests/` + `cardiac_core/tests/`.
 
@@ -790,3 +790,6 @@ cp Research/Active/engine_consolidation/PLAN.md "Research/Active/engine_consolid
 **MUTATED 2026-06-28**: Steps 2.3 & 3.3 MODIFIED — audit **R2-L3**: added the missing `#### Pseudocode` (doc-skeleton) so the two doc-only steps are 9/9 like the rest.
 **MUTATED 2026-06-28**: Step 2.3 MODIFIED — audit **R2-L4**: noted the `.mcp.json` snippet is provisional until Step 2.4 (author Install/run last to avoid a brief stale snippet).
 **MUTATED 2026-06-28**: Step 2.4 MODIFIED — audit **R2-L1**: noted `cardiac_mcp*` also matches `cardiac_mcp.tests` (harmless for editable; add `exclude=["*.tests*"]` only if a Phase-4 wheel should omit test code).
+
+--- execution (2026-06-28, Phases 1–3 implemented + committed on branch `mcp-standardization`) ---
+**MUTATED 2026-06-28**: Step 3.1 EXECUTION DEVIATION — `RLIMIT_CPU` set to `timeout_s * (os.cpu_count() or 4)` (loose backstop), NOT the spec text's `≈ timeout_s`: `RLIMIT_CPU` sums CPU-time across ALL threads, so `≈ timeout_s` would false-kill multi-threaded torch well before the wall `timeout`. `RLIMIT_FSIZE` (4 GiB) + wall `timeout` retained; `RLIMIT_AS` dropped as planned. `test_run_experiment_under_limits` confirms a real torch run completes `done` under the limits.
