@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cardiac-core": {
+      "type": "stdio",
+      "command": "/home/norepinephrine/.conda/envs/heart-conduction/bin/cardiac-mcp"
+    }
+  }
+}
