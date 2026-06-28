@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cardiac-core": {
+      "type": "stdio",
+      "command": "/home/norepinephrine/.conda/envs/heart-conduction/bin/python",
+      "args": ["-m", "cardiac_mcp"],
+      "env": {
+        "PYTHONPATH": "/home/norepinephrine/Documents/Heart-Conduction"
+      }
+    }
+  }
+}
