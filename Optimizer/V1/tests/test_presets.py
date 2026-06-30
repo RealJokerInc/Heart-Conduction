@@ -47,3 +47,28 @@ def test_to_sim_kwargs_per_engine():
 def test_make_record_rejects_bad_baseline():
     with pytest.raises(ValueError):
         make_record("x", "adult", {}, {}, {})
+
+
+def test_lab_preset_export(tmp_path):
+    """Tier-2 export: record -> Lab/presets/{name}.yaml with the extended schema."""
+    import yaml
+    from tuner.presets import export_lab_preset
+
+    rec = make_record(
+        name="chip_nrvm", baseline="nrvm", ionic_model="mhas13",
+        theta_ionic={"g_Na": 0.83},
+        tissue={"lbm": {"D_long": 4e-4, "D_trans": 1e-4, "collision": "mrt",
+                        "s_jx": 1.8, "s_jy": 1.95, "dx_mm": 0.1, "dt_ms": 0.05},
+                "monodomain": {"D_long": 4e-4, "D_trans": 1e-4, "dt_ms": 0.02}},
+        targets={"cv_longitudinal": 9.33, "cv_transverse": 4.67, "apd_90": 350, "dvdt_max": 110},
+    )
+    path = export_lab_preset(rec, engine="lbm", lab_dir=str(tmp_path))
+    assert os.path.exists(path)
+    with open(path) as f:
+        y = yaml.safe_load(f)
+    assert y["engine"] == "lbm" and y["ionic"] == "mhas13"
+    assert y["ionic_scaling"]["g_Na"] == 0.83
+    c = y["conductivity"]
+    assert c["mode"] == "anisotropic_lbm" and c["D_long"] == 4e-4 and c["s_jx"] == 1.8
+    assert y["geometry"]["dx"] == 0.01          # 0.1 mm -> 0.01 cm
+    assert y["measure"] == "reentry"

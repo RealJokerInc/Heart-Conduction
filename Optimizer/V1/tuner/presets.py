@@ -19,6 +19,10 @@ from typing import Optional
 PRESETS_DIR = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "presets")
 )
+# Tier-2 Lab presets (the /sim-preset store at repo-root Lab/presets/).
+LAB_PRESETS_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "Lab", "presets")
+)
 
 _VALID_BASELINES = ("nrvm", "hipsc")
 
@@ -99,3 +103,54 @@ def to_sim_kwargs(record: dict, engine: str) -> dict:
         "dt": t.get("dt_ms"),
     }
     return out
+
+
+def _conductivity_block(t: dict, engine: str) -> dict:
+    """Lab-preset conductivity block (D is cm²/ms — outside the sigma firewall)."""
+    block = {"mode": f"anisotropic_{engine}", "D_long": t["D_long"],
+             "D_trans": t["D_trans"], "chi": 1.0, "Cm": 1.0}
+    if engine == "lbm":                      # carry the MRT relaxation rates
+        block.update({"collision": t.get("collision", "mrt"),
+                      "s_jx": t.get("s_jx"), "s_jy": t.get("s_jy"),
+                      "dt_lbm": t.get("dt_ms")})
+    return block
+
+
+def export_lab_preset(record: dict, engine: str = "lbm",
+                      lab_dir: str = LAB_PRESETS_DIR) -> str:
+    """Project a Tier-1 record to a Tier-2 Lab preset (Lab/presets/{name}.yaml).
+
+    Parameters-only (no API calls), per the /sim-preset schema (extended:
+    ionic mhas13, ionic_scaling block, per-axis D + LBM rates). Returns the path.
+    """
+    import yaml
+
+    t = record["tissue"][engine]
+    mesh = record["mesh"]
+    L = mesh["domain_mm"] / 10.0          # mm -> cm
+    dx = mesh["dx_mm"] / 10.0
+    tgt = record["targets"]
+
+    preset = {
+        "name": record["name"],
+        "description": (
+            f"Kit Parker {record['baseline']} chip EP fit "
+            f"(CV_L {tgt.get('cv_longitudinal')}, CV_T {tgt.get('cv_transverse')} cm/s); "
+            f"{record['ionic_model']}; anisotropic {engine}."
+        ),
+        "recipe": "R1",
+        "engine": engine,
+        "ionic": record["ionic_model"],
+        "ionic_scaling": dict(record["theta_ionic"]),
+        "geometry": {"length_cm": L, "width_cm": L, "dx": dx},
+        "conductivity": _conductivity_block(t, engine),
+        "stimulus": {"region": "left_edge", "width_cm": max(2 * dx, 0.02),
+                     "start_ms": 1.0, "duration_ms": 2.0, "amplitude": -52.0},
+        "run": {"t_end_ms": 200.0, "save_every_ms": 1.0},
+        "measure": "reentry",
+    }
+    os.makedirs(lab_dir, exist_ok=True)
+    path = os.path.join(lab_dir, f"{record['name']}.yaml")
+    with open(path, "w") as f:
+        yaml.safe_dump(preset, f, sort_keys=False)
+    return path
