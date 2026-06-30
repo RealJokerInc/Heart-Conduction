@@ -18,7 +18,7 @@ build meshes with chi=1.0 (else effective D is rescaled ~1400x and the wave dies
 import numpy as np
 import torch
 
-from cardiac_core import create_cardiac_mesh, run_monodomain, run_lbm
+from cardiac_core import create_cardiac_mesh, run_monodomain, run_lbm, run_bidomain
 from cardiac_core import analysis
 from cardiac_core.ionic import MHAS13Model, PHAS13Model, TTP06Model
 
@@ -79,10 +79,12 @@ def run_1d_cable(theta_ionic, D: float, config: TuningConfig,
         times, V = run_lbm(mesh, t_end=t_end, save_every=save_every,
                            ionic_model=model, dt=dt, device=config.device)
     elif engine == "bidomain":
-        raise NotImplementedError(
-            "cc_runner bidomain CV is added in Phase 4 (needs sigma_i/sigma_e "
-            "from D_eff + ratio). Phase 3 fits on monodomain."
-        )
+        # bidomain() auto-derives D_i/D_e from the effective mesh D + sigma_ratio
+        # (no sigma_i/sigma_e needed) — reuse the same chi=1.0 effective-D mesh.
+        times, V, _phi = run_bidomain(mesh, t_end=t_end, save_every=save_every,
+                                      ionic_model=model, dt=config.dt,
+                                      sigma_ratio=config.De_Di_ratio,
+                                      device=config.device)
     else:  # monodomain
         times, V = run_monodomain(mesh, t_end=t_end, save_every=save_every,
                                   ionic_model=model, dt=config.dt, device=config.device)
@@ -108,3 +110,39 @@ def run_2d_tissue(theta_ionic, D_long: float, D_trans: float, config: TuningConf
     cv_long = run_1d_cable(theta_ionic, D_long, config, t_end=t_end, save_every=save_every)
     cv_trans = run_1d_cable(theta_ionic, D_trans, config, t_end=t_end, save_every=save_every)
     return {"cv_long": cv_long, "cv_trans": cv_trans}
+
+
+def fit_D_for_cv(theta_ionic, target_cv, config, *, D0=0.001, n=8, tol=0.02,
+                 D_lo=1e-6, D_hi=1e-2, t_end=None):
+    """Secant on diffusion D to hit `target_cv` (cm/s) via run_1d_cable.
+
+    Warm-started by CV ∝ √D, then two-point secant (NOT Newton — Known Failure).
+    Returns (D, cv_achieved). Robust to a non-propagating warm-start guess.
+    Shared by run_chip_fit (Phase 3) and cross_engine.recalibrate_lbm (Phase 4).
+    """
+    import math
+
+    def cv(D):
+        return run_1d_cable(theta_ionic, D, config, t_end=t_end)
+
+    cv0 = cv(D0)
+    if not (math.isfinite(cv0) and cv0 > 0):
+        D0 = min(D_hi, D0 * 4.0)
+        cv0 = cv(D0)
+        if not (math.isfinite(cv0) and cv0 > 0):
+            return D0, float("nan")
+    D1 = min(D_hi, max(D_lo, D0 * (target_cv / cv0) ** 2))
+    cv1 = cv(D1)
+    if not (math.isfinite(cv1) and cv1 > 0):
+        return D0, cv0
+    it = 2
+    while it < n and abs(cv1 - target_cv) / target_cv > tol:
+        if cv1 == cv0:
+            break
+        D2 = min(D_hi, max(D_lo, D1 + (target_cv - cv1) * (D1 - D0) / (cv1 - cv0)))
+        cv2 = cv(D2)
+        if not (math.isfinite(cv2) and cv2 > 0):
+            break
+        D0, cv0, D1, cv1 = D1, cv1, D2, cv2
+        it += 1
+    return D1, cv1
