@@ -1358,28 +1358,41 @@ def lbm(
             raise ValueError(f"Unknown ionic model: {ionic_name}")
         ionic_instance = model_cls(device=device)
 
-    # Determine D — LBM currently supports scalar isotropic D only for BGK
-    is_isotropic = (
+    # Determine D. LBM needs spatially-uniform diagonal D (D_xx, D_yy constant;
+    # D_xy = 0). Isotropic (D_xx == D_yy) -> BGK on the requested lattice;
+    # anisotropic (D_xx != D_yy) -> D2Q9-MRT (BGK is single-relaxation/isotropic).
+    uniform = (
         np.allclose(data.D_xx, data.D_xx.flat[0])
         and np.allclose(data.D_yy, data.D_yy.flat[0])
         and np.allclose(data.D_xy, 0.0)
-        and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
     )
-    if not is_isotropic:
+    if not uniform:
         raise ValueError(
-            "LBM BGK currently supports isotropic D only. "
-            "Use D2Q9 MRT for anisotropic diffusion."
+            "LBM supports spatially-uniform diagonal D only "
+            "(D_xx, D_yy constant; D_xy = 0). "
+            "Oblique fibers (D_xy != 0) need the moment-space rotation (out of scope)."
         )
-    D = float(data.D_xx.flat[0])
+    D_xx = float(data.D_xx.flat[0])
+    D_yy = float(data.D_yy.flat[0])
+    anisotropic = not np.isclose(D_xx, D_yy)
 
     Nx, Ny = data.mask.shape
-    sim = LBMSimulation(
-        Nx=Nx, Ny=Ny,
-        dx=data.dx, dt=timestep,
-        D=D, ionic_model=ionic_instance,
-        Cm=data.Cm,
-        lattice=lattice,
-    )
+    if anisotropic:
+        sim = LBMSimulation(
+            Nx=Nx, Ny=Ny,
+            dx=data.dx, dt=timestep,
+            D=D_xx, D_yy=D_yy, ionic_model=ionic_instance,
+            Cm=data.Cm,
+            lattice='d2q9', collision='mrt',
+        )
+    else:
+        sim = LBMSimulation(
+            Nx=Nx, Ny=Ny,
+            dx=data.dx, dt=timestep,
+            D=D_xx, ionic_model=ionic_instance,
+            Cm=data.Cm,
+            lattice=lattice,
+        )
 
     # Add stimuli as (Nx, Ny) bool tensor masks
     dev = torch.device(device)

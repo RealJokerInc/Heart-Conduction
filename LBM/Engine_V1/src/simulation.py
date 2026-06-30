@@ -15,9 +15,9 @@ from torch import Tensor
 from typing import Optional, List
 
 from .lattice import D2Q5, D2Q9, D2Q9_uniform
-from .diffusion import tau_from_D
+from .diffusion import tau_from_D, tau_tensor_from_D, check_stability_tensor
 from .state import create_lbm_state, recover_voltage
-from .step import lbm_step_d2q5_bgk, lbm_step_d2q9_bgk
+from .step import lbm_step_d2q5_bgk, lbm_step_d2q9_bgk, lbm_step_d2q9_mrt
 from .solver.rush_larsen import ionic_step, compute_source_term
 
 
@@ -56,7 +56,16 @@ class LBMSimulation:
                  D: float, ionic_model, Cm: float = 1.0,
                  lattice: str = 'd2q5',
                  weights_mode: str = 'canonical',
-                 bounce_masks: dict = None):
+                 bounce_masks: dict = None,
+                 collision: str = 'bgk',
+                 D_yy: float = None,
+                 s_e: float = 1.0, s_eps: float = 1.0, s_q: float = 1.0,
+                 s_pxx: float = 1.0, s_pxy: float = 1.0):
+        # collision: 'bgk' (single-relaxation, isotropic) | 'mrt' (multi-relaxation,
+        #   per-axis anisotropy via s_jx=1/tau_xx, s_jy=1/tau_yy). MRT requires
+        #   lattice='d2q9' + weights_mode='canonical' (cs2=1/3). D = x-axis (D_xx);
+        #   D_yy = y-axis (default None -> isotropic). The 5 free moment rates
+        #   (s_e/s_eps/s_q/s_pxx/s_pxy) default to ~1.0 (stable; only s_jx/s_jy carry D).
         self.Nx = Nx
         self.Ny = Ny
         self.dx = dx
@@ -94,12 +103,43 @@ class LBMSimulation:
             raise ValueError(f"Unknown lattice: {lattice}")
 
         self.w = torch.tensor(self.lattice.w, device=self.device, dtype=self.dtype)
-        # CRITICAL FIX (2026-04-30): pass cs2 from lattice. Previously this used
-        # the default cs2=1/3 regardless of lattice, which is bit-correct for
-        # canonical D2Q9 (cs2=1/3) but produces an incorrect tau for any non-
-        # canonical lattice (e.g., D2Q9_uniform with cs2=0.75).
-        tau = tau_from_D(D, dx, dt, cs2=self.lattice.cs2)
-        self.omega = 1.0 / tau
+
+        # Collision setup
+        self.collision = collision
+        if collision == 'bgk':
+            # CRITICAL FIX (2026-04-30): pass cs2 from lattice. Previously this used
+            # the default cs2=1/3 regardless of lattice, which is bit-correct for
+            # canonical D2Q9 (cs2=1/3) but produces an incorrect tau for any non-
+            # canonical lattice (e.g., D2Q9_uniform with cs2=0.75).
+            tau = tau_from_D(D, dx, dt, cs2=self.lattice.cs2)
+            self.omega = 1.0 / tau
+        elif collision == 'mrt':
+            # D2Q9-MRT per-axis anisotropy. The moment matrix assumes canonical
+            # D2Q9 (cs2=1/3), so reject D2Q5 and uniform_8 weights.
+            if lattice != 'd2q9':
+                raise ValueError("collision='mrt' requires lattice='d2q9'")
+            if weights_mode != 'canonical':
+                raise ValueError(
+                    "collision='mrt' requires weights_mode='canonical' "
+                    "(the MRT moment matrix assumes cs2=1/3)"
+                )
+            cs2 = self.lattice.cs2
+            D_yy_eff = D if D_yy is None else D_yy
+            ok, tau_min = check_stability_tensor(D, D_yy_eff, 0.0, dx, dt, cs2)
+            if not ok:
+                raise ValueError(
+                    f"MRT tau-tensor unstable (tau_min={tau_min:.4f} <= 0.5); "
+                    f"raise dt or lower D (D_xx={D}, D_yy={D_yy_eff}, dx={dx}, dt={dt})"
+                )
+            tau_xx, tau_yy, _ = tau_tensor_from_D(D, D_yy_eff, 0.0, dx, dt, cs2)
+            # MRT consumes RATES s = 1/tau (tau_tensor_from_D returns TIMES)
+            self.s_jx = 1.0 / tau_xx
+            self.s_jy = 1.0 / tau_yy
+            self.s_e, self.s_eps, self.s_q = s_e, s_eps, s_q
+            self.s_pxx, self.s_pxy = s_pxx, s_pxy
+            self.omega = None
+        else:
+            raise ValueError(f"Unknown collision: {collision!r} (use 'bgk' or 'mrt')")
 
         # Boundary masks
         if bounce_masks is not None:
@@ -159,10 +199,20 @@ class LBMSimulation:
         R = R_flat.reshape(self.Nx, self.Ny)
 
         # 2-6. LBM step (collide -> stream -> BC -> recover V)
-        self.f, self.V = self._step_fn(
-            self.f, self.V, R, self.dt, self.omega, self.w,
-            self.bounce_masks
-        )
+        if self.collision == 'mrt':
+            # D2Q9-MRT: per-axis flux rates s_jx/s_jy carry the diffusion tensor;
+            # the other 5 moment rates are stability parameters. Signature differs
+            # from the BGK step fns (no single omega).
+            self.f, self.V = lbm_step_d2q9_mrt(
+                self.f, self.V, R, self.dt, self.w,
+                self.s_e, self.s_eps, self.s_jx, self.s_q,
+                self.s_pxx, self.s_pxy, self.bounce_masks, s_jy=self.s_jy
+            )
+        else:
+            self.f, self.V = self._step_fn(
+                self.f, self.V, R, self.dt, self.omega, self.w,
+                self.bounce_masks
+            )
 
         # 7. Update ionic states only (V comes from distributions, not ionic ODE)
         V_flat = self.V.reshape(-1)
