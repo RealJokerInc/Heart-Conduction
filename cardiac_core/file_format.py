@@ -173,6 +173,7 @@ def create_cardiac_mesh(
     Ly: float,
     dx: float,
     D: float = 0.001,
+    D_yy: float = None,
     ionic_model: str = 'ttp06',
     dt: float = 0.02,
     chi: float = 1400.0,
@@ -221,8 +222,11 @@ def create_cardiac_mesh(
     if mask is None:
         mask = np.ones((Nx, Ny), dtype=bool)
 
+    # Per-axis anisotropy: D = x-axis (longitudinal); D_yy = y-axis (transverse).
+    # Default D_yy=None -> isotropic (D_yy = D), preserving prior behaviour.
+    D_yy_scalar = D if D_yy is None else D_yy
     D_xx = np.full((Nx, Ny), D, dtype=np.float64)
-    D_yy = np.full((Nx, Ny), D, dtype=np.float64)
+    D_yy = np.full((Nx, Ny), D_yy_scalar, dtype=np.float64)
     D_xy = np.zeros((Nx, Ny), dtype=np.float64)
 
     # Left-edge stimulus mask

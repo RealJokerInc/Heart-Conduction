@@ -1350,10 +1350,13 @@ def lbm(
         'paci': PHAS13Model,
         'mhas13': MHAS13Model,
     }
-    model_cls = model_map.get(ionic_name.lower())
-    if model_cls is None:
-        raise ValueError(f"Unknown ionic model: {ionic_name}")
-    ionic_instance = model_cls(device=device)
+    if ionic_model is not None and not isinstance(ionic_model, str):
+        ionic_instance = ionic_model            # pre-built (e.g. tuner-scaled) IonicModel — use as-is
+    else:
+        model_cls = model_map.get(ionic_name.lower())
+        if model_cls is None:
+            raise ValueError(f"Unknown ionic model: {ionic_name}")
+        ionic_instance = model_cls(device=device)
 
     # Determine D — LBM currently supports scalar isotropic D only for BGK
     is_isotropic = (

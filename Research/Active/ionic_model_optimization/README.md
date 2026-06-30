@@ -82,3 +82,4 @@ Files to read when resuming work on this question:
 - **hipsc_cm_ionic_models** — MHAS13 is the primary tuning target
 - **boundary_conduction_speedup** — Boundary effects must be accounted for in tissue-level CV fitting
 - **engine_consolidation** — Cross-engine validation needs unified API
+- **geometry_induced_reentry** — *driving application* of the cross-engine tuner: fits a Kit Parker tissue-chip EP set, then runs it on LBM (its primary engine) for reentry sweeps. **Shared cross-plan** (`PLAN.md`); end goal = Engine Tuner adapted to cardiac_core (monodomain + bidomain + LBM).
