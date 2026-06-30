@@ -54,12 +54,21 @@ class TuningConfig:
     dx_cm: float = 0.04             # cm (400 μm, matches spiral_wave_s1s2)
     cable_length_cm: float = 1.5    # cm (1D cable for CV — shorter = faster)
     # Engine selection
-    engine: str = 'monodomain'      # 'monodomain' | 'bidomain'
+    engine: str = 'monodomain'      # 'monodomain' | 'bidomain' | 'lbm'
     # Bidomain parameters (from cv_shared.py: sigma_i=1.74, sigma_e=6.25, chi=1400, Cm=1.0)
     De_Di_ratio: float = 3.597      # D_e / D_i ratio (physiological default)
     bc_type: str = 'insulated'      # 'insulated' | 'bath'
     bidomain_splitting: str = 'strang'
     elliptic_solver: str = 'auto'
+    # cardiac_core / chip fields (Phase 1+). NOTE: cc_runner builds effective-D
+    # meshes with chi=1.0 (the FDM operator divides by chi); use dx_cm=0.01 for
+    # cardiac_core's CN+PCG (coarser over-depolarizes the stim site).
+    stim_start: float = 1.0          # ms — stimulus onset
+    dt_lbm: float = 0.01             # ms — LBM time step (may exceed dt to keep MRT tau off 0.5)
+    anisotropy_ratio: float = 2.0    # CV_L / CV_T (Bursac & Parker ~2.1)
+    domain_mm: float = 16.0          # chip square side (within the 25 mm coverslip)
+    dx_mm: float = 0.1               # chip resolution (0.1 mm)
+    baseline: str = 'nrvm'           # 'nrvm' | 'hipsc'
 
 
 # ============================================================================
