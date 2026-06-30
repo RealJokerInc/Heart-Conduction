@@ -5,10 +5,10 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-BayesOpt pipeline (qNEHVI + BoTorch) tuning MHAS13 ionic model parameters against dual objectives (APD + CV). Cell fitter and tissue fitter both implemented, working across monodomain and bidomain engines. Tier 2 (10 params) with hard dVdt/Vpeak/Vrest constraints. Best result: APD=352ms (0.6% err), CV_L=14.6 cm/s (2.4% err), dVdt=106 V/s.
+**Cross-plan with `geometry_induced_reentry` (build owner here): Engine Tuner → cardiac_core multi-engine.** All 6 phases of the chip-EP fit are IMPLEMENTED + tested + committed on branch `engine-tuner-cardiac-core`: tune MHAS13 (+ diffusion) through cardiac_core's *functional* API to Kit Parker tissue-chip targets (NRVM CV_L 9.33 / hiPSC 5.2 cm/s, anisotropic ~2:1) across monodomain/bidomain/LBM. The prior V1 BayesOpt core (qNEHVI, MHAS13 tier-2, best APD=352ms/CV_L=14.6) remains the cell/tissue-fit engine; this session wrapped it in the cross-engine cardiac_core layer + chip targets + record/preset storage.
 
 ## Next Step
-Joint refinement phase: GP emulator + NSGA-II for Pareto exploration across remaining parameter degeneracies. Also: revise dVdt target for MHAS13 to ~100 V/s (not 25), and implement multi-rate pacing (CL=500/1000/1500) to break IKr/IKs compensation.
+Run the **GATED** full fits (scaffolded + smoke-tested, not yet executed): `python Optimizer/V1/run_chip_fit.py` (both baselines → Tier-1 records) then `run_chip_baseline_lbm.py` (LBM chip baseline + Lab presets). Watch the slowest (hiPSC 5.2) baseline for dx adequacy at chip dx=0.1 mm (effD≈2.5e-5 propagates there per the diagnostic; refine dx if the upstroke runs hot). Optional follow-ons: rewire legacy `tissue_fitter` through `cc_runner`; fix the `create_cardiac_mesh` chi API-debt (logged in `engine_consolidation`). Still-open V1 items: joint refinement (GP+NSGA-II), multi-rate pacing for IKr/IKs.
 
 ## Thread
 
@@ -68,3 +68,11 @@ The reentry question needs the tuner to fit a **Kit Parker tissue-chip EP set** 
 - **Analytical CV warm-start alone** (2026-03-17) — failed because: CV proportional to sqrt(D_eff) gives a reasonable starting point but is not accurate enough for final convergence. The relationship between diffusion coefficient and CV is nonlinear in practice (discretization, ionic model coupling). Secant refinement on top of the warm-start was necessary.
 
 ## Session Log
+
+### 2026-06-30 Session
+**Worked on**: Finalizing + executing the shared cross-plan "Engine Tuner → cardiac_core multi-engine" (with `geometry_induced_reentry`) — PLAN.md to convergence, then full implementation.
+**Accomplished**:
+- **PLAN.md audit-converged** over 6 iterations (issues 18→13→9→3 [structure], then user's anisotropy domain-correction → 7→3 [mechanism]; 0 critical/high at convergence). Caught a wrong LBM-MRT mechanism (engine is BGK-scalar; anisotropy needs MRT + `tau_tensor_from_D`, rates s=1/τ — NOT `tau_from_D` twice), and the dx≠dt benchmark requirement.
+- **Implemented all 6 phases** on branch `engine-tuner-cardiac-core` (11 commits, ~30 new tests, no regressions — 32 upstream LBM + cardiac_core suites green): P0 cardiac_core seam (`create_cardiac_mesh(D_yy=)` + `lbm()` instance pass-through) + **LBM D2Q9-MRT anisotropy** (vendored `cardiac_core/_lbm` + upstream `LBM/Engine_V1`) + dx≠dt diffusion benchmark proving the s→D mapping; P1 `cc_runner.py` (CV via functional API, mono/bidomain/lbm, CV∝√D); P2 `chip.py` (161² Parker mesh + anisotropic targets); P3 `presets.py` Tier-1 records + `run_chip_fit.py` (smoke; full fit GATED); P4 `cross_engine.py` (mono↔bidomain CV_T ~12%, mono↔lbm ~29%); P5 `export_lab_preset` + `_SCHEMA.md` ext + `run_chip_baseline_lbm.py`.
+- **Engine finding (chi convention)**: effective-D meshes require **chi=1.0** — the monodomain FDM operator solves χ·Cm·∂V/∂t=∇·(D·∇V), so membrane-effective D = D/(χ·Cm); the default chi=1400 silently under-diffuses ~1400× → discretization conduction block (Vmax pools 80–123 mV). Empirically confirmed: degeneracy (D=1e-3,χ=1400 ≡ D=7.14e-7,χ=1, bit-identical block) + block-is-discretization (propagates at finer dx) + **the real chip regime (effD=2.5e-5) propagates cleanly at chip dx, CV≈6 cm/s — no artificial block**. Logged as API-debt to `engine_consolidation` IDEALOG (firewall bypass; recommend a `mode=` flag or routing through `ConductivityConfig`).
+**Next**: Run the gated full fits (`run_chip_fit.main`, then `run_chip_baseline_lbm.main`); watch hiPSC-5.2 dx adequacy. Optional: tissue_fitter rewire; `create_cardiac_mesh` chi fix.
