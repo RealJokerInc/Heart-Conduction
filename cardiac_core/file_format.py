@@ -188,6 +188,27 @@ def create_cardiac_mesh(
 
     Default: rectangular tissue, isotropic D, left-edge stimulus.
 
+    ⚠ CONDUCTIVITY CONVENTION — `D` vs `chi` (read before choosing chi)
+    --------------------------------------------------------------------
+    The monodomain FDM operator solves ``χ·Cm·∂V/∂t = ∇·(D·∇V)`` — the stiffness
+    Laplacian is built from ``D`` alone, and ``χ·Cm`` sits only in the mass/time
+    term. So the **membrane-effective diffusivity is ``D/(χ·Cm)``**, NOT ``D``.
+
+    Two consistent ways to use this function:
+
+      * **Pass an effective diffusivity** (cm²/ms, e.g. ``D=1e-3``, the value you
+        want CV ∝ √D to see) → you MUST set ``chi=1.0`` (and Cm=1.0) so
+        ``D/(χ·Cm) = D``. This is the convention the Optimizer chip code uses
+        (``cc_runner``/``chip.chip_mesh``).
+      * **Pass a raw conductivity** σ (mS/cm, e.g. via ConductivityConfig) → keep
+        the physiological ``chi=1400`` so the effective diffusivity is σ/(χ·Cm).
+
+    **The trap:** the historical default is ``chi=1400`` while ``D`` is documented
+    as a "diffusion coefficient". Passing an effective ``D≈1e-3`` with ``chi=1400``
+    silently divides it ~1400× → CV drops ~√1400 ≈ 37× → the wave **fails to
+    launch**: the stimulus over-depolarizes the source nodes (Vmax ≈ 80–120 mV)
+    but never propagates. (See cardiac_core/conductivity.py "Formulation A/B".)
+
     Parameters
     ----------
     Lx, Ly : float
@@ -195,13 +216,19 @@ def create_cardiac_mesh(
     dx : float
         Grid spacing (cm). dy = dx.
     D : float
-        Isotropic diffusion coefficient (cm²/ms).
+        x-axis diffusion term used in the stiffness operator. The membrane sees
+        ``D/(chi*Cm)`` (see CONDUCTIVITY CONVENTION above). Pass an effective
+        diffusivity with chi=1.0, or a conductivity with chi=1400.
+    D_yy : float, optional
+        y-axis term (per-axis anisotropy). None → isotropic (D_yy = D).
     ionic_model : str
         Ionic model name.
     dt : float
         Time step (ms).
     chi : float
-        Surface-to-volume ratio (cm⁻¹).
+        Surface-to-volume ratio (cm⁻¹). **Set chi=1.0 when `D` is an effective
+        diffusivity** (see CONDUCTIVITY CONVENTION). Default 1400 assumes `D` is
+        a conductivity.
     Cm : float
         Membrane capacitance (µF/cm²).
     stim_width : float

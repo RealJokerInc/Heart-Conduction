@@ -84,6 +84,32 @@ Single-AP fitting with 9 parameters: parameters converge to wrong values despite
 - Would a restitution-curve emulator (Coveney approach) provide sufficient accuracy?
 - Can HMC scale to 10+ conductances given that Nieto Ramos only tested up to 13?
 
+## Engine gotcha: cardiac_core mesh `chi` convention (effective-D meshes need chi=1.0)
+
+**Effect (discovered 2026-06-30 during chip-fit implementation).** Building a chip
+mesh via `create_cardiac_mesh(D=<effective diffusivity ~1e-3>, ...)` with the
+**default `chi=1400`** produced **no propagation**: the stimulus over-depolarized the
+source nodes to a non-physical Vmax ≈ 80–123 mV but the wave never launched (CV = NaN).
+Isotropic *and* anisotropic, every engine config, was affected — it is a mesh-assembly
+issue, independent of the anisotropy/MRT work. Setting **`chi=1.0`** → clean
+propagation, CV = 59 cm/s (TTP06 at D=0.001).
+
+**Why.** The monodomain FDM operator solves `χ·Cm·∂V/∂t = ∇·(D·∇V)`
+(`cardiac_core/_monodomain/.../fdm.py`): the stiffness Laplacian `L` is built from the
+mesh `D` **alone**, and `χ·Cm` appears only in the mass/time term. So the
+**membrane-effective diffusivity is `D/(χ·Cm)`, not `D`.** `create_cardiac_mesh` stores
+its `D` argument directly into `D_xx` (documented as a "diffusion coefficient") yet
+defaults `chi=1400` — so an *effective* `D≈1e-3` is silently divided ~1400× →
+effective diffusivity ≈ 7e-7 → CV ∝ √D drops ~√1400 ≈ 37× → below the source–sink
+launch threshold (hence the pooled-but-non-propagating stimulus).
+
+**Rule.** This is the Formulation-A/B firewall (`cardiac_core/conductivity.py`):
+- Pass an **effective diffusivity** (cm²/ms) → set **`chi=1.0`, `Cm=1.0`** so `D/(χ·Cm)=D`. ← what `cc_runner`/`chip.chip_mesh` do.
+- Pass a **raw conductivity** σ (mS/cm) → keep `chi=1400` so the effective diffusivity is σ/(χ·Cm). ← what `ConductivityConfig.bidomain(...)` does.
+
+Documented in the `create_cardiac_mesh` docstring (`cardiac_core/file_format.py`).
+LBM is unaffected by this (it maps D→τ directly, no χ division).
+
 ## Connections
 - **Engines**: Monodomain V5.4 (simulation backend for optimization), Bidomain V1 (CV validation)
 - **Related research**: hipsc_cm_ionic_models (MHAS13 is the tuning target), boundary_conduction_speedup (boundary effects must be accounted for in tissue-level CV fitting)
