@@ -18,11 +18,11 @@ class TestConfig:
         assert t.v_rest == -74.0
 
     def test_tuning_config_defaults(self):
-        """TuningConfig defaults to PHAS13."""
+        """TuningConfig defaults to MHAS13 / tier 2 (current target; was phas13/tier1)."""
         from tuner.config import TuningConfig
         c = TuningConfig()
-        assert c.ionic_model == 'phas13'
-        assert c.tier == 1
+        assert c.ionic_model == 'mhas13'
+        assert c.tier == 2
 
     def test_registry_tier1(self):
         """Tier 1 has 6 params."""
