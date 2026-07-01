@@ -1,396 +1,253 @@
-# PLAN: cardiac_core Foundation Cleanup → Boundary-Mode Build
+# PLAN: cardiac_core API Consistency Hardening + Stress Harness
 
-**STATUS: ✅ COMPLETE (2026-07-01)** — all 3 phases shipped; 195 cardiac_core+mcp tests green;
-commits `a3915d1` (P1) · `945350f` (P2) · `736296d` (P3) on `engine-tuner-cardiac-core`.
-Deferred items live in the Findings Coverage table + the Phase Mutation Log entries.
-
-Created: 2026-06-30
-Engine(s): All (cardiac_core = mono/bidomain/lbm) + cardiac_mcp
+Created: 2026-07-01 · Revised: 2026-07-01 (audit round 1 → 5 blockers / 10 majors folded in; see Mutation Log)
+Engine(s): All (cardiac_core api/run/io/mesh + `_lbm`/`_monodomain`/`_bidomain`)
 Research question: [engine_consolidation](README.md)
-Source: [IDEALOG.md](IDEALOG.md) — 2026-06-30 "system audit + cleanup decisions" · findings in [CARDIAC_CORE_AUDIT.md](CARDIAC_CORE_AUDIT.md)
+Source: [API_CONSISTENCY_AUDIT.md](API_CONSISTENCY_AUDIT.md) (7 HIGH · 8 MED · 6 LOW) + [PHASE3_BOUNDARY_GAPS.md](PHASE3_BOUNDARY_GAPS.md) + [IDEALOG.md](IDEALOG.md) 2026-07-01
 
-> **NOTE — phase numbering:** this PLAN's Phase 1–3 are the *foundation-cleanup track*. They are DISTINCT from
-> the README's consolidation Phase 1–5 (mesh/stimulus unify → rewire → delete copies). Do not conflate.
+> Supersedes the 2-gap boundary-fix plan (archived). A 4-lens adversarial audit showed the two
+> boundary gaps were symptoms of a class: the numerics are sound, but the API surface is fragile —
+> capability that isn't exposed, one kwarg meaning different things per engine with no validation, and
+> a few real silent-wrong-result bugs. This plan fixes them AND builds a contract-matrix stress harness
+> so the class can't regress.
 
 ## Objective
-Tidy the cardiac_core foundation before building the (real, β/discreteness-driven) boundary-mode
-work: fix the 4 confirmed blockers, batch the dead-code/docs/API-consistency cleanup, then lift the
-LBM boundary modes (HBB / specular / α-blend) into the engine and expose them through the unified API
-with tests. Fixing on clean ground, per the audit's fix-ordering. Hardened by two adversarial audit rounds (see Mutation Log).
+Make the public API behave consistently at every entry point × engine × param × physics cell: each
+either takes effect, or raises a *validated* error, or emits an explicit warning — never silently
+degrades or means something different per engine. Then lock it with a parametrized stress harness whose
+contract table is **written first** (Phase 0) so a never-considered cell surfaces as a standing xfail,
+not an absence.
 
-## Success Criteria
-- [ ] All 4 HIGH blockers fixed with regression tests (#4, cluster-#1, #1, #3)
-- [ ] `cardiac_core` full suite green at every phase commit (goldens refreshed within Phase 1)
-- [ ] `D_xx` = raw convention uniform across **all three** engines (mono via mass term; **LBM factory AND bidomain D_eff branch divide by χ·Cm**); no mesh runs at ~1400× different D
-- [ ] Boundary modes (neumann/dirichlet/absorbing/hbb/specular_nextcell/specular_samecell/combined-α) selectable via `cardiac_core.lbm(boundary=…)`, each with a rest-no-op + mass-conservation test
-- [ ] Dead code removed or explicitly marked; API docs reconciled to shipped signatures
-- [ ] Every confirmed audit finding is either fixed or in the explicit **Findings Coverage** table (none silently dropped)
-- [ ] All existing tests pass (no regressions)
+## Execution order (strictly ascending: 0 → 5)
+**Phase 0 FIRST** (write the contract matrix, commit it with unfixed cells as `xfail`) → Phase 1 → 2 →
+3 → 4 → **Phase 5 LAST** (flip the matrix's xfails to live asserts). Rationale: the post-mortem's #1
+lesson is "write the contract before coding, or you test what you built, not what you promised." Phases
+1–4 each turn specific matrix cells `xfail → xpass`; Phase 5 removes the xfail markers and adds the
+cross-engine invariants. Each phase stays independently committable and keeps the suite green (xfail is
+not a failure).
+
+## Success Criteria (mirror the contract matrix)
+- [ ] **Phase 0 contract table exists before any fix** — `test_api_contract.py::CONTRACT` enumerates every `{entry × engine × param × physics}` cell as `(expected: effect|raise|warn, match, finding_id, status: to_fix|deferred|landed, exc=ValueError)` (`exc` last so the namedtuple default is valid). `to_fix`→`xfail(strict=True)` (XPASS-on-landing FAILS the suite → forces an in-phase flip to `landed`); `deferred`→`xfail(strict=False)`; `landed`→no marker (live regression-lock assert). Suite green at Phase 0.
+- [ ] The 5 silent-wrong-result HIGHs fixed: `run_lbm` parity (P1), bidomain `boundary` validation (S1), mrt+wall (C1), LBM masked grid (I1, **outer wall + interior hole both bounce**), `with_`/factory immutability (I2)
+- [ ] Silent-degrades become explicit (warn/raise): `alpha`-inert (S2), `sigma_ratio`-ignored (S3), `lattice`-override (C4)
+- [ ] Cross-engine capability unified/exposed where cheap: ionic registry via **one shared builder that branches on ctor capability** (C3), `weights_mode`/MRT knobs (C5), `stencil` (C6), **bidomain `splitting` exposure + validated engine-mismatch errors (S4)**, result dtype round-trip (I3)
+- [ ] Oblique-LBM (C2) is left a **documented, validated, message-bearing limitation** (default) — it is a *real numerics gap* (moment-space rotation of `s_jx/s_jy`, Audit #46), NOT a wiring gap; **C7** (mono/bidomain boundary-Dxy truncation) is dispositioned *consistently with* C2 (all three engines decline oblique — no silent per-engine divergence)
+- [ ] A `test_api_contract.py` stress harness parametrizes `{lbm, run_lbm, simulate, reset, with_} × {mono, bidomain, lbm} × {params} × {iso-BGK, per-axis-MRT, masked-grid, Cm≠1}` — all **15 HIGH/MED findings** (7 HIGH + 8 MED, incl. C7) are asserted cells; every `raise`/`warn` cell pins `match=`; deferred cells are explicit `xfail(reason=<ID>)`
+- [ ] Default paths bit-identical (integrity goldens unchanged — **`test_integrity.py` run in every phase that touches a default path**: 2, 3, 4); all existing tests pass
 
 ## Architecture Changes
-- MOD: `cardiac_core/_monodomain/…/discretization_scheme/fdm.py:558,673-695` — fix Dxy cross-derivative (sign + factor 2); mirror into frozen `Monodomain/Engine_V5.5/…/fdm.py`
-- MOD: `cardiac_core/file_format.py:175,191-244` — `D` default 0.001→1.4 + docstring → single "raw, chi divides" convention + band guard (needs `import warnings`)
-- MOD: `cardiac_core/api.py` — LBM factory divides `D_xx`/`D_yy` by `chi·Cm` (1375,1384,1392); **bidomain D_eff branch divides** (1240 isotropic, 1249-1254 anisotropic); persist `ionic_model` in build_kwargs (1132/1287/1416); one-shot empty-run guard (`run.py:84`)
-- MOD: `cardiac_mcp/core.py:385-394` — sanitize token `date/slug` + `is_relative_to(LAB)` guard in `commit_experiment`
-- MOD: `cardiac_core/tests/_integrity/` — refresh Vm goldens (mono+lbm) + `engine_src_sha.json` (mono+lbm) within Phase 1
-- NEW: `cardiac_core/_lbm/boundary/` bc-mode registry + `boundary=`/`alpha=` on `LBMSimulation` + `step.py` dispatch (Phase 3)
-- DEL: `cardiac_core/_bidomain/simulation/classical/solver/linear_solver/fft.py`, `_lbm/collision/mrt/d2q5.py`, FEM/TriangularMesh (Phase 2, per confirmed FEM-ditch). **NOT** `_monodomain/…/linear_solver/fft.py` (live) or `_lbm/lattice/d2q5.py` (live)
+- MOD `cardiac_core/run.py::run_lbm` — forward `boundary`/`alpha` (P1)
+- NEW `cardiac_core/_lbm/step.py::lbm_step_d2q9_mrt_wall` — signature MIRRORS `lbm_step_d2q9_mrt` (`w` right after `dt`): `(f, V, R, dt, w, s_e, s_eps, s_jx, s_q, s_pxx, s_pxy, bounce_masks, mode, alpha, Nx, Ny, s_jy=None)` — NOT the `omega`-based `bgk_wall` signature; + MOD `_lbm/simulation.py` (drop bgk-only guard, insert `mrt&&special` dispatch branch *before* the plain `mrt` branch) (C1)
+- MOD `cardiac_core/api.py::bidomain` — validate `boundary` ∈ {bath,insulated,None} (S1, mirror LBM); `lbm` — **union**ed masked bounce_masks (I1), warn on `lattice` override (C4) + `alpha`-inert (S2); `bidomain` — warn on ignored `sigma_ratio` (S3); expose `splitting` (S4)
+- MOD `cardiac_core/api.py::CardiacSimulation._resolve_mesh` — `copy.deepcopy` the `CardiacMeshData` branch (closes factory + `with_` + `reset` aliasing in one place) (I2)
+- NEW `cardiac_core/ionic/registry.py::build_ionic_model(name, cell_type='ENDO', device='cuda')` — ONE shared name→instance builder that **branches on ctor capability** (`cell_type` only to TTP06/ORd; device-only to PHAS13/MHAS13/paci); default `cell_type='ENDO'` MATCHES every current engine default (goldens-safe); mono forwards its mesh-derived cell_type, bidomain/lbm delegate w/o cell_type → ENDO (unchanged); all three resolvers delegate (C3)
+- MOD `lbm()`/`monodomain()`/`bidomain()` — surface `weights_mode`/MRT knobs (C5) + `stencil` (C6)
+- MOD `cardiac_core/io.py::load_result` — round-trip stored dtype for `V` and `phi_e` via `torch.from_numpy` (I3)
+- NEW `cardiac_core/tests/test_api_contract.py` — the contract matrix (Phase 0) + the stress harness (Phase 5)
 
-## Known Failures (from IDEALOG — do NOT retry)
-- **Big-bang ionic/engine deletion** — breaks Surrogate/Optimizer + engine tests. Per-consumer, test-gated only.
-- **Pinning engine `Cm=1` to feed an effective D** — silently breaks the reaction at Cm≠1 (Cm-trap). The real Cm must reach every engine.
-- **Treating the α-blend / same-cell-specular speedup as a numerical artifact to remove** — PI has adopted it as REAL (β/discreteness). The τ/β dependence is the physics knob, not a bug.
-- **Naming a solver package `monodomain/`** (no underscore) — shadows the public factory. Keep `_monodomain` etc.
+## Known Failures / lessons (from the post-mortem + this audit — do NOT repeat)
+- **Tested at the level BUILT, not USED.** Write tests from `{entry × engine × param × physics}` FIRST (Phase 0); drive the OUTERMOST surface (`run_lbm`/`simulate`), not the inner one you touched.
+- **A guard + a test asserting its rejection turns an unexamined assumption into a "feature."** Every `raise` is a claim to justify. For the *oblique* raise (kept), the test must assert the **documented-limitation message**, not "physics unsupported," and must be REPLACED (not preserved) if the limitation is ever lifted.
+- **Wall overlay is post-stream → collision-agnostic** (don't gate on bgk). BUT **MRT is NOT oblique-capable today**: `mrt_collide_d2q9` carries `s_pxy` as a *free stability rate* and its docstring says `D_xy` is NOT applied (`p_xy_eq=0`; needs moment-space rotation of `s_jx/s_jy`, Audit #46). The audit's "MRT is oblique-CAPABLE" was half-true — the tau helpers compute `tau_xy`, the collision kernel discards it. Per-axis (`Dxx≠Dyy, Dxy=0`) DOES work on MRT; oblique (`Dxy≠0`) does not.
+- **`precompute_bounce_masks` uses periodic `torch.roll`** → on a full-border tissue mask it detects NO outer walls (documented in LBM V1 `DESIGN_AND_CHANGES.md:100`). Masked-grid support must UNION it with the rectangular outer-edge masks (or pad the mask), never replace.
+- The numerics are SOUND (Cm≠1, build_kwargs replay, mesh round-trip) — do NOT churn them; this is surface work. Confirm goldens bit-identical after every default-path touch.
 
 ---
 
-## Phase 1: Foundation blockers
-
-**Goal**: Fix the 4 HIGH findings, each test-gated, and refresh goldens so the phase commits GREEN. Independently deliverable; unblocks anisotropic + mesh-based work.
-**Tier**: large
-**Estimated scope**: 4 fixes + regression tests + a golden refresh, across mono FDM, file format + LBM/bidomain factories, api replay, MCP.
-
+## Phase 0: Contract matrix (write FIRST, commit red-as-xfail)
+**Goal**: enumerate the full `{entry × engine × param × physics}` contract as data BEFORE any fix, so unfixed/never-considered cells are visible xfails, not absences. **Tier**: small. Independently committable.
 ### Phase Context
-`cardiac_core` is editable-installed; run tests with `conda run -n heart-conduction python -m pytest cardiac_core/tests -q`. All tensors float64. The vendored `_monodomain/_bidomain/_lbm` are the LIVING source; the frozen originals (`Monodomain/Engine_V5.5/`, etc.) are hashed by `test_integrity.py::test_originals_untouched` — editing them turns that test RED until goldens are refreshed (Step 1.5). The bidomain **cardinal4** FDM builder is the trusted anisotropy oracle (its eikonal anisotropic test is validated). **DECISION (user):** `CardiacMeshData.D_xx` is a RAW conductivity-like value; every engine yields physical effective D = `D_xx/(χ·Cm)`. Current state: **monodomain** already does this (χ·Cm in the mass term); **bidomain's sigma branch** divides but **its D_eff branch (api.py:1240,1249-1254) does NOT** (treats D_xx as effective); **LBM** does NOT (passes D_xx straight to the engine). So Step 1.2 must add the χ·Cm division to BOTH the LBM factory AND the bidomain D_eff branch. The precise invariant is **`effective = D_xx/(χ·Cm)` computed once per factory**. `create_cardiac_mesh` stores RAW D_xx + real chi. On the DECLARATIVE path (`_build_mesh_data`): the mono branch stores a chi-folded D_xx with chi=1 (invariant-correct at all Cm — leave it); the **bidomain branch sets sigma_i/sigma_e so the factory uses the SIGMA branch** (raw σ + real chi — unaffected by the D_eff-branch change); but the **LBM branch stores an already-effective D_xx with real chi** → once the LBM factory divides, that path DOUBLE-divides unless `_build_mesh_data`'s LBM branch is changed to store RAW D_xx (Step 1.2).
-
-### Step 1.1: Fix the monodomain FDM anisotropic cross-derivative (wrong sign + half magnitude)
+Test runner: `/home/norepinephrine/.conda/envs/heart-conduction/bin/python -m pytest cardiac_core/tests -q` (conda is off the non-interactive PATH). float64. **There is NO `conftest.py` under `cardiac_core/tests/`** — define a local tiny-mesh helper, do not import a shared fixture.
+### Step 0.1: `test_api_contract.py` skeleton + `CONTRACT` table
 **Model**: opus
-
-#### Read First
-- `cardiac_core/_monodomain/simulation/classical/discretization_scheme/fdm.py:556-558` (cxy) and `:668-697` (diagonal entries); ctor default `chi=1400` at `:116`; `apply_diffusion` returns `L·V/(chi·Cm)` at `:238`
-- `cardiac_core/_bidomain/simulation/classical/discretization/fdm.py:452-457,506-534` — the CORRECT (oracle) cross-derivative
-
-#### Why
-`div(D·∇V) = Dxx·V_xx + 2·Dxy·V_xy + Dyy·V_yy`. The `2·` and the stencil sign must survive. The mono builder uses `cxy=1/(4·dx·dy)` (drops the factor 2 → half) and diagonal signs NE`−`,NW`+`,SE`+`,SW`−` (negated vs the oracle). Net: for `V=x·y` (V_xy=1) the mono interior gives `−Dxy`; the correct value is `+2·Dxy` (empirically confirmed by the audit). Untested (#41), so the bug is silent. Isotropic (Dxy=0) runs are unaffected (diagonal weights are 0).
-
 #### Implementation Spec
-**Files to modify:** `cardiac_core/_monodomain/.../fdm.py`
-- `:558` `cxy = 1.0/(4.0*dx*dy)` → `cxy = 1.0/(2.0*dx*dy)`
-- `:673-695` flip the four diagonal signs to match bidomain: NE `w = d_xy*cxy`, NW `w = -d_xy*cxy`, SE `w = -d_xy*cxy`, SW `w = d_xy*cxy` (each still does `center -= w`).
-
-Mirror the SAME fix into the frozen original `Monodomain/Engine_V5.5/…/fdm.py` (vendoring policy allows editing originals in place; keep in sync). **This turns `test_originals_untouched` RED for the monodomain hash until Step 1.5 refreshes it — expected.**
-
-#### Pseudocode
-```
-cxy = 1/(2*dx*dy)
-NE: w = +d_xy*cxy; add(k, NE, w); center -= w
-NW: w = -d_xy*cxy; add(k, NW, w); center -= w
-SE: w = -d_xy*cxy; add(k, SE, w); center -= w
-SW: w = +d_xy*cxy; add(k, SW, w); center -= w
-```
-
-#### Test Spec
-Build the discretization DIRECTLY (create_cardiac_mesh cannot produce D_xy≠0 — it only sets per-axis D_yy, D_xy=0):
-- `cardiac_core/tests/test_fdm_anisotropy.py::test_cross_derivative_bilinear` — Setup: `grid = StructuredGrid.create_rectangle(1.1,1.1,12,12)`; hand-build `D_field=(Dxx,Dxy,Dyy)` with constant `Dxx=Dyy=1.0, Dxy=0.3` (Nx×Ny tensors); `fdm = FDMDiscretization(grid, D_field=D_field, chi=1.0, Cm=1.0)`; `V[i,j]=x_i·y_j` flattened; `out = fdm.apply_diffusion(V_flat)` (returns `L·V/(chi·Cm)`, chi=Cm=1). Expected: interior ≈ `2·0.3 = 0.6` (tol 1e-10). (Pre-fix yields `−0.3`.)
-- `…::test_matches_bidomain_oracle` — same anisotropic `D_field` + a smooth `V`; build the bidomain `_build_laplacian` (cardinal path) on the same field; assert mono interior `L·V` matches the bidomain interior `L·V` (tol 1e-10). Keep Dxx/Dyy/Dxy spatially CONSTANT — harmonic-mean faces equal arithmetic only for uniform D, so the exact oracle match holds only for constant D.
-
-#### Checklist
-- [ ] Patch cxy + 4 signs in cardiac_core mono fdm
-- [ ] Mirror into Engine_V5.5 fdm
-- [ ] Write both regression tests (direct FDMDiscretization construction, chi=Cm=1, 3-tuple D_field)
-- [ ] Full mono suite green except the expected mono src-sha (fixed in 1.5)
-
+Create `cardiac_core/tests/test_api_contract.py` with:
+- A `_tiny(**kw)` helper: `create_cardiac_mesh(0.2, 0.1, 0.02, chi=1.0, **kw)` (~11×6; `chi=1.0` avoids the firewall-bypass block, see IDEALOG 2026-06-30). Wall-divergence cells override to `dt=0.005`.
+- A module-level `CONTRACT = [ Cell(entry, engine, param, physics, expected, match, finding_id, status, note, exc), … ]` (a `namedtuple(..., defaults=[ValueError])` — `exc` is LAST so the single default binds to `exc`, not `note`; namedtuple defaults are right-aligned, so a mid-tuple defaulted field is invalid) enumerating the cross-product. `expected ∈ {'effect','raise','warn'}`; `match` = a stable message substring (REQUIRED for `raise`/`warn`); `exc` = expected exception type for `raise` cells (default `ValueError` — every planned raise is a ValueError); `status ∈ {'to_fix','deferred','landed'}` (see `_marks` below). Cover at minimum every HIGH+MED finding — **all 15: P1,S1,S2,S3,S4,C1,C2,C3,C4,C5,C6,C7,I1,I2,I3** — as ≥1 row, PLUS the cross-engine invariant rows (§ below). **C2 gets TWO rows pre-declared here**: `C2-raise` (`expected='raise', match='oblique|Audit #46', status='to_fix'` — the raise exists TODAY but with a `'D_xy'` message; Phase 2 rewords it to match, which flips this cell `to_fix→landed`) and `C2-capability` (the oblique-CV-correct `effect` cell, `status='deferred'`, permanent `xfail(strict=False)` — body never runs). **C7 gets one `status='deferred'` row** (mono/bidomain oblique-wall truncation). The `lbm(boundary='bath')→raise` regression-lock is `status='landed'` (already correct today → live assert, no marker). So Phase 5 only removes `to_fix` markers, never *adds* cells.
+- Build the parametrize argvalues so each cell's marks are injected from its data: `[pytest.param(c, id=f"{c.finding_id}:{c.entry}:{c.engine}:{c.param}:{c.physics}", marks=_marks(c)) for c in CONTRACT]`, where `_marks(c)` = `xfail(reason=c.finding_id, strict=True)` for `status=='to_fix'`; `xfail(reason=c.finding_id, strict=False)` for `status=='deferred'`; `()` (NO marker → live assert) for `status=='landed'`. `finding_id` in the param `id=` mechanically satisfies "finding ID appears in a test id."
+- A single parametrized `test_contract(c)` dispatching on `c.expected`: `'raise'` → `pytest.raises(c.exc, match=c.match)`; `'warn'` → `with warnings.catch_warnings(): warnings.simplefilter('always'); pytest.warns(UserWarning, match=c.match)`; `'effect'` → assert the change (result differs / engine attr set / replay preserves). **Landing a fix = flip that finding's cells `status: 'to_fix' → 'landed'` IN THE SAME PHASE** — the `strict=True` XPASS forces it (an un-flipped marker fails the suite the moment the fix works), NOT deferred to Phase 5. `deferred` stays `xfail(strict=False)`. Phase 0 commits GREEN (`to_fix` cells xfail-as-expected-fail; `deferred` xfail; `landed` cells assert live and pass).
+#### Cross-engine invariant rows (must be in CONTRACT)
+- `run_X ≡ simulate(engine=X) ≡ X()` for identical args (P1 parity).
+- A param valid on engine A **raises with a message** (not silently drops) on engine B. Concrete required cells: `bidomain(boundary='ncs')`→raise (S1); `lbm(boundary='bath')`→raise (regression-lock, already correct); `LBMSimulation(collision='mrt', weights_mode='uniform_8')`→raise; `lbm(lattice='d2q5', <anisotropic mesh>)`→warn (C4); `bidomain(theta=…)` / `monodomain(theta=…)` engine-mismatch → validated error (S4).
+- `with_`/factory leaves the caller's mesh `_data` untouched (I2).
 #### Verify
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_fdm_anisotropy.py -q
-```
-
-#### Exit Criteria
-- [ ] Both new tests pass; isotropic operator bit-identical (Dxy=0 ⇒ diagonal weights 0)
-
-#### Risk
-Isotropic runs/goldens use Dxy=0 → unaffected by value; only the src-sha changes (Step 1.5). Mitigation: full suite in Step 1.5.
-
-### Step 1.2: Unify the D_xx=raw / chi-divides convention across ALL engines + fix the blocked default (cluster #1)
-**Model**: opus
-
-#### Read First
-- `cardiac_core/file_format.py:171-287` (create_cardiac_mesh signature, docstring, D_xx storage; imports at 9-11 — **no `warnings`**)
-- `cardiac_core/api.py:1361-1395` (LBM factory D handling) · `:1228-1267` (bidomain **D_eff branch** — does NOT divide) · `:1205-1227` (bidomain sigma branch — already divides) · `:1084-1111` (mono factory — already correct via mass term)
-- `cardiac_core/conductivity.py` `for_lbm()` — it feeds `_build_mesh_data`'s LBM branch (api.py:881); the `lbm()` factory itself reads `data.D_xx` (the fix stores RAW there so the factory divide recovers effective — no double-division)
-
-#### Why
-`D_xx` means "raw" to monodomain (χ·Cm in mass term) but "already effective" to the LBM factory AND the bidomain D_eff branch. Same mesh → up to ~1400× different physics (#21). Decision: `D_xx` is RAW everywhere; effective = `D_xx/(χ·Cm)`. So **both** the LBM factory and the bidomain D_eff branch must divide. The default `(D=0.001, chi=1400)` gives effective 7.1e-7 → conduction block (#2); under "raw", the physiological default is `D=1.4` (raw) → effective `1.4/1400 = 1e-3`.
-
-#### Implementation Spec
-**Files to modify:**
-- `cardiac_core/api.py` LBM factory `:1375,1384,1392` — feed `LBMSimulation` effective D: `D_eff_xx = float(data.D_xx.flat[0])/(data.chi*data.Cm)`, `D_eff_yy` likewise.
-- `cardiac_core/api.py` bidomain **D_eff branch** `:1240` — `D_eff = float(data.D_xx.flat[0])/(data.chi*data.Cm)`; anisotropic branch `:1249-1254` — divide `data.D_xx/D_yy/D_xy` by `data.chi*data.Cm` before applying `sigma_ratio`. (Leave the sigma branch `:1205-1227` and the mono factory untouched — both already correct. NOTE: this D_eff branch is reached ONLY by the legacy `create_cardiac_mesh`→bidomain path, since the declarative path sets sigma_i/sigma_e.)
-- `cardiac_core/api.py` `_build_mesh_data` **LBM branch `:880-882`** — store RAW D_xx so the now-dividing LBM factory recovers effective: `emit = conductivity.for_lbm(); D = emit['D'] * (conductivity.chi * emit['Cm'])` (element-wise if a tuple), with `chi=conductivity.chi, Cm=emit['Cm']`. Cm-safe: real Cm reaches the reaction; the factory divide uses real χ·Cm. The declarative **bidomain** branch `:883-894` needs NO change (sigma branch); the **mono** branch `:877-879` needs NO change (chi=1 + chi-folded D_xx is invariant-correct; full Form-A→B unification is the deferred convergence task).
-- `cardiac_core/file_format.py` — add `import warnings`; `:175` `D: float = 0.001` → `D: float = 1.4`; update the `CardiacMeshData.D_xx/D_yy/D_xy` field docstring `:25` ("effective…" → "RAW conductivity-like; effective = `D/(χ·Cm)`"); `:191-244` rewrite the create_cardiac_mesh docstring to ONE convention ("`D` is RAW; effective = `D/(χ·Cm)` in ALL engines; default `D=1.4,chi=1400 → 1e-3`; for an effective D pass it with `chi=1.0`"); before `return`, add band guard: `D_eff=D/(chi*Cm); if not (1e-4<=D_eff<=1e-1): warnings.warn(...)`.
-
-#### Pseudocode
-```
-# LBM factory:      D_eff = float(data.D_xx.flat[0])/(data.chi*data.Cm); (D_eff_yy likewise)
-# bidomain D_eff:   D_eff = float(data.D_xx.flat[0])/(data.chi*data.Cm)   # then D_i/D_e from sigma_ratio
-# bidomain aniso:   D_xx_e = (data.D_xx/(data.chi*data.Cm)); ... then *(1+r)/r etc.
-# create_cardiac_mesh: D_eff=D/(chi*Cm); if not(1e-4<=D_eff<=1e-1): warn("effective D={D_eff:.2e} outside band; D is RAW (eff=D/(χ·Cm)); pass chi=1.0 to treat D as effective")
-```
-
-#### Test Spec
-- `cardiac_core/tests/test_chi_convention.py::test_all_engines_same_effective_D` — one raw mesh (D_xx, chi=1400); build mono + lbm + bidomain; assert none conduction-blocked and effective D matches (same order; LBM has a known dispersion offset — assert not-blocked + comparable, not bit-equal).
-- `…::test_create_cardiac_mesh_default_propagates` — defaults → mono wave launches downstream, no block.
-- `…::test_effective_band_warning` — `create_cardiac_mesh(..., D=0.001, chi=1400)` warns.
-
-**Existing tests affected (LEGACY create_cardiac_mesh path used default chi=1400 with an already-effective small D — the OLD no-divide behavior). Grep found ~54 `create_cardiac_mesh(` sites across 9 `tests/*.py` — give each a disposition:**
-- `test_file_format.py::test_default_rectangle:143,144` (`assert D_xx==0.001` AND `D_yy==0.001`) → assert `1.4`; `test_custom_physics` (D=0.002,chi=1200,Cm=0.8 → eff 2.1e-6) now emits the band warning (harmless unless pytest `-W error` — check config).
-- `test_lbm.py::test_matches_direct:84-119` + default-chi builders (~lines 15,31,45,60,72,107) → set `chi=1.0` (raw==effective) so the wrapper matches the direct `LBMSimulation(D=…)` side. `test_integration.py::test_lbm`, `test_lbm_anisotropy.py:98,107`, `test_param_seam.py` likewise (also rewrite `test_param_seam.py`'s module docstring `:9-13`, which documents the OLD "D is already-effective, set chi=1.0" convention).
-- `test_bidomain.py` — `test_matches_direct:155-175` (direct side uses D_eff; wrapper via create_cardiac_mesh) → wrapper mesh `create_cardiac_mesh(D=D_eff, chi=1.0)`; explicit `D=0.001` sims at `:16,55` → `chi=1.0` or `D=1.4`; the default-D bidomain sims at `:80,94,100` (`test_from_file`/`test_insulated_default`/`test_bath_override`) have structural-only asserts → benign (verify still pass, no edit needed).
-- `test_monodomain.py:20,55`, `test_run.py` — mono default-D change is benign (shape-only), but confirm any explicit-`D=0.001` propagation/CV asserts.
-- **Declarative-path tests to RE-RUN/VERIFY (must STILL propagate after the `_build_mesh_data` LBM-branch fix — a failure here is NOT expected):** `test_run_contract.py:53`, `test_construction_api.py:47-58,73,112`, `test_viz.py:15` (they call `lbm(Grid,…)`/`bidomain(Grid,…)` with `ConductivityConfig`).
-- After updating, verify LBM τ stability at the intended effective D (`tau_from_D` not ≤0.5).
-
-#### Checklist
-- [ ] LBM factory + bidomain D_eff branch (iso + aniso) divide by χ·Cm
-- [ ] `import warnings`; default `D=1.4`; single-convention docstring; band guard
-- [ ] Update every default-chi test listed above; verify LBM stability
-- [ ] `grep -rn "create_cardiac_mesh(" ` repo-wide for other callers relying on the old default (note in Mutation Log)
-- [ ] Confirm chip pipeline (`cc_runner`/`chip.chip_mesh`, chi=1.0) unaffected (raw==effective there)
-
-#### Verify
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_chi_convention.py cardiac_core/tests/test_file_format.py cardiac_core/tests/test_lbm.py -q
-```
-
-#### Exit Criteria
-- [ ] All three engines produce the same effective D from one raw mesh (no ~1400× divergence); default mesh propagates; updated tests green; chip pipeline unchanged
-
-#### Risk
-The default-D change and the divide break pre-existing default-chi tests (enumerated above) — they are UPDATED, not just "unaffected". LBM at very small effective D can approach the τ=0.5 floor — verify stability after updating the tests to chi=1.0. Vm goldens for the default canonical sims change → refreshed in Step 1.5.
-
-### Step 1.3: Persist ionic_model override across reset()/stimulate() (#1)
-**Model**: opus
-
-#### Read First
-- `cardiac_core/api.py:231-248` (reset/with_), `:337-352` (stimulate→reset); build_kwargs `:1132` (mono, local var `ionic`), `:1287` (bidomain, local var `ionic`), `:1416` (lbm, local var `ionic_name`); `_build_ionic_model` isinstance check `_monodomain/…/monodomain.py:76`
-
-#### Why
-Factories resolve the model but never store it; `reset()` replays from `build_kwargs` (no ionic_model) → re-resolves to the mesh default → silently wrong model. `with_()` already works — inconsistent.
-
-#### Implementation Spec
-Add `ionic_model=<resolved>` to each factory's `build_kwargs`, **using that factory's own local variable name**: `ionic_model=ionic` in the mono (`:1132`) and bidomain (`:1287`) factories; `ionic_model=ionic_name` in the LBM factory (`:1416`). (Both str and instance replay fine — factories accept either.) Do NOT mutate `data.ionic_model`.
-
-#### Test Spec
-- `cardiac_core/tests/test_replay_ionic.py::test_reset_preserves_override` — `sim=monodomain(mesh_ttp06, ionic_model='ord')`; `sim.reset()`; assert rebuilt engine uses ORd.
-- `…::test_stimulate_preserves_override` — same via `stimulate`. Test both a string and an instance override.
-
-#### Checklist
-- [ ] Correct per-factory variable in all three build_kwargs
-- [ ] reset + stimulate tests on a mesh whose default ≠ override (str + instance)
-
-#### Verify
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests/test_replay_ionic.py -q
-```
-
-#### Exit Criteria
-- [ ] reset()/stimulate()/with_() all replay the overridden ionic model
-
-#### Risk
-None material. Mitigation: instance-override test.
-
-### Step 1.4: Sanitize commit_experiment path + add LAB containment guard (#3)
-**Model**: opus
-
-#### Read First
-- `cardiac_mcp/core.py:356-408` (commit_experiment), `:104` (`_slugify`), `:330` (date regex `re.fullmatch(r"\d{4}-\d{2}-\d{2}")`), `:446-449` (run_experiment's `is_relative_to(LAB.resolve())` guard = the pattern to copy)
-
-#### Why
-`commit_experiment` reads `date, slug` from the keyless/forgeable token and builds `LAB/f"{date}_{slug}"` then `mkdir(parents=True)` with NO re-validation and NO containment check — unlike `run_experiment`. A forged token (`slug="../../.."`) escapes LAB.
-
-#### Implementation Spec
-`cardiac_mcp/core.py:385-394` — after `date, slug = params["date"], params["slug"]`: (1) `re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)` else raise GATE; (2) **re-slugify and use** — `slug = _slugify(slug)` (do NOT `assert slug == _slugify(slug)`: if `_slugify` isn't idempotent that would false-reject a legit slug); (3) after computing `d` (post dedup loop), before `mkdir`: `if not d.resolve().is_relative_to(LAB.resolve()): raise ValueError("GATE: path escapes Lab/")`.
-
-#### Pseudocode
-```
-date = params["date"]; if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date): raise ValueError("GATE: bad date")
-slug = _slugify(params["slug"])
-d = LAB / f"{date}_{slug}"; ...dedup...
-if not d.resolve().is_relative_to(LAB.resolve()): raise ValueError("GATE: path escapes Lab/")
-d.mkdir(parents=True)
-```
-
-#### Test Spec
-- `cardiac_mcp/tests/test_gate.py::test_commit_rejects_traversal_slug` — forge a token with `slug="../../../tmp/evil"` (build payload + keyless sig via the module's `_sign_payload`); `commit_experiment(token, confirmed=True)` → either raises OR the neutralized slug keeps the folder inside LAB; assert nothing is written outside LAB (check no path outside `LAB` exists).
-- `…::test_commit_rejects_bad_date` — token `date="../.."` → ValueError.
-- Regression: legit build_manifest→commit still succeeds.
-
-#### Checklist
-- [ ] date regex + re-slugify from token
-- [ ] `is_relative_to(LAB)` guard before mkdir
-- [ ] traversal + bad-date + legit-path tests
-
-#### Verify
-```
-conda run -n heart-conduction python -m pytest cardiac_mcp/tests -q
-```
-
-#### Exit Criteria
-- [ ] Forged traversal/date tokens cannot write outside LAB; legitimate commits unaffected
-
-#### Risk
-`is_relative_to` needs Py≥3.9 (env 3.11 ✓).
-
-### Step 1.5: Refresh integrity goldens (so Phase 1 commits GREEN) (#15, #42)
-**Model**: sonnet (mechanical)
-
-#### Why
-Step 1.1 edited the V5.5 original (mono src-sha RED) and Step 1.2 changed the default canonical sims' effective D (Vm goldens for mono AND lbm change). The pre-existing LBM src-sha is already stale (#15). Refresh all so the suite is green and the drift guard is meaningful again.
-
-#### Implementation Spec
-- Re-run `cardiac_core/tests/_integrity/make_goldens.py` — it regenerates ALL THREE Vm goldens (`golden_monodomain/bidomain/lbm.pt`) AND all three engine src hashes in `engine_src_sha.json` unconditionally. The bidomain golden WILL change (its canonical sim uses the default D + the divided D_eff branch).
-- `test_integrity.py:24,48` — change the silent `pytest.skip()` on missing goldens to a hard fail / `xfail(strict=True)` (#42), and/or add a meta-test asserting all three `golden_*.pt` + `engine_src_sha.json` exist.
-- Document the vendoring policy near the integrity test: editing originals in place is allowed; regenerate goldens in the same change.
-
-#### Verify
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests -q   # FULL suite must be green here
-```
-
-#### Exit Criteria
-- [ ] Full cardiac_core suite green (0 failures); missing-golden no longer silently skips
-
-#### Risk
-Only refresh goldens AFTER 1.1+1.2 are correct and their own regression tests pass — a premature refresh would bake in a bug. Mitigation: 1.1/1.2 tests gate this step.
-
-### Phase 1 Verification
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests cardiac_mcp/tests -q   # expect 0 failures
-```
-### Phase 1 Exit Criteria
-- [ ] 4 blocker fixes in with passing regression tests; goldens refreshed
-- [ ] **Full cardiac_core + cardiac_mcp suites GREEN** (Phase 1 is independently deliverable)
-- [ ] No isotropic-path value regressions (only src-sha/Vm goldens changed, and they are refreshed)
-
-### Phase 1 Cleanup
-- float64 in new tests; Engine_V5.5 mono fdm in sync with the cardiac_core copy; no new cross-engine duplication; V5.3 untouched
-
-**→ Commit point: git commit after Phase 1 passes**
+`… -m pytest cardiac_core/tests/test_api_contract.py -q` → green (all unfixed cells xfail).
+#### Exit Criteria / Risk
+- [ ] The table enumerates every HIGH/MED finding as a row; suite green; no cell is silently missing (each finding ID appears ≥once). Risk: over-broad cross-product → keep grids tiny, `t_end`≤2 ms except wall-divergence cells (`t_end`≥8 ms, `dt`=0.005).
+**→ commit after Phase 0** ("contract-matrix-first; unfixed cells xfail").
 
 ---
 
-## Phase 2: Dead-code, docs & API-consistency tidy
-
-**Goal**: Remove/mark the confirmed dead + unfinished surface, reconcile docs to shipped API, close low-risk footguns. Batchable, non-blocking.
-**Tier**: medium
-**Estimated scope**: ~15 LOW/MED findings in 5 mechanical steps. Grep for importers before every deletion.
-
+## Phase 1: One-shot API parity (P1)
+**Goal**: `run_lbm()`/`simulate()` forward `boundary`/`alpha`. **Tier**: small. Independently committable.
 ### Phase Context
-Each step independent; commit per step is fine. Prefer deleting confirmed-dead code. Keep the package importable (don't break any `__init__`). Goldens are already refreshed (Step 1.5) — deletions here shouldn't touch numerics; re-run the suite after each.
-
-### Step 2.1: Resolve FEM/TriangularMesh (confirmed FEM-ditch) (#28)
-Delete `cardiac_core/mesh/triangular.py` and `cardiac_core/_monodomain/…/discretization_scheme/fem.py`, and remove ALL their import/export sites: `cardiac_core/mesh/__init__.py:11,17`; `_monodomain/simulation/classical/monodomain.py:19` (top-level `from …fem import FEMDiscretization`); `_monodomain/__init__.py:13,21`; `_monodomain/…/discretization_scheme/__init__.py:12,21`. Keep FVM (structured-grid-native, per the FEM-ditch decision; see Findings Coverage for #35). `cardiac_core/grid.py:4-5` already asserts "FEM/TriangularMesh dropped" — that claim BECOMES true once the export is deleted (the defect #28 is the lingering export, not the claim) → no doc edit needed there, just delete the export. Grep for any other importer first. Test: `import cardiac_core` + full suite green; `TriangularMesh`/`FEMDiscretization` no longer importable.
-
-### Step 2.2: Delete orphaned/dead code (#30, #44, #45, #31, #46)
-- `cardiac_core/_bidomain/simulation/classical/solver/linear_solver/fft.py` (deprecated, wrong-normalization, orphaned — not in that dir's `__init__`) — delete after grep confirms no importer. **Do NOT delete `_monodomain/…/linear_solver/fft.py`** (live: DCT/FFT mono solver).
-- `cardiac_core/_lbm/collision/mrt/d2q5.py` (unreachable; engine rejects mrt+d2q5) — delete + drop its import; keep the ValueError guard. **Do NOT touch `_lbm/lattice/d2q5.py`** (live, imported at `lattice/__init__.py:1`).
-- `_lbm/simulation.py:98-101` — remove the resolved MRT/weights_mode TODO (first verify which `_step_fn` MRT actually uses; wire it if that's the real gap).
-- `_lbm/simulation.py:247-253` `get_activation_times` redirect stub — delete (analysis.py owns it) or implement via `analysis.compute_activation_time`.
-- `_lbm/collision/mrt/d2q9.py:63-68` — downgrade the "full anisotropic tensor" docstring to "diagonal (D_xx,D_yy) only; ignores D_xy" (#46).
-Test: full suite green after each deletion.
-
-### Step 2.3: Mark unimplemented public surface honestly (#7/#12, #13)
-- `api.py:282-697` — the ~21 `CardiacSimulation` methods that `raise NotImplementedError`: strip the misleading `>>>` examples + add a class-docstring "planned/unimplemented" list, OR give each `NotImplementedError` a message pointing to the working alternative (e.g. `compute_cv` → `analysis.conduction_velocity`). Do NOT leave worked examples on bare stubs.
-- `_bidomain/…/bidomain.py:195-198` — `pcg_gmg` selector: `warnings.warn("GMG unimplemented; falling back to PCG")` (or raise). Delete the never-imported `multigrid.py`/`pcg_gmg.py` stubs if GMG isn't coming.
-
-### Step 2.4: Reconcile API docs to shipped code (#9,#10,#11,#24,#25,#26,#36,#43)
-In `cardiac_core/API_CHEATSHEET.md` and `Research/Active/engine_consolidation/{API_REFERENCE.md, API_DESIGN.md, GLOSSARY.md}` and `cardiac_core/_monodomain/__init__.py`:
-- #9: Quickstart imports → `from cardiac_core.ionic import TTP06Model, CellType`, `from cardiac_core.stimulus.protocol import StimulusProtocol`, real mask helpers.
-- #10: remove non-existent factory kwargs (`Cm`/`ionic_solver`/`splitting`/`parabolic_solver`); add shipped `device=`.
-- #11: `result.cv(x1,x2,y)` requires indices (not arg-free).
-- #24/#25: drop "Vm rename pending" (shipped) and "77 tests" (→149/cheatsheet canary).
-- #26: `_monodomain/__init__.py:1-6` docstring advertises the no-underscore path `from cardiac_core.monodomain import …` → fix to `_monodomain` (the actual issue is the docstring lines 1-6, NOT line 28).
-- #20/#27: `cardiac_core/__init__.py:28` — the "`triggers _prepare_engine on use`" comment is stale (that mechanism was removed) → update to "imports the vendored _monodomain/_bidomain/_lbm packages on first use".
-- #36: FE/RK CFL docstrings (`_monodomain/…/explicit/forward_euler.py:5,28-31`) omit χ → `dt ≤ χ·Cm·h²/(4·D_max)`; state assumed χ in the worked example.
-- #43/#22: note `for_bidomain()` is a helper the factory doesn't call (or delete it — see Findings Coverage).
-Spot-check each corrected example actually runs.
-
-### Step 2.5: API-consistency footguns (#5,#6,#16,#17,#34)
-- `run.py:84` (`_collect`) — guard the empty (zero-save) case, mirroring `_result_from` (#5).
-- Ionic-model registry parity (#6): **extend** `_build_ionic_model` (mono/bidomain) to accept phas13/paci/mhas13 (they share the `IonicModel` ABC — additive, low-risk) so all engines take the same `ionic_model=` strings. (The `'paci'→PHAS13Model` alias correctness (#12/gap) is a SEPARATE investigation → Findings Coverage / next round, not gated here.)
-- `api.py:1380-1387` — warn/raise when explicit `lattice='d2q5'` is overridden to d2q9/mrt for anisotropic D (#16); record the effective lattice in build_kwargs.
-- `api.py:1066-1067,1180-1181,1332-1333` — raise if both positional mesh and `mesh=` given (#17).
-- `cardiac_mcp/core.py:497` — escape `|`/newline in `goal` before writing the NOTEBOOK row (#34).
-
-### Phase 2 Verification
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests cardiac_mcp/tests -q
-```
-### Phase 2 Exit Criteria
-- [ ] No confirmed-dead module remains (or is explicitly marked); docs examples run; footguns raise/warn; suite green
-### Phase 2 Cleanup
-- Grep confirms deleted symbols have no importers; docs spot-checks pass; float64 consistency
-
-**→ Commit point: git commit after Phase 2 passes**
+The `lbm()` factory already accepts+validates `boundary`/`alpha` (api.py:1324-1325); `simulate()` forwards via `**kwargs` (run.py:281); only `run_lbm` (explicit signature, run.py:195-235, calls `lbm(...)` at 230-233) drops them. Wall modes act on the **top/bottom flat walls** (`y=0`, `y=Ny-1`; `_lbm/boundary/wall_modes.py`), so a left-edge stimulus diverges via its top/bottom corners — pin `dt=0.005` to keep the divergence margin large (~70 mV; at the default `dt=0.02` it collapses to ~1 mV).
+### Step 1.1: `run_lbm` forwards boundary/alpha + one-shot tests
+**Model**: opus
+#### Read First
+- `cardiac_core/run.py:195-235` (run_lbm), `:238-284` (simulate), `cardiac_core/api.py::lbm` signature (~1324)
+#### Implementation Spec
+Add `boundary: str = 'neumann', alpha: float = 1.0` to `run_lbm`'s keyword-only block; add `boundary=boundary, alpha=alpha` to its `lbm(...)` call; update the docstring "Forwarded to lbm()". No change to run_monodomain/run_bidomain (mono has no wall mode; bidomain already forwards its `boundary`).
+#### Test Spec (`cardiac_core/tests/test_lbm_boundary.py`)
+- `test_run_lbm_forwards_boundary` — `run_lbm(stim_mesh, 8, 8, lattice='d2q9', boundary='scs', dt=0.005)` vs `boundary='hbb'`: assert `(V_scs - V_hbb).abs().max() > 1e-2` (a *physically meaningful* divergence, not bare `not allclose`). stim mesh = `create_cardiac_mesh(0.5,0.3,0.02,D=1e-3,chi=1.0)`, stim column at the left edge (top/bottom corners abut the walls).
+- `test_run_lbm_alpha_effective` — `boundary='combined', alpha=0.2` vs `alpha=0.8`, `dt=0.005` → `(Va - Vb).abs().max() > 1e-3`.
+- `test_run_lbm_rejects_bad_boundary` — `boundary='bogus'` → `pytest.raises(ValueError)`.
+- `test_simulate_matches_run_lbm` — both calls pass **identical** `lattice='d2q9', boundary='scs', alpha=1.0, dt=0.005, device='cpu'` AND identical `t_end`/`save_every` (the time axis comes from `snapshots(t_end, save_every)`; a mismatch length-mismatches the stacks and false-fails `torch.equal` for an unrelated reason); compare `simulate(engine='lbm', …).Vm` against `run_lbm(...)[1]` with `torch.equal` (LBM is RNG-free → bit-identical, not `allclose`). This IS the `run_X ≡ simulate(engine=X)` invariant → flip its Phase-0 xfail.
+#### Verify
+`… -m pytest cardiac_core/tests/test_lbm_boundary.py -q`
+#### Exit Criteria / Risk
+- [ ] A wall mode through `run_lbm` + `simulate` takes effect (>1e-2 field diff); bad mode raises; `simulate`≡`run_lbm` bit-identical. Risk: without pinned `dt=0.005` the margin collapses — the tests pin it.
+### Phase 1 Cleanup / commit
+float64; no dup forwarding. **→ commit after Phase 1.**
 
 ---
 
-## Phase 3: Boundary-mode build (the real feature)
-
-**Goal**: Lift the LBM boundary modes into the engine as a first-class, selectable, tested concept and expose via the unified API — HBB / specular-neighbour / specular-samecell / combined-α (the real β-controlled curvature knob), plus wiring the orphaned dirichlet/absorbing. Folds in #29, #37, #38, #39, #40, #14.
-**Tier**: large
-**Estimated scope**: 1 design step + engine impl + API exposure + tests. Reference [BC_IMPLEMENTATION_AUDIT.md](../boundary_conduction_speedup/BC_IMPLEMENTATION_AUDIT.md) (kernels verified there; this productizes them).
-
+## Phase 2: MRT / anisotropic (per-axis) wall modes (C1)
+**Goal**: wall modes work on the per-axis-anisotropic (MRT) path; drop the bgk-only guard. **Tier**: medium.
 ### Phase Context
-Kernels are proven in `Research/Active/boundary_conduction_speedup/diag_lbm_specular.py` (α-blend = `apply_combined_top_bottom_d2q9`, line 517; slot maps verified vs the D2Q9 lattice). Move them into `_lbm` behind a selector — do NOT re-derive the physics. Naming must be unambiguous (the BC audit found `--bc specular` collides across scripts): `hbb`, `specular_nextcell` (zero-bias), `specular_samecell` (inverse), `combined` (α-blend: α=1→hbb … α=0→samecell). `neumann` is an ALIAS of `hbb` (current default; keep bit-identical). Effect is REAL (PI); carry the flat-wall-only + τ/β-dependence notes in docstrings, not as artifact-disclaimers.
-
-### Step 3.1: Design the LBM bc-mode selector (registry + dispatch + API surface)
-**Model**: opus. Read `_lbm/step.py`, `_lbm/simulation.py`, `_lbm/boundary/*`, and BC_IMPLEMENTATION_AUDIT.md §1. Produce a short design note (IDEALOG/WHITEBOARD) settling: registry shape (name→appliers for d2q5/d2q9), how `boundary=` + `alpha=` thread `lbm()` → `LBMSimulation` → `step.py` dispatch (replacing the hardcoded `apply_neumann`), corner/east-west handling (HBB), mask interaction (flat top/bottom walls only; slanted → HBB fallback), and whether `combined` α is a sim attribute or per-step arg.
-
-### Step 3.2: Implement the selector in `_lbm` (#29, #37, #38)
-Add `boundary` + `alpha` params to `LBMSimulation.__init__`; add `_lbm/boundary/registry.py` mapping mode→applier; make `step.py` dispatch (wire existing `apply_dirichlet_*`/`apply_absorbing_*`; port `apply_neumann`(hbb)/`apply_specular_*`/`apply_combined_*` from the research script into `_lbm/boundary/`). Default `neumann` (≡ hbb) → bit-identical to today (goldens unchanged).
-
-### Step 3.3: Expose via `cardiac_core.lbm(boundary=…, alpha=…)`
-Thread `boundary`/`alpha` through the `lbm()` factory → `LBMSimulation`, and into `build_kwargs` (reset/with_ replay). Add to `API_CHEATSHEET.md`. Default `boundary='neumann'` preserves behavior.
-
-### Step 3.4: Tests (#38, #39, #40)
-- Per-mode **rest no-op** (`max|V−V_rest|≈0` on uniform field) + **mass conservation** for hbb/specular_nextcell/specular_samecell/combined(α∈{0,0.5,1}).
-- **`boundary='neumann'` == `boundary='hbb'`** bit-identical (pins the "default unchanged" claim).
-- α endpoints: `combined(α=1)` == `hbb`; `combined(α=0)` == `specular_samecell`.
-- Deficit-ratio cross-check vs the monodomain Moore-8 numbers (2/3, 5/6) where applicable.
-- Bidomain `test_bidomain.py:93-103` — strengthen: assert phi_e / edge-CV DIFFER between `boundary='insulated'` and `'bath'` (#39).
-- LBM `D_xy≠0` ValueError test (#40).
-
-### Step 3.5 (optional): FDM boundary Dxy Neumann treatment (#14)
-Give FDM diagonal off-grid neighbours a `boundary_mode`-consistent ghost (mirror the off-grid axis, as `face_mirror_iso` does for Moore-8) instead of dropping them, OR raise/warn when `Dxy≠0` at a wall. Pairs with Step 1.1. Defer if it expands scope.
-
-### Phase 3 Verification
-```
-conda run -n heart-conduction python -m pytest cardiac_core/tests -q
-```
-### Phase 3 Exit Criteria
-- [ ] Boundary modes selectable via `lbm(boundary=…)`; each tested (rest no-op + mass); neumann==hbb + α endpoints asserted; bidomain bath≠insulated asserted; default unchanged (goldens green)
-### Phase 3 Cleanup
-- Naming unambiguous (no `specular` collision); docstrings carry flat-wall-only + τ/β notes; BC_IMPLEMENTATION_AUDIT.md updated; no dup between research script and `_lbm`
-
-**→ Commit point: git commit after Phase 3 passes**
+`apply_wall_overlay` (wall_modes.py:60) acts on post-stream `f`/`f_star` → collision-agnostic. Rest-neutral on MRT: at rest `f=feq`, the overlay only remaps diagonal slots 5-8 from `f_star` diagonals, and canonical D2Q9 has `w5=w6=w7=w8=1/36` → identity remap regardless of `s_jx/s_jy` (verified: `max|V-V_rest|≈5e-13` over 40 steps). Per-axis = `Dxx≠Dyy, Dxy=0` (→MRT). **OBLIQUE `Dxy≠0` is NOT handled here and NOT in Phase 4** — it is a real numerics gap (Audit #46), so the oblique `raise` STAYS (Step 2.1 + 4.4).
+### Step 2.1: `lbm_step_d2q9_mrt_wall` + drop guard + dispatch
+**Model**: opus
+#### Read First
+- `_lbm/step.py:45-60` (`lbm_step_d2q9_bgk_wall` — takes `omega`), `:63-77` (`lbm_step_d2q9_mrt` — takes the 7 moment rates `s_e,s_eps,s_jx,s_q,s_pxx,s_pxy` + `s_jy=None`); `_lbm/simulation.py:88-92` (the `D2Q9_ONLY and lattice!='d2q9'` KEEP at 88-89; the `collision != 'bgk'` guard to DELETE at 90-92), `:218-237` (`step()` dispatch), `_lbm/boundary/wall_modes.py`
+#### Implementation Spec
+- Add `lbm_step_d2q9_mrt_wall(f, V, R, dt, w, s_e, s_eps, s_jx, s_q, s_pxx, s_pxy, bounce_masks, mode, alpha, Nx, Ny, s_jy=None)` — **argument order MIRRORS `lbm_step_d2q9_mrt` EXACTLY** (`w` immediately after `dt`, then the 6 moment rates, then `bounce_masks`; `mode/alpha/Nx/Ny` appended; `s_jy` last), verified against `_lbm/step.py:63-69`. Body: `mrt_collide → f_star=collide result → clone → stream_d2q9 → apply_neumann (bounce_masks) → apply_wall_overlay(mode, alpha) → recover`. **NOT `bgk_wall`'s `omega` signature** (under MRT `self.omega is None` — cloning the bgk_wall signature and passing `self.omega` crashes).
+- DELETE the `boundary in D2Q9_ONLY and collision != 'bgk'` guard (simulation.py:90-92). KEEP the `D2Q9_ONLY and lattice!='d2q9'` validation (88-89) and the MRT `lattice=='d2q9' + weights_mode=='canonical'` requirement (135-141) — those still protect real invariants.
+- `step()` dispatch order (insert the new branch **before** the existing plain-`mrt` branch): `if collision=='mrt' and boundary in D2Q9_ONLY: mrt_wall(...)`; `elif collision=='mrt': mrt(...)`; `elif boundary in ('neumann','hbb'): _step_fn(...)`; `else: bgk_wall(...)`. (Use `D2Q9_ONLY = ('specular_nextcell','specular_samecell','combined')`, already imported at simulation.py:22 — there is NO `SPECIAL_WALL` symbol; `WALL_MODES \ ('neumann','hbb') == D2Q9_ONLY` exactly.) Call `mrt_wall` positionally EXACTLY as `step()` calls `lbm_step_d2q9_mrt` today (`self.f, self.V, R, self.dt, self.w, self.s_e, self.s_eps, self.s_jx, self.s_q, self.s_pxx, self.s_pxy, self.bounce_masks, …, s_jy=self.s_jy`, simulation.py:222-226) — i.e. `w` is the 5th arg — then append `mode, alpha, self.Nx, self.Ny`. Do NOT reorder `w`.
+- **Golden-safety**: the isotropic-BGK-default-neumann integrity sim must still route to `_step_fn` (it has `collision=='bgk'`, `boundary=='neumann'` → 3rd branch, unchanged). Re-run `test_integrity.py` to confirm.
+#### Test Spec (`test_lbm_boundary.py`)
+- `test_lbm_anisotropic_boundary_runs` — `create_cardiac_mesh(0.4,0.2,0.02,D=1e-3,D_yy=5e-4,chi=1.0)` (→MRT) + `boundary='ncs'` and `boundary='combined',alpha=0.3` → constructs, `snapshots(6,6)` finite, `_engine.collision=='mrt'`.
+- `test_mrt_wall_rest_neutral` — raw `lbm_step_d2q9_mrt_wall` × 40 on uniform V, R=0 → `max|V-V_rest| < 1e-9` (voltage) AND mass drift `< 1e-8` (leave headroom; measured ~5.5e-11).
+- `test_lbm_rejects_oblique_Dxy` (REWORD, keep the raise): assert `lbm(<mesh with Dxy≠0>, boundary='ncs')` raises with a message naming the **documented limitation** — `pytest.raises(ValueError, match='oblique|D_xy|not.*wired|Audit #46')`. The docstring/comment must state this is a REAL numerics limitation (moment-space rotation, Audit #46), tests the OBLIQUE case specifically (NOT per-axis anisotropy), and must be REPLACED (not preserved) if Audit #46 is ever implemented. Cross-ref: do NOT keep the `raise` merely to keep this test green.
+#### Verify
+`… -m pytest cardiac_core/tests/test_lbm_boundary.py cardiac_core/tests/test_lbm_anisotropy.py cardiac_core/tests/test_integrity.py -q`
+#### Exit Criteria / Risk
+- [ ] `lbm(per-axis-aniso, boundary='ncs')` runs; MRT wall rest-neutral; oblique still raises (documented); goldens bit-identical. Risk: MRT near τ=0.5 — use stable `D_yy=5e-4`.
+**→ commit after Phase 2.**
 
 ---
 
-## Findings Coverage (every confirmed audit finding → disposition)
-Fixed: #1→1.3 · #2/#8/#21→1.2 · #3→1.4 · #4/#41→1.1 · #15/#42→1.5 · #5/#6/#16/#17/#34→2.5 · #7/#12(stub)/#13→2.3 · #9/#10/#11/#20/#24/#25/#26/#27/#36/#43→2.4 · #22→2.4(note)/2.x(delete) · #28→2.1 · #30/#31/#44/#45/#46→2.2 · #29/#37/#38/#39/#40→Phase 3 · #14→3.5(optional).
-**Deferred (explicit, not dropped):**
-- #18 (`record=`/ionic_states in one-shots) · #19 (LBM save-cadence/epsilon parity) — API-parity polish; next round.
-- #23 (anisotropic bidomain unreachable via `ConductivityConfig.anisotropic` — no sigma_i/sigma_e) — needs a new anisotropic-bidomain constructor; design decision, next round.
-- #32 (keyless MCP token) · #33 (`confirmed=True` is model-settable) — LOW under the stdio-local trust model; soften docs / HMAC only if a remote transport is enabled.
-- #35 (FVM drops all Dxy) — FVM is unreachable from the public API (no `scheme=`); add a 3-tuple/`Dxy≠0` guard if/when FVM is exposed.
-- #12 `'paci'→PHAS13Model` alias correctness — verify vs published Paci AP; next round.
-- The 12 **completeness gaps** in CARDIAC_CORE_AUDIT.md (analysis.py, io.py round-trip, LBM masked grid, geometry conventions, stimulus shape, device/dtype, bidomain steppers, second mesh loader, etc.) — the next audit round.
+## Phase 3: Silent-failure hardening (S1, I1, I2, S2, S3, C4, I3)
+**Goal**: the real silent-wrong-result bugs + turn silent-degrades into explicit warn/raise. **Tier**: medium. **Seven findings → seven named tests** (the earlier "5 items" undercounted; S2+S3+C4 are three distinct warns).
+### Phase Context
+Each is a small, independent guard/wiring change. Add a NAMED test per finding that asserts the *previously-silent* path now warns/raises/behaves (each must FAIL pre-fix, PASS post-fix). Do NOT change numerics. **Run `test_integrity.py` at the end** — I1/I2/I3 all touch default-path code.
+### Step 3.1: bidomain `boundary` validation (S1 — HIGH)
+Validate `boundary` in `bidomain()` (bc resolution at api.py:1206; current mapping `=='bath'`→bath_coupled else insulated at 1217-1220) against `{'bath','insulated',None}`; raise `ValueError` otherwise (mirror LBM's check at `_lbm/simulation.py:85-87`). This is the exact current mapped set (`data.boundary` only ever holds `'insulated'`/`'bath'`, file_format.py:78) so it does NOT amputate a reachable mode. **NOTE**: `BoundarySpec.bath_coupled_edges` (mesh/boundary.py:132) is a real mode the factory does not expose today — record it as a **Deferred exposure item** (do not pretend the vocabulary is complete; the boundary_conduction_speedup Kleber work may want it).
+- Test `test_bidomain_rejects_bad_boundary`: `pytest.raises(ValueError)` for `bidomain(mesh, boundary='ncs')` and `'insualted'` (typo); `bidomain(mesh, boundary='bath')` still yields a Dirichlet-phi_e (bath) spec.
+### Step 3.2: LBM masked grid — UNION hole + outer walls (I1 — HIGH)
+In `lbm()`, when `data.mask` is not all-True (`not data.mask.all()`): compute `hole = precompute_bounce_masks(torch.tensor(data.mask, device=…), lattice_obj)` (masks.py:10 — periodic `torch.roll`, so it flags ONLY the interior hole rim, NOT outer walls) **UNION** the rectangular outer-edge masks (`_make_rect_masks`-equivalent) → `bounce_masks[a] = hole[a] | rect_edge[a]`. **PREFER the "pad `data.mask` with a False border before rolling" variant** — it needs no lattice object and both lattices' cardinal indices coincide anyway; if instead you build a lattice object, `from cardiac_core._lbm.lattice import D2Q9, D2Q5` and use the one matching the branch's sim lattice (D2Q9 keys 5-8 are harmlessly ignored by a d2q5 neumann, but match to be safe). **Pass `bounce_masks=` to BOTH `LBMSimulation` construction sites** — the anisotropic/MRT branch (api.py:1416) AND the isotropic branch (api.py:1425); a hole in an anisotropic mesh must bounce too. Guard on `not data.mask.all()` so the all-True default rect path keeps using `_make_rect_masks` unchanged (golden-safe).
+- Test `test_lbm_masked_hole_nonconducting`: `lbm(mesh_with_circular_hole)` (isotropic) AND `lbm(mesh_with_circular_hole, D_yy=…)` (anisotropic/MRT) → V inside the hole stays ~V_rest after a run **AND** V at the outer wall stays bounded/rest (the outer-wall assertion catches the periodic-roll trap; the aniso case guards the MRT construction branch).
+### Step 3.3: `with_()`/factory immutability via `_resolve_mesh` (I2 — HIGH)
+Root cause: `_resolve_mesh` returns the caller's `CardiacMeshData` by reference (api.py:816-820), so `with_` (api.py:254), `reset` (243), and even the FACTORY (`monodomain(m)` stores the caller's `m`) all alias it; `stimulate` then `self._data.stimuli.append(...)` (357) mutates the shared object. **Fix in ONE place**: in `_resolve_mesh`'s `CardiacMeshData` branch, `return copy.deepcopy(mesh)` (import `copy`). Device-safe: `_data` holds only numpy arrays + scalars + a `stimuli` list of dicts with numpy masks — NO torch/CUDA tensors and NO ionic instance (the instance lives in `_build_kwargs`, so it is still shared/preserved through `reset`). Leave the `str`-path branch (loads fresh from disk) unchanged. **Golden-safety**: `canonical_sim` (tests/_integrity/make_goldens.py) — if it builds from a path, the str-branch is untouched; if from an in-memory `CardiacMeshData`, the deepcopy runs but `deepcopy` of float64 numpy arrays is bit-identical → confirm via `test_integrity.py`. Name which branch it takes when implementing.
+- Test `test_with_immutable_stimuli`: `p=monodomain(m); c=p.with_(dt=0.02); c.stimulate(region); assert len(p._data.stimuli)==len(m.stimuli)` (parent + original untouched).
+- Test `test_factory_mesh_not_aliased`: `a=monodomain(m); b=monodomain(m); a.stimulate(region); assert len(b._data.stimuli)==len(m.stimuli)` (two sims from one mesh don't cross-contaminate; caller's `m` untouched).
+### Step 3.4: silent-degrade → warn (S2, S3, C4) — three NAMED tests
+(Add `import warnings` to `api.py` — it currently has none. Every warning message must contain a stable substring the test pins with `match=`.)
+- S2 `test_lbm_alpha_inert_warns`: `lbm()` warns (`UserWarning`, message containing `'alpha'`) when `alpha != 1.0` and `boundary in ('neumann','hbb')` (alpha inert). `pytest.warns(UserWarning, match='alpha')`.
+- S3 `test_bidomain_sigma_ratio_ignored_warns`: `bidomain()` warns (message matching `'sigma_ratio'`) when `sigma_ratio` is non-default AND `sigma_i/sigma_e` (or a conductivity carrying them) are present (the sigma branch wins → ratio ignored). Two-case test: fires when both present (`pytest.warns(UserWarning, match='sigma_ratio')`); does NOT fire when only `sigma_ratio` given (`with warnings.catch_warnings(record=True) as w: warnings.simplefilter('always'); bidomain(..., sigma_ratio=5.0); assert not any('sigma_ratio' in str(x.message) for x in w)`).
+- C4 `test_lbm_lattice_override_warns`: `lbm()` warns (message matching `'lattice'`) when an explicit non-default `lattice` is overridden to d2q9/mrt by anisotropy (api.py:1412-1432). `pytest.warns(UserWarning, match='lattice')`.
+### Step 3.5: result dtype round-trip (I3)
+`io.load_result` (io.py:67, returns the 4-tuple `(times, V, phi_e, metadata)`) currently hardcodes `dtype=torch.float64` for `times`/`V`/`phi_e` (lines 94/95/99). Read the stored dtype for `V` and `phi_e` independently — prefer `V = torch.from_numpy(f['V']).to(dev)` (preserves the numpy dtype), `phi_e = torch.from_numpy(f['phi_e']).to(dev)` when present. Leave `times` float64 (analysis assumes it; the audit I3 names only `Vm`).
+- Test `test_load_result_dtype_roundtrip`: `save_result(path, times, Vm=Vm32)` with a float32 `Vm`; `t, V, phi, meta = load_result(path); assert V.dtype == torch.float32`. (Note: `load_result` is a **path-based 4-tuple**, not `load_result(sim).Vm`.)
+### Phase 3 Verification / Exit
+`… -m pytest cardiac_core/tests cardiac_core/tests/test_integrity.py -q` — all green; each of the SEVEN findings has a named test. **Prove "fails pre-fix" mechanically** (the post-mortem's core point — "17 green tests proved nothing because none was shown to fail on the broken code"): for each, `git stash` the fix, run the new test → confirm RED, `git stash pop`. The Phase-3 named tests and their Phase-0 CONTRACT cells assert the same finding — have the cell delegate to (call) the named test, or keep the named test canonical and let the cell reference it, to avoid drift. **→ commit after Phase 3.**
+
+---
+
+## Phase 4: Capability exposure + consistency (C3, C5, C6, S4, C2)
+**Goal**: expose the engine capability the factories hide, and unify cross-engine registries. **Tier**: large.
+### Phase Context
+These are additive (new kwargs / registry entries) — default behavior unchanged (run `test_integrity.py`). C2 (oblique LBM) is a documented limitation, NOT a ship target — see 4.4.
+### Step 4.1: unify the ionic registry — ONE builder that branches on ctor capability (C3 — HIGH)
+There is **no** single map today: three separate resolvers — LBM inline `model_map` (api.py:1379-1385, builds `cls(device=…)`), mono `_build_ionic_model(name, cell_type, device)` (`_monodomain/…/monodomain.py:54`, forwards `cell_type=`), bidomain `_resolve_ionic_model(name, device)` (`_bidomain/…/bidomain.py:126`). **TTP06/ORd ctors take `cell_type`; PHAS13Model/MHAS13Model ctors take `device` ONLY** (`ionic/phas13/model.py:60`, `ionic/mhas13/model.py:60`) — so "just extend `_build_ionic_model`" would call `PHAS13Model(cell_type=…)` → `TypeError`.
+- NEW `cardiac_core/ionic/registry.py::build_ionic_model(name, cell_type='ENDO', device='cuda')`: `if isinstance(name, IonicModel): return name`; map `name.lower()` → class; **forward `cell_type` ONLY to TTP06/ORd** (converting the string to the enum via `getattr(CellType, cell_type.upper())` — the ctors take a `CellType` enum, per the existing mono resolver at `_monodomain/…/monodomain.py:79`), call `cls(device=…)` for PHAS13/MHAS13/paci. **Default `cell_type='ENDO'`, NOT 'EPI'** — every current engine default is ENDO (TTP06/ORd ctors default `CellType.ENDO`; bidomain/LBM pass no cell_type; mono derives it from `data.group_cell_types` else `'ENDO'`, api.py:1134). An 'EPI' default would flip the bidomain + LBM integrity goldens. `'paci'→PHAS13Model` is a genuine same-class alias (`ionic/__init__.py:21 from .phas13 import PHAS13Model as PaciModel`), so propagating it is correct/benign (resolves C8).
+- Rewire mono `_build_ionic_model`, bidomain `_resolve_ionic_model`, and the lbm `model_map` to delegate to `build_ionic_model` (mono forwards its mesh-derived `cell_type`; **bidomain + LBM delegate WITHOUT `cell_type` → ENDO default, preserving current behavior**; `test_integrity.py` bidomain+lbm goldens are the guard). The only callers of the three resolvers are internal (verified) — no other consumer breaks.
+- Test `test_ionic_registry_all_engines`: for `name in {'ttp06','ord','phas13','mhas13','paci'}`, `monodomain(ionic_model=name)`, `bidomain(ionic_model=name)`, `lbm(ionic_model=name)` all construct + `snapshots(2,2)` finite (this WOULD catch the `cell_type` TypeError). NOTE: PHAS13/MHAS13 on bidomain/LBM is **newly-enabled** capability (they were ttp06/ord-only) — the bidomain state/solver are model-agnostic (IonicModel ABC), so it should work; if a 17-state model surfaces an incompatibility, treat it as a real Phase-4 DISCOVERY, not a plan defect.
+### Step 4.2: surface `weights_mode` + MRT knobs on `lbm()` (C5)
+Add `weights_mode='canonical'` (+ optionally explicit `collision`/MRT moment-rate knobs) to `lbm()`; forward to `LBMSimulation`; add to build_kwargs. Enables the `uniform_8` connectivity column.
+- Test `test_lbm_weights_mode_exposed`: `lbm(lattice='d2q9', weights_mode='uniform_8')._engine.lattice` is the uniform-8 D2Q9 variant.
+### Step 4.3: surface `stencil` (C6) + bidomain `splitting` (S4)
+- C6: add `stencil=` (mono: cardinal4/moore8_uniform/moore8_iso; bidomain: 5pt/mehrstellen), forward to the discretization ctor, add to build_kwargs. Consider surfacing mono `boundary_mode` (the FDM ghost choice, the mono analog of the LBM wall modes — the boundary_conduction_speedup work wants it) — if cheap, do it; else record as a Deferred exposure item.
+- S4 (promoted from Deferred — same "capability exists but isn't exposed" class as C5/C6): expose `splitting=` on `bidomain()` (the downstream `BidomainSimulation(splitting=…)` already supports it — `_bidomain/…/bidomain.py:47`; the factory currently hides it → bare TypeError). Forward + add to build_kwargs. For the genuinely single-engine knobs (`theta` bidomain-only; `diffusion_solver`/`linear_solver` mono-only): the factories have NO `**kwargs` (audit line 39), so `monodomain(theta=…)` raises a bare `TypeError` at call-binding today. **Mechanism = add-and-reject**: add the cross-engine knob to the signature as `theta: float | None = None` (etc.) and `raise ValueError("theta is bidomain-only")` when it is set on the wrong engine — do NOT rely on a catch-all `**kwargs`. This is the S4 contract-matrix invariant ("knob valid on A raises *with a message* on B").
+- Tests: `test_monodomain_stencil_exposed` (`monodomain(stencil='moore8_iso')` routes to the Moore-8 builder); `test_bidomain_splitting_exposed` (`bidomain(splitting='godunov')` constructs + runs); `test_solver_knob_engine_mismatch` (`monodomain(theta=…)` and `bidomain(diffusion_solver=…)` → `ValueError` with the engine named).
+### Step 4.4 (decision point): oblique LBM (C2) — DEFAULT = documented limitation
+**Reality check (do not skip):** oblique (`Dxy≠0`) is a **real numerics gap, not a wiring gap**. `mrt_collide_d2q9` (`_lbm/collision/mrt/d2q9.py:57-69`) carries `s_pxy` as a *free stability rate* with `p_xy_eq=0` — its docstring states "D_xy is NOT applied … needs the moment-space rotation of s_jx/s_jy — not implemented (Audit #46)." `tau_tensor_from_D`/`check_stability_tensor` compute `tau_xy`, but the collision kernel **discards** it. So threading `D_xy` through `LBMSimulation` (stop hardcoding `D_xy=0` at simulation.py:144,150) + dropping the factory `raise` (api.py:1402) would run an UNROTATED collision → a **silent-wrong** anisotropy (exactly the bug class this plan kills).
+- **DEFAULT decision: DO NOT ship oblique.** Keep the `lbm()` oblique `raise`, but downgrade its message to a clear, documented "not-yet-wired: oblique fibers need moment-space rotation of s_jx/s_jy (Audit #46)". This makes C7 (mono/bidomain drop `Dxy` at the wall — interior-correct, boundary-truncated) **consistent**: all three engines decline full oblique fidelity, so there is no silent per-engine divergence. Document C7's disposition here (paired to C2). Optionally add a one-line `UserWarning` at the mono/bidomain oblique-D wall path ("Dxy truncated at boundary — interior-correct only"); if not done, record as a Deferred item.
+- **ONLY IF** someone implements the Audit #46 moment-space rotation in a SEPARATE task: ship requires BOTH (a) `check_stability_tensor` passes AND (b) an **analytic fiber-direction CV check** — CV must be *fastest along* a π/4 fiber (a stable+plausible-CV run is NOT sufficient proof; unrotated collision can be stable and wrong). At that point DELETE `test_lbm_rejects_oblique_Dxy` and add `test_lbm_oblique_runs` (CV fastest along fiber). This is out of scope for this plan.
+### Phase 4 Verification / Exit
+`… -m pytest cardiac_core/tests cardiac_core/tests/test_integrity.py -q`; goldens bit-identical (additive kwargs, defaults unchanged). **→ commit after Phase 4.**
+
+---
+
+## Phase 5: Contract-matrix stress harness — flip xfails to live asserts (the keystone)
+**Goal**: turn the Phase-0 `CONTRACT` table into live assertions now that Phases 1–4 have landed; add the cross-engine invariants; leave deliberately-deferred cells as explicit `xfail`. **Tier**: medium.
+### Step 5.1: activate `test_api_contract.py`
+**Model**: opus
+#### Implementation Spec
+- The `strict=True` on every `to_fix` cell has ALREADY forced its marker-removal in the phase that landed the fix (an unremoved marker XPASS-fails the suite). Phase 5 confirms zero stray `to_fix` xfails remain and that each is now a live `effect`/`raise(match=)`/`warn(match=)` assertion.
+- Cells that remain deferred keep `xfail(strict=False)`: the **C2-capability** oblique-CV-correct cell (`xfail(reason='C2/Audit#46')`, body never runs) and **C7** mono/bidomain oblique-wall-truncation (`xfail(reason='C7')`, the divergence-declined). The **C2-raise** documented-limitation cell is NOT deferred — Phase 2's message reword already flipped it `to_fix→landed`, so it is a live `raise(match='oblique|Audit #46')` regression-lock assert here. Any C5/C6/S4 sub-cell deliberately not exposed is `deferred`.
+- Assert the cross-engine invariants from Phase 0: `run_X ≡ simulate(engine=X) ≡ X()` (bit-identical where deterministic); the "valid-on-A-raises-with-message-on-B" cells (S1, S4); `with_`/factory leaves `_data` untouched (I2).
+- float32/cuda cells: `pytest.mark.skipif(not torch.cuda.is_available())` for cuda; float32 cells run on CPU. Keep grids tiny (`_tiny`), `t_end`≤2 ms except wall-divergence cells.
+#### Test Spec
+- The suite IS the test. Verify: ≥1 live asserted cell per HIGH+MED finding (**15 findings**, incl. C7); every `raise`/`warn` cell pins `match=`; every deferred cell (C2-raise message, C2-capability, C7) is `xfail`/documented with a finding-ID reason (never a silent gap). Each finding ID appears in a test id (mechanically, via the param `id=`).
+#### Verify
+`… -m pytest cardiac_core/tests/test_api_contract.py -q` + full suite `cardiac_core/tests -q`.
+#### Exit Criteria
+- [ ] Every HIGH/MED finding has a live cell that would fail pre-fix and passes post-fix; deferred cells are `xfail(reason)`; the harness is green.
+**→ commit after Phase 5.**
+
+---
 
 ## Final Cleanup
-- float64 across new code; V5.3 untouched; boundary kernels live once (`_lbm`)
-- Update `CARDIAC_CORE_AUDIT.md` finding statuses + `KNOWLEDGE.md` (chi/D single-meaning; boundary modes productized)
-- Archive this plan:
-```bash
-mkdir -p Research/Active/engine_consolidation/plans
-cp Research/Active/engine_consolidation/PLAN.md "Research/Active/engine_consolidation/plans/$(date +%Y-%m-%d)_cardiac-core-foundation-cleanup-boundary-mode-build.md"
-```
+- Update API_CONSISTENCY_AUDIT.md + PHASE3_BOUNDARY_GAPS.md "status" → resolved (with commits + which findings shipped vs deferred; note C2 stays a documented limitation pending Audit #46).
+- Update KNOWLEDGE/IDEALOG: the API is now contract-tested across `{entry × engine × param × physics}`; note deferred cells (oblique LBM / Audit #46, C7 pairing, `bath_coupled_edges` exposure, mono `boundary_mode`, the low/latent C9/I4/I5/I6/S5/P2).
+- Archive: `cp PLAN.md plans/$(date +%Y-%m-%d)_api-consistency-hardening-stress-harness.md`
+- **Rollback rule (per phase)**: if a phase changes an integrity golden, the phase is WRONG — revert and re-approach; do NOT update the golden. Goldens are the frozen-behavior contract.
+
+## Deferred / not in this plan (explicit)
+Tracked in API_CONSISTENCY_AUDIT.md. **Promoted OUT of this list by the round-1 audit**: S4 → Step 4.3 (splitting exposure + validated engine-mismatch errors); C8 → Step 4.1 (paci alias, benign same-class). **Genuinely deferred (each a one-liner unless noted):**
+- **C2 / Audit #46** (oblique LBM moment-space rotation) — NOT a one-liner; a real numerics task, its own future plan. Left a documented, message-bearing `raise` (Step 4.4).
+- **C7** (mono/bidomain boundary-Dxy truncation) — dispositioned *paired to C2* in Step 4.4 (consistent decline); optional mono/bidomain warn is a one-liner if wanted.
+- **`bath_coupled_edges` exposure** (bidomain) — real BoundarySpec mode the factory doesn't surface (noted in Step 3.1); Kleber work may want it.
+- **mono `boundary_mode`** exposure (Step 4.3, if not done there).
+- S5 (BGK CFL/τ guard), C9 (bidomain `getattr(state,'Cm',1.0)` → fail-loud), I4 (persist ionic_states), I5 (delete dead `mesh/loader.py`), I6 (np.str_ group labels), P2 (`record=` in one-shots) — each a one-liner; batch or fold into the relevant phase as a quick win.
 
 ## Mutation Log
-- **AUDITED 2026-06-30 (Round 1)**: two adversarial auditors (code-fidelity + executor-readiness). Applied: bidomain D_eff branch must also divide (Step 1.2 — my "bidomain already divides" claim was FALSE for the D_eff path, api.py:1240/1249-1254); Phase-1 golden refresh moved IN as Step 1.5 so the phase commits green (1.1 reddens mono src-sha, 1.2 changes Vm goldens); Step 1.1 test uses a hand-built FDMDiscretization (create_cardiac_mesh can't make Dxy≠0); enumerated existing default-chi tests to update in 1.2 (test_file_format, test_lbm/test_matches_direct, test_integration, test_lbm_anisotropy, test_param_seam); per-factory var name in 1.3; re-slugify (not assert-equal) in 1.4; full FEM import-site list + exact fft.py path + "not the live d2q5/fft" caveats in 2.1/2.2; corrected #26 line ref; added the Findings Coverage/Deferred table; `import warnings`; phase-numbering note.
-- **AUDITED 2026-06-30 (Round 2)**: verify-fixes auditor. Caught that the DECLARATIVE LBM path stores already-effective D_xx + real chi → the new factory divide would double-divide → added the `_build_mesh_data` LBM-branch raw-storage fix (declarative bidomain uses the sigma branch = unaffected; declarative mono is invariant-correct). Added `test_bidomain.py` + a per-file test disposition + a declarative-path re-run/verify list; corrected Step 1.5 (make_goldens regenerates all three goldens/SHAs unconditionally, bidomain golden changes); added #20/#27 to coverage; `test_file_format` :143+:144; harmonic-mean-constant-D note on the 1.1 oracle test; import-site line :21.
-- **AUDITED 2026-06-30 (Round 3 — CONVERGED)**: verdict SOUND (0 blockers, 0 majors). Confirmed the chi/D fix is correct + complete on all live paths (save/load round-trips D_xx verbatim; reset/with_ replay consistent; `mesh/loader.py` is the one other effective-D loader but is dead/deferred; `run_*` delegate to factories). All 46 findings accounted for. Applied the 3 residual doc/enumeration minors: field docstring `file_format.py:25`, `test_param_seam` module docstring `:9-13`, test_bidomain default-D structural sims noted, for_lbm Read-First bullet reworded, count 54. **Convergence trajectory: R1 (5 blk/6 maj) → R2 (2/2) → R3 (0/0).**
-- **EXECUTED 2026-06-30 (Phase 1 — COMPLETE, committed)**: Steps 1.1–1.5 done. 1.1 mono cross-derivative fixed (cardiac_core + V5.5 mirror) + `test_fdm_anisotropy` (3). 1.2 chi/D=raw: LBM factory + bidomain D_eff branch divide by χ·Cm; `_build_mesh_data` LBM stores raw; default `D=1.4`; band guard; `test_chi_convention` (5); updated test_file_format/test_lbm/test_bidomain/test_lbm_anisotropy/test_param_seam. 1.3 `ionic_model` in all 3 build_kwargs + `test_replay_ionic` (4). 1.4 MCP `commit_experiment` date-regex + re-slugify + `is_relative_to(LAB)` + 2 traversal tests. 1.5 goldens regenerated (all propagate, Vmax 114–118; old ones captured the BLOCKED default) + integrity skip→fail (#42). **Full suite: 179 passed / 0 failed** (was 148/1). MUTATION: Step 1.1 test 2 implemented as a direct coefficient-oracle (pins NE+/NW−/SE−/SW+ × cxy) instead of instantiating BidomainFDMDiscretization — equivalent, avoids cross-package grid fragility. DEFERRED: 9 cosmetic band-warnings on matches-direct fixtures that intentionally use tiny D at default chi (benign; tests pass).
-- **EXECUTED 2026-06-30 (Phase 2 — COMPLETE, committed)**: 2.1 FEM/TriangularMesh deleted (2 files + all import/export sites; `Mesh` ABC KEPT for StructuredGrid; test_mesh_shared import trimmed). 2.2 deleted orphaned `_bidomain/.../linear_solver/fft.py` + `_lbm/collision/mrt/d2q5.py` (NOT the live mono fft / lattice d2q5); removed the resolved MRT-TODO comment + the `get_activation_times` stub; downgraded the MRT-d2q9 "full tensor" docstring (#46). 2.3 `pcg_gmg` now warns on PCG fallback (#13); `CardiacSimulation` docstring flags the planned/unimplemented methods (#7/#12). 2.5 `run.py::_collect` zero-save guard (#5); positional-mesh vs `mesh=` clash raises (#17); NOTEBOOK goal cell-escaped (#34). Docs: `cardiac_core/__init__` `_prepare_engine` comment (#20/#27), `_monodomain/__init__` underscore-path docstring (#26). **Full suite: 179 passed / 0 failed.** DEFERRED (noted): 2.4 Research/ API_REFERENCE/API_DESIGN/GLOSSARY/CHEATSHEET reconciliation (#9/#10/#11/#24/#25/#36/#43 — documentation-only, no shipped-code impact); #6 ionic-registry parity (behavior change; paci→PHAS13 alias unresolved, gap #12); #16 lbm lattice-override warning (minor).
-- **EXECUTED 2026-06-30 (Phase 3 — boundary-mode build, COMPLETE, committed)**: 3.1 design settled (registry + overlay-after-neumann; names hbb/specular_nextcell/specular_samecell/combined). 3.2 new `_lbm/boundary/wall_modes.py` (kernels ported from diag_lbm_specular.py, slot maps verified) + `lbm_step_d2q9_bgk_wall` (step.py) + `boundary`/`alpha` params + validation + step() dispatch (simulation.py); **neumann/hbb route through the UNCHANGED bit-identical path → goldens safe**. 3.3 exposed via `cardiac_core.lbm(boundary=, alpha=)` (both branches; build_kwargs replays). 3.4 `test_lbm_boundary` (16): rest-noop+mass per mode, neumann==hbb, combined(1)==hbb, combined(0)==specular_samecell, modes-differ, D2Q9/unknown validation, default-neumann, reset-replay, oblique-Dxy reject (#40). **Full suite: 195 passed / 0 failed** (goldens bit-identical). Two TEST bugs found+fixed en route (precompute_bounce_masks → all-False on a full periodic domain, use engine masks; modes can't differ at step-1-from-equilibrium, run a front). DEFERRED: 3.5 FDM boundary-Dxy Neumann (#14, optional); #39 bidomain bath≠insulated assert (test-strengthening); wiring orphaned dirichlet/absorbing as selectable modes (#37 — need a bc value; the wall-mode axis is the feature). **ALL THREE PHASES DONE.**
-_(future: `**MUTATED {date}**: Step X.Y {SKIPPED|SPLIT|INSERTED} — {reason}`)_
+_(populated during execution: `**MUTATED {date}**: Step X.Y {SKIPPED|SPLIT|INSERTED} — {reason}`)_
+
+**REVISED 2026-07-01 (audit round 1 — 5 blockers / 10 majors folded in):**
+- **B1/Step 4.4 (C2 oblique):** rewrote from "thread D_xy → ship if stable" to "DEFAULT documented limitation." `mrt_collide_d2q9` discards `D_xy` (docstring d2q9.py:63-69, `p_xy_eq=0`) → threading it is a silent-wrong no-op; oblique is real numerics (moment-space rotation, Audit #46), a separate task. Ship (if ever) requires an analytic fiber-direction CV check, not just stability. Corrected the "MRT is oblique-CAPABLE" lesson.
+- **B2/Step 3.2 (I1 masked grid):** `precompute_bounce_masks` uses periodic `torch.roll` → NO outer-wall bounce on a full-border mask (LBM V1 DESIGN_AND_CHANGES.md:100). Changed "swap to precompute_bounce_masks" → "UNION hole rim with rect outer edges (or pad mask)"; test now asserts the OUTER wall too; specified `lattice_obj` sourcing; guard on `not data.mask.all()`.
+- **B3/Step 4.1 (C3 ionic registry):** PHAS13/MHAS13 ctors are `device`-only (model.py:60); the old "extend `_build_ionic_model`" (which forwards `cell_type=`) would `TypeError`. Replaced with a NEW shared `ionic/registry.py::build_ionic_model` that branches on ctor capability; all three resolvers delegate. Confirmed `paci`=PHAS13Model same-class alias.
+- **B4/Step 3.5 (I3 dtype):** the test `load_result(p).Vm` was unrunnable — `load_result(path)` returns a 4-tuple. Rewrote to the tuple API; read `f['V']`/`f['phi_e']` dtype via `torch.from_numpy`; leave `times` float64.
+- **B5/Step 2.1 + 4.4 (oblique-reject test):** removed the Phase-2→4.4 contradiction. The oblique `raise` legitimately STAYS (real limitation), but its test now asserts the **documented-limitation message** and carries an explicit "replace-if-lifted, do-not-cargo-cult-the-guard" note.
+- **M1/Step 4.3 (S4):** promoted from Deferred — bidomain `splitting` exposure + convert bare-TypeError engine-mismatches to validated ValueErrors; added contract-matrix cell.
+- **M2/Step 4.4 (C7):** paired C7's disposition to C2 (both decline oblique → no silent divergence) instead of a bare "doc" deferral.
+- **M3/Phase 3 (tests):** split the inline one-liners into SEVEN named per-finding Test Specs; corrected the "5 items" miscount to 7.
+- **M4/Step 3.1 (S1):** kept the validated set = current mapped `{bath,insulated,None}` but recorded `bath_coupled_edges` as a Deferred exposure item (don't pretend the vocabulary is complete).
+- **M5/Step 2.1 (mrt_wall signature):** spelled out the full 7-moment-rate signature; warned against cloning the `omega`-based `bgk_wall` signature (`self.omega is None` under MRT).
+- **M6/Step 3.3 (I2):** moved the deep-copy from `with_`-only to `_resolve_mesh` (closes factory + with_ + reset aliasing); added the two-sims-from-one-mesh test; noted device-safety.
+- **M7/Step 1.1:** pin `dt=0.005` (default `dt=0.02` collapses the hbb-vs-scs margin to ~1 mV); assert `abs().max() > 1e-2`; corrected the "stim near wall" wording (walls are top/bottom).
+- **M8/Phase 0 (NEW):** added a contract-matrix-FIRST phase — write `CONTRACT` as data with expected verdicts + finding IDs, unfixed cells `xfail`, BEFORE Phase 1. Split the old Phase 5 into 0 (table) + 5 (activate). This is the central process fix for the post-mortem's root cause.
+- **M9/Phase 0+5:** enumerated the required cross-engine RAISE/WARN cells explicitly (bidomain-boundary, lbm-boundary regression-lock, mrt+uniform_8, alpha-inert, sigma_ratio, lattice-override, solver-knob mismatch).
+- **M10/Step 1.1:** `simulate ≡ run_lbm` now pins identical lattice/boundary/alpha/dt/device and uses `torch.equal` (LBM RNG-free), not `allclose`.
+- **Minors:** added `test_integrity.py` to Phase 3 verify + golden-safety notes to Steps 2.1/3.2/3.3; noted no `conftest.py` exists (local `_tiny` helper); mass-drift threshold `<1e-8`; per-phase rollback rule.
+
+**REVISED 2026-07-01 (audit round 2 — 1 blocker / 5 majors folded in):**
+- **BLOCKER/Step 4.1 (ionic default):** shared `build_ionic_model` default was `'EPI'` → would flip bidomain + LBM integrity goldens (whole codebase defaults ENDO: TTP06/ORd ctors, bidomain/LBM pass none, mono derives from mesh). Changed default to `'ENDO'`; bidomain/LBM delegate w/o cell_type; `test_integrity` is the guard. (verified: ORd ctor `CellType.ENDO`, mono api.py:1134.)
+- **MAJOR/Step 2.1 (mrt_wall signature):** the explicit signature put `w` after the moment rates while the dispatch text said "same positional args as mrt" — contradiction that would bind `self.w` into the `s_e` slot. Reconciled to mirror `lbm_step_d2q9_mrt` exactly (`w` 5th, right after `dt`) across Architecture + Step 2.1 signature + dispatch call. (verified against step.py:63-69.)
+- **MAJOR/Step 3.2 (I1 both branches):** `bounce_masks=` must reach BOTH LBM construction sites (aniso/MRT api.py:1416 AND iso api.py:1425), else a masked anisotropic grid still leaks; added an aniso-hole test case. Also: prefer the pad-mask variant (no lattice object needed) / named the `D2Q9`/`D2Q5` import.
+- **MAJOR/Phase 0+3.4 (warn cells spurious):** `pytest.warns(UserWarning)` passes on ANY UserWarning; added a `match` field to the CONTRACT tuple and `match=` on every `raise`/`warn` cell + `import warnings` in api.py + S3 `simplefilter('always')` two-case.
+- **MAJOR/Phase 0+5 (xfail rot):** `strict=False` never forces the Phase-5 flip → matrix could stay green as permanent-limitation xfails (anti-pattern one level up). Split cells `to_fix` (`strict=True` → XPASS fails the suite, forcing the in-phase flip) vs `deferred` (`strict=False`); added the `pytest.param(marks=…)` recipe + `status` field.
+- **MAJOR/Phase 0+5 (C7 enumeration):** C7 (MED) had a Phase-5 cell but was dropped from the Phase-0 list and the "14 findings" count — added C7 to the enumeration (→15) and pre-declared C2's two rows in Phase 0 so Phase 5 only removes markers.
+- **Minors:** execution-order heading corrected ("strictly ascending 0→5"); parity test pins `t_end`/`save_every`; Step 3.3 names the goldens' mesh branch; S4 mechanism spelled out (add-and-reject, no `**kwargs`); Phase-3 "git stash → confirm RED" pre-fix gate + matrix/named-test de-dup note.
+
+**REVISED 2026-07-01 (audit round 3 — 1 blocker / 1 major folded in; both in the Phase-0 harness mechanism):**
+- **BLOCKER/Step 0.1 (`c.exc` undefined):** the `raise` dispatch used `pytest.raises(c.exc, …)` but `exc` was not a `Cell` field → `AttributeError` for every raise cell. Added `exc` as the tuple's LAST field with `defaults=[ValueError]` (namedtuple right-aligns defaults, so a mid-tuple defaulted field is invalid — corrected in round 4).
+- **MAJOR/Step 0.1+Phase 5 (C2-raise had no representable status):** `status ∈ {to_fix,deferred}` both forced an xfail marker, but the documented-limitation `raise` PASSES after Phase 2 → would read XPASS, not a live assert. Added a third `status='landed'` (no marker → live regression-lock assert); made `C2-raise` a `to_fix` cell that Phase 2's message-reword flips `to_fix→landed`; declared the already-passing `lbm(boundary='bath')→raise` as `landed`. Phase 5 prose reconciled.
+- **Minors (round-3 correctness lens):** Step 2.1 dispatch `SPECIAL_WALL` → `D2Q9_ONLY` (the real, imported symbol — `SPECIAL_WALL` does not exist); Step 4.1 registry adds the `getattr(CellType, cell_type.upper())` string→enum conversion (ctors take the enum); noted PHAS13/MHAS13-on-bidomain/LBM is newly-enabled capability (a Phase-4 failure = discovery, not plan defect).
+
+**REVISED 2026-07-01 (audit round 4 — 1 blocker, mechanical):**
+- **BLOCKER/Step 0.1 (namedtuple default ordering):** `Cell(…, exc, finding_id, status, note)` with `defaults=[ValueError]` binds the default to `note`, not `exc` (Python right-aligns namedtuple defaults) → import error or silently shifted rows. Moved `exc` to the LAST field: `Cell(…, finding_id, status, note, exc)`. Field refs are name-based (`c.exc`), so no other change. (Also added `c.param` to the pytest `id=` template for unique, self-documenting ids.)
+
+**Audit trajectory:** R1 5 blk / 10 maj → R2 1 blk / 5 maj → R3 1 blk / 1 maj (correctness lens 0/0) → R4 1 blk / 0 maj (mechanical namedtuple reorder, fix self-verified) → **CONVERGED**. All findings grounded in code; blocker fixes verified against source.
