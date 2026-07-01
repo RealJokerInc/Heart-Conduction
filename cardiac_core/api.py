@@ -6,6 +6,8 @@ a file path or CardiacMeshData and return a CardiacSimulation wrapper
 with a uniform generator interface.
 """
 
+import copy
+import warnings
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Iterator, Optional, Union
@@ -814,10 +816,46 @@ class CardiacSimulation:
 
 
 def _resolve_mesh(mesh: Union[str, CardiacMeshData]) -> CardiacMeshData:
-    """Accept path or CardiacMeshData, return CardiacMeshData."""
+    """Accept path or CardiacMeshData, return CardiacMeshData.
+
+    DEEP-COPY the in-memory branch (I2): _resolve_mesh is the single choke point for every
+    construction path (factory, with_, reset), so copying here makes each sim OWN its mesh —
+    stimulate()/with_() then can't mutate the caller's object or a sibling sim. _data holds
+    only numpy arrays + scalars + a stimuli list of dicts (no torch/CUDA tensors, no ionic
+    instance — that lives in _build_kwargs), so the copy is cheap and bit-identical (goldens
+    unaffected). The str/path branch already loads fresh from disk.
+    """
     if isinstance(mesh, (str, Path)):
         return load_cardiac_mesh(str(mesh))
-    return mesh
+    return copy.deepcopy(mesh)
+
+
+def _lbm_bounce_masks(data, lattice_name, anisotropic, device):
+    """Per-direction LBM bounce-back masks for a MASKED interior geometry (I1).
+
+    UNION of (a) the interior-hole rim from ``precompute_bounce_masks`` — which uses a
+    periodic ``torch.roll`` and so flags ONLY the hole rim, NOT the outer array walls —
+    and (b) the outer rectangular edges. Returns None for a full (all-True) mask so the
+    engine's own ``_make_rect_masks`` is used unchanged (golden-safe).
+    """
+    if bool(data.mask.all()):
+        return None
+    from ._lbm.boundary.masks import precompute_bounce_masks
+    from ._lbm.lattice import D2Q9, D2Q5
+    lat = D2Q9() if (anisotropic or lattice_name == 'd2q9') else D2Q5()
+    dev = torch.device(device)
+    mask_t = torch.tensor(data.mask, dtype=torch.bool, device=dev)
+    hole = precompute_bounce_masks(mask_t, lat)
+    out = {}
+    for a in range(1, lat.Q):
+        m = hole[a].clone()
+        ex, ey = lat.e[a]
+        if ex == 1:   m[-1, :] = True
+        if ex == -1:  m[0, :] = True
+        if ey == 1:   m[:, -1] = True
+        if ey == -1:  m[:, 0] = True
+        out[a] = m
+    return out
 
 
 def _normalize_stimulus(stimulus, coords) -> list:
@@ -1203,6 +1241,11 @@ def bidomain(
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'bidomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
+    if boundary is not None and boundary not in ('bath', 'insulated'):
+        raise ValueError(
+            f"boundary must be 'bath', 'insulated', or None, got {boundary!r} "
+            "(bidomain uses bath/insulated; LBM wall modes like 'ncs'/'scs' are LBM-only)"
+        )
     bc_type = boundary or data.boundary
 
     # Construct from the vendored bidomain solver + shared mesh (self-contained; no _prepare_engine).
@@ -1221,6 +1264,10 @@ def bidomain(
 
     # Build conductivity
     if data.sigma_i is not None and data.sigma_e is not None:
+        if sigma_ratio != 3.59:   # non-default sigma_ratio is ignored here (S3)
+            warnings.warn(
+                f"sigma_ratio={sigma_ratio} is ignored when sigma_i/sigma_e are provided "
+                "(the explicit conductivity wins on the declarative path)", UserWarning)
         # Direct sigma → D conversion
         chi_Cm = data.chi * data.Cm
         D_i_xx = data.sigma_i[0] / chi_Cm
@@ -1370,6 +1417,10 @@ def lbm(
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'lbm')
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
+    if alpha != 1.0 and boundary in ('neumann', 'hbb'):
+        warnings.warn(
+            f"alpha={alpha} is inert for boundary={boundary!r} "
+            "(alpha only affects the 'combined' wall mode)", UserWarning)
 
     # Construct from the vendored LBM solver + shared ionic (self-contained; no _prepare_engine).
     from ._lbm.simulation import LBMSimulation
@@ -1411,8 +1462,15 @@ def lbm(
     D_xx = float(data.D_xx.flat[0]) / _chi_Cm
     D_yy = float(data.D_yy.flat[0]) / _chi_Cm
     anisotropic = not np.isclose(D_xx, D_yy)
+    if anisotropic and lattice != 'd2q9':
+        warnings.warn(
+            f"anisotropic D (D_xx != D_yy) forces lattice='d2q9'+MRT; the requested "
+            f"lattice={lattice!r} is overridden", UserWarning)
 
     Nx, Ny = data.mask.shape
+    # I1: a masked interior hole needs bounce-back on its rim (union with the outer
+    # rect edges); None for a full mask → engine default rect masks (golden-safe).
+    bounce = _lbm_bounce_masks(data, lattice, anisotropic, device)
     if anisotropic:
         sim = LBMSimulation(
             Nx=Nx, Ny=Ny,
@@ -1421,6 +1479,7 @@ def lbm(
             Cm=data.Cm,
             lattice='d2q9', collision='mrt',
             boundary=boundary, alpha=alpha,
+            bounce_masks=bounce,
         )
     else:
         sim = LBMSimulation(
@@ -1430,6 +1489,7 @@ def lbm(
             Cm=data.Cm,
             lattice=lattice,
             boundary=boundary, alpha=alpha,
+            bounce_masks=bounce,
         )
 
     # Add stimuli as (Nx, Ny) bool tensor masks

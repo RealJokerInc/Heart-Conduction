@@ -92,11 +92,13 @@ def load_result(
     dev = torch.device(device)
 
     times = torch.tensor(f['times'], dtype=torch.float64, device=dev)
-    V = torch.tensor(f['V'], dtype=torch.float64, device=dev)
+    # Round-trip the STORED dtype (I3): a saved float32 Vm reloads as float32, not
+    # promoted to float64. `as_tensor` infers the numpy dtype; `times` stays float64.
+    V = torch.as_tensor(f['V'], device=dev)
 
     phi_e = None
     if 'phi_e' in f:
-        phi_e = torch.tensor(f['phi_e'], dtype=torch.float64, device=dev)
+        phi_e = torch.as_tensor(f['phi_e'], device=dev)
 
     metadata = {}
     for key in f.files:
