@@ -1085,6 +1085,9 @@ def monodomain(
     splitting: str = 'strang',
     diffusion_solver: str = 'crank_nicolson',
     linear_solver: str = 'pcg',
+    stencil: str = 'cardinal4',
+    boundary_mode: str = 'face_mirror',
+    theta: Optional[float] = None,
     device: str = 'cpu',
 ) -> CardiacSimulation:
     """Create a monodomain simulation.
@@ -1125,6 +1128,9 @@ def monodomain(
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'monodomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
+    if theta is not None:   # S4 add-and-reject: theta is a bidomain-only knob
+        raise ValueError("theta is bidomain-only (the θ-rule elliptic weighting); "
+                         "monodomain uses diffusion_solver/splitting instead")
 
     # Construct from the vendored monodomain solver + shared mesh (self-contained; no _prepare_engine).
     # Private package _monodomain (underscore) so it doesn't shadow the public monodomain() factory.
@@ -1149,6 +1155,8 @@ def monodomain(
             D=float(data.D_xx.flat[0]),
             chi=data.chi,
             Cm=data.Cm,
+            stencil=stencil,
+            boundary_mode=boundary_mode,
         )
     else:
         dev = torch.device(device)
@@ -1162,6 +1170,8 @@ def monodomain(
             chi=data.chi,
             Cm=data.Cm,
             D_field=D_field,
+            stencil=stencil,
+            boundary_mode=boundary_mode,
         )
 
     # Build stimulus
@@ -1184,7 +1194,8 @@ def monodomain(
     )
 
     build_kwargs = dict(dt=timestep, splitting=splitting, diffusion_solver=diffusion_solver,
-                        linear_solver=linear_solver, device=device, ionic_model=ionic)
+                        linear_solver=linear_solver, stencil=stencil, boundary_mode=boundary_mode,
+                        device=device, ionic_model=ionic)
     return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs)
 
 
@@ -1200,6 +1211,10 @@ def bidomain(
     boundary: Optional[str] = None,
     elliptic_solver: str = 'auto',
     theta: float = 0.5,
+    splitting: str = 'strang',
+    stencil: str = '5pt',
+    diffusion_solver: Optional[str] = None,
+    linear_solver: Optional[str] = None,
     device: str = 'cpu',
 ) -> CardiacSimulation:
     """Create a bidomain simulation.
@@ -1246,6 +1261,10 @@ def bidomain(
             f"boundary must be 'bath', 'insulated', or None, got {boundary!r} "
             "(bidomain uses bath/insulated; LBM wall modes like 'ncs'/'scs' are LBM-only)"
         )
+    for _knob, _val in (('diffusion_solver', diffusion_solver), ('linear_solver', linear_solver)):
+        if _val is not None:   # S4 add-and-reject: these are monodomain-only knobs
+            raise ValueError(f"{_knob} is monodomain-only; bidomain uses the parabolic/elliptic "
+                             "split (elliptic_solver, theta) instead")
     bc_type = boundary or data.boundary
 
     # Construct from the vendored bidomain solver + shared mesh (self-contained; no _prepare_engine).
@@ -1336,7 +1355,7 @@ def bidomain(
             )
 
     # Build FDM discretization
-    spatial = BidomainFDMDiscretization(grid, cond, Cm=data.Cm)
+    spatial = BidomainFDMDiscretization(grid, cond, Cm=data.Cm, stencil=stencil)
 
     # Build stimulus
     dev = torch.device(device)
@@ -1348,14 +1367,15 @@ def bidomain(
         ionic_model=ionic,
         stimulus=stimulus,
         dt=timestep,
+        splitting=splitting,
         elliptic_solver=elliptic_solver,
         theta=theta,
         device=device,
     )
 
     build_kwargs = dict(dt=timestep, sigma_ratio=sigma_ratio, boundary=boundary,
-                        elliptic_solver=elliptic_solver, theta=theta, device=device,
-                        ionic_model=ionic)
+                        elliptic_solver=elliptic_solver, theta=theta, splitting=splitting,
+                        stencil=stencil, device=device, ionic_model=ionic)
     return CardiacSimulation(sim, 'bidomain', grid, data, build_kwargs)
 
 
@@ -1368,6 +1388,7 @@ def lbm(
     mesh: Union[str, CardiacMeshData, None] = None,
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
+    weights_mode: str = 'canonical',
     boundary: str = 'neumann',
     alpha: float = 1.0,
     device: str = 'cpu',
@@ -1424,23 +1445,13 @@ def lbm(
 
     # Construct from the vendored LBM solver + shared ionic (self-contained; no _prepare_engine).
     from ._lbm.simulation import LBMSimulation
-    from .ionic import TTP06Model, ORdModel, PHAS13Model, MHAS13Model
+    from .ionic.registry import build_ionic_model
 
-    # Instantiate ionic model
-    model_map = {
-        'ttp06': TTP06Model,
-        'ord': ORdModel,
-        'phas13': PHAS13Model,
-        'paci': PHAS13Model,
-        'mhas13': MHAS13Model,
-    }
+    # Instantiate ionic model via the shared registry (C3); LBM passes no cell_type → ENDO.
     if ionic_model is not None and not isinstance(ionic_model, str):
         ionic_instance = ionic_model            # pre-built (e.g. tuner-scaled) IonicModel — use as-is
     else:
-        model_cls = model_map.get(ionic_name.lower())
-        if model_cls is None:
-            raise ValueError(f"Unknown ionic model: {ionic_name}")
-        ionic_instance = model_cls(device=device)
+        ionic_instance = build_ionic_model(ionic_name, device=device)
 
     # Determine D. LBM needs spatially-uniform diagonal D (D_xx, D_yy constant;
     # D_xy = 0). Isotropic (D_xx == D_yy) -> BGK on the requested lattice;
@@ -1477,7 +1488,7 @@ def lbm(
             dx=data.dx, dt=timestep,
             D=D_xx, D_yy=D_yy, ionic_model=ionic_instance,
             Cm=data.Cm,
-            lattice='d2q9', collision='mrt',
+            lattice='d2q9', collision='mrt', weights_mode=weights_mode,
             boundary=boundary, alpha=alpha,
             bounce_masks=bounce,
         )
@@ -1487,7 +1498,7 @@ def lbm(
             dx=data.dx, dt=timestep,
             D=D_xx, ionic_model=ionic_instance,
             Cm=data.Cm,
-            lattice=lattice,
+            lattice=lattice, weights_mode=weights_mode,
             boundary=boundary, alpha=alpha,
             bounce_masks=bounce,
         )
@@ -1511,6 +1522,7 @@ def lbm(
         else:
             sim.add_stimulus(stim_mask, stim['start_time'], stim['duration'], stim['amplitude'])
 
-    build_kwargs = dict(dt=timestep, lattice=lattice, device=device, ionic_model=ionic_name,
+    build_kwargs = dict(dt=timestep, lattice=lattice, weights_mode=weights_mode,
+                        device=device, ionic_model=ionic_name,
                         boundary=boundary, alpha=alpha)
     return CardiacSimulation(sim, 'lbm', None, data, build_kwargs)

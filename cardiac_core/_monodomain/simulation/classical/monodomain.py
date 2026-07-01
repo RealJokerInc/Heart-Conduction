@@ -72,19 +72,11 @@ def _build_ionic_model(
     -------
     model : IonicModel
     """
-    if isinstance(name, IonicModel):
-        return name
-
-    name_lower = name.lower()
-    cell_type_enum = getattr(CellType, cell_type.upper())
-    device_obj = torch.device(device)
-
-    if name_lower == 'ttp06':
-        return TTP06Model(cell_type=cell_type_enum, device=device_obj)
-    elif name_lower == 'ord':
-        return ORdModel(cell_type=cell_type_enum, device=device_obj)
-    else:
-        raise ValueError(f"Unknown ionic model: {name}")
+    # Delegate to the shared registry (C3): one builder that branches on ctor capability
+    # (cell_type only to TTP06/ORd; device-only for PHAS13/MHAS13/paci). Mono forwards its
+    # mesh-derived cell_type; TTP06/ORd's ENDO/EPI plumbing is preserved.
+    from cardiac_core.ionic.registry import build_ionic_model
+    return build_ionic_model(name, cell_type=cell_type, device=device)
 
 
 def _build_ionic_solver(name: str, ionic_model: IonicModel):

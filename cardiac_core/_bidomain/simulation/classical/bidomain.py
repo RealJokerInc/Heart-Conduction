@@ -123,21 +123,15 @@ class BidomainSimulation:
 # === Factory Functions ===
 
 def _resolve_ionic_model(ionic_model, device=None):
-    """Resolve ionic model from string or instance."""
+    """Resolve ionic model from string or instance (delegates to the shared registry, C3).
+
+    Bidomain passes no cell_type → the registry's ENDO default preserves prior behavior
+    (TTP06/ORd defaulted ENDO); phas13/mhas13/paci are now available too."""
     if device is None:
         device = torch.device('cpu')
     dev_str = str(device) if not isinstance(device, str) else device
-    if isinstance(ionic_model, str):
-        name = ionic_model.lower()
-        if name == 'ttp06':
-            from cardiac_core.ionic import TTP06Model
-            return TTP06Model(device=dev_str)
-        elif name == 'ord':
-            from cardiac_core.ionic import ORdModel
-            return ORdModel(device=dev_str)
-        else:
-            raise ValueError(f"Unknown ionic model: {ionic_model}")
-    return ionic_model
+    from cardiac_core.ionic.registry import build_ionic_model
+    return build_ionic_model(ionic_model, device=dev_str)
 
 
 def _build_ionic_solver(name, ionic_model):

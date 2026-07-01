@@ -98,3 +98,36 @@ def test_load_result_dtype_roundtrip():
         save_result(path, times, Vm=vm32)
         _, V, _, _ = load_result(path)
         assert V.dtype == torch.float32
+
+
+# --- Phase 4: capability exposure (C3, C5, C6, S4) --------------------------
+def test_ionic_registry_all_engines():
+    """Every advertised ionic model constructs on ALL THREE engines (shared registry, C3)."""
+    for name in ('ttp06', 'ord', 'phas13', 'mhas13', 'paci'):
+        assert monodomain(_mesh(), ionic_model=name) is not None
+        assert bidomain(_mesh(), ionic_model=name) is not None
+        assert lbm(_mesh(), ionic_model=name) is not None
+
+
+def test_lbm_weights_mode_exposed():
+    sim = lbm(_mesh(), lattice='d2q9', weights_mode='uniform_8')
+    assert 'uniform' in type(sim._engine.lattice).__name__.lower()
+
+
+def test_monodomain_stencil_and_boundary_mode_exposed():
+    assert monodomain(_mesh(), stencil='moore8_iso') is not None       # stencil vocab
+    assert monodomain(_mesh(), boundary_mode='face_mirror_iso') is not None  # boundary_mode vocab
+
+
+def test_bidomain_splitting_exposed():
+    assert bidomain(_mesh(), splitting='godunov') is not None
+
+
+def test_solver_knob_engine_mismatch():
+    """S4: a knob valid on engine A raises a VALIDATED error (not a bare TypeError) on B."""
+    with pytest.raises(ValueError, match='bidomain'):
+        monodomain(_mesh(), theta=0.5)
+    with pytest.raises(ValueError, match='monodomain'):
+        bidomain(_mesh(), diffusion_solver='crank_nicolson')
+    with pytest.raises(ValueError, match='monodomain'):
+        bidomain(_mesh(), linear_solver='pcg')
