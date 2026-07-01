@@ -18,7 +18,7 @@ from .lattice import D2Q5, D2Q9, D2Q9_uniform
 from .diffusion import tau_from_D, tau_tensor_from_D, check_stability_tensor
 from .state import create_lbm_state, recover_voltage
 from .step import (lbm_step_d2q5_bgk, lbm_step_d2q9_bgk, lbm_step_d2q9_mrt,
-                   lbm_step_d2q9_bgk_wall)
+                   lbm_step_d2q9_bgk_wall, lbm_step_d2q9_mrt_wall)
 from .boundary.wall_modes import WALL_MODES, D2Q9_ONLY, normalize_mode
 from .solver.rush_larsen import ionic_step, compute_source_term
 
@@ -87,9 +87,9 @@ class LBMSimulation:
             raise ValueError(f"boundary must be one of {WALL_MODES} (or 'ncs'/'scs'), got {boundary!r}")
         if boundary in D2Q9_ONLY and lattice != 'd2q9':
             raise ValueError(f"boundary={boundary!r} requires lattice='d2q9' (acts on diagonals)")
-        if boundary in D2Q9_ONLY and collision != 'bgk':
-            raise ValueError(f"boundary={boundary!r} is supported on collision='bgk' only "
-                             f"(got {collision!r})")
+        # NOTE: no collision-gate. The wall overlay is post-stream (acts on f/f_star
+        # diagonals after collide+stream), so it is collision-agnostic and valid on the
+        # MRT path too (per-axis anisotropy + specular walls). See step() dispatch.
         self.boundary = boundary
         self.alpha = float(alpha)
 
@@ -215,7 +215,16 @@ class LBMSimulation:
         R = R_flat.reshape(self.Nx, self.Ny)
 
         # 2-6. LBM step (collide -> stream -> BC -> recover V)
-        if self.collision == 'mrt':
+        if self.collision == 'mrt' and self.boundary in D2Q9_ONLY:
+            # D2Q9-MRT + flat-wall specular overlay. The overlay is post-stream
+            # (collision-agnostic); MRT signature (w after dt), NOT the omega bgk_wall.
+            self.f, self.V = lbm_step_d2q9_mrt_wall(
+                self.f, self.V, R, self.dt, self.w,
+                self.s_e, self.s_eps, self.s_jx, self.s_q,
+                self.s_pxx, self.s_pxy, self.bounce_masks,
+                self.boundary, self.alpha, self.Nx, self.Ny, s_jy=self.s_jy
+            )
+        elif self.collision == 'mrt':
             # D2Q9-MRT: per-axis flux rates s_jx/s_jy carry the diffusion tensor;
             # the other 5 moment rates are stability parameters. Signature differs
             # from the BGK step fns (no single omega).

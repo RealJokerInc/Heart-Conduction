@@ -1403,7 +1403,8 @@ def lbm(
         raise ValueError(
             "LBM supports spatially-uniform diagonal D only "
             "(D_xx, D_yy constant; D_xy = 0). "
-            "Oblique fibers (D_xy != 0) need the moment-space rotation (out of scope)."
+            "Oblique fibers (D_xy != 0) are not yet wired — they need the "
+            "moment-space rotation of s_jx/s_jy (Audit #46)."
         )
     # D_xx is RAW; the membrane-effective diffusivity is D/(χ·Cm) (Audit #2/#8/#21).
     _chi_Cm = data.chi * data.Cm

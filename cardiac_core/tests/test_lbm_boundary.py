@@ -121,11 +121,50 @@ def test_ncs_scs_aliases():
 
 
 def test_lbm_rejects_oblique_Dxy():
-    """Oblique anisotropy (D_xy != 0) is out of scope for LBM → ValueError (#40)."""
+    """OBLIQUE anisotropy (D_xy != 0) is a REAL numerics limitation, not a wiring gap:
+    mrt_collide_d2q9 discards D_xy (p_xy_eq=0); it needs the moment-space rotation of
+    s_jx/s_jy (Audit #46). So lbm() raises a *documented* limitation. This tests the
+    OBLIQUE case specifically (not per-axis anisotropy, which now works — see below).
+    MUST be REPLACED with a positive CV-along-fiber test if Audit #46 is ever implemented;
+    do NOT keep the raise merely to keep this test green.
+    """
     m = _mesh()
     m.D_xy = np.full_like(m.D_xy, 1e-4)
-    with pytest.raises(ValueError, match="D_xy"):
+    with pytest.raises(ValueError, match="oblique|Audit #46"):
         lbm(m, lattice='d2q9')
+
+
+# ------------------------------- Phase 2: MRT / per-axis-anisotropic wall modes (C1)
+def test_lbm_anisotropic_boundary_runs():
+    """Per-axis-anisotropic D (D_xx != D_yy, D_xy = 0 → MRT) + a specular wall must
+    construct + run finite. The old `collision != 'bgk'` guard wrongly blocked this."""
+    for boundary, kw in (('ncs', {}), ('combined', {'alpha': 0.3})):
+        m = create_cardiac_mesh(0.4, 0.2, 0.02, D=1e-3, D_yy=5e-4, chi=1.0)
+        sim = lbm(m, lattice='d2q9', boundary=boundary, **kw)
+        assert sim._engine.collision == 'mrt'
+        res = sim.run(6, 6)
+        assert torch.isfinite(res.Vm[-1]).all()
+
+
+def test_mrt_wall_rest_neutral():
+    """The raw MRT+wall step is rest-neutral (uniform field no-op) + mass-conserving
+    over 40 steps — proving the overlay works on MRT (not asserting a rejection)."""
+    from cardiac_core._lbm.step import lbm_step_d2q9_mrt_wall
+    sim = LBMSimulation(NX, NY, DX, DT, D, TTP06Model(device='cpu'),
+                        lattice='d2q9', collision='mrt', D_yy=D * 0.5, boundary='ncs')
+    w, masks = sim.w, sim.bounce_masks
+    V = torch.full((NX, NY), V_REST, dtype=torch.float64)
+    f = w[:, None, None] * V[None, :, :]
+    R = torch.zeros(NX, NY, dtype=torch.float64)
+    m0 = f.sum().item()
+    dmax = 0.0
+    for _ in range(40):
+        f, V = lbm_step_d2q9_mrt_wall(
+            f, V, R, DT, w, sim.s_e, sim.s_eps, sim.s_jx, sim.s_q,
+            sim.s_pxx, sim.s_pxy, masks, sim.boundary, sim.alpha, NX, NY, s_jy=sim.s_jy)
+        dmax = max(dmax, (V - V_REST).abs().max().item())
+    assert dmax < 1e-9, f"MRT wall not rest-neutral: max|V-Vrest|={dmax}"
+    assert abs(f.sum().item() - m0) < 1e-8, "MRT wall mass drift"
 
 
 # --------------------------------------------- Phase 1: one-shot API parity (P1)

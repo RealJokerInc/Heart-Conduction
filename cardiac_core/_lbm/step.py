@@ -75,3 +75,28 @@ def lbm_step_d2q9_mrt(f: Tensor, V: Tensor, R: Tensor,
     f = apply_neumann_d2q9(f, f_star, bounce_masks)
     V = recover_voltage(f)
     return f, V
+
+
+def lbm_step_d2q9_mrt_wall(f: Tensor, V: Tensor, R: Tensor,
+                           dt: float, w: Tensor,
+                           s_e: float, s_eps: float,
+                           s_jx: float, s_q: float,
+                           s_pxx: float, s_pxy: float,
+                           bounce_masks: dict,
+                           mode: str, alpha: float, NX: int, NY: int,
+                           s_jy: float = None) -> tuple:
+    """D2Q9-MRT step with a flat top/bottom WALL MODE overlaid on the Neumann pass.
+
+    Same op order as `lbm_step_d2q9_mrt` but with the post-stream `apply_wall_overlay`
+    from `lbm_step_d2q9_bgk_wall`. The overlay is collision-agnostic (acts on post-stream
+    `f`/`f_star` diagonals), so it is valid on the MRT path; argument order mirrors
+    `lbm_step_d2q9_mrt` exactly (`w` right after `dt`), NOT the `omega`-based bgk_wall.
+    """
+    f = mrt_collide_d2q9(f, V, R, dt, s_e, s_eps, s_jx, s_q,
+                          s_pxx, s_pxy, w, s_jy=s_jy)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks)
+    f = apply_wall_overlay(f, f_star, mode, alpha, NX, NY)
+    V = recover_voltage(f)
+    return f, V
