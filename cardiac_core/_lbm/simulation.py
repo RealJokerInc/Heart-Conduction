@@ -17,7 +17,9 @@ from typing import Optional, List
 from .lattice import D2Q5, D2Q9, D2Q9_uniform
 from .diffusion import tau_from_D, tau_tensor_from_D, check_stability_tensor
 from .state import create_lbm_state, recover_voltage
-from .step import lbm_step_d2q5_bgk, lbm_step_d2q9_bgk, lbm_step_d2q9_mrt
+from .step import (lbm_step_d2q5_bgk, lbm_step_d2q9_bgk, lbm_step_d2q9_mrt,
+                   lbm_step_d2q9_bgk_wall)
+from .boundary.wall_modes import WALL_MODES, D2Q9_ONLY
 from .solver.rush_larsen import ionic_step, compute_source_term
 
 
@@ -60,7 +62,8 @@ class LBMSimulation:
                  collision: str = 'bgk',
                  D_yy: float = None,
                  s_e: float = 1.0, s_eps: float = 1.0, s_q: float = 1.0,
-                 s_pxx: float = 1.0, s_pxy: float = 1.0):
+                 s_pxx: float = 1.0, s_pxy: float = 1.0,
+                 boundary: str = 'neumann', alpha: float = 1.0):
         # collision: 'bgk' (single-relaxation, isotropic) | 'mrt' (multi-relaxation,
         #   per-axis anisotropy via s_jx=1/tau_xx, s_jy=1/tau_yy). MRT requires
         #   lattice='d2q9' + weights_mode='canonical' (cs2=1/3). D = x-axis (D_xx);
@@ -75,6 +78,19 @@ class LBMSimulation:
         self.Cm = Cm
         self.device = ionic_model.device
         self.dtype = ionic_model.dtype
+
+        # Boundary wall mode (boundary_conduction_speedup). Default 'neumann' (== HBB) is
+        # bit-identical to the historical behaviour on every lattice; the specular/combined
+        # modes are D2Q9-only flat-wall overlays on the BGK path.
+        if boundary not in WALL_MODES:
+            raise ValueError(f"boundary must be one of {WALL_MODES}, got {boundary!r}")
+        if boundary in D2Q9_ONLY and lattice != 'd2q9':
+            raise ValueError(f"boundary={boundary!r} requires lattice='d2q9' (acts on diagonals)")
+        if boundary in D2Q9_ONLY and collision != 'bgk':
+            raise ValueError(f"boundary={boundary!r} is supported on collision='bgk' only "
+                             f"(got {collision!r})")
+        self.boundary = boundary
+        self.alpha = float(alpha)
 
         # Lattice setup
         if lattice == 'd2q5':
@@ -207,10 +223,16 @@ class LBMSimulation:
                 self.s_e, self.s_eps, self.s_jx, self.s_q,
                 self.s_pxx, self.s_pxy, self.bounce_masks, s_jy=self.s_jy
             )
-        else:
+        elif self.boundary in ('neumann', 'hbb'):
             self.f, self.V = self._step_fn(
                 self.f, self.V, R, self.dt, self.omega, self.w,
                 self.bounce_masks
+            )
+        else:
+            # D2Q9 flat-wall mode overlay (specular / combined-alpha), BGK.
+            self.f, self.V = lbm_step_d2q9_bgk_wall(
+                self.f, self.V, R, self.dt, self.omega, self.w,
+                self.bounce_masks, self.boundary, self.alpha, self.Nx, self.Ny,
             )
 
         # 7. Update ionic states only (V comes from distributions, not ionic ODE)

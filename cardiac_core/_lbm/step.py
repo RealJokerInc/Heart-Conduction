@@ -14,6 +14,7 @@ from .collision.mrt.d2q9 import mrt_collide_d2q9
 from .streaming.d2q5 import stream_d2q5
 from .streaming.d2q9 import stream_d2q9
 from .boundary.neumann import apply_neumann_d2q5, apply_neumann_d2q9
+from .boundary.wall_modes import apply_wall_overlay
 from .state import recover_voltage
 
 
@@ -37,6 +38,24 @@ def lbm_step_d2q9_bgk(f: Tensor, V: Tensor, R: Tensor,
     f_star = f.clone()
     f = stream_d2q9(f)
     f = apply_neumann_d2q9(f, f_star, bounce_masks)
+    V = recover_voltage(f)
+    return f, V
+
+
+def lbm_step_d2q9_bgk_wall(f: Tensor, V: Tensor, R: Tensor,
+                           dt: float, omega: float, w: Tensor,
+                           bounce_masks: dict, mode: str, alpha: float,
+                           NX: int, NY: int) -> tuple:
+    """D2Q9-BGK step with a flat top/bottom WALL MODE overlaid on the Neumann pass.
+
+    Neumann (HBB) handles corners + east/west + the default top/bottom; the overlay then
+    rewrites the top/bottom non-corner diagonals per `mode` (specular / combined-alpha).
+    """
+    f = bgk_collide(f, V, R, dt, omega, w)
+    f_star = f.clone()
+    f = stream_d2q9(f)
+    f = apply_neumann_d2q9(f, f_star, bounce_masks)
+    f = apply_wall_overlay(f, f_star, mode, alpha, NX, NY)
     V = recover_voltage(f)
     return f, V
 

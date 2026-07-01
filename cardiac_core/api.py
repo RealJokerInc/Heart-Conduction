@@ -1321,9 +1321,16 @@ def lbm(
     mesh: Union[str, CardiacMeshData, None] = None,
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
+    boundary: str = 'neumann',
+    alpha: float = 1.0,
     device: str = 'cpu',
 ) -> CardiacSimulation:
     """Create an LBM simulation.
+
+    ``boundary`` selects the flat top/bottom wall mode (boundary_conduction_speedup):
+    'neumann'/'hbb' (default; any lattice), or the D2Q9-only 'specular_neighbour' (zero bias),
+    'specular_samecell' (inverse crescent), 'combined' (HBB↔same-cell blend via ``alpha``:
+    1=HBB … 0=same-cell specular — the β-controlled curvature knob). Corners + east/west stay HBB.
 
     Declarative: ``lbm(Grid(...), 'ttp06', ConductivityConfig.isotropic(σ), stimulus)``.
     Legacy: ``lbm(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
@@ -1411,6 +1418,7 @@ def lbm(
             D=D_xx, D_yy=D_yy, ionic_model=ionic_instance,
             Cm=data.Cm,
             lattice='d2q9', collision='mrt',
+            boundary=boundary, alpha=alpha,
         )
     else:
         sim = LBMSimulation(
@@ -1419,6 +1427,7 @@ def lbm(
             D=D_xx, ionic_model=ionic_instance,
             Cm=data.Cm,
             lattice=lattice,
+            boundary=boundary, alpha=alpha,
         )
 
     # Add stimuli as (Nx, Ny) bool tensor masks
@@ -1440,5 +1449,6 @@ def lbm(
         else:
             sim.add_stimulus(stim_mask, stim['start_time'], stim['duration'], stim['amplitude'])
 
-    build_kwargs = dict(dt=timestep, lattice=lattice, device=device, ionic_model=ionic_name)
+    build_kwargs = dict(dt=timestep, lattice=lattice, device=device, ionic_model=ionic_name,
+                        boundary=boundary, alpha=alpha)
     return CardiacSimulation(sim, 'lbm', None, data, build_kwargs)
