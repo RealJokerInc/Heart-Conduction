@@ -3,6 +3,26 @@
 > This file is a running synthesis. Updated as findings accumulate.
 > When the question is complete, a copy is promoted to `Research/Knowledge/`.
 
+> **SHIPPED 2026-07-01 — foundation cleanup + boundary modes.** A cardiac_core+mcp adversarial audit
+> (46 findings → [CARDIAC_CORE_AUDIT.md](./CARDIAC_CORE_AUDIT.md)) drove a 3-phase cleanup ([PLAN.md](./PLAN.md)):
+> **P1** fixed the monodomain FDM anisotropic cross-derivative bug + unified the chi/D convention
+> (`D_xx` is RAW everywhere; effective = `D/(χ·Cm)` in every engine; default `D=1.4`; blocked-default
+> fixed) + ionic-override replay + MCP path-traversal; **P2** removed FEM/dead code + API footguns;
+> **P3** productized the LBM flat-wall boundary modes as `cardiac_core.lbm(boundary=, alpha=)`
+> (hbb / specular_neighbour / specular_samecell / combined-α). 195 cardiac_core+mcp tests green.
+
+> **SHIPPED 2026-07-01 — API-consistency hardening + contract-matrix stress harness.** A 4-lens
+> adversarial audit ([API_CONSISTENCY_AUDIT.md](./API_CONSISTENCY_AUDIT.md): 7 HIGH · 8 MED · 6 LOW)
+> found the boundary gaps were a *class* — capability unexposed, one kwarg meaning different things per
+> engine, a few silent-wrong-result bugs. The fix PLAN was **audited to convergence over 4 rounds**
+> (R1 5blk/10maj → R2 1blk/5maj → R3 1blk/1maj → R4 1blk[mechanical] → CONVERGED), then executed in
+> 6 phases (commits `1a65d3d`→`9702bb7` on `engine-tuner-cardiac-core`). The keystone is
+> `tests/test_api_contract.py` — the contract matrix **written FIRST** (Phase 0) as 22 `{entry × engine
+> × param × physics}` cells; unfixed cells were `xfail(strict=True)` so each landing fix XPASS-*forced*
+> its in-phase flip to a live assert (the matrix can't rot into "guard-as-feature"). **217 passed / 2
+> xfailed** (C2 oblique-LBM capability + C7 boundary-Dxy truncation, both documented-deferred / Audit
+> #46); goldens bit-identical every phase. See "API-consistency hardening" section below.
+
 ## Current Understanding
 
 The question has TWO layers (see "North-Star" below): the **foundation** is code-consolidation (unify the engines' shared code in `cardiac_core/`); the **goal on top** is a conversational simulation builder for non-coders (unified API + LLM wrapper). Build order is now vocabulary-first → unified API.
@@ -94,6 +114,42 @@ D2Q5 cannot encode Dxy because it has no diagonal velocities → no p_xy shear s
 | Splitting strategies | 2 | Identical logic, different state type hints |
 | Stimulus protocol | 2 | Bidomain uses += (accumulate), V5.4 uses = (overwrite) |
 | StructuredGrid | 2 | Bidomain adds boundary_spec |
+
+## API-consistency hardening + contract-matrix harness — SHIPPED (2026-07-01)
+
+Post the boundary-mode ship, the user caught two gaps the tests missed (`run_lbm` dropped `boundary`;
+wall modes BGK-only). A 4-lens adversarial audit showed a *class* of API-surface fragility, cataloged
+in `API_CONSISTENCY_AUDIT.md` (7 HIGH · 8 MED · 6 LOW). The **numerics were sound** (Cm≠1, build_kwargs
+replay, mesh round-trip all correct); every fix was pure surface work.
+
+**The keystone — `tests/test_api_contract.py` (written FIRST, Phase 0).** A `CONTRACT` list of 22
+`Cell(entry, engine, param, physics, expected, run, match, status, exc)` rows covering the cross-product,
+driven by one parametrized `test_contract`. `status` gates the marker: `to_fix` → `xfail(strict=True)`
+(so the XPASS the instant a fix lands FAILS the suite → *forces* an in-phase flip to `landed`, no deferred
+cleanup — this is what stops the matrix rotting into the "guard-as-feature" anti-pattern the post-mortem
+indicted); `deferred` → `xfail(strict=False)`; `landed` → no marker (live assert). `exc` is the tuple's
+last field (namedtuple defaults right-align). Final state: 20 `landed` + 2 `deferred`.
+
+**Fixes (Phases 1–5, one commit each):**
+| Finding | Fix | Commit |
+|---|---|---|
+| P1 | `run_lbm`/`simulate` forward `boundary`/`alpha` | `40cd2ca` |
+| C1 | `lbm_step_d2q9_mrt_wall` + drop bgk-only guard (overlay is post-stream → collision-agnostic) | `1dda8f6` |
+| S1,I1,I2,S2,S3,C4,I3 | bidomain boundary validation; masked-grid **union**(hole rim, outer rect edges) bounce wired to BOTH LBM branches; `_resolve_mesh` deepcopy (one choke point → factory+with_+reset immutability); alpha/sigma_ratio/lattice **warn**; dtype round-trip | `35327f5` |
+| C3,C5,C6,S4 | shared `ionic/registry.py::build_ionic_model` (branches on ctor capability, ENDO default → goldens-safe; phas13/mhas13/paci now on all 3 engines); `weights_mode`/`stencil`/`boundary_mode`/`splitting` exposed; cross-engine knob misroute → validated ValueError (add-and-reject) | `9702bb7` |
+
+**Deferred (documented xfail, not silent gaps):**
+- **C2 oblique LBM** — a REAL numerics limitation, not a wiring gap: `mrt_collide_d2q9` discards `D_xy`
+  (`p_xy_eq=0`; docstring cites Audit #46 — needs moment-space rotation of `s_jx/s_jy`). The audit's
+  "MRT is oblique-CAPABLE" was half-true (the tau helpers compute `tau_xy`; the collision kernel drops
+  it). The *raise* is shipped as a documented-limitation message; the *capability* cell is a permanent
+  xfail. Two independent audit lenses caught this — it would otherwise have shipped a silent-wrong result.
+- **C7** mono/bidomain boundary-Dxy truncation — dispositioned *paired to C2* (all three engines decline
+  full oblique → no silent per-engine divergence).
+
+**Trap avoided (an execution catch the audit predicted):** an `EPI` default on the shared ionic builder
+would have flipped the bidomain+LBM goldens (whole codebase defaults ENDO); the round-2 audit flagged it
+pre-execution → shipped with `ENDO`.
 
 ## North-Star: lab-facing simulation platform (BOTH goals SHIPPED — see the two "SHIPPED" sections above)
 
@@ -347,6 +403,7 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 - ~~V5.4 LBM source term `/(chi·Cm)` should switch to `/Cm`~~ **MOOT for V5.5:** the dead internal LBM path was removed from V5.5. The canonical LBM (LBM V1) is already Formulation B. The `/(chi·Cm)` reconciliation only matters if cardiac_core ever revives a monodomain-LBM path under ConductivityConfig.
 - When consolidating, build `cardiac_core` against **V5.5** (Cm-correct), not V5.4.
 - ~~Stimulus overlap: `=` vs `+=`?~~ **RESOLVED (2026-06-01 census):** ALL THREE engines accumulate (`+=`) — V5.5 (`_evaluate_Istim`, `Istim = Istim + …`), Bidomain (`Istim[mask] += …`), LBM (overlapping stimuli accumulate). Canonical = accumulate. (The earlier "V5.4 uses `=`" note was wrong or pre-fix.)
+- **API-debt — `create_cardiac_mesh(D=…)` bypasses the Form-A/B firewall (2026-06-30, from `ionic_model_optimization` chip-fit):** passing an *effective* diffusivity `D≈1e-3` with the **default `chi=1400`** silently mis-scales — the FDM operator (`_monodomain/.../fdm.py:37,159`) builds the Laplacian from `D` alone with `χ·Cm` only in the mass term, so membrane-effective diffusivity = `D/(χ·Cm)` ≈ 1400× too low → CV ∝ √D collapses ~37× → discrete source–sink conduction block (Vmax pools ~80–123 mV, CV=NaN). `(D=1e-3, χ=1400)` is exactly degenerate with `(D=7.14e-7, χ=1)` — faithful physics of the wrong number, not a solver bug. **Workaround:** pass `chi=1.0` when feeding an effective D. **Fix (open):** route `create_cardiac_mesh` through `ConductivityConfig`, or warn when an effective-D is supplied with `chi≠1`. See IDEALOG 2026-06-30 thread + Next Step.
 
 ## Connections
 - **Engines**: All three + cardiac_core (target)
