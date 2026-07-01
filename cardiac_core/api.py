@@ -126,6 +126,12 @@ class SimulationSnapshot:
 class CardiacSimulation:
     """Uniform wrapper around all cardiac simulation engines.
 
+    NOTE: some convenience methods are PLANNED, not shipped — they raise NotImplementedError
+    (state probes get_state/set_state/set_voltage/state_names/ionic_states; conductance/parameter/
+    clamp/drug knobs; pacing helpers; on-object analysis compute_cv/apd/activation_time). For
+    analysis use ``cardiac_core.analysis`` on a recorded ``run()``; those docstrings show target
+    signatures, not shipped behaviour (Audit #7/#12).
+
     Parameters
     ----------
     engine : object
@@ -1072,6 +1078,8 @@ def monodomain(
     """
     # Back-compat type-sniff: a positional CardiacMeshData/str/path is the legacy `mesh`.
     if isinstance(geometry, (str, Path, CardiacMeshData)):
+        if mesh is not None:
+            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
         data = _resolve_mesh(mesh)
@@ -1186,6 +1194,8 @@ def bidomain(
         Wrapper with .run() generator interface.
     """
     if isinstance(geometry, (str, Path, CardiacMeshData)):
+        if mesh is not None:
+            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
         data = _resolve_mesh(mesh)
@@ -1343,6 +1353,8 @@ def lbm(
         Wrapper with .run() generator interface.
     """
     if isinstance(geometry, (str, Path, CardiacMeshData)):
+        if mesh is not None:
+            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
         data = _resolve_mesh(mesh)

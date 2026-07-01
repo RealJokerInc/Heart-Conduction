@@ -81,6 +81,13 @@ def _collect(sim, t_end, save_every, output_device):
             has_phi_e = True
             phi_e_list.append(snap.phi_e)
 
+    if not V_list:
+        # Zero save-points (e.g. t_end < save_every) — degrade like the eager run()
+        # path instead of an IndexError on V_list[0] (Audit #5).
+        dev = torch.device(output_device) if output_device else torch.device('cpu')
+        empty = torch.empty(0, dtype=torch.float64, device=dev)
+        return empty, empty, None
+
     dev = torch.device(output_device) if output_device else V_list[0].device
 
     times_t = torch.tensor(times, dtype=torch.float64, device=dev)

@@ -95,9 +95,8 @@ class LBMSimulation:
                     f"weights_mode must be 'canonical' or 'uniform_8', "
                     f"got {weights_mode!r}"
                 )
-            # NOTE: BGK only — if collision selector is added later,
-            # weights_mode plumbing must be re-checked for MRT path
-            # (TODO: weights_mode-MRT compatibility).
+            # Default BGK step; the MRT path does NOT use _step_fn — step()
+            # dispatches collision=='mrt' to lbm_step_d2q9_mrt directly.
             self._step_fn = lbm_step_d2q9_bgk
         else:
             raise ValueError(f"Unknown lattice: {lattice}")
@@ -243,14 +242,6 @@ class LBMSimulation:
                 V_history.append(self.V.clone())
 
         return times, V_history
-
-    def get_activation_times(self, threshold: float = -30.0) -> Tensor:
-        """Compute activation time at each node (first time V > threshold).
-
-        Must be called during run via callback or by post-processing V_history.
-        This is a post-processing utility, not a live tracker.
-        """
-        raise NotImplementedError("Use run() output to compute activation times")
 
 
 def measure_cv(V_history: list, times: list, x1: int, x2: int,

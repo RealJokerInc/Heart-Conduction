@@ -60,12 +60,13 @@ def mrt_collide_d2q9(f: Tensor, V: Tensor, R: Tensor, dt: float,
                      s_pxx: float, s_pxy: float,
                      w: Tensor,
                      s_jy: float = None) -> Tensor:
-    """MRT collision for D2Q9 with full anisotropic diffusion tensor.
+    """MRT collision for D2Q9 with DIAGONAL anisotropy (D_xx, D_yy) only.
 
     Diffusion tensor components (Chapman-Enskog):
         D_xx = cs2 * (1/s_jx - 0.5) * dt
         D_yy = cs2 * (1/s_jy - 0.5) * dt
-    For D_xy != 0, rotate s_jx/s_jy via moment-space transformation (Phase 8).
+    D_xy is NOT applied (s_pxy is a free stability rate); off-diagonal fibers
+    need the moment-space rotation of s_jx/s_jy — not implemented (Audit #46).
 
     Args:
         f: (9, Nx, Ny) distributions

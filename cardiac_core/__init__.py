@@ -25,7 +25,7 @@ _LAZY = {
     'Grid': 'grid',
     # simulation (engine-agnostic runtime Protocol)
     'Simulation': 'simulation',
-    # api (engine wrappers — heavy: triggers _prepare_engine on use)
+    # api (engine wrappers — heavy: imports the vendored _monodomain/_bidomain/_lbm packages on first use)
     'monodomain': 'api', 'bidomain': 'api', 'lbm': 'api',
     'CardiacSimulation': 'api', 'SimulationSnapshot': 'api', 'Distribution': 'api',
     # run

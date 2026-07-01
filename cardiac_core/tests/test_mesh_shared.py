@@ -2,7 +2,7 @@
 
 import torch
 
-from cardiac_core.mesh import StructuredGrid, BoundarySpec, TriangularMesh  # noqa: F401
+from cardiac_core.mesh import StructuredGrid, BoundarySpec  # noqa: F401
 from cardiac_core.stimulus import StimulusProtocol
 
 

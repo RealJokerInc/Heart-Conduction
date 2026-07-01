@@ -16,7 +16,6 @@ from .state import SimulationState
 from .discretization_scheme.base import SpatialDiscretization
 
 # Discretization schemes
-from .discretization_scheme.fem import FEMDiscretization
 from .discretization_scheme.fdm import FDMDiscretization
 from .discretization_scheme.fvm import FVMDiscretization
 

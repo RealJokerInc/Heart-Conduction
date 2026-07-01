@@ -193,7 +193,11 @@ def _build_linear_solver(name, spatial):
         return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type,
                                  stencil=stencil)
     elif name == 'pcg_gmg':
-        # Stub — falls back to PCG
+        # GMG preconditioner is unimplemented — fall back to plain PCG, loudly (Audit #13).
+        import warnings
+        warnings.warn(
+            "linear_solver='pcg_gmg': geometric-multigrid preconditioner is unimplemented; "
+            "falling back to plain PCG.", stacklevel=2)
         from .solver.linear_solver.pcg import PCGSolver
         return PCGSolver(max_iters=500, tol=1e-8)
     else:

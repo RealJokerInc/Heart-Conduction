@@ -501,7 +501,9 @@ def _append_notebook_row(date: str, slug: str, goal: str, engine: str, status: s
     if not NOTEBOOK.exists():
         NOTEBOOK.parent.mkdir(parents=True, exist_ok=True)
         NOTEBOOK.write_text(_NOTEBOOK_HEADER)
-    row = f"| {date} | {slug} | {goal} | {engine} | {status} | — |\n"
+    def _cell(s):  # escape pipes/newlines so a goal with '|' can't break the table (Audit #34)
+        return str(s).replace("|", "\\|").replace("\n", " ")
+    row = f"| {_cell(date)} | {_cell(slug)} | {_cell(goal)} | {_cell(engine)} | {_cell(status)} | — |\n"
     with NOTEBOOK.open("a") as fh:
         fh.write(row)
 
