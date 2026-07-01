@@ -18,6 +18,7 @@ from cardiac_core._lbm.state import recover_voltage
 from cardiac_core._lbm.simulation import LBMSimulation
 from cardiac_core.ionic import TTP06Model
 from cardiac_core import lbm, create_cardiac_mesh
+from cardiac_core.run import run_lbm, simulate
 
 NX, NY = 21, 15
 V_REST = -85.0
@@ -125,3 +126,36 @@ def test_lbm_rejects_oblique_Dxy():
     m.D_xy = np.full_like(m.D_xy, 1e-4)
     with pytest.raises(ValueError, match="D_xy"):
         lbm(m, lattice='d2q9')
+
+
+# --------------------------------------------- Phase 1: one-shot API parity (P1)
+def _wall_mesh():
+    """Left-edge-stim mesh whose front reaches the top/bottom walls (where the modes act)."""
+    return create_cardiac_mesh(0.5, 0.3, 0.02, D=1e-3, chi=1.0)
+
+
+def test_run_lbm_forwards_boundary():
+    """A wall mode requested through the one-shot run_lbm must take effect (was silently HBB)."""
+    _, v_scs = run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='scs', dt=0.005)
+    _, v_hbb = run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='hbb', dt=0.005)
+    assert (v_scs[-1] - v_hbb[-1]).abs().max() > 1e-2
+
+
+def test_run_lbm_alpha_effective():
+    """alpha is forwarded through run_lbm (combined-mode blend differs by alpha)."""
+    _, v_a = run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='combined', alpha=0.2, dt=0.005)
+    _, v_b = run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='combined', alpha=0.8, dt=0.005)
+    assert (v_a[-1] - v_b[-1]).abs().max() > 1e-3
+
+
+def test_run_lbm_rejects_bad_boundary():
+    with pytest.raises(ValueError):
+        run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='bogus', dt=0.005)
+
+
+def test_simulate_matches_run_lbm():
+    """run_lbm ≡ simulate(engine='lbm') for identical args (LBM is RNG-free → bit-identical)."""
+    _, v_run = run_lbm(_wall_mesh(), 8, 8, lattice='d2q9', boundary='scs', alpha=1.0, dt=0.005)
+    res = simulate(_wall_mesh(), 8, 8, engine='lbm', lattice='d2q9',
+                   boundary='scs', alpha=1.0, dt=0.005)
+    assert torch.equal(v_run, res.Vm)

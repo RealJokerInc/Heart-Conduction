@@ -200,6 +200,8 @@ def run_lbm(
     ionic_model: Optional[str] = None,
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
+    boundary: str = 'neumann',
+    alpha: float = 1.0,
     device: str = 'cpu',
     output_device: Optional[str] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -213,8 +215,8 @@ def run_lbm(
         Simulation end time (ms).
     save_every : float
         Save interval (ms).
-    ionic_model, dt, lattice
-        Forwarded to lbm().
+    ionic_model, dt, lattice, boundary, alpha
+        Forwarded to lbm() (``boundary``/``alpha`` select the flat-wall mode).
     device : str
         Compute device.
     output_device : str, optional
@@ -229,7 +231,7 @@ def run_lbm(
     """
     sim = lbm(
         mesh, ionic_model=ionic_model, dt=dt, lattice=lattice,
-        device=device,
+        boundary=boundary, alpha=alpha, device=device,
     )
     times, V, _ = _collect(sim, t_end, save_every, output_device)
     return times, V

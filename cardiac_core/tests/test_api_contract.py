@@ -154,8 +154,10 @@ Cell = namedtuple(
 
 CONTRACT = [
     # --- HIGH: the 5 silent-wrong-result bugs -------------------------------
-    Cell('P1', 'run_lbm', 'lbm', 'boundary', 'iso', 'effect', _run_lbm_boundary_takes_effect),
-    Cell('P1', 'simulate', 'lbm', 'parity', 'iso', 'effect', _simulate_matches_run_lbm),
+    Cell('P1', 'run_lbm', 'lbm', 'boundary', 'iso', 'effect', _run_lbm_boundary_takes_effect,
+         '', 'landed'),
+    Cell('P1', 'simulate', 'lbm', 'parity', 'iso', 'effect', _simulate_matches_run_lbm,
+         '', 'landed'),
     Cell('S1', 'bidomain', 'bidomain', 'boundary-ncs', 'iso', 'raise',
          lambda: bidomain(_tiny(), boundary='ncs'), 'boundary'),
     Cell('S1', 'lbm', 'lbm', 'boundary-bath', 'iso', 'raise',
