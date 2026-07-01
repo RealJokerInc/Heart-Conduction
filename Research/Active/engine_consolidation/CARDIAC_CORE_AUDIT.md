@@ -9,6 +9,10 @@
 > was allowed in; a completeness critic then hunted for un-audited surface. 64 agents, ~3.1M tokens.
 > **Result:** 55 raised → **46 confirmed**, 9 rejected, 12 completeness gaps.
 > Purpose: tidy the foundation **before** the boundary-mode implementation.
+>
+> **RESOLUTION (2026-07-01):** all 4 HIGH + the code-affecting MED/LOW findings FIXED across a
+> 3-phase cleanup ([PLAN.md](./PLAN.md); commits `a3915d1`/`945350f`/`736296d`; 195 tests green).
+> Remaining LOW/INFO doc-reconciliation + the 12 gaps are DEFERRED — see PLAN.md "Findings Coverage".
 
 ## Severity tally (post-verification)
 `4 HIGH · 11 MEDIUM · 27 LOW · 4 INFO`. By lane: api_surface 9, loose_ends 8, tests_health 7,
