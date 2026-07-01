@@ -13,7 +13,7 @@ class TestBidomainFromData:
 
     def test_basic_run_ratio_fallback(self):
         """Create mesh without sigma → bidomain derives D_i/D_e from ratio → runs."""
-        mesh = create_cardiac_mesh(Lx=1.0, Ly=0.5, dx=0.05, D=0.001)
+        mesh = create_cardiac_mesh(Lx=1.0, Ly=0.5, dx=0.05, D=0.001, chi=1.0)
         sim = bidomain(mesh, device='cpu')
 
         snapshots = list(sim.snapshots(5.0, save_every=1.0))
@@ -52,7 +52,7 @@ class TestBidomainWithSigma:
     def test_with_sigma_fields(self):
         """Provide sigma_i/sigma_e directly → bidomain uses them."""
         Nx, Ny = 21, 11
-        mesh = create_cardiac_mesh(Lx=1.0, Ly=0.5, dx=0.05, D=0.001)
+        mesh = create_cardiac_mesh(Lx=1.0, Ly=0.5, dx=0.05, D=0.001, chi=1.0)
 
         # Add sigma fields
         chi_Cm = mesh.chi * mesh.Cm
@@ -152,7 +152,7 @@ class TestBidomainMatchesDirect:
         )
 
         # --- Wrapper construction ---
-        mesh = create_cardiac_mesh(Lx=Lx, Ly=Ly, dx=dx, D=D_eff)
+        mesh = create_cardiac_mesh(Lx=Lx, Ly=Ly, dx=dx, D=D_eff, chi=1.0)  # D_eff is effective
         sim_wrapper = bidomain(mesh, sigma_ratio=r, device='cpu')
 
         # Run both for 3ms

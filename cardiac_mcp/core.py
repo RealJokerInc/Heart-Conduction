@@ -384,13 +384,20 @@ def commit_experiment(experiment_token: str, confirmed: bool = False) -> CommitR
 
     manifest_text = payload["manifest_text"]
     params = payload["params"]
-    date, slug = params["date"], params["slug"]
+    # Re-validate the folder components from the (self-signed, forgeable) token —
+    # never build a path from unsanitized token fields (Audit #3, path traversal).
+    date = str(params["date"])
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        raise ValueError(f"GATE: token contains a malformed date {date!r}. Re-run build_manifest.")
+    slug = _slugify(params["slug"])   # re-slugify; do not trust the token's slug verbatim
 
     d = LAB / f"{date}_{slug}"
     n = 2
     while d.exists():
         d = LAB / f"{date}_{slug}-{n:02d}"
         n += 1
+    if not d.resolve().is_relative_to(LAB.resolve()):
+        raise ValueError("GATE: experiment path escapes Lab/. Re-run build_manifest.")
     d.mkdir(parents=True)
     (d / "MANIFEST.md").write_text(manifest_text + "\n")
     (d / "run.py").write_text(render_run_script(params))

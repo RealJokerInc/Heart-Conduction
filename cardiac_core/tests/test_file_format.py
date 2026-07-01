@@ -140,8 +140,8 @@ class TestCreateCardiacMesh:
         assert mesh.dx == 0.025
         assert mesh.dy == 0.025
         assert mesh.D_xx.shape == (Nx, Ny)
-        np.testing.assert_allclose(mesh.D_xx, 0.001)
-        np.testing.assert_allclose(mesh.D_yy, 0.001)
+        np.testing.assert_allclose(mesh.D_xx, 1.4)   # default D is now RAW (eff 1e-3 at chi=1400)
+        np.testing.assert_allclose(mesh.D_yy, 1.4)
         np.testing.assert_allclose(mesh.D_xy, 0.0)
         assert mesh.ionic_model == 'ttp06'
         assert mesh.dt == 0.02

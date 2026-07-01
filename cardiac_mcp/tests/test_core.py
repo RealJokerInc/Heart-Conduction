@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
 
 import pytest
 
@@ -68,6 +69,35 @@ def test_commit_refuses_tampered_token(tmp_lab):
     with pytest.raises(ValueError, match="integrity check failed"):
         core.commit_experiment(bad, confirmed=True)
     assert list(tmp_lab.iterdir()) == []
+
+
+def _forge(res, **param_overrides):
+    """Re-sign a token with overridden params. The keyless sig verifies (that's the
+    #32 forgeability), so this exercises the path-sanitization guards, not the sig."""
+    payload = json.loads(base64.urlsafe_b64decode(res["experiment_token"]))
+    payload["params"].update(param_overrides)
+    payload["sig"] = core._sign_payload(
+        {"manifest_text": payload["manifest_text"], "params": payload["params"]})
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+
+
+def test_commit_rejects_traversal_date(tmp_lab):
+    """A forged token with a non-date `date` is rejected before any path is built (Audit #3)."""
+    res = core.build_manifest(goal="evil", date="2026-06-26")
+    bad = _forge(res, date="../../etc")
+    with pytest.raises(ValueError, match="malformed date"):
+        core.commit_experiment(bad, confirmed=True)
+    assert not (tmp_lab.parent / "etc").exists()   # nothing escaped Lab/
+
+
+def test_commit_neutralizes_traversal_slug(tmp_lab):
+    """A forged token with a traversal `slug` is re-slugified → folder stays inside Lab/ (Audit #3)."""
+    res = core.build_manifest(goal="evil", date="2026-06-26")
+    bad = _forge(res, slug="../../../tmp/evil")
+    out = core.commit_experiment(bad, confirmed=True)
+    created = Path(out["experiment_dir"]).resolve()
+    assert created.parent == tmp_lab.resolve()          # direct child of Lab/ — no escape
+    assert ".." not in created.name and "/" not in created.name
 
 
 def test_commit_writes_folder_and_notebook(tmp_lab):

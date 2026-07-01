@@ -555,7 +555,9 @@ class FDMDiscretization(SpatialDiscretization):
 
         cx = 1.0 / (dx * dx)
         cy = 1.0 / (dy * dy)
-        cxy = 1.0 / (4.0 * dx * dy)
+        # 2·Dxy·d²V/dxdy → cxy = 2/(4·dx·dy) = 1/(2·dx·dy). Signs match the
+        # bidomain face-based builder (NE +, NW −, SE −, SW +). (Audit #4.)
+        cxy = 1.0 / (2.0 * dx * dy)
 
         for i in range(nx):
             for j in range(ny):
@@ -672,25 +674,25 @@ class FDMDiscretization(SpatialDiscretization):
 
                 # NE (i+1, j+1)
                 if _is_active(i + 1, j + 1):
-                    w = -d_xy * cxy
+                    w = d_xy * cxy
                     _add(k, _idx(i + 1, j + 1), w)
                     center -= w
 
                 # NW (i-1, j+1)
                 if _is_active(i - 1, j + 1):
-                    w = d_xy * cxy
+                    w = -d_xy * cxy
                     _add(k, _idx(i - 1, j + 1), w)
                     center -= w
 
                 # SE (i+1, j-1)
                 if _is_active(i + 1, j - 1):
-                    w = d_xy * cxy
+                    w = -d_xy * cxy
                     _add(k, _idx(i + 1, j - 1), w)
                     center -= w
 
                 # SW (i-1, j-1)
                 if _is_active(i - 1, j - 1):
-                    w = -d_xy * cxy
+                    w = d_xy * cxy
                     _add(k, _idx(i - 1, j - 1), w)
                     center -= w
 

@@ -6,11 +6,10 @@ mono/bidomain already accept instances + per-axis D).
 
 Covers PLAN Phase 0 Step 0.1 (Research/Active/ionic_model_optimization/PLAN.md).
 
-NOTE (convention, discovered during 0.1): `create_cardiac_mesh` treats `D` as the
-already-effective monodomain diffusion (cm²/ms), but the FDM operator divides by
-`chi`. So meshes that pass an effective `D` MUST set **chi=1.0** (otherwise the
-effective D is rescaled ~1400× and the wave fails to propagate). Phases 1–2 build
-chip meshes the same way.
+NOTE (convention): `create_cardiac_mesh(D=...)` treats `D` as RAW; the
+membrane-effective diffusivity is `D/(χ·Cm)` in every engine. To pass an
+already-effective `D` (cm²/ms), set **chi=1.0** so `D/(χ·Cm)=D` (as the chip
+meshes do). See Research/Active/engine_consolidation (Audit #2/#8/#21).
 """
 import numpy as np
 import torch
@@ -42,7 +41,7 @@ def test_create_mesh_anisotropic():
     iso = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05)
     assert np.allclose(iso.D_xx, iso.D_yy)
 
-    aniso = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05, D=0.001, D_yy=0.00025)
+    aniso = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.05, D=0.001, D_yy=0.00025, chi=1.0)
     assert np.allclose(aniso.D_xx, 0.001)
     assert np.allclose(aniso.D_yy, 0.00025)
     assert np.allclose(aniso.D_xy, 0.0)
@@ -53,7 +52,7 @@ def test_lbm_accepts_instance():
     """lbm()/run_lbm accept a pre-built IonicModel instance (no .lower() crash)."""
     model = MHAS13Model(device="cpu")
     mesh = create_cardiac_mesh(Lx=0.4, Ly=0.1, dx=0.02, D=0.001,
-                               ionic_model="mhas13", dt=0.02)
+                               ionic_model="mhas13", dt=0.02, chi=1.0)
     times, V = run_lbm(mesh, t_end=2.0, save_every=1.0,
                        ionic_model=model, dt=0.02, device="cpu")
     assert V.shape[1:] == mesh.mask.shape

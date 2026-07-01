@@ -12,7 +12,7 @@ class TestLBMFromData:
 
     def test_basic_run(self):
         """Create mesh → lbm → run 5ms → snapshots have correct shape."""
-        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005)
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005, chi=1.0)
         sim = lbm(mesh, device='cpu')
 
         snapshots = list(sim.snapshots(5.0, save_every=1.0))
@@ -28,7 +28,7 @@ class TestLBMFromData:
 
     def test_generator_yields_snapshots(self):
         """run() yields SimulationSnapshot instances with increasing time."""
-        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005)
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005, chi=1.0)
         sim = lbm(mesh, device='cpu')
 
         times = []
@@ -57,7 +57,7 @@ class TestLBMFromData:
 
     def test_properties(self):
         """V and t properties work."""
-        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005)
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005, chi=1.0)
         sim = lbm(mesh, device='cpu')
 
         assert sim.t == 0.0
@@ -69,7 +69,7 @@ class TestLBMFromFile:
     """Test lbm() with .npz file path."""
 
     def test_from_file(self, tmp_path):
-        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005)
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=0.025, D=0.001, dt=0.005, chi=1.0)
         path = str(tmp_path / "mesh.npz")
         save_cardiac_mesh(path, mesh)
 
@@ -104,7 +104,8 @@ class TestLBMMatchesDirect:
         sim_direct.add_stimulus(stim_mask, start=1.0, duration=2.0, amplitude=-80.0)
 
         # --- Wrapper construction ---
-        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=dx, D=D, dt=dt)
+        # chi=1.0 so the mesh's RAW D equals the effective D fed to the direct sim.
+        mesh = create_cardiac_mesh(Lx=0.5, Ly=0.5, dx=dx, D=D, dt=dt, chi=1.0)
         sim_wrapper = lbm(mesh, device='cpu')
 
         # Run both for 3ms

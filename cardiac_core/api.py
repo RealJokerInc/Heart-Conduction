@@ -879,7 +879,15 @@ def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: 
         D, chi, Cm = emit['D'], emit['chi'], emit['Cm']
     elif engine == 'lbm':
         emit = conductivity.for_lbm()
-        D, chi, Cm = emit['D'], conductivity.chi, emit['Cm']
+        # for_lbm() emits EFFECTIVE D. Store RAW (× χ·Cm) so the lbm() factory's
+        # χ·Cm division recovers it — keeps D_xx meaning consistent with the
+        # create_cardiac_mesh path (Audit #21, round-2). Cm-safe: real Cm below.
+        chi, Cm = conductivity.chi, emit['Cm']
+        _eff = emit['D']
+        if isinstance(_eff, tuple):
+            D = tuple(d * (chi * Cm) for d in _eff)
+        else:
+            D = _eff * (chi * Cm)
     elif engine == 'bidomain':
         if conductivity.sigma_i is None or conductivity.sigma_e is None:
             raise ValueError(
@@ -1130,7 +1138,7 @@ def monodomain(
     )
 
     build_kwargs = dict(dt=timestep, splitting=splitting, diffusion_solver=diffusion_solver,
-                        linear_solver=linear_solver, device=device)
+                        linear_solver=linear_solver, device=device, ionic_model=ionic)
     return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs)
 
 
@@ -1236,22 +1244,26 @@ def bidomain(
             and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
         )
 
+        # D_xx is RAW; effective diffusivity = D/(χ·Cm) (Audit #2/#8/#21). This
+        # D_eff branch is reached only by the legacy create_cardiac_mesh→bidomain
+        # path (the declarative path sets sigma_i/sigma_e → sigma branch above).
+        chi_Cm = data.chi * data.Cm
         if is_isotropic:
-            D_eff = float(data.D_xx.flat[0])
+            D_eff = float(data.D_xx.flat[0]) / chi_Cm
             r = sigma_ratio
             D_i = D_eff * (1 + r) / r
             D_e = D_eff * (1 + r)
             cond = BidomainConductivity(D_i=D_i, D_e=D_e)
         else:
-            # Anisotropic: apply ratio to each component
+            # Anisotropic: divide by χ·Cm, then apply ratio to each component
             r = sigma_ratio
             dev = torch.device(device)
-            D_i_xx = data.D_xx * (1 + r) / r
-            D_i_yy = data.D_yy * (1 + r) / r
-            D_i_xy = data.D_xy * (1 + r) / r
-            D_e_xx = data.D_xx * (1 + r)
-            D_e_yy = data.D_yy * (1 + r)
-            D_e_xy = data.D_xy * (1 + r)
+            D_i_xx = (data.D_xx / chi_Cm) * (1 + r) / r
+            D_i_yy = (data.D_yy / chi_Cm) * (1 + r) / r
+            D_i_xy = (data.D_xy / chi_Cm) * (1 + r) / r
+            D_e_xx = (data.D_xx / chi_Cm) * (1 + r)
+            D_e_yy = (data.D_yy / chi_Cm) * (1 + r)
+            D_e_xy = (data.D_xy / chi_Cm) * (1 + r)
 
             cond = BidomainConductivity(
                 D_i_field=(
@@ -1285,7 +1297,8 @@ def bidomain(
     )
 
     build_kwargs = dict(dt=timestep, sigma_ratio=sigma_ratio, boundary=boundary,
-                        elliptic_solver=elliptic_solver, theta=theta, device=device)
+                        elliptic_solver=elliptic_solver, theta=theta, device=device,
+                        ionic_model=ionic)
     return CardiacSimulation(sim, 'bidomain', grid, data, build_kwargs)
 
 
@@ -1372,8 +1385,10 @@ def lbm(
             "(D_xx, D_yy constant; D_xy = 0). "
             "Oblique fibers (D_xy != 0) need the moment-space rotation (out of scope)."
         )
-    D_xx = float(data.D_xx.flat[0])
-    D_yy = float(data.D_yy.flat[0])
+    # D_xx is RAW; the membrane-effective diffusivity is D/(χ·Cm) (Audit #2/#8/#21).
+    _chi_Cm = data.chi * data.Cm
+    D_xx = float(data.D_xx.flat[0]) / _chi_Cm
+    D_yy = float(data.D_yy.flat[0]) / _chi_Cm
     anisotropic = not np.isclose(D_xx, D_yy)
 
     Nx, Ny = data.mask.shape
@@ -1413,5 +1428,5 @@ def lbm(
         else:
             sim.add_stimulus(stim_mask, stim['start_time'], stim['duration'], stim['amplitude'])
 
-    build_kwargs = dict(dt=timestep, lattice=lattice, device=device)
+    build_kwargs = dict(dt=timestep, lattice=lattice, device=device, ionic_model=ionic_name)
     return CardiacSimulation(sim, 'lbm', None, data, build_kwargs)

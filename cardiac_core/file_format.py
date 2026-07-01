@@ -6,6 +6,7 @@ optional bidomain fields. Designed to be the single input to monodomain(),
 bidomain(), and lbm() API functions.
 """
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
@@ -22,7 +23,9 @@ class CardiacMeshData:
     mask : np.ndarray
         (Nx, Ny) bool — True = active tissue.
     D_xx, D_yy, D_xy : np.ndarray
-        (Nx, Ny) float64 — effective monodomain diffusion tensor components (cm²/ms).
+        (Nx, Ny) float64 — RAW conductivity-like tensor components. The
+        membrane-effective diffusivity is ``D/(χ·Cm)`` (cm²/ms), computed
+        identically by every engine.
     chi : float
         Surface-to-volume ratio (cm⁻¹).
     Cm : float
@@ -172,7 +175,7 @@ def create_cardiac_mesh(
     Lx: float,
     Ly: float,
     dx: float,
-    D: float = 0.001,
+    D: float = 1.4,
     D_yy: float = None,
     ionic_model: str = 'ttp06',
     dt: float = 0.02,
@@ -188,26 +191,14 @@ def create_cardiac_mesh(
 
     Default: rectangular tissue, isotropic D, left-edge stimulus.
 
-    ⚠ CONDUCTIVITY CONVENTION — `D` vs `chi` (read before choosing chi)
-    --------------------------------------------------------------------
-    The monodomain FDM operator solves ``χ·Cm·∂V/∂t = ∇·(D·∇V)`` — the stiffness
-    Laplacian is built from ``D`` alone, and ``χ·Cm`` sits only in the mass/time
-    term. So the **membrane-effective diffusivity is ``D/(χ·Cm)``**, NOT ``D``.
-
-    Two consistent ways to use this function:
-
-      * **Pass an effective diffusivity** (cm²/ms, e.g. ``D=1e-3``, the value you
-        want CV ∝ √D to see) → you MUST set ``chi=1.0`` (and Cm=1.0) so
-        ``D/(χ·Cm) = D``. This is the convention the Optimizer chip code uses
-        (``cc_runner``/``chip.chip_mesh``).
-      * **Pass a raw conductivity** σ (mS/cm, e.g. via ConductivityConfig) → keep
-        the physiological ``chi=1400`` so the effective diffusivity is σ/(χ·Cm).
-
-    **The trap:** the historical default is ``chi=1400`` while ``D`` is documented
-    as a "diffusion coefficient". Passing an effective ``D≈1e-3`` with ``chi=1400``
-    silently divides it ~1400× → CV drops ~√1400 ≈ 37× → the wave **fails to
-    launch**: the stimulus over-depolarizes the source nodes (Vmax ≈ 80–120 mV)
-    but never propagates. (See cardiac_core/conductivity.py "Formulation A/B".)
+    CONDUCTIVITY CONVENTION — `D` is RAW; every engine divides by χ·Cm
+    -----------------------------------------------------------------
+    ``D`` is a RAW conductivity-like value. The **membrane-effective diffusivity
+    is ``D/(χ·Cm)``**, computed identically by monodomain, bidomain, and LBM.
+    The default ``D=1.4, chi=1400, Cm=1`` → effective ``1e-3 cm²/ms`` (physiological).
+    To pass an EFFECTIVE diffusivity directly (e.g. ``D=1e-3``), set ``chi=1.0``
+    (as the Optimizer chip code does, ``cc_runner``/``chip.chip_mesh``): then
+    ``D/(χ·Cm) = D``. A ``D/(χ·Cm)`` outside [1e-4, 1e-1] cm²/ms emits a warning.
 
     Parameters
     ----------
@@ -216,9 +207,9 @@ def create_cardiac_mesh(
     dx : float
         Grid spacing (cm). dy = dx.
     D : float
-        x-axis diffusion term used in the stiffness operator. The membrane sees
-        ``D/(chi*Cm)`` (see CONDUCTIVITY CONVENTION above). Pass an effective
-        diffusivity with chi=1.0, or a conductivity with chi=1400.
+        RAW x-axis conductivity-like term; the membrane sees ``D/(chi*Cm)`` in
+        every engine. Default 1.4 → effective 1e-3 at chi=1400. Pass an effective
+        diffusivity with chi=1.0.
     D_yy : float, optional
         y-axis term (per-axis anisotropy). None → isotropic (D_yy = D).
     ionic_model : str
@@ -226,9 +217,8 @@ def create_cardiac_mesh(
     dt : float
         Time step (ms).
     chi : float
-        Surface-to-volume ratio (cm⁻¹). **Set chi=1.0 when `D` is an effective
-        diffusivity** (see CONDUCTIVITY CONVENTION). Default 1400 assumes `D` is
-        a conductivity.
+        Surface-to-volume ratio (cm⁻¹). Divides D in every engine
+        (effective = D/(χ·Cm)). Default 1400. Set chi=1.0 to treat `D` as effective.
     Cm : float
         Membrane capacitance (µF/cm²).
     stim_width : float
@@ -271,6 +261,15 @@ def create_cardiac_mesh(
         'bcl': 0.0,
         'num_pulses': 1,
     }]
+
+    D_eff = D / (chi * Cm)
+    if not (1e-4 <= D_eff <= 1e-1):
+        warnings.warn(
+            f"create_cardiac_mesh: effective diffusivity D/(χ·Cm) = {D_eff:.2e} cm²/ms "
+            f"is outside the physiological band [1e-4, 1e-1]. `D` is RAW (effective = "
+            f"D/(χ·Cm)); pass chi=1.0 to treat D as an effective diffusivity.",
+            stacklevel=2,
+        )
 
     return CardiacMeshData(
         dx=dx,

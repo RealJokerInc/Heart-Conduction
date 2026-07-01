@@ -96,7 +96,7 @@ def test_mrt_guards():
 def test_lbm_wrapper_routes_anisotropic_to_mrt():
     """0.2b: an anisotropic CardiacMeshData runs via run_lbm (no ValueError)."""
     mesh = create_cardiac_mesh(Lx=0.4, Ly=0.4, dx=0.02, D=0.002, D_yy=0.0005,
-                               ionic_model="mhas13", dt=0.01)
+                               ionic_model="mhas13", dt=0.01, chi=1.0)
     times, V = run_lbm(mesh, t_end=2.0, save_every=1.0, dt=0.01, device="cpu")
     assert V.shape[1:] == mesh.mask.shape
     assert torch.isfinite(V).all()
@@ -105,6 +105,6 @@ def test_lbm_wrapper_routes_anisotropic_to_mrt():
 def test_lbm_wrapper_isotropic_still_bgk():
     """Isotropic mesh still runs (BGK path unchanged)."""
     mesh = create_cardiac_mesh(Lx=0.4, Ly=0.4, dx=0.02, D=0.001,
-                               ionic_model="mhas13", dt=0.01)
+                               ionic_model="mhas13", dt=0.01, chi=1.0)
     times, V = run_lbm(mesh, t_end=2.0, save_every=1.0, dt=0.01, device="cpu")
     assert torch.isfinite(V).all()
