@@ -42,7 +42,7 @@ def _raw_step(f, V, mode, alpha, w, masks, omega):
 
 
 @pytest.mark.parametrize("mode,alpha", [
-    ('neumann', 1.0), ('hbb', 1.0), ('specular_neighbour', 1.0),
+    ('neumann', 1.0), ('hbb', 1.0), ('specular_nextcell', 1.0),
     ('specular_samecell', 0.0), ('combined', 0.0), ('combined', 0.5), ('combined', 1.0),
 ])
 def test_rest_noop_and_mass(mode, alpha):
@@ -111,6 +111,12 @@ def test_lbm_combined_selectable_and_replayed():
     assert sim._engine.boundary == 'combined' and sim._engine.alpha == 0.3
     sim.reset()   # build_kwargs must replay boundary + alpha
     assert sim._engine.boundary == 'combined' and sim._engine.alpha == 0.3
+
+
+def test_ncs_scs_aliases():
+    """Standard abbreviations resolve to canonical mode names."""
+    for alias, canon in (('ncs', 'specular_nextcell'), ('scs', 'specular_samecell')):
+        assert lbm(_mesh(), lattice='d2q9', boundary=alias)._engine.boundary == canon
 
 
 def test_lbm_rejects_oblique_Dxy():

@@ -7,7 +7,7 @@ Kernels ported verbatim from Research/Active/boundary_conduction_speedup/diag_lb
 
 Modes:
   neumann / hbb        — halfway bounce-back (default; no overlay; forward crescent)
-  specular_neighbour   — flip y, displace 1 cell east/west → ZERO bias (transparent wall)
+  specular_nextcell    — next-cell specular: flip y, displace 1 cell east/west → ZERO bias
   specular_samecell    — flip y, keep x, same cell → INVERSE crescent (== combined, alpha=0)
   combined(alpha)      — HBB (alpha=1) ↔ same-cell specular (alpha=0) blend; the β-controlled
                          curvature knob (see KNOWLEDGE "Curvature control: the α-blend")
@@ -18,13 +18,21 @@ the same-cell-specular inverse branch is β = D·dt/dx² (τ) controlled — car
 """
 from torch import Tensor
 
-WALL_MODES = ('neumann', 'hbb', 'specular_neighbour', 'specular_samecell', 'combined')
+WALL_MODES = ('neumann', 'hbb', 'specular_nextcell', 'specular_samecell', 'combined')
 # modes that require D2Q9 (they act on diagonal populations)
-D2Q9_ONLY = ('specular_neighbour', 'specular_samecell', 'combined')
+D2Q9_ONLY = ('specular_nextcell', 'specular_samecell', 'combined')
+
+# Standard abbreviations accepted as aliases: NCS = next-cell specular, SCS = same-cell specular.
+_ALIASES = {'ncs': 'specular_nextcell', 'scs': 'specular_samecell'}
 
 
-def apply_specular_neighbour_d2q9(f: Tensor, f_star: Tensor, NX: int, NY: int) -> Tensor:
-    """Specular-at-neighbour (zero bias): flip y, displace one cell. Non-corner cells only."""
+def normalize_mode(mode: str) -> str:
+    """Map the standard abbreviations 'ncs'/'scs' to their canonical mode names."""
+    return _ALIASES.get(mode, mode)
+
+
+def apply_specular_nextcell_d2q9(f: Tensor, f_star: Tensor, NX: int, NY: int) -> Tensor:
+    """Next-cell specular (zero bias): flip y, displace one cell. Non-corner cells only."""
     # TOP: NE(i)→SE(i+1), NW(i)→SW(i-1)
     f[8, 2:NX - 1, NY - 1] = f_star[5, 1:NX - 2, NY - 1]
     f[7, 1:NX - 2, NY - 1] = f_star[6, 2:NX - 1, NY - 1]
@@ -52,10 +60,11 @@ def apply_combined_d2q9(f: Tensor, f_star: Tensor, NX: int, NY: int, alpha: floa
 def apply_wall_overlay(f: Tensor, f_star: Tensor, mode: str, alpha: float,
                        NX: int, NY: int) -> Tensor:
     """Overlay a top/bottom wall mode. Call AFTER apply_neumann_d2q9. No-op for neumann/hbb."""
+    mode = normalize_mode(mode)
     if mode in ('neumann', 'hbb'):
         return f
-    if mode == 'specular_neighbour':
-        return apply_specular_neighbour_d2q9(f, f_star, NX, NY)
+    if mode == 'specular_nextcell':
+        return apply_specular_nextcell_d2q9(f, f_star, NX, NY)
     if mode == 'specular_samecell':
         return apply_combined_d2q9(f, f_star, NX, NY, 0.0)
     if mode == 'combined':

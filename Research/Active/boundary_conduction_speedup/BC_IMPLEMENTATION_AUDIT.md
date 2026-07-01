@@ -320,7 +320,7 @@ unified construction API under-exposes engine capability.
    registry in `src/boundary`, dispatched in `step.py` instead of the hardcoded `apply_neumann`), then
    onto `cardiac_core.lbm(...)`.
 2. **Fix the vocabulary collisions** (§4.3): one canonical name per rule — `hbb`,
-   `specular_neighbour`(≡zero), `specular_samecell`(≡inverse), `combined(α)`; reconcile
+   `specular_nextcell`(≡zero), `specular_samecell`(≡inverse), `combined(α)`; reconcile
    `moore8`/`mehrstellen` naming.
 3. **Retire / hard-gate** the LBM `weighted`+`horizontal*` artifact paths (§1.5).
 4. **Promote LBM BC tests into the engine suite** (rest no-op + mass conservation per mode), matching

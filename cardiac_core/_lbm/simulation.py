@@ -19,7 +19,7 @@ from .diffusion import tau_from_D, tau_tensor_from_D, check_stability_tensor
 from .state import create_lbm_state, recover_voltage
 from .step import (lbm_step_d2q5_bgk, lbm_step_d2q9_bgk, lbm_step_d2q9_mrt,
                    lbm_step_d2q9_bgk_wall)
-from .boundary.wall_modes import WALL_MODES, D2Q9_ONLY
+from .boundary.wall_modes import WALL_MODES, D2Q9_ONLY, normalize_mode
 from .solver.rush_larsen import ionic_step, compute_source_term
 
 
@@ -82,8 +82,9 @@ class LBMSimulation:
         # Boundary wall mode (boundary_conduction_speedup). Default 'neumann' (== HBB) is
         # bit-identical to the historical behaviour on every lattice; the specular/combined
         # modes are D2Q9-only flat-wall overlays on the BGK path.
+        boundary = normalize_mode(boundary)   # accept 'ncs'/'scs' abbreviations
         if boundary not in WALL_MODES:
-            raise ValueError(f"boundary must be one of {WALL_MODES}, got {boundary!r}")
+            raise ValueError(f"boundary must be one of {WALL_MODES} (or 'ncs'/'scs'), got {boundary!r}")
         if boundary in D2Q9_ONLY and lattice != 'd2q9':
             raise ValueError(f"boundary={boundary!r} requires lattice='d2q9' (acts on diagonals)")
         if boundary in D2Q9_ONLY and collision != 'bgk':

@@ -1328,9 +1328,10 @@ def lbm(
     """Create an LBM simulation.
 
     ``boundary`` selects the flat top/bottom wall mode (boundary_conduction_speedup):
-    'neumann'/'hbb' (default; any lattice), or the D2Q9-only 'specular_neighbour' (zero bias),
-    'specular_samecell' (inverse crescent), 'combined' (HBB↔same-cell blend via ``alpha``:
-    1=HBB … 0=same-cell specular — the β-controlled curvature knob). Corners + east/west stay HBB.
+    'neumann'/'hbb' (default; any lattice), or the D2Q9-only 'specular_nextcell' (a.k.a. 'ncs' —
+    next-cell specular, zero bias), 'specular_samecell' (a.k.a. 'scs' — same-cell specular, inverse
+    crescent), 'combined' (HBB↔same-cell blend via ``alpha``: 1=HBB … 0=same-cell specular — the
+    β-controlled curvature knob). Corners + east/west stay HBB.
 
     Declarative: ``lbm(Grid(...), 'ttp06', ConductivityConfig.isotropic(σ), stimulus)``.
     Legacy: ``lbm(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
