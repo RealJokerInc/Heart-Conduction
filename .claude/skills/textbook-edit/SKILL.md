@@ -11,11 +11,11 @@ Write or revise content in the cardiac computational modeling textbook.
 The user wants to edit: $ARGUMENTS
 
 ## Source files
-- **HTML source**: `Research/textbook/Bidomain_Textbook.html` (~12,300 lines, single file)
-- **Style guide**: `Research/textbook/STYLE_GUIDE.md`
-- **Chapter index**: `Research/textbook/INDEX.md` (line numbers, page counts, equation registry)
-- **Edit history**: `Research/textbook/CHANGELOG.md`
-- **Audits**: `Research/textbook/audits/` (chapter-by-chapter quality reviews)
+- **HTML source**: `Research/Active/textbook/Bidomain_Textbook.html` (~12,300 lines, single file)
+- **Style guide**: `Research/Active/textbook/STYLE_GUIDE.md`
+- **Chapter index**: `Research/Active/textbook/INDEX.md` (line numbers, page counts, equation registry)
+- **Edit history**: `Research/Active/textbook/CHANGELOG.md`
+- **Audits**: `Research/Active/textbook/audits/` (chapter-by-chapter quality reviews)
 
 ## Before writing anything
 

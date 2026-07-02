@@ -68,5 +68,5 @@ Master index for the research knowledge base. Start here when looking up theory,
 | Resource | Path | Contents |
 |----------|------|----------|
 | Reference implementations | [code_examples/](code_examples/) | MonoAlg3D (C/CUDA), torchcor (PyTorch), lettuce (LBM), pyamg, amgcl, etc. |
-| Textbook | [textbook/](textbook/) | Bidomain textbook HTML/PDF, style guide, audits. Use `/textbook-edit` and `/textbook-compile`. |
+| Textbook | [Active/textbook/](Active/textbook/) | Cardiac Computational Modeling textbook HTML/PDF, style guide, audits (now a tracked research question; migrated 2026-07-02). Use `/textbook-edit` and `/textbook-compile`. |
 | Simulation figures | [figures/](figures/) | Legacy screenshots and wave propagation visualizations |

@@ -13,7 +13,7 @@ Build the cardiac computational modeling textbook from HTML source to PDF.
 Bidomain_Textbook.html  →  MathJax (local)  →  Playwright (headless Chrome)  →  PDF
 ```
 
-The build script is `html_to_pdf_v3.py` located in the project root or Research/textbook/.
+The build script is `html_to_pdf_v3.py` located in the project root or Research/Active/textbook/.
 
 ## Steps
 
@@ -29,12 +29,12 @@ conda activate heart-conduction
 
 ### 3. Run the build
 ```bash
-python html_to_pdf_v3.py Research/textbook/Bidomain_Textbook.html
+python html_to_pdf_v3.py Research/Active/textbook/Bidomain_Textbook.html
 ```
 
 If the script takes an output path argument:
 ```bash
-python html_to_pdf_v3.py Research/textbook/Bidomain_Textbook.html -o Research/textbook/Cardiac_Computational_Modeling.pdf
+python html_to_pdf_v3.py Research/Active/textbook/Bidomain_Textbook.html -o Research/Active/textbook/Cardiac_Computational_Modeling.pdf
 ```
 
 ### 4. Verify the output
@@ -43,7 +43,7 @@ python html_to_pdf_v3.py Research/textbook/Bidomain_Textbook.html -o Research/te
 ```bash
 python -c "
 import subprocess
-result = subprocess.run(['pdfinfo', 'Research/textbook/Cardiac_Computational_Modeling.pdf'], capture_output=True, text=True)
+result = subprocess.run(['pdfinfo', 'Research/Active/textbook/Cardiac_Computational_Modeling.pdf'], capture_output=True, text=True)
 for line in result.stdout.splitlines():
     if 'Pages' in line:
         print(line)
@@ -53,7 +53,7 @@ for line in result.stdout.splitlines():
 ```bash
 python -c "
 from PyPDF2 import PdfReader
-r = PdfReader('Research/textbook/Cardiac_Computational_Modeling.pdf')
+r = PdfReader('Research/Active/textbook/Cardiac_Computational_Modeling.pdf')
 print(f'Pages: {len(r.pages)}')
 "
 ```
@@ -65,8 +65,8 @@ print(f'Pages: {len(r.pages)}')
 
 ### 6. Update metadata
 After a successful compile:
-1. Update `Research/textbook/INDEX.md` with new page counts if they changed
-2. Add a compile note to `Research/textbook/CHANGELOG.md` if this follows content edits:
+1. Update `Research/Active/textbook/INDEX.md` with new page counts if they changed
+2. Add a compile note to `Research/Active/textbook/CHANGELOG.md` if this follows content edits:
    ```
    ### {date} — Compile
    - Rebuilt PDF after {description of recent edits}
@@ -80,5 +80,5 @@ After a successful compile:
 | MathJax not rendering | Check that local MathJax path in HTML `<script>` tag is correct |
 | Playwright timeout | Increase timeout in html_to_pdf_v3.py; MathJax on large docs can take 30s+ |
 | Missing fonts | Install via `apt install fonts-liberation` or check Playwright browser install |
-| Script not found | Check both project root and Research/textbook/ for html_to_pdf_v3.py |
+| Script not found | Check both project root and Research/Active/textbook/ for html_to_pdf_v3.py |
 | Blank pages | Check CSS `page-break-before` rules in the HTML `<style>` block |

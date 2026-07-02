@@ -1,9 +1,10 @@
 # Cardiac Computational Modeling — Document Index
 
-**Source**: `bidomain_textbook.html` (~12,300 lines)
+**Source**: `Bidomain_Textbook.html` (~12,300 lines)
 **Output**: `Cardiac_Computational_Modeling.pdf`
 **Standalone LBM**: `LBM_Textbook_Part_IV.pdf`
 **Last updated**: 2026-03-08 (session 14, four-appendix restructure: A trimmed, B LA new, C NumAn new, D PyTorch renumbered)
+**Tracking docs** (this folder): [`README.md`](README.md) (status, criteria), [`KNOWLEDGE.md`](KNOWLEDGE.md) (audit backlog), [`IDEALOG.md`](IDEALOG.md) — resume with `/research-resume textbook`
 
 ## Part I — Single Cell Dynamics
 

@@ -214,7 +214,7 @@ Custom skills are available for research, planning, and engineering work (define
 
 **Key entry point**: `Research/INDEX.md` — master question map, debugging quick-reference, and citation registry. Read this first when doing any research-related work.
 
-Research is organized by question (`Research/Active/` for in-progress, `Research/Complete/` for finished). Each question folder has README.md (status/criteria), KNOWLEDGE.md (reference), and IDEALOG.md (thinking trail). Papers live in each question's `papers/` folder (the flat `Research/papers/` is deprecated). The textbook is in `Research/textbook/`.
+Research is organized by question (`Research/Active/` for in-progress, `Research/Complete/` for finished). Each question folder has README.md (status/criteria), KNOWLEDGE.md (reference), and IDEALOG.md (thinking trail). Papers live in each question's `papers/` folder (the flat `Research/papers/` is deprecated). The textbook is tracked as a research question in `Research/Active/textbook/` (source HTML/PDF/website + README/KNOWLEDGE/IDEALOG together; migrated 2026-07-02 from the former `Research/textbook/`).
 
 ---
 
