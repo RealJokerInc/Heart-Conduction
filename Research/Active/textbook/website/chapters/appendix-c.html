@@ -658,9 +658,9 @@
   <table>
     <tr><th>$k$</th><th>$\hat{u}_k$ (DCT)</th><th>$1 - 0.1\lambda_k$</th><th>$\hat{u}_k^{n+1}$ (divide)</th></tr>
     <tr><td>0</td><td>5.000</td><td>1.000</td><td>5.000</td></tr>
-    <tr><td>1</td><td>1.577</td><td>1.059</td><td>1.490</td></tr>
-    <tr><td>2</td><td>0.500</td><td>1.200</td><td>0.417</td></tr>
-    <tr><td>3</td><td>$-0.224$</td><td>1.341</td><td>$-0.167$</td></tr>
+    <tr><td>1</td><td>0.924</td><td>1.059</td><td>0.873</td></tr>
+    <tr><td>2</td><td>2.000</td><td>1.200</td><td>1.667</td></tr>
+    <tr><td>3</td><td>$-0.383$</td><td>1.341</td><td>$-0.285$</td></tr>
   </table>
 
   <p>
@@ -939,7 +939,7 @@
     <strong>Setup</strong>: $\gamma = (\lambda_{\max} + \lambda_{\min})/2$, &ensp; $\delta = (\lambda_{\max} - \lambda_{\min})/2$<br><br>
     1. &ensp; $\mathbf{r}_0 = \mathbf{b} - A\mathbf{x}_0$, &ensp; $\mathbf{x}_1 = \mathbf{x}_0 + (1/\gamma)\,M^{-1}\mathbf{r}_0$, &ensp; $\omega_1 = 1$<br>
     2. &ensp; <strong>for</strong> $k = 1, 2, \ldots, K-1$<br>
-    3. &emsp;&emsp; $\omega_{k+1} = 1\,/\,(1 - \delta^2\omega_k\,/\,(2\gamma^2))$<br>
+    3. &emsp;&emsp; $\omega_{k+1} = 1\,/\,(1 - \delta^2\omega_k\,/\,(4\gamma^2))$<br>
     4. &emsp;&emsp; $\mathbf{r}_k = \mathbf{b} - A\mathbf{x}_k$<br>
     5. &emsp;&emsp; $\mathbf{x}_{k+1} = \omega_{k+1}\!\left(\tfrac{2}{\gamma}\,M^{-1}\mathbf{r}_k + \mathbf{x}_k - \mathbf{x}_{k-1}\right) + \mathbf{x}_{k-1}$<br>
     6. &ensp; <strong>end for</strong>

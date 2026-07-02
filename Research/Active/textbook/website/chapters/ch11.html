@@ -211,11 +211,11 @@
 
   <div class="insight insight-math">
     <p>
-      BDF2 is A-stable but (despite its strong damping) technically not L-stable — that distinction
-      belongs to BDF1. However, BDF2's damping of high-frequency modes is much stronger than CN's.
-      The stability function $R(z) = (4 - 1/(1 + 2z/3))$ satisfies $|R(\infty)| = 1/3$, compared to
-      $|R(\infty)| = 1$ for CN. In practice, this means BDF2 suppresses the "ringing" at sharp
-      wavefronts that CN can exhibit.
+      BDF2 is both A-stable <em>and</em> L-stable: its amplification factor decays to zero as
+      $z \to -\infty$ (both roots of its characteristic equation $(\tfrac{3}{2}-z)r^2 - 2r + \tfrac{1}{2} = 0$
+      tend to $0$), so the stiffest high-frequency modes are annihilated in a single step. This is even
+      stronger damping than Crank–Nicolson, whose amplification factor approaches $|R(\infty)| = 1$ and
+      therefore leaves a persistent "ringing" at sharp wavefronts that BDF2 suppresses.
     </p>
   </div>
 
@@ -254,7 +254,7 @@
         <td style="padding:8px; border:1px solid #ddd; text-align:center;">2</td>
         <td style="padding:8px; border:1px solid #ddd; text-align:center;">$3\mathbf{M} + 2\Delta t\,\mathbf{K}$</td>
         <td style="padding:8px; border:1px solid #ddd; text-align:center;">$4\mathbf{M}\,\mathbf{V}^n - \mathbf{M}\,\mathbf{V}^{n-1}$</td>
-        <td style="padding:8px; border:1px solid #ddd; text-align:center;">A-stable, strongly damping</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:center;">L-stable, strongly damping</td>
         <td style="padding:8px; border:1px solid #ddd;">Sharp wavefronts; large $\Delta t$</td>
       </tr>
     </tbody>

@@ -619,7 +619,7 @@
   </p>
 
   <p>
-    For the D2Q9 lattice used in this chapter, the opposite pairs are:
+    For the D2Q5 lattice used in this chapter, the opposite pairs are:
   </p>
 
   <table class="data-table" style="width:auto; margin:1em auto;">
@@ -635,8 +635,6 @@
     <tbody>
       <tr><td rowspan="2">Axial</td><td>1</td><td>$(+1, 0)$</td><td>3</td><td>$(-1, 0)$</td></tr>
       <tr><td>2</td><td>$(0, +1)$</td><td>4</td><td>$(0, -1)$</td></tr>
-      <tr><td rowspan="2">Diagonal</td><td>5</td><td>$(+1, +1)$</td><td>7</td><td>$(-1, -1)$</td></tr>
-      <tr><td>6</td><td>$(-1, +1)$</td><td>8</td><td>$(+1, -1)$</td></tr>
       <tr><td>Rest</td><td>0</td><td>$(0, 0)$</td><td colspan="2"><em>No partner &mdash; never streamed</em></td></tr>
     </tbody>
   </table>
@@ -646,8 +644,7 @@
     bottom-left corner of a rectangular domain), bounce-back applies to <em>both</em>
     boundary directions independently. If $\mathbf{e}_3 = (-1,0)$ and
     $\mathbf{e}_4 = (0,-1)$ would stream out of the domain, both are reflected:
-    $f_1 \leftarrow f_3^*$ and $f_2 \leftarrow f_4^*$. The diagonal direction
-    $\mathbf{e}_7 = (-1,-1)$ is also reflected: $f_5 \leftarrow f_7^*$. No special
+    $f_1 \leftarrow f_3^*$ and $f_2 \leftarrow f_4^*$. No special
     corner treatment is needed &mdash; bounce-back handles it automatically,
     direction by direction.
   </div>

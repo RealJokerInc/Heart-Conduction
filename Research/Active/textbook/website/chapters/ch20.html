@@ -61,16 +61,16 @@
   </p>
 
   <p>
-    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice parameter $\tau_e$ is set by the same Chapman–Enskog relationship (equation 17.26):
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice relaxation matrix $\tau_{e,\alpha\beta}$ is set by the same tensor Chapman–Enskog relationship (equation 17.26):
   </p>
 
   <div class="equation-block">
     <span class="equation-label">(20.2)</span>
-    $$\tau_e = \frac{1}{2} + \frac{3\,(\mathbf{D}_i + \mathbf{D}_e)\,\Delta\tau}{\Delta x^2}$$
+    $$\tau_{e,\alpha\beta} = \frac{\Delta\tau}{2}\,\delta_{\alpha\beta} + \frac{3\,(\mathbf{D}_i + \mathbf{D}_e)_{\alpha\beta}\,\Delta\tau}{\Delta x^2}$$
   </div>
 
   <p>
-    where $\Delta\tau$ is the pseudo-time step size and the conductivity is $\mathbf{D}_i + \mathbf{D}_e$ (the sum of intracellular and extracellular tensors, as required by the elliptic equation).
+    where $\Delta\tau$ is the pseudo-time step size, $\delta_{\alpha\beta}$ is the Kronecker delta (so the $\tfrac{\Delta\tau}{2}$ term adds only to the diagonal, exactly as in the monodomain tensor law of §19.5), and the conductivity is the tensor $\mathbf{D}_i + \mathbf{D}_e$ (the sum of intracellular and extracellular tensors, as required by the elliptic equation).
   </p>
 
   <div class="insight insight-intuition">

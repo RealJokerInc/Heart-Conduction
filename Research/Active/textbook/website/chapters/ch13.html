@@ -69,8 +69,8 @@
   <table>
     <tr><th>Block</th><th>Definition</th><th>Role</th></tr>
     <tr><td>$\mathbf{A}_{11}$</td><td>$\frac{1}{\Delta t}\mathbf{I} - \theta\,\mathbf{L}_i$</td><td>Parabolic: mass + intracellular diffusion</td></tr>
-    <tr><td>$\mathbf{A}_{12}$</td><td>$\mathbf{L}_i$</td><td>Coupling: how $\phi_e$ affects $V_m$</td></tr>
-    <tr><td>$\mathbf{A}_{21}$</td><td>$\mathbf{L}_i$</td><td>Coupling: how $V_m$ drives $\phi_e$</td></tr>
+    <tr><td>$\mathbf{A}_{12}$</td><td>$-\mathbf{L}_i$</td><td>Coupling: how $\phi_e$ affects $V_m$</td></tr>
+    <tr><td>$\mathbf{A}_{21}$</td><td>$-\mathbf{L}_i$</td><td>Coupling: how $V_m$ drives $\phi_e$</td></tr>
     <tr><td>$\mathbf{A}_{22}$</td><td>$-(\mathbf{L}_i + \mathbf{L}_e)$</td><td>Elliptic: combined bulk conductivity</td></tr>
   </table>
 
@@ -105,12 +105,12 @@
       <!-- A12 -->
       <rect x="180" y="30" width="110" height="80" rx="4" fill="#e94560" opacity="0.12" stroke="#e94560" stroke-width="1.5"/>
       <text x="235" y="65" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#e94560" font-weight="600">A<tspan baseline-shift="sub" font-size="11">12</tspan></text>
-      <text x="235" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
+      <text x="235" y="85" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">−L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
       <text x="235" y="100" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(coupling)</text>
       <!-- A21 -->
       <rect x="60" y="120" width="110" height="80" rx="4" fill="#e94560" opacity="0.12" stroke="#e94560" stroke-width="1.5"/>
       <text x="115" y="155" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#e94560" font-weight="600">A<tspan baseline-shift="sub" font-size="11">21</tspan></text>
-      <text x="115" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
+      <text x="115" y="175" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">−L<tspan baseline-shift="sub" font-size="8">i</tspan></text>
       <text x="115" y="190" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(coupling)</text>
       <!-- A22 -->
       <rect x="180" y="120" width="110" height="80" rx="4" fill="#0f3460" opacity="0.15" stroke="#0f3460" stroke-width="1.5"/>
@@ -134,7 +134,7 @@
       <!-- RHS right bracket -->
       <path d="M 517,22 L 530,22 L 530,208 L 517,208" fill="none" stroke="#16213e" stroke-width="1.8" stroke-linecap="square"/>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 13.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the intracellular Laplacian $\mathbf{L}_i$.</div>
+    <div class="figure-caption"><span class="figure-label">Figure 13.1.</span> The 2×2 block structure of the bidomain linear system. The diagonal blocks are SPD; the off-diagonal coupling blocks are the negated intracellular Laplacian $-\mathbf{L}_i$ (matching the sign of $\mathbf{A}_{22} = -(\mathbf{L}_i+\mathbf{L}_e)$, so the elliptic row reads $-(\mathbf{L}_i+\mathbf{L}_e)\boldsymbol{\phi}_e = \mathbf{L}_i\mathbf{V}_m$, consistent with eq (14.1)).</div>
   </div>
 
   <h3>13.3 &ensp; The FDM Face-Based Stencil</h3>

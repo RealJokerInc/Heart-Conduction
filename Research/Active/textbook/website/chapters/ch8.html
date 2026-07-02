@@ -135,7 +135,7 @@
   </p>
 
   <div class="equation-block">
-    $$-\mathbf{K}\cdot\mathbf{V} = -2.5\begin{pmatrix}1(-85) + (-1)(-85)\\(-1)(-85) + 2(-85) + (-1)(-85)\\(-1)(-85) + 2(-85) + (-1)(20)\\(-1)(-85) + 2(20) + (-1)(-85)\\(-1)(20) + 1(-85)\end{pmatrix} = -2.5\begin{pmatrix}0\\0\\-190\\210\\-105\end{pmatrix} = \begin{pmatrix}0\\0\\475\\-525\\262.5\end{pmatrix}$$
+    $$-\mathbf{K}\cdot\mathbf{V} = -2.5\begin{pmatrix}1(-85) + (-1)(-85)\\(-1)(-85) + 2(-85) + (-1)(-85)\\(-1)(-85) + 2(-85) + (-1)(20)\\(-1)(-85) + 2(20) + (-1)(-85)\\(-1)(20) + 1(-85)\end{pmatrix} = -2.5\begin{pmatrix}0\\0\\-105\\210\\-105\end{pmatrix} = \begin{pmatrix}0\\0\\262.5\\-525\\262.5\end{pmatrix}$$
   </div>
 
   <p>
@@ -143,7 +143,7 @@
   </p>
 
   <p>
-    <strong>Node 2</strong> ($-85$ mV, next to wavefront): receives $+475$ mV/ms of diffusive current
+    <strong>Node 2</strong> ($-85$ mV, next to wavefront): receives $+262.5$ mV/ms of diffusive current
     — a large positive push from the depolarized node 3. This is the electrotonic current that will
     soon trigger node 2's sodium channels, propagating the wave to the left.
   </p>
@@ -154,8 +154,12 @@
   </p>
 
   <p>
-    <strong>Node 4</strong> ($-85$ mV, behind the wavefront): receives $+262.5$ mV/ms from node 3. Only
-    half the push that node 2 gets, because node 4 has only one neighbor (boundary).
+    <strong>Node 4</strong> ($-85$ mV, behind the wavefront): also receives $+262.5$ mV/ms — the same
+    push as node 2. Node 2 feels the full second difference across two neighbors ($V_1 - 2V_2 + V_3 = 105$);
+    node 4 is a boundary node whose one-sided zero-flux stencil gives $V_3 - V_4 = 105$. For this particular
+    wavefront ($+20$ mV) and resting ($-85$ mV) pair the two happen to coincide, so both nodes are pulled
+    equally toward the wave. Check: node 3 sheds $-525 = -(262.5 + 262.5)$ — diffusion conserves current,
+    so the five entries sum to zero.
   </p>
 
   <p>
@@ -793,7 +797,7 @@
 
   <p>
     Here $I_{\text{ion}}(V_{m,i},\,\mathbf{w}_i)$ is the total ionic current at node $i$ — this
-    is equation (5.1) for TTP06 (12 currents, 17 state variables) or equation (6.1) for ORd
+    is equation (5.1) for TTP06 (12 currents, 18 state variables) or equation (6.1) for ORd
     (15 currents, 40 state variables). The state vector $\mathbf{w}_i$ lives entirely at node $i$:
     none of its components (gates, concentrations, CaMKII states) diffuse.
     Collecting all $N$ entries gives the <em>load vector</em> $\mathbf{F}(t)$.
@@ -867,7 +871,7 @@
 
   <p>
     Update the voltage: $V_{m,i}^* = V_{m,i}^n + \Delta t\,(-I_{\text{ion},i} / C_m)$.
-    Update the 17 state variables using Rush–Larsen for gates and Forward Euler for concentrations:
+    Update the 18 state variables using Rush–Larsen for gates and Forward Euler for concentrations:
     $\mathbf{w}_i^{n+1} = \text{advance}(\mathbf{w}_i^n, V_{m,i}^n, \Delta t)$.
     This step is <em>embarrassingly parallel</em> — each node is independent.
   </p>
