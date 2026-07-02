@@ -35,7 +35,7 @@
 
   <div class="insight insight-intuition">
     <p>
-      Think of the monodomain equation (Chapter 18) as a single fish tank with a changing water level. LBM marches the level forward in time with each step. The bidomain is two tanks. The intracellular tank (Vm) still evolves. But the extracellular tank (φe) is not free to evolve — its level is pinned down by the requirement that water conservation is always satisfied. This is why φe is an elliptic equation: it is an instantaneous constraint, not a time-evolution equation.
+      Think of the monodomain equation (Chapter 19) as a single fish tank with a changing water level. LBM marches the level forward in time with each step. The bidomain is two tanks. The intracellular tank (Vm) still evolves. But the extracellular tank (φe) is not free to evolve — its level is pinned down by the requirement that water conservation is always satisfied. This is why φe is an elliptic equation: it is an instantaneous constraint, not a time-evolution equation.
     </p>
   </div>
 
@@ -61,7 +61,7 @@
   </p>
 
   <p>
-    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice relaxation matrix $\tau_{e,\alpha\beta}$ is set by the same tensor Chapman–Enskog relationship (equation 17.26):
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice relaxation matrix $\tau_{e,\alpha\beta}$ is set by the same tensor Chapman–Enskog relationship (equation 18.26):
   </p>
 
   <div class="equation-block">
@@ -287,7 +287,7 @@ class DualLatticeBidomainLBMSolver(ABC):
   </div>
 
   <p>
-    With the completion of Part IV (Chapters 17–19), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
+    With the completion of Part IV (Chapters 18–20), we have the full mathematical and algorithmic foundation for bidomain electrophysiology. From the ionic model (Part I) through the monodomain and bidomain frameworks (Parts II and III), every piece is in place for a production cardiac simulator. The final part of this textbook turns to validation, performance optimization, and the art of choosing the right solver for your problem — the practical craft of turning equations into fast, accurate simulations.
   </p>
 </div>
 

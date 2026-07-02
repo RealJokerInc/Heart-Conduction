@@ -11,7 +11,7 @@
 
   <!-- Layer 1: ELI5 -->
   <p>
-    Explicit methods (Chapter 9) are like steering a boat by looking only at where you <em>are</em>. If
+    Explicit methods (Chapter 10) are like steering a boat by looking only at where you <em>are</em>. If
     the river is calm, this works fine. But in rapids (fine meshes, fast diffusion), the boat oscillates
     wildly because you are always reacting to where you <em>were</em>, not where you are <em>going</em>.
     Implicit methods fix this by peeking ahead: they ask "where will I be at the end of this step?"
@@ -21,7 +21,7 @@
 
   <!-- Layer 2: Conceptual -->
   <p>
-    The fundamental issue is that the CFL condition (equation 9.2) scales as $h^2$: halve the mesh
+    The fundamental issue is that the CFL condition (equation 10.2) scales as $h^2$: halve the mesh
     spacing and the maximum timestep drops by a factor of four. For a 3D mesh with $h = 0.1$ mm
     ($d_{\max} = 0.174$ mm$^2$/ms), the CFL limit is $\Delta t \leq 0.004$ ms — far below the
     $0.01{-}0.05$ ms range the ionic solver prefers. Running 5–12 explicit diffusion substeps per
@@ -34,7 +34,7 @@
   <p>
     The price is that at each timestep, the new voltage $\mathbf{V}^{n+1}$ appears on <em>both sides</em>
     of the equation — so we must solve a linear system $\mathbf{A}\,\mathbf{V}^{n+1} = \mathbf{b}$ to
-    find it. This is where the machinery of Chapter 7 pays off: the stiffness matrix $\mathbf{K}$ and
+    find it. This is where the machinery of Chapter 8 pays off: the stiffness matrix $\mathbf{K}$ and
     mass matrix $\mathbf{M}$ from the spatial discretization become the building blocks of $\mathbf{A}$
     and $\mathbf{b}$.
   </p>
@@ -61,7 +61,7 @@
 
   <p>
     Since $\mathbf{V}^{n+1}$ appears on both sides, this is an <em>implicit</em> equation. To solve it,
-    we substitute the semi-discrete diffusion operator from Chapter 7:
+    we substitute the semi-discrete diffusion operator from Chapter 8:
     $\mathbf{M}\,d\mathbf{V}/dt = -\mathbf{K}\,\mathbf{V}$. Replacing $d\mathbf{V}/dt$ with the
     backward difference $(\mathbf{V}^{n+1} - \mathbf{V}^n)/\Delta t$ and rearranging:
   </p>
@@ -143,7 +143,7 @@
   <div class="insight insight-intuition">
     <p>
       <strong>Worked example.</strong> Consider a 5-node 1D cable (FDM, lumped mass, $\mathbf{M} = \mathbf{I}$)
-      with stiffness matrix $\mathbf{K}$ from Chapter 7 and $\Delta t = 0.02$ ms. The CN matrices are:
+      with stiffness matrix $\mathbf{K}$ from Chapter 8 and $\Delta t = 0.02$ ms. The CN matrices are:
     </p>
     <p>
       $\mathbf{A}_{\text{lhs}} = \mathbf{I} + 0.01\,\mathbf{K}$, &ensp;

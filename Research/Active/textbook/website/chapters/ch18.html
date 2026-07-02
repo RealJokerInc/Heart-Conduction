@@ -218,7 +218,7 @@ Their answer was to replace the collision integral with a single relaxation towa
 
 <div class="equation-block"><span class="equation-label">(18.11)</span>$$\Omega(f) \approx -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
 
-where $\tau$ is a single relaxation time and $f^{\text{eq}}$ is the Maxwell-Boltzmann equilibrium (equation 17.2). The idea is elegantly simple: the actual distribution $f$ is nudged toward its local equilibrium at a rate determined by $\tau$. No detailed calculation of scattering angles or cross-sections is needed.
+where $\tau$ is a single relaxation time and $f^{\text{eq}}$ is the Maxwell-Boltzmann equilibrium (equation 18.2). The idea is elegantly simple: the actual distribution $f$ is nudged toward its local equilibrium at a rate determined by $\tau$. No detailed calculation of scattering angles or cross-sections is needed.
 
 This is the <strong>BGK approximation</strong>. Notice the direct connection to Section 18.1: the $f^{\text{eq}}$ that appears here is exactly the Gaussian equilibrium (18.2) &mdash; the bell curve in velocity space that encodes conservation, zero flux, and isotropic variance. The BGK operator says: whatever the current distribution looks like, push it toward that Gaussian. The three physical claims we established in Section 18.1 &mdash; equations (18.3), (18.4), and (18.5) &mdash; are the properties that $f^{\text{eq}}$ carries into the collision step.
 
@@ -238,7 +238,7 @@ $$f = f^{\text{eq}} + \epsilon f^{(1)} + \epsilon^2 f^{(2)} + \cdots$$
 
 where $\epsilon$ is a small parameter measuring how far the system is from equilibrium (technically, the Knudsen number $\text{Kn} = \lambda / L$, the ratio of mean free path to system size). Then expand the Boltzmann equation order by order. What emerges at each order is a specific piece of the macroscopic equations:
 
-<strong>Zeroth order</strong> ($\epsilon^0$): the distribution equals the equilibrium $f = f^{\text{eq}}$. Taking the zeroth and first moments of $f^{\text{eq}}$ (exactly the integrals from equations 17.3 and 17.4) gives the <strong>conservation laws</strong>:
+<strong>Zeroth order</strong> ($\epsilon^0$): the distribution equals the equilibrium $f = f^{\text{eq}}$. Taking the zeroth and first moments of $f^{\text{eq}}$ (exactly the integrals from equations 18.3 and 18.4) gives the <strong>conservation laws</strong>:
 
 $$\frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{u}) = 0 \qquad \text{(mass conservation)}$$
 
@@ -423,7 +423,7 @@ $\phi(\mathbf{x}, t) = \sum_i f_i(\mathbf{x}, t)$ is the recovered macroscopic q
 
 <h4>From Integrals to Sums</h4>
 
-In Section 18.1 we wrote down the Maxwell-Boltzmann equilibrium (equation 17.2) and showed that it satisfies three integral identities &mdash; conservation of mass (18.3), momentum (18.4), and isotropic variance (18.5). Each of these is an integral over velocity space: you integrate $f^{\text{eq}}(\mathbf{c})$ &mdash; or $f^{\text{eq}}$ multiplied by some power of $\mathbf{c}$ &mdash; over <em>all directions and all magnitudes</em>.
+In Section 18.1 we wrote down the Maxwell-Boltzmann equilibrium (equation 18.2) and showed that it satisfies three integral identities &mdash; conservation of mass (18.3), momentum (18.4), and isotropic variance (18.5). Each of these is an integral over velocity space: you integrate $f^{\text{eq}}(\mathbf{c})$ &mdash; or $f^{\text{eq}}$ multiplied by some power of $\mathbf{c}$ &mdash; over <em>all directions and all magnitudes</em>.
 
 LBM replaces "all directions and all magnitudes" with <strong>a few lattice vectors $\mathbf{e}_i$ and weights $w_i$</strong>. The lattice vectors are dimensionless integer vectors &mdash; their components are just 0 and $\pm 1$. For example, in D2Q5:
 
@@ -766,7 +766,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(c) D3Q7</text>
   </g>
 </svg>
-<div class="figure-caption"><strong>Figure 17.1:</strong> Common lattice stencils for LBM. <strong>(a)</strong> D2Q5: five velocities (rest + four cardinal) — sufficient for isotropic diffusion. <strong>(b)</strong> D2Q9: nine velocities (rest + cardinal + diagonal) — required for fluid flow to capture cross-velocity terms. <strong>(c)</strong> D3Q7: seven velocities in 3D (rest + six face-centered) — the minimal 3D stencil for diffusion. Blue center node = rest velocity (peak of the Gaussian); orange = cardinal neighbors; vermillion = diagonal neighbors. Arrows indicate streaming directions; weights $w_i$ annotated at each node.</div>
+<div class="figure-caption"><strong>Figure 18.1:</strong> Common lattice stencils for LBM. <strong>(a)</strong> D2Q5: five velocities (rest + four cardinal) — sufficient for isotropic diffusion. <strong>(b)</strong> D2Q9: nine velocities (rest + cardinal + diagonal) — required for fluid flow to capture cross-velocity terms. <strong>(c)</strong> D3Q7: seven velocities in 3D (rest + six face-centered) — the minimal 3D stencil for diffusion. Blue center node = rest velocity (peak of the Gaussian); orange = cardinal neighbors; vermillion = diagonal neighbors. Arrows indicate streaming directions; weights $w_i$ annotated at each node.</div>
 </div>
 
 <strong>D2Q9 (Two-Dimensional, Cardinal + Diagonal):</strong>
@@ -958,7 +958,7 @@ This is the fundamental bridge between the discrete lattice parameter $\tau$ and
 <ol>
 <li>Choose your spatial and temporal resolution: $\Delta x$ and $\Delta t$.</li>
 <li>Compute $\tau$ from equation (18.26).</li>
-<li>Use that $\tau$ in the collision step (equation 17.14).</li>
+<li>Use that $\tau$ in the collision step (equation 18.14).</li>
 </ol>
 
 Note the stability constraint: $\tau > \Delta t/2$ is required for stability. This places an upper bound on $D$ for a given $\Delta x$ and $\Delta t$. If you need very high diffusivity, you must either reduce $\Delta x$ or accept a smaller $\Delta t$, which increases the total number of timesteps.

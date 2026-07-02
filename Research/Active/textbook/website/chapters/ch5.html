@@ -475,7 +475,7 @@
     <p>
       All gating variables in TTP06 satisfy the same relaxation ODE we derived in equation (1.3):
       $dx/dt = (x_\infty - x)/\tau_x$. This uniformity is what makes the Rush–Larsen method
-      (Chapter 8) so powerful: you can integrate <em>every</em> gate with the same exponential formula
+      (Chapter 9) so powerful: you can integrate <em>every</em> gate with the same exponential formula
       $x^{n+1} = x_\infty + (x^n - x_\infty)\,e^{-\Delta t/\tau_x}$, regardless of how stiff the
       kinetics are. The concentration variables ($[\text{Na}^+]_i$, $[\text{K}^+]_i$, etc.) do
       <em>not</em> follow relaxation kinetics and must be integrated with Forward Euler or a similar method.
@@ -582,7 +582,7 @@
       </defs>
     </svg>
     <div class="figure-caption">
-      <span class="figure-label">Figure 4.1.</span> Calcium cycling in TTP06. The L-type current $I_{\text{CaL}}$ brings
+      <span class="figure-label">Figure 5.2.</span> Calcium cycling in TTP06. The L-type current $I_{\text{CaL}}$ brings
       Ca$^{2+}$ into the subspace, triggering CICR from the SR ($J_{\text{rel}}$). Ca$^{2+}$ diffuses to the
       cytoplasm ($J_{\text{xfer}}$), drives contraction, then is pumped back into the SR by SERCA ($J_{\text{up}}$).
     </div>

@@ -107,7 +107,7 @@
       <!-- Spacing -->
       <text x="100" y="50" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#888">h</text>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 7.1.</span> A 5-node 1D cable with node 3 depolarized to +20 mV (wavefront). All other nodes at resting potential −85 mV.</div>
+    <div class="figure-caption"><span class="figure-label">Figure 8.1.</span> A 5-node 1D cable with node 3 depolarized to +20 mV (wavefront). All other nodes at resting potential −85 mV.</div>
   </div>
 
   <p>
@@ -274,7 +274,7 @@
       <text x="370" y="152" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f">D<tspan baseline-shift="sub" font-size="6">xy</tspan></text>
       <text x="470" y="152" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f">D<tspan baseline-shift="sub" font-size="6">xy</tspan></text>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 7.2.</span> FDM stencils for the 2D diffusion operator. <em>Left:</em> The 5-point stencil uses axis-aligned neighbors only (isotropic or axis-aligned anisotropic). <em>Right:</em> The 9-point stencil adds diagonal neighbors (green) for the cross-derivative $D_{xy}$ terms from rotated fiber fields.</div>
+    <div class="figure-caption"><span class="figure-label">Figure 8.2.</span> FDM stencils for the 2D diffusion operator. <em>Left:</em> The 5-point stencil uses axis-aligned neighbors only (isotropic or axis-aligned anisotropic). <em>Right:</em> The 9-point stencil adds diagonal neighbors (green) for the cross-derivative $D_{xy}$ terms from rotated fiber fields.</div>
   </div>
 
   <div class="insight insight-warning">
@@ -413,7 +413,7 @@
       <text x="170" y="170" font-family="EB Garamond,serif" font-size="14" fill="#0f3460" font-style="italic">T1</text>
       <text x="80" y="90" font-family="EB Garamond,serif" font-size="14" fill="#2d6a4f" font-style="italic">T2</text>
     </svg>
-    <div class="figure-caption"><span class="figure-label">Figure 7.3.</span> A minimal 2D FEM mesh: 4 nodes, 2 triangles ($T_1$ with nodes 1-2-3, $T_2$ with nodes 1-3-4). The diagonal splits the square into two right triangles of area $h^2/2$.</div>
+    <div class="figure-caption"><span class="figure-label">Figure 8.3.</span> A minimal 2D FEM mesh: 4 nodes, 2 triangles ($T_1$ with nodes 1-2-3, $T_2$ with nodes 1-3-4). The diagonal splits the square into two right triangles of area $h^2/2$.</div>
   </div>
 
   <p>
@@ -727,7 +727,7 @@
     local quantities, so it becomes $I_{\text{ion}}(V_{m,i}, \mathbf{w}_i)$ evaluated entirely
     at node $i$. The tricky term is the diffusion operator
     $\nabla \cdot (\mathbf{D}\,\nabla V_m)$, because it involves spatial derivatives —
-    information from neighboring nodes. This is what sections 7.5–7.7 taught us to handle.
+    information from neighboring nodes. This is what sections 8.2–8.4 taught us to handle.
   </p>
 
   <h4>Step 3: Replace the Diffusion Operator with a Matrix Product</h4>
@@ -847,7 +847,7 @@
       can execute: "at each node, the voltage rate of change equals the diffusive current arriving from
       neighbors (encoded by the matrix $-\mathbf{K}\mathbf{V}_m$) plus the ionic current produced locally
       (encoded by $\mathbf{F}$)." The matrices are just bookkeeping — a structured way to store the
-      neighbor weights that sections 7.5–7.7 computed.
+      neighbor weights that sections 8.2–8.4 computed.
     </p>
   </div>
 
@@ -855,7 +855,7 @@
 
   <p>
     To make this concrete, here is what happens during a single timestep $\Delta t$ using Godunov
-    operator splitting (Chapter 8), FDM spatial discretization, and TTP06 ionic model, on a mesh
+    operator splitting (Chapter 9), FDM spatial discretization, and TTP06 ionic model, on a mesh
     with $N$ nodes:
   </p>
 
@@ -903,7 +903,7 @@
       <code>get_diffusion_operators(dt, scheme)</code> for implicit solvers. You can switch from FDM to
       FEM without changing a single line of the solver code. The ionic model plugs in through the
       <code>IonicModel</code> interface — switching from TTP06 (18 ionic states + V) to ORd (40 ionic
-      states + V) changes only the reaction step, not the diffusion step. Chapters 9 and 10 describe
+      states + V) changes only the reaction step, not the diffusion step. Chapters 10 and 11 describe
       the time integrators; Chapter 14 shows how this framework extends to the bidomain's 2×2 block
       system.
     </p>

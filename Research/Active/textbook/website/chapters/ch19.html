@@ -2,7 +2,7 @@
   <div class="chapter-number">Chapter 19</div>
   <h2 class="chapter-title">Lattice-Boltzmann Methods for Monodomain</h2>
   <div class="chapter-intro">
-    Chapter 17 built the LBM machinery from first principles: distribution functions, lattice geometry,
+    Chapter 18 built the LBM machinery from first principles: distribution functions, lattice geometry,
     collision and streaming, the equilibrium distribution born from Gauss-Hermite quadrature, and the
     moment-space decomposition that reveals the physical content of the collision operator. Now we put
     that machinery to work on the cardiac monodomain equation. The key additions are surprisingly
@@ -144,7 +144,7 @@
   <h3>19.3 &ensp; BGK Collision with Source Term</h3>
 
   <p>
-    The diffusion substep is where LBM does its work. Recall from Chapter 17 that each lattice node
+    The diffusion substep is where LBM does its work. Recall from Chapter 18 that each lattice node
     carries $Q$ distribution functions $f_i$ (five for D2Q5, seven for D3Q7). The macroscopic voltage
     is their sum: $V_m = \sum_i f_i$. The equilibrium distribution for a pure diffusion problem, derived
     from Gauss-Hermite quadrature in Section 18.4, is:
@@ -178,7 +178,7 @@
     particles are removed. When $f_i < w_i V_m$, particles are added. This redistribution of particles
     among directions <em>is</em> diffusion: non-equilibrium structure in the distribution function
     corresponds to flux, and relaxing that structure spreads voltage through tissue. The $\tau$&ndash;$D$
-    relationship (equation 17.26) quantifies exactly how the relaxation rate maps to the macroscopic
+    relationship (equation 18.26) quantifies exactly how the relaxation rate maps to the macroscopic
     diffusion coefficient.
   </p>
 
@@ -192,7 +192,7 @@
   </p>
 
   <p>
-    This is a pure source injection: the reaction term $S$ (equation 18.2) &mdash; which encapsulates
+    This is a pure source injection: the reaction term $S$ (equation 19.2) &mdash; which encapsulates
     all ionic currents and external stimulus &mdash; is distributed among lattice directions with weights
     $w_i$. Since $\sum_i w_i = 1$, the total injected rate is $\sum_i \Omega_i^R = S$, preserving the
     correct total source. The weights ensure isotropy: the source does not preferentially inject particles
@@ -222,7 +222,7 @@
   </p>
 
   <p>
-    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 17.26):
+    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 18.26):
   </p>
 
   <p style="text-align:center;">
@@ -236,7 +236,7 @@
   </p>
 
   <p>
-    After collision, streaming (equation 17.15) shifts each post-collision distribution one lattice
+    After collision, streaming (equation 18.15) shifts each post-collision distribution one lattice
     spacing in its designated direction:
   </p>
 
@@ -245,7 +245,7 @@
   </p>
 
   <p>
-    No new mathematical machinery is required beyond what Chapter 17 established. The cardiac monodomain
+    No new mathematical machinery is required beyond what Chapter 18 established. The cardiac monodomain
     is solved by the same collide-and-stream cycle that solves any diffusion equation &mdash; the ionic
     model simply provides the source term.
   </p>
@@ -267,7 +267,7 @@
 
   <p>
     Cardiac tissue conducts three to four times faster along fibers than across them. This anisotropy is
-    encoded in the diffusion tensor $\mathbf{D}$ (equation 18.1), which has different eigenvalues along
+    encoded in the diffusion tensor $\mathbf{D}$ (equation 19.1), which has different eigenvalues along
     and perpendicular to the fiber direction. Can BGK handle this?
   </p>
 
@@ -290,7 +290,7 @@
   </p>
 
   <p>
-    Start from the scalar $\tau$-$D$ relationship (equation 17.24), which Chapman-Enskog analysis
+    Start from the scalar $\tau$-$D$ relationship (equation 18.24), which Chapman-Enskog analysis
     derives for the BGK operator:
   </p>
 
@@ -301,7 +301,7 @@
   <p>
     This relates a single diffusivity $D$ to a single relaxation time $\tau$. For anisotropic diffusion,
     we need a <strong>tensor</strong> generalization. The Chapman-Enskog expansion applied to the MRT
-    collision operator (equation 17.40) shows that each component of the diffusion tensor maps to a
+    collision operator (equation 18.40) shows that each component of the diffusion tensor maps to a
     corresponding relaxation parameter:
   </p>
 
@@ -384,7 +384,7 @@
 
   <p>
     <strong>Approach 2 &mdash; Modify the equilibrium distribution.</strong> Keep the standard
-    $\mathbf{M}$ (equation 17.36) but replace the isotropic equilibrium $f_i^{\text{eq}} = w_i V_m$
+    $\mathbf{M}$ (equation 18.36) but replace the isotropic equilibrium $f_i^{\text{eq}} = w_i V_m$
     with an anisotropic equilibrium that encodes the full diffusion tensor:
   </p>
 
@@ -402,14 +402,14 @@
 
   <p>
     For the remainder of this chapter, we use <strong>Approach 1</strong> (the MRT formulation with
-    diagonal $\mathbf{S}$ in the principal-axis frame), which makes the connection to Chapter 17's
+    diagonal $\mathbf{S}$ in the principal-axis frame), which makes the connection to Chapter 18's
     moment-space machinery most transparent.
   </p>
 
   <h4>The Full MRT Collision with Source</h4>
 
   <p>
-    Assembling the pieces from Section 18.5 (equations 17.38&ndash;17.41), the MRT collision with ionic
+    Assembling the pieces from Section 18.5 (equations 18.38&ndash;18.41), the MRT collision with ionic
     source uses the same $\Omega^{NR} + \Omega^R$ decomposition from Section 19.3, but with the
     non-reactive part now operating in moment space. Defining the rate-based collision operators:
   </p>
@@ -438,9 +438,9 @@
   </p>
 
   <p>
-    Here $\mathbf{M}$ is the transformation matrix (equation 17.36 for D2Q5, equation 17.37 for D3Q7),
+    Here $\mathbf{M}$ is the transformation matrix (equation 18.36 for D2Q5, equation 18.37 for D3Q7),
     $\mathbf{S}$ is the diagonal relaxation matrix, $\mathbf{w} = (w_0, w_1, \ldots, w_{Q-1})^T$ is the
-    weight vector, and $S$ is the ionic source (equation 18.2). The relaxation matrix for D2Q5 is:
+    weight vector, and $S$ is the ionic source (equation 19.2). The relaxation matrix for D2Q5 is:
   </p>
 
   <div class="equation-block">
@@ -476,7 +476,7 @@
     $\sum_i |\mathbf{e}_i|^2 f_i$ and the "energy difference" moment
     $\sum_i (e_{ix}^2 - e_{iy}^2) f_i$. These are second-order velocity products that are linearly
     independent of the zeroth- and first-order physical rows. The Gram-Schmidt process ensures they are
-    also orthogonal, which makes $\mathbf{M}$ well-conditioned. For D3Q7 (equation 17.37), the same
+    also orthogonal, which makes $\mathbf{M}$ well-conditioned. For D3Q7 (equation 18.37), the same
     procedure generates four ghost rows from second-order products in three dimensions.
   </p>
 
@@ -548,7 +548,7 @@
   </p>
 
   <p>
-    Now suppose $V_m = -85$ mV, with the same non-equilibrium distributions from the Chapter 17 worked
+    Now suppose $V_m = -85$ mV, with the same non-equilibrium distributions from the Chapter 18 worked
     example: $\mathbf{f} = (0.340, \; 0.175, \; 0.155, \; 0.168, \; 0.162)^T \times (-85)$ (scaled to
     voltage), and a stimulus source $S = 0.0371$ mV/ms. The MRT collision proceeds as:
   </p>
@@ -565,7 +565,7 @@
   <p>
     The $x$-flux decays by 18.9% (slow — high diffusivity along fibers), while the $y$-flux decays by
     58.8% (fast — low diffusivity across fibers). The ghost moments snap entirely to equilibrium. This is
-    the same collision from the Chapter 17 worked example, but now with the $x$ and $y$ dials set to
+    the same collision from the Chapter 18 worked example, but now with the $x$ and $y$ dials set to
     different values.
   </p>
 
@@ -671,7 +671,7 @@
   </div>
 
   <p>
-    The formula <em>looks</em> the same as full-way bounce-back (eq. 18.10), but
+    The formula <em>looks</em> the same as full-way bounce-back (eq. 19.10), but
     the interpretation differs: the wall is now located at
     $\mathbf{x}_b + \tfrac{1}{2}\mathbf{e}_i \Delta x$, not at $\mathbf{x}_b$.
     On a uniform Cartesian grid, half-way bounce-back is the standard choice because
@@ -717,7 +717,7 @@
 
   <p>
     At runtime, the streaming step skips boundary links (no data is sent to
-    non-tissue nodes), and the bounce-back rule (eq. 18.10) is applied instead.
+    non-tissue nodes), and the bounce-back rule (eq. 19.10) is applied instead.
     This keeps the boundary treatment local and branchless &mdash; ideal for GPU
     execution.
   </p>
@@ -824,7 +824,7 @@
 
   <p>
     Assembling all the pieces &mdash; operator splitting (Section 19.2), BGK or MRT collision with source
-    (Sections 19.3&ndash;18.4), streaming (Chapter 17), and bounce-back boundaries (Section 19.5) &mdash;
+    (Sections 19.3&ndash;19.4), streaming (Chapter 18), and bounce-back boundaries (Section 19.5) &mdash;
     the complete algorithm for one timestep is:
   </p>
 
@@ -834,7 +834,7 @@
     $$\begin{aligned}
       &\textbf{1. Ionic:} &&I_{\text{ion}} = \text{IonicModel.compute\_Iion}(V_m, \mathbf{w}); \quad \text{update } \mathbf{w} \text{ via Rush-Larsen} \\[4pt]
       &\textbf{2. Source:} &&S = -\frac{I_{\text{ion}} + I_{\text{stim}}}{\chi\,C_m} \\[4pt]
-      &\textbf{3. Collide:} &&f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) \quad \text{(BGK eq. 18.3, or MRT eq. 18.8)} \\[4pt]
+      &\textbf{3. Collide:} &&f_i^* = f_i + \Delta t\bigl(\Omega_i^{NR} + \Omega_i^{R}\bigr) \quad \text{(BGK eq. 19.3, or MRT eq. 19.8)} \\[4pt]
       &\textbf{4. Stream:} &&f_i(\mathbf{x} + \mathbf{e}_i \Delta x) \leftarrow f_i^*(\mathbf{x}) \quad \forall\, i \\[4pt]
       &\textbf{5. Bounce-back:} &&f_{\bar{i}}(\mathbf{x}_b) \leftarrow f_i^*(\mathbf{x}_b) \quad \text{at boundary nodes} \\[4pt]
       &\textbf{6. Recover:} &&V_m^{n+1} = \textstyle\sum_i f_i
@@ -918,7 +918,7 @@
       The lattice definitions (<code>D2Q5</code>, <code>D3Q7</code>) are frozen dataclasses holding weights,
       velocity vectors, and the $\tau$-$D$ conversion formula. Collision operators (<code>BGKCollision</code>,
       <code>MRTCollision</code>) inherit from <code>CollisionOperator(ABC)</code> and implement the update step
-      (equation 18.3 or 18.8). The <code>LBMState</code> container holds the distribution tensor
+      (equation 19.3 or 19.8). The <code>LBMState</code> container holds the distribution tensor
       $\mathbf{f}$ (shape $Q \times N_x \times N_y$ for 2D), voltage $V_m$, ionic states $\mathbf{w}$, and
       the domain mask. The <code>LBMSimulation</code> class orchestrates the six-step loop (19.11): call
       <code>collision.collide(f, V, source, dt)</code>, apply <code>state.stream()</code> (one
@@ -1002,7 +1002,7 @@
   <p>
     With the monodomain LBM now complete, we turn to its greatest challenge: the bidomain system. The
     parabolic intracellular equation can be solved by LBM, but the elliptic extracellular equation has no
-    time dependence &mdash; it is a constraint that must be satisfied at every instant. Chapter 19
+    time dependence &mdash; it is a constraint that must be satisfied at every instant. Chapter 20
     develops three strategies to overcome this fundamental obstacle: pseudo-time relaxation, hybrid
     LBM&ndash;classical solvers, and the dual-lattice architecture.
   </p>

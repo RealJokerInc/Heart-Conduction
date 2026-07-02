@@ -74,7 +74,7 @@
       $\Delta t_{\max} = (0.1)^2 / (2 \times 2 \times 0.174) = 0.01 / 0.696 = 0.0144$ ms.
       That is below the typical ionic timestep of 0.02 ms — so for fine meshes, the diffusion
       stability constraint becomes the bottleneck, not the ionic kinetics. This is exactly why
-      Chapter 10's implicit methods exist.
+      Chapter 11's implicit methods exist.
     </p>
   </div>
 
@@ -83,7 +83,7 @@
       The CFL condition scales as $h^2$. Halve the mesh spacing and the maximum timestep drops by a
       factor of four. For fine 3D meshes ($h = 0.1$ mm), this can force $\Delta t$ below what the ionic
       solver needs, making explicit methods the bottleneck. This is the primary motivation for implicit
-      methods (Chapter 10).
+      methods (Chapter 11).
     </p>
   </div>
 
@@ -171,7 +171,7 @@
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.1</strong> — RK2 (Heun's method) visualized. The red arrow is the Forward Euler predictor
+    <strong>Figure 10.1</strong> — RK2 (Heun's method) visualized. The red arrow is the Forward Euler predictor
     ($k_1$ slope). The blue arrow is the slope evaluated at the predicted point ($k_2$). The green arrow
     is the average of both slopes — which lands much closer to the true solution (dashed gray).
   </p>
@@ -200,7 +200,7 @@
 
   <p>
     Expanding $f(\mathbf{V}) = \mathcal{L}\,\mathbf{V}$ where $\mathcal{L}$ is the discrete diffusion
-    operator (i.e., <code>apply_diffusion(V)</code> from Chapter 7), the matrix form computed at each
+    operator (i.e., <code>apply_diffusion(V)</code> from Chapter 8), the matrix form computed at each
     timestep is:
   </p>
 
@@ -343,7 +343,7 @@
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.2</strong> — The four stages of RK4. Each colored line shows a slope evaluation;
+    <strong>Figure 10.2</strong> — The four stages of RK4. Each colored line shows a slope evaluation;
     the green result is the weighted average $\frac{1}{6}(k_1 + 2k_2 + 2k_3 + k_4)$.
     The midpoint slopes ($k_2$, $k_3$) get double weight, mirroring Simpson's rule.
   </p>
@@ -507,7 +507,7 @@
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
-    <strong>Figure 9.3</strong> — Stability regions in the complex $z = \lambda\,\Delta t$ plane.
+    <strong>Figure 10.3</strong> — Stability regions in the complex $z = \lambda\,\Delta t$ plane.
     The method is stable when $z$ lies inside the boundary. Along the negative real axis (which is
     what matters for diffusion), RK4 allows $\sim$39% larger timesteps than FE/RK2.
   </p>
@@ -610,10 +610,10 @@
     <p>
       In Engine V5.4, all three explicit methods inherit from a <code>DiffusionSolver</code> ABC
       (<code>solver/diffusion_time_stepping/base.py</code>). Each calls <code>self._spatial.apply_diffusion(V)</code>
-      — the $\mathcal{L}$ operator — which encapsulates FDM, FEM, or FVM (Chapter 7). Swapping
+      — the $\mathcal{L}$ operator — which encapsulates FDM, FEM, or FVM (Chapter 8). Swapping
       between spatial methods is a one-line configuration change; the time integrator only sees the
       operator $\mathcal{L}$. Explicit solvers need no pre-built matrices; only the implicit solvers
-      (Chapter 10) build <code>DiffusionOperators</code>.
+      (Chapter 11) build <code>DiffusionOperators</code>.
     </p>
   </div>
 
