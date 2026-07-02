@@ -37,13 +37,13 @@ Documents all three engines; equations are verified against their code.
 | Appendices | A–D | DEs, LinAlg, Numerical Analysis ("The Bridge"), PyTorch |
 
 ## Completion Criteria
-- [ ] **Part II cross-ref cleanup** — Ch 10 figure numbers (Fig 9.x→10.x), eq (9.2)→(10.2), "Chapter 10's implicit methods"→Ch 11
+- [x] **Part II cross-ref cleanup** — Ch 10 figure numbers (Fig 9.x→10.x), eq (9.2)→(10.2), "Chapter 10's implicit methods"→Ch 11 — DONE (Phase 2, commit 0008226; part of the book-wide sweep)
 - [ ] **Part II depth** — add BDF2 worked example (Ch 11); expand §11.6 linear-solver section (PCG/Chebyshev/FFT currently one paragraph each)
 - [ ] **Part II length** — split/trim Ch 8 (~1100 lines covering FDM/FEM/FVM/BC — four mini-chapters)
 - [ ] **Part IV Ch 18 restructure** — add "30-second preview" box at chapter open; trim §18.1 (Two Cases aside); front-load a worked example
-- [ ] **Part IV numbering** — fix equation-numbering gaps + stale "Chapter 17"/"eq 17.x" cross-refs → 18/19
+- [x] **Part IV numbering** — fix stale "Chapter 17"/"eq 17.x" cross-refs → 18/19 — DONE (Phase 2; ch19's dual mapping handled per its own eq labels)
 - [ ] **Part IV Ch 20 depth** — add worked example(s) for the three bidomain-LBM strategies (currently conceptual only)
-- [ ] **Part III re-audit** — confirm the session-13b rewrite (Ch 12–17 → 12–15) actually closed the 1.9/5 issues; the existing Bidomain audit predates the rewrite
+- [x] **Part III re-audit** — DONE (2026-07-02 full audit): the 13b rewrite reached parity (~3.75/5); no fictional Schur/monolithic framing survives. Residual Fig 13.1 sign bug fixed in Phase 1.
 - [ ] **Reader-B accessibility** — provide a non-code reading path for the L5 implementation layer (inaccessible to no-programming readers)
 - [ ] **Known content gaps** — Ch 4 SVGs → literature images; document engine-limited topics (Ch 6 chloride currents, Ch 18 MRT D3Q7, Ch 20 bidomain LBM) as "described, not yet in engine"
 - [ ] **Rebuild the PDF pipeline** — `html_to_pdf_v3.py` is missing from the repo; write a new builder that assembles `website/chapters/*.html` (in `toc.json` order) → single print HTML → Playwright → PDF. Then rebuild PDF + website after edits land (`/textbook-compile`).
