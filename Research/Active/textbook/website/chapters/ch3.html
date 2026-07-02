@@ -18,55 +18,55 @@
       <text x="280" y="272" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle">Time (ms)</text>
       <text x="14" y="130" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,14,130)">V<tspan font-size="8" dy="2">m</tspan><tspan dy="-2"> (mV)</tspan></text>
 
-      <!-- Voltage ticks -->
-      <text x="47" y="244" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-85</text>
-      <text x="47" y="165" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-20</text>
-      <text x="47" y="105" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+20</text>
-      <text x="47" y="40" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+40</text>
-      <!-- Time ticks -->
+      <!-- Voltage ticks (linear: 1.6 px/mV, -85→y240, +40→y40) -->
+      <text x="47" y="243" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-85</text>
+      <text x="47" y="139" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-20</text>
+      <text x="47" y="75" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+20</text>
+      <text x="47" y="43" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">+40</text>
+      <!-- Time ticks (linear: 1.2 px/ms, 0→x55 … 350→x475) -->
       <text x="55" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">0</text>
-      <text x="155" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">50</text>
-      <text x="255" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">150</text>
+      <text x="115" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">50</text>
+      <text x="235" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">150</text>
       <text x="355" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">250</text>
-      <text x="455" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">350</text>
+      <text x="475" y="255" font-size="8" fill="#5a6175" font-family="serif" text-anchor="middle">350</text>
 
-      <!-- zero line -->
-      <line x1="55" y1="140" x2="500" y2="140" stroke="#d0d5e0" stroke-width="0.5" stroke-dasharray="3,3"/>
+      <!-- zero line (0 mV → y=104 on linear scale) -->
+      <line x1="55" y1="104" x2="500" y2="104" stroke="#d0d5e0" stroke-width="0.5" stroke-dasharray="3,3"/>
 
-      <!-- AP trace (ventricular-like: fast upstroke, notch, plateau, repolarization) -->
-      <path d="M 55,235 L 72,235 Q 75,235 77,200 Q 80,90 82,35 Q 84,28 86,35 Q 89,55 93,75 Q 96,85 100,80
-               Q 120,72 170,75 Q 220,80 270,90 Q 310,110 340,145
-               Q 370,190 390,218 Q 410,232 430,235 L 500,235"
+      <!-- AP trace on linear axes (ventricular: fast upstroke, notch, dome plateau, repolarization) -->
+      <path d="M 55,240 L 57.4,240 Q 59,150 61,40 Q 63,90 67,91.2 Q 74,80 85,75.2
+               Q 140,84 187,91.2 Q 240,104 277,116.8 Q 315,150 337,176
+               Q 370,208 397,228.8 Q 420,240 439,240 L 500,240"
             fill="none" stroke="#e94560" stroke-width="2.5"/>
 
       <!-- Phase labels -->
-      <!-- Phase 0 -->
-      <rect x="71" y="20" width="20" height="16" rx="3" fill="#e94560" opacity="0.15"/>
-      <text x="81" y="32" font-size="10" fill="#e94560" font-family="serif" font-weight="700" text-anchor="middle">0</text>
-      <path d="M 81,38 L 81,120" fill="none" stroke="#e94560" stroke-width="0.7" stroke-dasharray="2,2"/>
+      <!-- Phase 0 (upstroke ~x61) -->
+      <rect x="60" y="18" width="20" height="16" rx="3" fill="#e94560" opacity="0.15"/>
+      <text x="70" y="30" font-size="10" fill="#e94560" font-family="serif" font-weight="700" text-anchor="middle">0</text>
+      <path d="M 68,34 L 62,42" fill="none" stroke="#e94560" stroke-width="0.7" stroke-dasharray="2,2"/>
 
-      <!-- Phase 1 -->
-      <rect x="85" y="54" width="20" height="16" rx="3" fill="#0f3460" opacity="0.15"/>
-      <text x="95" y="66" font-size="10" fill="#0f3460" font-family="serif" font-weight="700" text-anchor="middle">1</text>
+      <!-- Phase 1 (notch ~x67) -->
+      <rect x="70" y="48" width="20" height="16" rx="3" fill="#0f3460" opacity="0.15"/>
+      <text x="80" y="60" font-size="10" fill="#0f3460" font-family="serif" font-weight="700" text-anchor="middle">1</text>
 
-      <!-- Phase 2 -->
-      <rect x="155" y="54" width="20" height="16" rx="3" fill="#2d6a4f" opacity="0.15"/>
-      <text x="165" y="66" font-size="10" fill="#2d6a4f" font-family="serif" font-weight="700" text-anchor="middle">2</text>
+      <!-- Phase 2 (plateau) -->
+      <rect x="160" y="52" width="20" height="16" rx="3" fill="#2d6a4f" opacity="0.15"/>
+      <text x="170" y="64" font-size="10" fill="#2d6a4f" font-family="serif" font-weight="700" text-anchor="middle">2</text>
 
-      <!-- Phase 3 -->
-      <rect x="325" y="120" width="20" height="16" rx="3" fill="#8a6d00" opacity="0.15"/>
-      <text x="335" y="132" font-size="10" fill="#8a6d00" font-family="serif" font-weight="700" text-anchor="middle">3</text>
+      <!-- Phase 3 (repolarization) -->
+      <rect x="345" y="120" width="20" height="16" rx="3" fill="#8a6d00" opacity="0.15"/>
+      <text x="355" y="132" font-size="10" fill="#8a6d00" font-family="serif" font-weight="700" text-anchor="middle">3</text>
 
-      <!-- Phase 4 -->
-      <rect x="445" y="222" width="20" height="16" rx="3" fill="#5a6175" opacity="0.15"/>
-      <text x="455" y="234" font-size="10" fill="#5a6175" font-family="serif" font-weight="700" text-anchor="middle">4</text>
+      <!-- Phase 4 (rest) -->
+      <rect x="450" y="220" width="20" height="16" rx="3" fill="#5a6175" opacity="0.15"/>
+      <text x="460" y="232" font-size="10" fill="#5a6175" font-family="serif" font-weight="700" text-anchor="middle">4</text>
 
-      <!-- Current arrows/labels -->
-      <text x="72" y="145" font-size="8" fill="#e94560" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Na</tspan></text>
-      <text x="92" y="96" font-size="8" fill="#0f3460" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">to</tspan></text>
-      <text x="170" y="96" font-size="8" fill="#2d6a4f" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">CaL</tspan></text>
-      <text x="310" y="156" font-size="8" fill="#8a6d00" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Kr</tspan><tspan dy="-1">,I</tspan><tspan font-size="6" dy="1">Ks</tspan></text>
-      <text x="440" y="218" font-size="8" fill="#5a6175" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">K1</tspan></text>
+      <!-- Current arrows/labels (repositioned to new curve regions) -->
+      <text x="60" y="165" font-size="8" fill="#e94560" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Na</tspan></text>
+      <text x="96" y="62" font-size="8" fill="#0f3460" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">to</tspan></text>
+      <text x="150" y="82" font-size="8" fill="#2d6a4f" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">CaL</tspan></text>
+      <text x="330" y="162" font-size="8" fill="#8a6d00" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">Kr</tspan><tspan dy="-1">,I</tspan><tspan font-size="6" dy="1">Ks</tspan></text>
+      <text x="448" y="232" font-size="8" fill="#5a6175" font-family="serif" font-style="italic">I<tspan font-size="6" dy="1">K1</tspan></text>
     </svg>
     <div class="figure-caption">
       <span class="figure-label">Figure 3.1.</span> The five phases of the human ventricular action potential with dominant

@@ -66,7 +66,7 @@
 
   <!-- ─── Dyadic Cleft Architecture Diagram ─── -->
   <div class="figure">
-    <svg viewBox="0 0 500 310" xmlns="http://www.w3.org/2000/svg" style="max-width:450px;">
+    <svg viewBox="0 0 560 310" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
       <!-- T-tubule membrane -->
       <rect x="40" y="20" width="420" height="12" rx="2" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.2"/>
       <text x="250" y="16" font-size="10" fill="#1565c0" font-family="serif" text-anchor="middle" font-weight="600">T-tubule membrane</text>
@@ -587,8 +587,8 @@
       <!-- 3 Na⁺ in -->
       <path d="M 110,45 L 110,55" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedNCX)"/>
       <text x="110" y="40" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560" font-weight="600">3 Na⁺ IN</text>
-      <!-- 1 Ca²⁺ out -->
-      <path d="M 150,103 L 150,115" fill="none" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arrGreenNCX)"/>
+      <!-- 1 Ca²⁺ out (points up/out across membrane) -->
+      <path d="M 150,115 L 150,103" fill="none" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arrGreenNCX)"/>
       <text x="150" y="130" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#2d6a4f" font-weight="600">1 Ca²⁺ OUT</text>
       <!-- Net current -->
       <rect x="45" y="140" width="170" height="22" rx="4" fill="#e94560" opacity="0.1"/>
@@ -605,8 +605,8 @@
       <rect x="320" y="75" width="220" height="8" rx="2" fill="#eef0f8" stroke="#0f3460" stroke-width="1"/>
       <rect x="395" y="55" width="70" height="48" rx="8" fill="#0f3460" opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
       <text x="430" y="78" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#0f3460" font-weight="700">NCX</text>
-      <!-- 3 Na⁺ out -->
-      <path d="M 410,103 L 410,115" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedNCX)"/>
+      <!-- 3 Na⁺ out (points up/out across membrane) -->
+      <path d="M 410,115 L 410,103" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedNCX)"/>
       <text x="410" y="130" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="#e94560" font-weight="600">3 Na⁺ OUT</text>
       <!-- 1 Ca²⁺ in -->
       <path d="M 450,45 L 450,55" fill="none" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arrGreenNCX)"/>
@@ -696,8 +696,8 @@
       <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="700">Total Cytoplasmic Ca²⁺</text>
       <!-- Bound portion (large) -->
       <circle cx="110" cy="120" r="70" fill="#0f3460" opacity="0.15" stroke="#0f3460" stroke-width="1.5"/>
-      <!-- Free portion (tiny slice) — approximated as a thin wedge -->
-      <path d="M 110,120 L 180,120 A 70,70 0 0,0 177,99 Z" fill="#e94560" opacity="0.7" stroke="#e94560" stroke-width="1"/>
+      <!-- Free portion (~6° sliver, matching 1–2% free Ca²⁺) -->
+      <path d="M 110,120 L 180,120 A 70,70 0 0,0 179.6,112.7 Z" fill="#e94560" opacity="0.7" stroke="#e94560" stroke-width="1"/>
       <!-- Labels -->
       <text x="85" y="125" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#0f3460" font-weight="700">98–99%</text>
       <text x="85" y="140" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#0f3460">bound to buffers</text>
@@ -706,19 +706,19 @@
 
       <!-- Right: buffer partitioning -->
       <text x="380" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="700">Cytoplasmic Buffer Partitioning</text>
-      <!-- Stacked bar chart -->
-      <rect x="300" y="38" width="160" height="36" rx="0" fill="#2d6a4f" opacity="0.6"/>
-      <text x="380" y="55" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Troponin C  ~35%</text>
-      <text x="380" y="67" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white">contractile sensor</text>
+      <!-- Stacked bar chart — heights proportional to percentages (total H=108, start y=38) -->
+      <rect x="300" y="38" width="160" height="37.8" rx="0" fill="#2d6a4f" opacity="0.6"/>
+      <text x="380" y="54" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Troponin C  ~35%</text>
+      <text x="380" y="66" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="7" fill="white">contractile sensor</text>
 
-      <rect x="300" y="76" width="160" height="26" rx="0" fill="#5a6175" opacity="0.45"/>
-      <text x="380" y="93" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">ATP/Mg²⁺  ~15%</text>
+      <rect x="300" y="75.8" width="160" height="16.2" rx="0" fill="#5a6175" opacity="0.45"/>
+      <text x="380" y="87" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">ATP/Mg²⁺  ~15%</text>
 
-      <rect x="300" y="104" width="160" height="26" rx="0" fill="#0f3460" opacity="0.4"/>
-      <text x="380" y="121" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Calmodulin  ~12%</text>
+      <rect x="300" y="92.0" width="160" height="13.0" rx="0" fill="#0f3460" opacity="0.4"/>
+      <text x="380" y="101" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Calmodulin  ~12%</text>
 
-      <rect x="300" y="132" width="160" height="20" rx="0" fill="#b36b00" opacity="0.35"/>
-      <text x="380" y="146" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Other  ~38%</text>
+      <rect x="300" y="105.0" width="160" height="41.0" rx="0" fill="#b36b00" opacity="0.35"/>
+      <text x="380" y="129" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8" fill="white" font-weight="600">Other  ~38%</text>
 
       <!-- SR buffer annotation -->
       <rect x="300" y="165" width="160" height="36" rx="4" fill="#fff3e0" stroke="#b36b00" stroke-width="1"/>
