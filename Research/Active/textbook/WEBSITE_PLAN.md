@@ -1,5 +1,7 @@
 # Textbook Website Plan — Cardiac Computational Modeling
 
+> ⚠️ **HISTORICAL (completed) — build direction is now REVERSED.** This plan describes the original one-time build that *generated* the website by parsing the single-file `Bidomain_Textbook.html`. Since 2026-07-02 the split `website/chapters/*.html` are the **canonical source** (edited directly), and `Bidomain_Textbook.html` is archived/stale. Do not "regenerate the website from the monolithic file" — that would overwrite current content with old content. Kept for reference only.
+
 ## Overview
 
 Transform the single-file `Bidomain_Textbook.html` into a polished, multi-page interactive website with modern textbook UI conventions. The site will be **fully static** (no server needed) — just open `index.html` in a browser.

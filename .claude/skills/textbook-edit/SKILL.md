@@ -11,11 +11,17 @@ Write or revise content in the cardiac computational modeling textbook.
 The user wants to edit: $ARGUMENTS
 
 ## Source files
-- **HTML source**: `Research/Active/textbook/Bidomain_Textbook.html` (~12,300 lines, single file)
+
+**Canonical source = the split website chapters** (since 2026-07-02). Edit the per-chapter file, NOT any single-file HTML.
+
+- **HTML source**: `Research/Active/textbook/website/chapters/chN.html` — one file per chapter (`ch1.html`…`ch20.html`), plus `appendix-a.html`…`appendix-d.html` and `references.html`. Each is small; open the whole chapter file.
+- **Rendered whole-book**: `Research/Active/textbook/Cardiac_Textbook_Website.html` (generated snapshot — do NOT hand-edit).
 - **Style guide**: `Research/Active/textbook/STYLE_GUIDE.md`
-- **Chapter index**: `Research/Active/textbook/INDEX.md` (line numbers, page counts, equation registry)
+- **Chapter index**: `Research/Active/textbook/INDEX.md` (section map, equation registry)
 - **Edit history**: `Research/Active/textbook/CHANGELOG.md`
 - **Audits**: `Research/Active/textbook/audits/` (chapter-by-chapter quality reviews)
+
+> ⚠️ The former single-file source `Bidomain_Textbook.html` is **ARCHIVED** at `Research/Active/textbook/_archive/monolithic_pre-fork_2026-07-02/` — it is stale (old Part III with the deleted Schur/FGMRES chapters, only 2 appendices). Never edit it.
 
 ## Before writing anything
 
@@ -27,9 +33,9 @@ The user wants to edit: $ARGUMENTS
 
 2. **Read CHANGELOG.md** — check what's already been done. Don't redo work.
 
-3. **Read INDEX.md** — find exact line numbers for the chapter you're editing. Jump directly to the relevant section using line offsets — do NOT read the entire 12,300-line HTML file.
+3. **Read INDEX.md** — locate the chapter and its section/equation registry, then open the single chapter file `website/chapters/chN.html` (small — read it whole; no line-offset juggling).
 
-4. **Check relevant audits** — if editing chapters 12-15, read `audits/bidomain_chapter_audit.md` for known issues. Chapters 7-11: `monodomain_chapter_audit.md`. LBM chapters: `lbm_chapter_audit.md`.
+4. **Check relevant audits** — `audits/MONODOMAIN_CHAPTER_AUDIT.md` (Ch 7–11), `audits/LBM_CHAPTER_AUDIT.md` (Ch 18–20), `audits/READER_B_AUDIT.md` (accessibility). `audits/BIDOMAIN_CHAPTER_AUDIT.md` (Ch 12–15) is ⚠️ PRE-13b-rewrite and largely stale — confirm against the current chapter text before acting on it.
 
 ## Writing rules
 
@@ -50,20 +56,21 @@ The user wants to edit: $ARGUMENTS
 - When citing research, use the citation key from `Research/INDEX.md` and note the paper title inline
 
 ### Editing large sections
-For replacements larger than 50 lines:
-1. Write the new content to a temporary file (e.g., `/tmp/chapter_12_section_3.html`)
-2. Use a Python splice script to replace the line range:
+Chapter files are small (one chapter each), so most edits use the Edit tool directly. For a full-section rewrite:
+1. Write the new content to a temp file (e.g., `/tmp/ch12_sec3.html`)
+2. Splice it into the chapter file:
 ```python
-# Read original, splice in new content, write back
-lines = open('Bidomain_Textbook.html').readlines()
-new_content = open('/tmp/chapter_12_section_3.html').readlines()
+# Read chapter, splice in new content, write back
+path = 'Research/Active/textbook/website/chapters/ch12.html'
+lines = open(path).readlines()
+new_content = open('/tmp/ch12_sec3.html').readlines()
 lines[start:end] = new_content
-open('Bidomain_Textbook.html', 'w').writelines(lines)
+open(path, 'w').writelines(lines)
 ```
-3. This avoids Edit tool failures on large non-unique blocks
+3. This avoids Edit-tool failures on large non-unique blocks
 
 ## After editing
 
 1. **Update CHANGELOG.md** — add a dated entry describing what changed, design decisions made, and any issues resolved
 2. **Update INDEX.md** — if line numbers shifted, update the chapter line ranges. If equations were added/renumbered, update the equation registry.
-3. **Compile the PDF** — use `/textbook-compile` to build and verify
+3. **Rebuild deliverables** — use `/textbook-compile`. The multi-page site (`website/index.html` + `app.js`) loads `chapters/` live, so edits appear there immediately; the bundled `Cardiac_Textbook_Website.html` and the PDF are generated snapshots that must be rebuilt.

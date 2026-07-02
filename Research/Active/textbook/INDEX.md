@@ -1,9 +1,11 @@
 # Cardiac Computational Modeling — Document Index
 
-**Source**: `Bidomain_Textbook.html` (~12,300 lines)
-**Output**: `Cardiac_Computational_Modeling.pdf`
+**Canonical source** (edit here): `website/chapters/*.html` (split per-chapter files) + `website/toc.json`. Since 2026-07-02.
+**Rendered whole-book**: `Cardiac_Textbook_Website.html` (generated snapshot — open in a browser).
 **Standalone LBM**: `LBM_Textbook_Part_IV.pdf`
-**Last updated**: 2026-03-08 (session 14, four-appendix restructure: A trimmed, B LA new, C NumAn new, D PyTorch renumbered)
+**PDF**: 🚧 build blocked — `html_to_pdf_v3.py` is missing from the repo (see `/textbook-compile`); the former PDFs are archived.
+**⚠️ Archived**: the old single-file `Bidomain_Textbook.html` + its PDFs → `_archive/monolithic_pre-fork_2026-07-02/` (STALE — deleted Part III Schur chapters, only 2 appendices; do not edit or ship).
+**Last updated**: 2026-07-02 (canonical source switched to the website chapters; monolithic file archived after the two-copy fork was discovered and the website confirmed newer)
 **Tracking docs** (this folder): [`README.md`](README.md) (status, criteria), [`KNOWLEDGE.md`](KNOWLEDGE.md) (audit backlog), [`IDEALOG.md`](IDEALOG.md) — resume with `/research-resume textbook`
 
 ## Part I — Single Cell Dynamics

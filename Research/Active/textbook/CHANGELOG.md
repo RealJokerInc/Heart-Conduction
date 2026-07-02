@@ -1,6 +1,17 @@
 # Bidomain Textbook — Changelog
 
-All major edits to `bidomain_textbook.html`, newest first.
+All major edits, newest first. **Canonical source since 2026-07-02: `website/chapters/*.html`** (the older entries below that say "bidomain_textbook.html" were in practice applied to the split website chapters — that divergence is what the 2026-07-02 entry resolves).
+
+## 2026-07-02 — Canonical source switched to website; monolithic file archived
+
+**Discovery.** The book had forked into two divergent copies. A chapter-by-chapter comparison (monolithic `Bidomain_Textbook.html` vs split `website/chapters/*.html`) found: Parts I & IV byte-identical; Part II identical except Ch 8 appendix cross-refs (split newer); **Part III and the appendices decisively newer in the split** — the monolithic file still carried the session-13b-deleted Ch 16 "Schur Complement" + Ch 17 "Roadmap" (fictional solver architecture) and only 2 appendices vs the split's four (A/B/C/D). All post-Feb rewrites had gone into the website source; the single file was orphaned.
+
+**Actions.**
+- Archived `Bidomain_Textbook.html`, `Bidomain_Textbook.pdf`, `Cardiac_Computational_Modeling.pdf` → `_archive/monolithic_pre-fork_2026-07-02/` (+ ARCHIVE_README).
+- Established `website/chapters/*.html` + `website/toc.json` as canonical source; `Cardiac_Textbook_Website.html` as the whole-book render.
+- Repointed `/textbook-edit` and `/textbook-compile` skills and the tracking docs (README, INDEX, KNOWLEDGE, IDEALOG, MASTER).
+- Flagged: `html_to_pdf_v3.py` is missing (no working PDF build); INDEX overstates Part IV (Ch 18 "Quadrature First" / Ch 19 "Ω^NR" rewrites are not in the source).
+- No textbook *content* changed — structure/plumbing only.
 
 ## 2026-03-09 (session 15) — Appendix C Complete Rewrite + B Visual Overhaul
 

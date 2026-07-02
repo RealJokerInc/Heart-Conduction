@@ -9,19 +9,21 @@ Is the *Cardiac Computational Modeling* textbook complete, correct against the e
 The textbook is the single narrative documentation of the whole simulation stack (single-cell ionic → monodomain → bidomain → LBM). It doubles as a teaching artifact and grant/ResearchStatement material. Its usefulness depends on two things: equations that match the actual engine code, and writing accessible enough for the target readers. Chapter audits (2026-03-08) found the parts range from 1.9/5 (Part III, since rewritten) to 3.8/5 (Part II) — so there is a concrete, bounded backlog to close.
 
 ## Textbook Files (this folder)
-**Migrated here 2026-07-02** from `Research/textbook/` — the full textbook source now lives alongside this question's tracking docs (README/KNOWLEDGE/IDEALOG). The `/textbook-edit` and `/textbook-compile` skills and `CLAUDE.md` point here. Paths below are relative to this folder.
+**Migrated here 2026-07-02** from `Research/textbook/`, then (same day) the **canonical source was switched to the split website chapters** after discovering the book had forked into two divergent copies. A chapter-by-chapter content comparison confirmed the split `website/chapters/` source is the up-to-date one; the old single-file `Bidomain_Textbook.html` was **archived** (it still had the deleted Part III Schur/FGMRES chapters and only 2 appendices). The `/textbook-edit` and `/textbook-compile` skills were repointed to the website source. Paths below are relative to this folder.
 
 | Asset | File |
 |-------|------|
-| HTML source (~12,300 lines) | `Bidomain_Textbook.html` |
-| Rendered PDF | `Cardiac_Computational_Modeling.pdf` |
+| **Canonical source** (edit here) | `website/chapters/*.html` (per-chapter: `ch1`–`ch20`, `appendix-a`–`d`, `references`) + `website/toc.json` |
+| Rendered whole-book (snapshot) | `Cardiac_Textbook_Website.html` + `website/` (multi-page site: `index.html` + `app.js`) |
 | Standalone Part IV PDF | `LBM_Textbook_Part_IV.pdf` |
-| Website build | `Cardiac_Textbook_Website.html` + `website/` |
 | Chapter index / registry | `INDEX.md` |
 | Changelog (edits, newest first) | `CHANGELOG.md` |
 | Style rules | `STYLE_GUIDE.md`, `SVG_FIGURES_SKILL.md` |
 | Chapter audits (backlog source) | `audits/` |
 | Reference implementations | `code_examples/` |
+| ⚠️ **Archived (stale — do not edit/ship)** | `_archive/monolithic_pre-fork_2026-07-02/` — old `Bidomain_Textbook.html` + `Bidomain_Textbook.pdf` + `Cardiac_Computational_Modeling.pdf` |
+
+> **PDF status:** 🚧 blocked — the build script `html_to_pdf_v3.py` is missing from the repo, so there is no working PDF pipeline until it is rebuilt against the website source (see `/textbook-compile`).
 
 ## Engines
 Documents all three engines; equations are verified against their code.
@@ -44,7 +46,8 @@ Documents all three engines; equations are verified against their code.
 - [ ] **Part III re-audit** — confirm the session-13b rewrite (Ch 12–17 → 12–15) actually closed the 1.9/5 issues; the existing Bidomain audit predates the rewrite
 - [ ] **Reader-B accessibility** — provide a non-code reading path for the L5 implementation layer (inaccessible to no-programming readers)
 - [ ] **Known content gaps** — Ch 4 SVGs → literature images; document engine-limited topics (Ch 6 chloride currents, Ch 18 MRT D3Q7, Ch 20 bidomain LBM) as "described, not yet in engine"
-- [ ] **Rebuild** PDF + website from current HTML after edits land (`/textbook-compile`)
+- [ ] **Rebuild the PDF pipeline** — `html_to_pdf_v3.py` is missing from the repo; write a new builder that assembles `website/chapters/*.html` (in `toc.json` order) → single print HTML → Playwright → PDF. Then rebuild PDF + website after edits land (`/textbook-compile`).
+- [ ] **Reconcile tracking-doc claims vs content** — INDEX.md says Ch 18 "Quadrature First" and Ch 19 "Ω^NR" rewrites are done, but the comparison found neither is present in the current source; verify what actually shipped.
 
 ## Sub-Questions
 
