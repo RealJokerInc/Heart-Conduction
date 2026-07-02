@@ -5,6 +5,21 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**Deep code audit — math integrity + API — 2026-07-02.** After pushing the API-consistency work to
+`main`, ran a 6-lane agentic walkthrough of ALL of cardiac_core with per-lane NUMERICAL verification →
+[CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md). **0 blockers / 4 majors / ~22 minors.** Default
+paths + all Phase-0–5 hardening + the 4 ionic models verified SOUND (cross-derivative fix confirmed;
+time-stepper orders exact CN=2.00/RK4=4.01; LBM Chapman–Enskog + `mrt_wall` + masked-bounce correct; CV
+matches ref 54.14/54.35; D_eff=9.72e-4 + Cm-trap correct). The 4 majors: **mono Chebyshev** (Gershgorin
+bounds on raw A not preconditioned D⁻¹A → 94 mV wrong at a stiff config, opt-in solver; bidomain already
+has this fix), **mono FFT** (continuum −k² vs discrete 5-pt eigenvalue, opt-in), **bidomain `step()`**
+AttributeError (pre-existing, untested public method), and — most serious — **bidomain spatially-varying
+anisotropy** breaks elliptic-operator symmetry → CG-family solvers silently return **~13% wrong phi_e**
+(per-node fiber fields; the uniform-angle public API is SAFE). M1+M3 orchestrator-reproduced; M2/M4 on the
+auditors' numerical evidence. **Audit only — NO source changed**; findings triaged for later (fix priority
+P1–P4 in the doc). Commit `619460c`. Recurring weak spot = the **FDM cross-derivative** (M4 is the same
+family as the deferred C7 / boundary anisotropy).
+
 **API-consistency hardening + contract-matrix harness SHIPPED (2026-07-01).** The two post-ship boundary
 gaps turned out to be a *class* of API-surface fragility. Ran a 4-lens adversarial audit
 ([API_CONSISTENCY_AUDIT.md](./API_CONSISTENCY_AUDIT.md): 7 HIGH/8 MED/6 LOW), **audited the fix PLAN to
@@ -37,6 +52,7 @@ DONE this session (committed to `main`): V5.5 Cm-correct fork (Phases 0–2); ca
 
 ## Next Step
 The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 foundation cleanup + LBM boundary modes are all SHIPPED (see Current Direction). RESOLVED this session: `create_cardiac_mesh` chi firewall-bypass (P1 cluster #1 — D_xx RAW convention + default D=1.4 + band guard); boundary-mode API→engine gap for LBM (P3 — `lbm(boundary=, alpha=)`); FEM/TriangularMesh removal (P2). Remaining open threads:
+- **Code-audit fix backlog (2026-07-02, [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md), NOT yet actioned):** P1 = bidomain M4 (symmetrize the FDM cross-term + guard CG on non-SPD — silent ~13% phi_e error on per-node fiber fields); P2 = mono Chebyshev M1 (port bidomain's preconditioned-Gershgorin + fix `set_eigenvalue_bounds`) + mono FFT M2 (discrete 5-pt eigenvalue) + DCT/FFT precondition guard; P3 = bidomain `step()` M3, degenerate-input NaN guards (`activation_time`/`dominant_frequency`/`Grid` 1-D/empty-result shape), BGK stability gate, `dt or`→`is not None`, declarative ionic-instance-leak; P4 = docstrings + `add_stimulus` amplitude + hole-cell zeroing + LUT kink + conductivity guards + PCG-threshold unify + LBM `save_every` cadence.
 - **Form-A→B convergence** (convert monodomain diffusion in `_monodomain`, delete `ConductivityConfig.for_monodomain()`) — confirmed-but-deferred.
 - **Deferred audit backlog** (in PLAN.md "Findings Coverage"): Research/ doc reconciliation (#9/#10/#11/#24/#25); wiring the orphaned LBM `dirichlet`/`absorbing` as selectable modes (#37, needs a bc-value); ionic-registry parity (#6) + the `paci→PHAS13` alias check (#12); the FDM boundary-Dxy Neumann (#14) + bidomain bath≠insulated assert (#39); the 12 completeness gaps (analysis.py, io round-trip, LBM masked grids, device/dtype, second mesh loader).
 - ~~**Monodomain/Bidomain boundary-mode API exposure**~~ **DONE (2026-07-01, Phase-4/C6):** mono `stencil`/`boundary_mode` + bidomain `stencil` now surfaced by the factories. (A fully-unified cross-engine boundary *concept* using bidomain `BoundarySpec` as template is still a future nicety, not blocking.)
@@ -54,6 +70,25 @@ The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 f
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-07-02 Session — deep code audit (math integrity + API)
+**Worked on:** after pushing the API-consistency work to `main` (fast-forward, `abc54db`→`94a2689`), the
+user asked for further rounds of audit over ALL of cardiac_core — math integrity per engine, then the API
+— as an agentic walkthrough.
+**Accomplished:** 6 parallel deep auditors (mono math · bidomain math · LBM math · ionic+conductivity ·
+API factories · run/io/analysis/mesh), each verifying NUMERICALLY (not trusting the suite). Verdict **0
+blockers / 4 majors / ~22 minors**, written up in [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md)
+(committed `619460c`). Orchestrator independently reproduced M1 (Chebyshev 94 mV wrong at stiff effD=0.5/
+dt=0.05, benign at physiological) and M3 (bidomain `step()` AttributeError). Verified SOUND: default-path
+math on all 3 engines, the prior cross-derivative fix (2·Dxy exact), time-stepper orders, reaction Cm,
+LBM Chapman–Enskog + the new `mrt_wall`/masked-bounce, all 4 ionic models (stable rest + physiological AP,
+correct APD ordering), the conductivity firewall, analysis math, AND every Phase-0–5 change. 4 majors:
+mono Chebyshev (opt-in, wrong Gershgorin operator), mono FFT (opt-in, continuum vs discrete eigenvalue),
+bidomain `step()` (pre-existing untested), bidomain per-node-anisotropy non-symmetric elliptic (silent
+~13% phi_e). **No source modified** — findings triaged only.
+**Next:** if the user wants, action the P1–P4 fix backlog (Next Step above), starting with M4 (symmetrize
+the bidomain FDM cross-term). Otherwise the audit stands as a recorded triage. Could also do further audit
+rounds (e.g. adversarial re-verification of M2/M4, or a 3D/thickness-path sweep).
 
 ### 2026-07-01 (exec): API-consistency hardening EXECUTED — 6 phases, contract-first harness, 217/2
 Executed the audit-converged PLAN phase-by-phase, each test+golden-gated and committed. **Contract-first

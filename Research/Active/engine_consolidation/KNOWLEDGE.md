@@ -23,6 +23,14 @@
 > xfailed** (C2 oblique-LBM capability + C7 boundary-Dxy truncation, both documented-deferred / Audit
 > #46); goldens bit-identical every phase. See "API-consistency hardening" section below.
 
+> **AUDITED 2026-07-02 — deep code audit (math integrity + API), full report in
+> [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md).** 6-lane agentic walkthrough with per-lane
+> NUMERICAL verification. **0 blockers / 4 majors / ~22 minors — no source modified (triage only).**
+> Default paths + all Phase-0–5 hardening + the 4 ionic models verified SOUND. The 4 majors are 2
+> opt-in-solver bugs (mono Chebyshev wrong-Gershgorin, mono FFT continuum-vs-discrete eigenvalue), 1
+> pre-existing untested method (bidomain `step()`), and 1 silent-wrong-result (bidomain per-node-fiber
+> anisotropy breaks elliptic symmetry → ~13% phi_e error; uniform-angle API safe). See "Code audit" below.
+
 ## Current Understanding
 
 The question has TWO layers (see "North-Star" below): the **foundation** is code-consolidation (unify the engines' shared code in `cardiac_core/`); the **goal on top** is a conversational simulation builder for non-coders (unified API + LLM wrapper). Build order is now vocabulary-first → unified API.
@@ -150,6 +158,37 @@ last field (namedtuple defaults right-align). Final state: 20 `landed` + 2 `defe
 **Trap avoided (an execution catch the audit predicted):** an `EPI` default on the shared ionic builder
 would have flipped the bidomain+LBM goldens (whole codebase defaults ENDO); the round-2 audit flagged it
 pre-execution → shipped with `ENDO`.
+
+## Code audit — math integrity + API — 2026-07-02
+
+Full-surface numerical audit (6 parallel auditors, each verifying with runnable checks, not the suite).
+Full report + verification scripts: [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md). **Triage only —
+no source changed.**
+
+**Verified SOUND (numerically):** default-path math on all 3 engines; the prior mono FDM cross-derivative
+fix (`cxy=1/(2·dx·dy)` → exactly `2·Dxy`, matches bidomain); time-stepper orders (CN 2.00, RK4 4.01, BDF2
+2.05); reaction Cm-scaling (V5.5); bidomain decoupled-GS full coupling (coefficient 1, not θ), SPD
+stencils, singular-Neumann nullspace pinning, 3-tier elliptic (spectral↔PCG to 1e-12), CV 54.14 vs 54.35;
+LBM Chapman–Enskog D-recovery (BGK + MRT per-axis) + the new `mrt_wall`/masked-bounce; all 4 ionic models
+(stable rest + physiological AP, correct APD ordering, Rush–Larsen unconditionally stable, LUT <1e-6);
+conductivity D_eff=9.72e-4 + Form-A/B Cm-trap; analysis math (CV/APD/restitution/phase-singularity); and
+every Phase-0–5 change.
+
+**The 4 MAJORS (fix priority in the report; NOT yet actioned):**
+| ID | Where | Defect | Reachability |
+|----|-------|--------|--------------|
+| **M4** | `_bidomain/.../fdm.py:506-534` | per-node fiber `D_xy` → non-symmetric elliptic operator → CG silently returns **~13% wrong phi_e** | per-node fiber fields (legacy `mesh=` fiber map / `BidomainConductivity(theta=field)`); **uniform-angle API SAFE** |
+| **M1** | `_monodomain/.../linear_solver/chebyshev.py:146` | Gershgorin bounds on raw `A` not preconditioned `D⁻¹A` → 94 mV wrong at stiff `D·dt/dx²` | opt-in `linear_solver='chebyshev'`; **bidomain already has the fix** (cross-engine drift) |
+| **M2** | `_monodomain/.../linear_solver/fft.py:299` | inverts continuum `−k²` not the discrete 5-pt eigenvalue (~10%, grows w/ freq) | opt-in periodic spectral (DCT/Neumann is correct) |
+| **M3** | `api.py:232-237` | `CardiacSimulation.step()` → AttributeError on bidomain (no `step()`; dead if/else) | live public method, pre-existing, untested |
+
+**Cross-cutting themes:** (1) the fragile math lives in **opt-in solvers**; the default PCG path is sound.
+(2) The **FDM cross-derivative** is the recurring weak spot (M4 = same family as the deferred C7 / boundary
+anisotropy). (3) A **crash-instead-of-NaN** family on degenerate 0/1-element inputs (`activation_time`,
+`dominant_frequency`, `Grid` 1-D/single-cell, empty-result shape). (4) **Cross-engine drift** from the
+copy-vendoring (Chebyshev fix in bidomain-not-mono; `step()` in mono/lbm-not-bidomain; `save_every`
+accumulator vs quantized; PCG breakdown thresholds). The ~22 minors (docstrings, guards, footguns) are
+catalogued in the report.
 
 ## North-Star: lab-facing simulation platform (BOTH goals SHIPPED — see the two "SHIPPED" sections above)
 
