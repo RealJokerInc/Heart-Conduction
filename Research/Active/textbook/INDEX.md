@@ -42,9 +42,9 @@
 
 | Ch | Title | Sections | Style Status |
 |----|-------|----------|-------------|
-| 18 | The Lattice-Boltzmann Method: From Kinetic Theory to Computation | 18.1–18.5 | **Rewritten v4.0** — "Quadrature First" quadrature, eqs 18.1–18.41 + 18.7a |
-| 19 | Lattice-Boltzmann Methods for Monodomain | 19.1–19.8 | **Rewritten v2.1** — Ω^NR/Ω^R notation, expanded BC section (19.5.1–19.5.5); eqs (19.1)–(19.11) + (19.10b) |
-| 20 | Lattice-Boltzmann Methods for Bidomain | 20.1–20.5 | Dual-lattice, pseudo-time, hybrid approaches; eqs (20.1)–(20.4) |
+| 18 | The Lattice-Boltzmann Method: From Kinetic Theory to Computation | 18.1–18.5 | Rewritten — equilibrium→Gauss–Hermite-quadrature derivation; eqs **(18.1)–(18.41) now gapless-ascending** + (18.7a). Phase-4 (2026-07-02): 30-sec preview box + Fig 18.2 (Maxwell–Boltzmann bell curve). *(The earlier "Quadrature First v4.0" label was not literally in the source — corrected.)* |
+| 19 | Lattice-Boltzmann Methods for Monodomain | 19.1–19.8 | Rewritten — Ω^NR/Ω^R notation **(confirmed present in §§19.2–19.4)**, expanded BC (19.5.1–19.5.5); eqs (19.1)–(19.11) + (19.10b). Phase-4: Fig 19.1 (bounce-back). |
+| 20 | Lattice-Boltzmann Methods for Bidomain | 20.1–20.5 | Dual-lattice, pseudo-time, hybrid; eqs (20.1)–(20.5). Phase-4: Fig 20.1 (dual-lattice) + a real 5-node pseudo-time worked example (§20.4, replacing the compute-nothing outline). |
 
 ## Appendices
 

@@ -12,10 +12,11 @@ Build the cardiac computational modeling textbook deliverables from the **websit
 > `Bidomain_Textbook.html` is **archived** (`_archive/monolithic_pre-fork_2026-07-02/`) and must not
 > be built — it is stale (deleted Part III Schur chapters, only 2 appendices).
 
-> 🚧 **The PDF build is currently BLOCKED.** The build script `html_to_pdf_v3.py` that this skill
-> used to invoke is **missing from the repo** (it built the now-archived monolithic file). Until it
-> is rebuilt against the website source, there is **no working PDF pipeline**. See "Rebuilding the
-> PDF pipeline" below. The multi-page website itself works today with no build step.
+> ✅ **PDF build restored (2026-07-02).** The build script is now `website/build/html_to_pdf.py` — it
+> assembles `website/chapters/*` in `toc.json` order and renders via Playwright headless Chromium after
+> MathJax typesets. Requires the `playwright` package + Chromium (already installed in the
+> `heart-conduction` env). The old `html_to_pdf_v3.py` (built the archived monolithic file) is gone; do
+> not use it.
 
 ## Artifacts
 
@@ -23,7 +24,7 @@ Build the cardiac computational modeling textbook deliverables from the **websit
 |----------|-------------------|--------|
 | Multi-page site — `website/index.html` + `app.js` + `toc.json` | Loads `chapters/*.html` live in the browser; **no build step** | ✅ Works; reflects edits immediately |
 | Bundled whole-book HTML — `Cardiac_Textbook_Website.html` | Generated snapshot: all chapters inlined into `window.__CHAPTERS__` | ⚠️ Regenerate after edits (generator not in repo — snapshot only) |
-| PDF — `Cardiac_Computational_Modeling.pdf` | Playwright print of the assembled HTML | 🚧 Blocked — build script missing |
+| PDF — `Cardiac_Computational_Modeling.pdf` | `website/build/html_to_pdf.py` → Playwright print | ✅ Working (195 pp, A4) |
 
 ## Preview the site (works now)
 
@@ -32,25 +33,35 @@ Build the cardiac computational modeling textbook deliverables from the **websit
 xdg-open Research/Active/textbook/website/index.html
 ```
 
-## Rebuilding the PDF pipeline (the blocker)
+## Building the PDF
 
-The intended pipeline, adapted to the split source:
+`conda` is not on the non-interactive PATH — use the env python directly:
 
+```bash
+PY=/home/norepinephrine/.conda/envs/heart-conduction/bin/python
+$PY Research/Active/textbook/website/build/html_to_pdf.py \
+   -o Research/Active/textbook/Cardiac_Computational_Modeling.pdf
 ```
-website/chapters/*.html   →  assemble in toc.json order  →  single print HTML
-   →  MathJax (local)  →  Playwright (headless Chrome, wait for JS)  →  PDF
+
+The script reads `website/toc.json` for order, stitches `website/chapters/*.html` (parts +
+chapters + appendices) into one print HTML with the MathJax `tex-svg` head + a print stylesheet
+(neutralizes the sidebar/topbar chrome, adds page breaks), then renders via Playwright, waiting on a
+`window.__mathjax_done__` flag before `page.pdf()`.
+
+One-time dependencies (already installed in the env):
+
+```bash
+$PY -m pip install playwright && $PY -m playwright install chromium
 ```
 
-To restore it, write a new `html_to_pdf.py` that:
-1. Reads `Research/Active/textbook/website/toc.json` for chapter order.
-2. Concatenates the `website/chapters/*.html` fragments into one HTML doc with the print
-   `<style>`/MathJax `<head>` (crib the head/CSS from `Cardiac_Textbook_Website.html` or
-   `website/standalone.html`).
-3. Renders with Playwright headless Chrome, waiting for MathJax typeset to finish, then `page.pdf(...)`.
-4. Writes `Research/Active/textbook/Cardiac_Computational_Modeling.pdf`.
+To just assemble the combined HTML and skip Playwright (verify the source stitches, or produce a
+standalone whole-book file), add `--html-only`:
 
-Alternatively, render the already-bundled `Cardiac_Textbook_Website.html` directly with Playwright
-(it renders chapters via JS) — but confirm its print CSS and that JS has settled before printing.
+```bash
+$PY Research/Active/textbook/website/build/html_to_pdf.py --html-only -o /tmp/book.html
+```
+
+Note: the build fetches MathJax from `cdn.jsdelivr.net`, so it needs network access at render time.
 
 ## Verify the output (once a PDF exists)
 
@@ -79,7 +90,8 @@ Post-build checks:
 
 | Issue | Fix |
 |-------|-----|
-| `html_to_pdf_v3.py` not found | Expected — it's gone. Build a new `html_to_pdf.py` (see above). |
+| `html_to_pdf_v3.py` not found | Expected — replaced by `website/build/html_to_pdf.py`. Use that. |
+| `ModuleNotFoundError: playwright` | `$PY -m pip install playwright && $PY -m playwright install chromium` |
 | PDF shows "Schur Complement" Ch 16/17 | You built the archived monolithic file. Build from `website/` instead. |
 | MathJax not rendering | Ensure the local MathJax `<script>` path resolves in the assembled HTML. |
 | Playwright timeout | MathJax on the full book can take 30s+; increase the wait. |
