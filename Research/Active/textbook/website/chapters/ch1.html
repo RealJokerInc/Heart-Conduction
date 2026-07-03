@@ -101,6 +101,37 @@
 
   <div class="insight insight-intuition">
     <p>
+      <strong>Worked example — the potassium battery.</strong> Where does $E_{\text{K}} \approx -88$ mV
+      actually come from? It is the <em>Nernst potential</em>: the voltage at which the electrical pull on
+      K$^+$ exactly cancels its tendency to diffuse down the concentration gradient. For a single ionic
+      species,
+    </p>
+    <p style="text-align:center;">
+      $E_{\text{K}} = \dfrac{RT}{zF}\,\ln\!\dfrac{[\text{K}^+]_o}{[\text{K}^+]_i}$
+    </p>
+    <p>
+      At body temperature $T = 310$ K (37 °C), with $R = 8.314\ \text{J·mol}^{-1}\text{K}^{-1}$,
+      $F = 96485\ \text{C·mol}^{-1}$, and valence $z = +1$, the prefactor is
+    </p>
+    <p>
+      $\dfrac{RT}{zF} = \dfrac{(8.314)(310)}{96485} = 0.0267\ \text{V} = 26.7\ \text{mV}.$
+    </p>
+    <p>
+      Plugging in intracellular $[\text{K}^+]_i = 138$ mM and extracellular $[\text{K}^+]_o = 4$ mM:
+    </p>
+    <p>
+      $E_{\text{K}} = 26.7 \times \ln\!\dfrac{4}{138} = 26.7 \times \ln(0.0290) = 26.7 \times (-3.541) = -94.6\ \text{mV}.$
+    </p>
+    <p>
+      So the potassium battery sits near $-95$ mV — even more negative than the cell's resting potential.
+      (Textbooks quote anywhere from $-88$ to $-95$ mV depending on the exact concentrations assumed; either
+      way, the roughly $150$ mV climb up to $E_{\text{Na}} \approx +65$ mV is the energy every action
+      potential spends.)
+    </p>
+  </div>
+
+  <div class="insight insight-intuition">
+    <p>
       Think of each ion channel as a door with a bouncer who checks the voltage. At rest ($V_m \approx -85$ mV),
       the Na$^+$ doors are nearly all shut and the K$^+$ doors are mostly open. The cell sits quietly at a
       voltage close to $E_{\text{K}}$. But if something pushes $V_m$ above about $-55$ mV, the Na$^+$ doors

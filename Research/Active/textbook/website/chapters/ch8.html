@@ -9,6 +9,26 @@
     discrete system.
   </div>
 
+  <div class="insight" style="background: var(--insight-green-bg); border: 1px solid var(--insight-green-border); border-left: 4px solid #0f3460;">
+    <p style="font-weight:700; color:#0f3460; margin-bottom:0.5em;">🧭 How to read this chapter</p>
+    <p style="margin-bottom:0.5em;">
+      This is the longest chapter in the book — three discretization methods plus boundary
+      conditions. You do not need all of it in one sitting. Route by what you are building:
+    </p>
+    <ul style="margin-top:0; margin-bottom:0;">
+      <li><strong>Implementing FDM?</strong> Read §8.1 (what discretization means physically) and
+      §8.2 (the method and its stencils), then §8.7 for boundary conditions.</li>
+      <li><strong>Adding FEM?</strong> Go to §8.3 (weak form, mass and stiffness matrices).</li>
+      <li><strong>Using FVM?</strong> Go to §8.4 (flux balance across control volumes).</li>
+      <li><strong>Not sure which method to pick?</strong> §8.5 compares all three in one
+      decision table.</li>
+      <li><strong>Wiring a method into the full solver?</strong> §8.6 assembles the pieces, from
+      the continuous PDE to the matrix system.</li>
+      <li><strong>Boundary conditions</strong> (Neumann, Dirichlet) live in §8.7 and apply to all
+      three methods.</li>
+    </ul>
+  </div>
+
 
     <h3>8.1 &ensp; Spatial Discretization: What It Means Physically</h3>
 

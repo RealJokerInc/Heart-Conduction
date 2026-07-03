@@ -155,7 +155,7 @@
   </p>
 
   <p>
-    This is equation (18.27) with the scalar field $\phi$ replaced by the transmembrane potential $V_m$,
+    This is equation (18.18) with the scalar field $\phi$ replaced by the transmembrane potential $V_m$,
     and no advection ($\mathbf{u} = 0$). The weights $w_i$ are the Gauss-Hermite quadrature weights from
     Section 18.4: for D2Q5, $w_0 = 1/3$ and $w_{1,2,3,4} = 1/6$.
   </p>
@@ -163,7 +163,7 @@
   <p>
     The BGK collision with ionic source combines two physically distinct operations. We define each as a
     <strong>rate</strong> (per unit time), consistent with the continuous collision operator $\Omega(f)$
-    from equation (18.11). The <strong>non-reactive collision rate</strong> $\Omega_i^{NR}$ is the BGK
+    from equation (18.9). The <strong>non-reactive collision rate</strong> $\Omega_i^{NR}$ is the BGK
     relaxation toward equilibrium:
   </p>
 
@@ -172,13 +172,13 @@
   </p>
 
   <p>
-    This is a direct transcription of equation (18.11) with $f^{\text{eq}} = w_i V_m$. Physically,
+    This is a direct transcription of equation (18.9) with $f^{\text{eq}} = w_i V_m$. Physically,
     $\Omega_i^{NR}$ drives each distribution toward the local equilibrium at rate $1/\tau$. When
     $f_i > w_i V_m$ (more particles than equilibrium in direction $i$), the rate is negative &mdash;
     particles are removed. When $f_i < w_i V_m$, particles are added. This redistribution of particles
     among directions <em>is</em> diffusion: non-equilibrium structure in the distribution function
     corresponds to flux, and relaxing that structure spreads voltage through tissue. The $\tau$&ndash;$D$
-    relationship (equation 18.26) quantifies exactly how the relaxation rate maps to the macroscopic
+    relationship (equation 18.28) quantifies exactly how the relaxation rate maps to the macroscopic
     diffusion coefficient.
   </p>
 
@@ -222,7 +222,7 @@
   </p>
 
   <p>
-    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 18.26):
+    The relaxation time $\tau$ is set by the $\tau$-$D$ relationship (equation 18.28):
   </p>
 
   <p style="text-align:center;">
@@ -290,7 +290,7 @@
   </p>
 
   <p>
-    Start from the scalar $\tau$-$D$ relationship (equation 18.24), which Chapman-Enskog analysis
+    Start from the scalar $\tau$-$D$ relationship (equation 18.26), which Chapman-Enskog analysis
     derives for the BGK operator:
   </p>
 
@@ -312,7 +312,7 @@
 
   <p>
     where $\alpha, \beta \in \{x, y\}$ (or $\{x, y, z\}$ in 3D). This is the tensor $\tau$-$D$
-    relationship &mdash; the natural extension of equation (18.24) from a scalar to a matrix. Rearranging
+    relationship &mdash; the natural extension of equation (18.26) from a scalar to a matrix. Rearranging
     for the relaxation parameters:
   </p>
 
@@ -331,7 +331,7 @@
   </div>
 
   <p>
-    This is the tensor generalization of equation (18.26). Each entry of the $\tau$ matrix is determined
+    This is the tensor generalization of equation (18.28). Each entry of the $\tau$ matrix is determined
     by the corresponding entry of the diffusion tensor. The Kronecker delta $\delta_{\alpha\beta}$
     ensures that the $\Delta t/2$ offset only appears on the diagonal.
   </p>
@@ -618,6 +618,61 @@
     Neumann condition.
   </p>
 
+  <div class="figure">
+    <svg viewBox="0 0 460 250" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <defs>
+        <pattern id="wallHatch19" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#5a6175" stroke-width="1.5"/>
+        </pattern>
+        <marker id="arrOut19" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#e94560"/>
+        </marker>
+        <marker id="arrIn19" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#2d6a4f"/>
+        </marker>
+      </defs>
+
+      <!-- Region shadings -->
+      <rect x="14" y="46" width="206" height="150" fill="#eef1f6"/>
+      <rect x="244" y="46" width="202" height="150" fill="#f4f4f4"/>
+
+      <!-- Region labels -->
+      <text x="60" y="40" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#16213e">Tissue (fluid nodes)</text>
+      <text x="360" y="40" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175">Solid (non-tissue)</text>
+
+      <!-- Lattice guide line -->
+      <line x1="40" y1="120" x2="228" y2="120" stroke="#c9d2e0" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- Interior fluid node and last fluid node -->
+      <circle cx="78" cy="120" r="7" fill="#0f3460"/>
+      <circle cx="172" cy="120" r="10" fill="#0f3460"/>
+      <text x="172" y="168" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#16213e">x_b</text>
+
+      <!-- Effective wall (half-way) -->
+      <rect x="230" y="48" width="12" height="146" fill="url(#wallHatch19)" stroke="#16213e" stroke-width="1"/>
+      <text x="236" y="42" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e">wall</text>
+
+      <!-- First solid node (skipped) -->
+      <circle cx="300" cy="120" r="8" fill="white" stroke="#5a6175" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="300" y="146" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#5a6175">(skipped)</text>
+
+      <!-- Outgoing distribution f_i (streams out toward wall) -->
+      <line x1="182" y1="106" x2="226" y2="106" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrOut19)"/>
+      <text x="204" y="98" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#e94560">fᵢ streams out →</text>
+
+      <!-- Reflected distribution f_ibar (returns inward) -->
+      <line x1="226" y1="138" x2="182" y2="138" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#arrIn19)"/>
+      <text x="204" y="158" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#2d6a4f">f_ī reflected in ←</text>
+
+      <!-- Bounce arc at the wall -->
+      <path d="M 226,106 C 240,113 240,131 226,138" fill="none" stroke="#5a6175" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+      <!-- Net-flux annotation -->
+      <text x="230" y="222" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" font-weight="600" fill="#8a6d00">net flux across wall = 0   (∇V_m · n̂ = 0)</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 19.1.</span> Half-way bounce-back enforces the no-flux boundary. The post-collision population $f_i$ at the last fluid node $\mathbf{x}_b$ streams outward toward the wall (red); the wall reflects it back to the same node as the opposite population $f_{\bar{i}}$ (green), where $\mathbf{e}_{\bar{i}} = -\mathbf{e}_i$. Because every unit leaving in direction $i$ returns in direction $\bar{i}$, the net flux across the wall is zero &mdash; exactly $\nabla V_m \cdot \hat{n} = 0$. The effective wall sits half a lattice spacing beyond $\mathbf{x}_b$, and the first solid node is skipped during streaming.</div>
+  </div>
+
   <p>
     For the D2Q5 lattice used in this chapter, the opposite pairs are:
   </p>
@@ -680,6 +735,7 @@
   </p>
 
   <div class="insight insight-math">
+    <p>
     <strong>Why second-order?</strong> The key insight is that the streaming step
     in LBM is <em>exact</em> &mdash; distributions travel exactly one lattice spacing
     per timestep. When the wall is at the half-way point, the round-trip distance

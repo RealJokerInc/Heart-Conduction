@@ -61,7 +61,7 @@
   </p>
 
   <p>
-    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice relaxation matrix $\tau_{e,\alpha\beta}$ is set by the same tensor Chapman–Enskog relationship (equation 18.26):
+    The beauty of this approach: LBM works just as well on the pseudo-time equation as on the physical parabolic equation. The lattice relaxation matrix $\tau_{e,\alpha\beta}$ is set by the same tensor Chapman–Enskog relationship (equation 18.28):
   </p>
 
   <div class="equation-block">
@@ -137,6 +137,91 @@
     Relaxation time $\tau_e$ encodes the sum $\mathbf{D}_i + \mathbf{D}_e$.</li>
   </ul>
 
+  <div class="figure">
+    <svg viewBox="0 0 460 300" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <defs>
+        <marker id="arrRed20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#e94560"/>
+        </marker>
+        <marker id="arrGreen20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#2d6a4f"/>
+        </marker>
+        <marker id="arrGrey20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#5a6175"/>
+        </marker>
+        <marker id="arrLoop20" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#8a6d00"/>
+        </marker>
+      </defs>
+
+      <!-- ===== Lattice 1 block (V_m, parabolic) ===== -->
+      <rect x="18" y="55" width="180" height="150" rx="8" fill="#eef1f6" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="108" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" fill="#16213e">Lattice 1 — Vₘ</text>
+      <text x="108" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" fill="#0f3460">parabolic · physical time t</text>
+      <!-- single forward-step icon -->
+      <line x1="88" y1="107" x2="126" y2="107" stroke="#5a6175" stroke-width="2" marker-end="url(#arrGrey20)"/>
+      <text x="132" y="111" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" fill="#5a6175">Δt</text>
+      <!-- mini lattice -->
+      <g stroke="#c9d2e0" stroke-width="0.75">
+        <line x1="78" y1="128" x2="138" y2="128"/><line x1="78" y1="148" x2="138" y2="148"/><line x1="78" y1="168" x2="138" y2="168"/>
+        <line x1="78" y1="128" x2="78" y2="168"/><line x1="108" y1="128" x2="108" y2="168"/><line x1="138" y1="128" x2="138" y2="168"/>
+      </g>
+      <g fill="#0f3460">
+        <circle cx="78" cy="128" r="3.5"/><circle cx="108" cy="128" r="3.5"/><circle cx="138" cy="128" r="3.5"/>
+        <circle cx="78" cy="148" r="3.5"/><circle cx="108" cy="148" r="3.5"/><circle cx="138" cy="148" r="3.5"/>
+        <circle cx="78" cy="168" r="3.5"/><circle cx="108" cy="168" r="3.5"/><circle cx="138" cy="168" r="3.5"/>
+      </g>
+      <text x="108" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">collide → stream</text>
+
+      <!-- ===== Lattice 2 block (phi_e, elliptic) ===== -->
+      <rect x="262" y="55" width="180" height="150" rx="8" fill="#f6eef0" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="352" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" fill="#16213e">Lattice 2 — φₑ</text>
+      <text x="352" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" fill="#0f3460">elliptic · pseudo-time τ</text>
+      <!-- iteration loop icon -->
+      <path d="M 352,98 A 12,12 0 1 1 342,116" fill="none" stroke="#8a6d00" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrLoop20)"/>
+      <text x="370" y="112" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" fill="#8a6d00">×N</text>
+      <!-- mini lattice -->
+      <g stroke="#e5cdd4" stroke-width="0.75">
+        <line x1="322" y1="130" x2="382" y2="130"/><line x1="322" y1="150" x2="382" y2="150"/><line x1="322" y1="170" x2="382" y2="170"/>
+        <line x1="322" y1="130" x2="322" y2="170"/><line x1="352" y1="130" x2="352" y2="170"/><line x1="382" y1="130" x2="382" y2="170"/>
+      </g>
+      <g fill="#0f3460">
+        <circle cx="322" cy="130" r="3.5"/><circle cx="352" cy="130" r="3.5"/><circle cx="382" cy="130" r="3.5"/>
+        <circle cx="322" cy="150" r="3.5"/><circle cx="352" cy="150" r="3.5"/><circle cx="382" cy="150" r="3.5"/>
+        <circle cx="322" cy="170" r="3.5"/><circle cx="352" cy="170" r="3.5"/><circle cx="382" cy="170" r="3.5"/>
+      </g>
+      <text x="352" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">collide → stream (relax)</text>
+
+      <!-- ===== Coupling arrows ===== -->
+      <line x1="198" y1="104" x2="262" y2="104" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrRed20)"/>
+      <text x="230" y="96" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560">Vₘ → source</text>
+      <line x1="262" y1="156" x2="198" y2="156" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#arrGreen20)"/>
+      <text x="230" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f">φₑ → feedback</text>
+
+      <!-- ===== Time axes ===== -->
+      <!-- physical time (left): one big step -->
+      <line x1="30" y1="250" x2="188" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#arrGrey20)"/>
+      <line x1="48" y1="245" x2="48" y2="255" stroke="#5a6175" stroke-width="1.5"/>
+      <line x1="172" y1="245" x2="172" y2="255" stroke="#5a6175" stroke-width="1.5"/>
+      <text x="48" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">t</text>
+      <text x="172" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">t+Δt</text>
+      <text x="108" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">physical time — one Δt per step</text>
+      <!-- pseudo-time (right): many small steps -->
+      <line x1="272" y1="250" x2="430" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#arrGrey20)"/>
+      <g stroke="#5a6175" stroke-width="1">
+        <line x1="282" y1="246" x2="282" y2="254"/><line x1="294" y1="246" x2="294" y2="254"/>
+        <line x1="306" y1="246" x2="306" y2="254"/><line x1="318" y1="246" x2="318" y2="254"/>
+        <line x1="330" y1="246" x2="330" y2="254"/><line x1="342" y1="246" x2="342" y2="254"/>
+        <line x1="354" y1="246" x2="354" y2="254"/><line x1="366" y1="246" x2="366" y2="254"/>
+        <line x1="378" y1="246" x2="378" y2="254"/><line x1="390" y1="246" x2="390" y2="254"/>
+        <line x1="402" y1="246" x2="402" y2="254"/><line x1="414" y1="246" x2="414" y2="254"/>
+      </g>
+      <text x="418" y="242" text-anchor="end" font-family="Source Code Pro,monospace" font-size="8" fill="#8a6d00">∂φₑ/∂τ→0</text>
+      <text x="352" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">pseudo-time τ — many Δτ (inner loop)</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 20.1.</span> The dual-lattice bidomain architecture. Lattice 1 marches $V_m$ (parabolic) forward one physical step $\Delta t$; Lattice 2 relaxes $\phi_e$ (elliptic) through many pseudo-time sub-steps $\Delta\tau$ until $\partial\phi_e/\partial\tau \to 0$. The red link carries the $V_m$-derived source $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$ that drives $\phi_e$; the green link feeds the converged $\phi_e$ back into the next $V_m$ update. Physical time advances once per timestep (left axis); pseudo-time iterates many times <em>within</em> each timestep (right axis).</div>
+  </div>
+
   <p>
     The two lattices are coupled through source terms. The source for Lattice 1 includes the gradient of $\phi_e$ (the extracellular potential) plus the ionic current. The source for Lattice 2 includes the gradient of $V_m$ plus the stimulus:
   </p>
@@ -165,9 +250,119 @@
     \end{aligned}$$
   </div>
 
-  <div class="insight insight-intuition">
+  <p>
+    <strong>Worked example &mdash; one pseudo-time sub-iteration of the $\phi_e$ relaxation.</strong>
+    Let us make Strategy 1 (&sect;20.2) concrete on a tiny slice of Lattice 2. Take five nodes of the
+    $\phi_e$ lattice in 1D, indices $0$&ndash;$4$, spacing $\Delta x$. During this physical timestep
+    $V_m$ has just advanced on Lattice 1, so the elliptic source
+    $s_j = \nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m) + I_{\text{stim}}$ is now <em>fixed and known</em> at
+    every node. Our only job here is to relax $\phi_e$ in pseudo-time $\tau$ until it stops changing.
+  </p>
+
+  <p><strong>Given.</strong></p>
+  <ul>
+    <li>$D_i = 0.001$, $D_e = 0.0005$ cm$^2$/ms, so the elliptic diffusivity is
+      $\sigma = D_i + D_e = 0.0015$ cm$^2$/ms.</li>
+    <li>$\Delta x = 0.025$ cm, so $\Delta x^2 = 6.25\times10^{-4}$ cm$^2$ and
+      $\sigma/\Delta x^2 = 2.4$ ms$^{-1}$.</li>
+    <li>Pseudo-time step $\Delta\tau = 0.05$ ms (comfortably inside the stability limit
+      $\Delta\tau < \Delta x^2/2\sigma = 0.208$ ms).</li>
+    <li>No-flux ends: the bounce-back of &sect;19.5 mirrors the edge, giving $\phi_0 = \phi_1$ and
+      $\phi_4 = \phi_3$.</li>
+    <li>Source from the just-updated $V_m$ (interior nodes only):
+      $(s_1, s_2, s_3) = (+0.8,\; -1.6,\; +0.8)$ mV/ms. It sums to zero &mdash; the compatibility
+      condition a purely no-flux elliptic problem must satisfy, or $\phi_e$ would drift without bound.</li>
+    <li>Start from the previous steady state, which was flat: $\boldsymbol{\phi}_e^0 = (0,0,0,0,0)$.</li>
+  </ul>
+
+  <p>
+    At the macroscopic (Chapman&ndash;Enskog) level, one collide-and-stream sweep of the pseudo-time
+    Lattice 2 <em>is</em> one forward step of
+  </p>
+
+  <div class="equation-block">
+    <span class="equation-label">(20.5)</span>
+    $$\phi_j^{k+1} = \phi_j^{k} + \Delta\tau\;r_j^{k}, \qquad
+      r_j^{k} = \frac{\sigma}{\Delta x^2}\bigl(\phi_{j+1} - 2\phi_j + \phi_{j-1}\bigr) + s_j,$$
+  </div>
+
+  <p>
+    where $r_j$ is the <strong>elliptic residual</strong>. Reaching steady state means $r_j \to 0$ at
+    every node &mdash; that is exactly the discrete elliptic constraint $\sigma\,\phi_e'' + s = 0$.
+  </p>
+
+  <p>
+    <strong>Sweep 0 &rarr; 1.</strong> With $\boldsymbol{\phi}^0$ flat, every discrete Laplacian is zero,
+    so the residual is just the source: $r_j^0 = s_j$, giving $\mathbf{r}^0 = (0.8,\,-1.6,\,0.8)$ with
+    $\max|r| = 1.6$. The update $\phi_j^1 = 0 + 0.05\,r_j^0$ gives
+  </p>
+
+  <p style="text-align:center;">
+    $\phi_1^1 = 0.05(0.8) = 0.04$, &ensp;
+    $\phi_2^1 = 0.05(-1.6) = -0.08$, &ensp;
+    $\phi_3^1 = 0.05(0.8) = 0.04$ &nbsp;mV,
+  </p>
+
+  <p>
+    and the mirror ends copy inward: $\phi_0 = \phi_1 = 0.04$, $\phi_4 = \phi_3 = 0.04$ mV.
+  </p>
+
+  <p>
+    <strong>Recompute the residual after the sweep.</strong> Now the Laplacian is no longer zero. Using
+    $\sigma/\Delta x^2 = 2.4$:
+  </p>
+
+  <p style="text-align:center;">
+    Node 1: $\;2.4\,(0.04 - 2(0.04) + (-0.08)) = 2.4(-0.12) = -0.288$; &ensp;
+    $r_1^1 = -0.288 + 0.8 = 0.512$. <br/>
+    Node 2: $\;2.4\,(0.04 - 2(-0.08) + 0.04) = 2.4(0.24) = 0.576$; &ensp;
+    $r_2^1 = 0.576 - 1.6 = -1.024$. <br/>
+    Node 3: by symmetry, $\;r_3^1 = 0.512$.
+  </p>
+
+  <p>
+    The residual has shrunk: $\max|r|$ dropped from $1.600$ to $1.024$. One more sweep,
+    $\boldsymbol{\phi}^2 = \boldsymbol{\phi}^1 + 0.05\,\mathbf{r}^1 = (0.0656,\,-0.1312,\,0.0656)$ mV,
+    gives residual $(0.328,\,-0.655,\,0.328)$:
+  </p>
+
+  <table style="width:auto; margin:1em auto; border-collapse:collapse; font-size:0.95em;">
+    <thead>
+      <tr style="background:#f0f0f0;">
+        <th style="padding:5px 12px; border:1px solid #ddd;">sweep $k$</th>
+        <th style="padding:5px 12px; border:1px solid #ddd;">$r_1$</th>
+        <th style="padding:5px 12px; border:1px solid #ddd;">$r_2$</th>
+        <th style="padding:5px 12px; border:1px solid #ddd;">$r_3$</th>
+        <th style="padding:5px 12px; border:1px solid #ddd;">$\max|r|$</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.800</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">&minus;1.600</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.800</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">1.600</td></tr>
+      <tr style="background:#fafafa;"><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">1</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.512</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">&minus;1.024</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.512</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">1.024</td></tr>
+      <tr><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">2</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.328</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">&minus;0.655</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.328</td><td style="padding:5px 12px; border:1px solid #ddd; text-align:center;">0.655</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Every sweep multiplies the residual by exactly $0.64$. Why <em>exactly</em>? The source excites the
+    mode $(1,-2,1)$, which is an eigenvector of the discrete no-flux Laplacian with eigenvalue
+    $\lambda = -7.2$ ms$^{-1}$ (check node 2: $2.4(1 - 2(-2) + 1) = 2.4(6) = 14.4 = -7.2\times(-2)$). The
+    update in equation (20.5) therefore multiplies the residual by $(1 + \Delta\tau\,\lambda) =
+    1 + 0.05(-7.2) = 0.64$. So the residual decays geometrically,
+    $1.600 \to 1.024 \to 0.655 \to \cdots$, driving $\sigma\,\phi_e'' + s \to 0$. After about $16$ sweeps
+    $\max|r|$ has fallen below $10^{-3}$ of its start &mdash; that is what &ldquo;iterate Lattice 2 until
+    $\partial\phi_e/\partial\tau$ is negligible&rdquo; (step 3 of the algorithm above) means in actual
+    numbers.
+  </p>
+
+  <div class="insight insight-engine">
     <p>
-      <strong>Worked example outline.</strong> Suppose at the start of a timestep: $V_m$ is known (say, $-85$ mV at most nodes), and $\phi_e$ is at its previous steady state. We compute ionic currents (depends on $V_m$ and gates). Lattice 1 takes one LBM step, advancing $V_m$ to $-84$ mV (approximately). Now $V_m$ has changed, so the constraint for $\phi_e$ has changed (because the RHS includes $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$). Lattice 2 then iterates in pseudo-time, re-adjusting $\phi_e$ at every node until the new steady state is reached. This typically takes 10–50 pseudo-time iterations. Once converged, Lattice 1 knows the new $\phi_e$ value for the next physical step's source term.
+      On Lattice 2 proper, this same update is realized by one collide-stream cycle
+      (equation 20.4): the injected source $\Delta\tau\,w_i\,s_j$ supplies $s_j$, the collision-plus-streaming
+      of the populations reproduces the $\sigma/\Delta x^2$ Laplacian coupling, and $\sum_i f_i^{(e)} =
+      \phi_e$ recovers the field. The bounce-back of &sect;19.5 supplies the $\phi_0 = \phi_1$ mirror
+      automatically. Once the residual is negligible, the converged $\phi_e$ is handed back to Lattice 1
+      as the coupling source for the next physical $\Delta t$ (the green link in Figure 20.1).
     </p>
   </div>
 

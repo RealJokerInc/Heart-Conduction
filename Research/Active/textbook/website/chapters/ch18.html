@@ -11,6 +11,19 @@ This chapter introduces the Lattice-Boltzmann Method (LBM). Unlike classical dis
 We will build this from first principles: the Boltzmann equation, its simplification to the BGK collision operator, the discretization of velocity space onto a lattice, and the final algorithm. By chapter's end, you will understand not just what LBM computes, but why the method works — and how to tune it for cardiac electrophysiology.
 </div>
 
+<div class="insight insight-intuition">
+<strong>The whole method in 30 seconds.</strong> Before the theory, here is the destination. One lattice-Boltzmann timestep is just six operations, repeated at every grid node:
+<ol style="margin:0.5em 0 0.3em 1.5em; line-height:1.6;">
+<li><strong>Initialize</strong> the distributions by splitting the voltage across the $Q$ lattice directions: $f_i = w_i V$.</li>
+<li><strong>Collide</strong> &mdash; relax each $f_i$ a fraction of the way toward its local equilibrium $f_i^{\text{eq}}$.</li>
+<li><strong>React</strong> &mdash; inject the ionic reaction source into the distributions.</li>
+<li><strong>Stream</strong> &mdash; shift each $f_i$ to its neighbouring node in direction $i$.</li>
+<li><strong>Bounce back</strong> &mdash; reflect the distributions that meet a tissue boundary.</li>
+<li><strong>Recover</strong> the voltage by summing, $V = \sum_i f_i$ &mdash; then repeat next timestep.</li>
+</ol>
+Here is the whole method in six steps; the rest of the chapter explains <em>why</em> each one works.
+</div>
+
 <h3>18.1 &ensp; The Thermodynamic Foundation: Phase Space and the Equilibrium State</h3>
 
 <div class="insight insight-intuition">
@@ -216,15 +229,15 @@ The breakthrough came from Bhatnagar, Gross, and Krook in 1954. They asked: <str
 
 Their answer was to replace the collision integral with a single relaxation toward the equilibrium distribution we met in Section 18.1:
 
-<div class="equation-block"><span class="equation-label">(18.11)</span>$$\Omega(f) \approx -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
+<div class="equation-block"><span class="equation-label">(18.9)</span>$$\Omega(f) \approx -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
 
 where $\tau$ is a single relaxation time and $f^{\text{eq}}$ is the Maxwell-Boltzmann equilibrium (equation 18.2). The idea is elegantly simple: the actual distribution $f$ is nudged toward its local equilibrium at a rate determined by $\tau$. No detailed calculation of scattering angles or cross-sections is needed.
 
 This is the <strong>BGK approximation</strong>. Notice the direct connection to Section 18.1: the $f^{\text{eq}}$ that appears here is exactly the Gaussian equilibrium (18.2) &mdash; the bell curve in velocity space that encodes conservation, zero flux, and isotropic variance. The BGK operator says: whatever the current distribution looks like, push it toward that Gaussian. The three physical claims we established in Section 18.1 &mdash; equations (18.3), (18.4), and (18.5) &mdash; are the properties that $f^{\text{eq}}$ carries into the collision step.
 
-Substituting (18.11) into (18.7), we get the <strong>BGK Boltzmann equation</strong>:
+Substituting (18.9) into (18.7), we get the <strong>BGK Boltzmann equation</strong>:
 
-<div class="equation-block"><span class="equation-label">(18.12)</span>$$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
+<div class="equation-block"><span class="equation-label">(18.10)</span>$$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f - f^{\text{eq}})$$</div>
 
 where we have dropped the external force term $\mathbf{F} \cdot \nabla_{\mathbf{c}} f$ (in LBM for diffusion, there are no external forces accelerating particles through velocity space).
 
@@ -246,11 +259,11 @@ These are the Euler equations &mdash; ideal fluid dynamics with no dissipation.
 
 <strong>First order</strong> ($\epsilon^1$): the correction $f^{(1)}$ introduces gradients of velocity and temperature. Taking moments of $f^{(1)}$ produces the <strong>dissipative terms</strong> &mdash; this is where viscosity and diffusivity enter:
 
-<div class="equation-block"><span class="equation-label">(18.9)</span>$$\rho \frac{D\mathbf{u}}{Dt} = -\nabla p + \underbrace{\eta \nabla^2 \mathbf{u}}_{\text{viscous stress}} + \mathbf{f}$$</div>
+<div class="equation-block"><span class="equation-label">(18.11)</span>$$\rho \frac{D\mathbf{u}}{Dt} = -\nabla p + \underbrace{\eta \nabla^2 \mathbf{u}}_{\text{viscous stress}} + \mathbf{f}$$</div>
 
 for fluid flow (Navier-Stokes), and
 
-<div class="equation-block"><span class="equation-label">(18.10)</span>$$\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T = \underbrace{D \nabla^2 T}_{\text{diffusion}}$$</div>
+<div class="equation-block"><span class="equation-label">(18.12)</span>$$\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T = \underbrace{D \nabla^2 T}_{\text{diffusion}}$$</div>
 
 for heat or mass diffusion. The underbraced terms are the ones that the first-order correction adds &mdash; they are absent in the Euler (zeroth-order) equations. The transport coefficients (viscosity $\eta$, diffusivity $D$) are determined by the relaxation time $\tau$. Large $\tau$ (slow relaxation toward equilibrium) gives high viscosity or diffusivity; small $\tau$ gives low viscosity or diffusivity. The relationship is precise and will be derived explicitly in Section 18.4 as the $\tau$-$D$ relationship.
 
@@ -278,7 +291,7 @@ The equilibrium $f^{\text{eq}}$ is the thread that connects everything: it defin
 
 <h4>From Continuous to Discrete: Three Deliberate Choices</h4>
 
-In Section 18.2 we arrived at the BGK Boltzmann equation (18.12):
+In Section 18.2 we arrived at the BGK Boltzmann equation (18.10):
 
 $$\frac{\partial f}{\partial t} + \mathbf{c} \cdot \nabla f = -\frac{1}{\tau}(f - f^{\text{eq}})$$
 
@@ -431,7 +444,7 @@ $$\mathbf{e}_0 = (0,0), \quad \mathbf{e}_1 = (1,0), \quad \mathbf{e}_2 = (-1,0),
 
 Each lattice vector comes with a weight $w_i$ that says "this sample point represents this much of the Gaussian bell curve." Every continuous integral becomes a finite sum:
 
-<div class="equation-block"><span class="equation-label">(18.18)</span>$$\int p(\mathbf{c}) \; \underbrace{\frac{1}{(2\pi c_s^2)^{D/2}} e^{-|\mathbf{c}|^2 / 2c_s^2}}_{\text{Gaussian kernel}} \; d\mathbf{c} \;\approx\; \sum_{i=0}^{Q-1} w_i \; p(\mathbf{e}_i)$$</div>
+<div class="equation-block"><span class="equation-label">(18.17)</span>$$\int p(\mathbf{c}) \; \underbrace{\frac{1}{(2\pi c_s^2)^{D/2}} e^{-|\mathbf{c}|^2 / 2c_s^2}}_{\text{Gaussian kernel}} \; d\mathbf{c} \;\approx\; \sum_{i=0}^{Q-1} w_i \; p(\mathbf{e}_i)$$</div>
 
 The left-hand side integrates over the full continuous velocity space $\mathbf{c}$. The right-hand side evaluates at the lattice nodes $\mathbf{e}_i$ in dimensionless space &mdash; this is where the quadrature lives. Here $p$ is a placeholder &mdash; it stands for whatever function of velocity you want to integrate against the Gaussian. Plug in $p = 1$ and you compute total mass. Plug in $p = e_{i\alpha}$ (a single component of $\mathbf{e}_i$) and you compute momentum. Plug in $p = e_{i\alpha} e_{i\beta}$ and you compute the stress tensor. The nodes $\mathbf{e}_i$ and their weights $w_i$ are chosen so that these sums are <em>exact</em> for all polynomials up to the degree you need.
 
@@ -455,7 +468,7 @@ A natural worry: if $\mathbf{c}_i$ changes when you refine your grid (because $\
 
 For <strong>pure diffusion</strong> ($\mathbf{u} = 0$), the Gaussian is centered at the origin. When you evaluate it at the quadrature nodes and fold in the weights, all the velocity-dependent structure vanishes. The discrete equilibrium is simply:
 
-<div class="equation-block"><span class="equation-label">(18.27)</span>$$f_i^{\text{eq}} = w_i \, \phi$$</div>
+<div class="equation-block"><span class="equation-label">(18.18)</span>$$f_i^{\text{eq}} = w_i \, \phi$$</div>
 
 where $\phi = \sum_j f_j$ is the local macroscopic quantity (temperature, voltage, concentration). Each direction carries a fraction $w_i$ of the total field &mdash; the rest direction carries the most (it sits at the peak of the bell curve), and the moving directions carry the remainder. There is no preferred direction &mdash; the equilibrium is symmetric, just as the centered Gaussian is symmetric.
 
@@ -463,7 +476,7 @@ This is the equilibrium we use for cardiac electrophysiology, since the monodoma
 
 <h4>Gauss-Hermite Quadrature: Why These Specific Nodes and Weights</h4>
 
-The quadrature rule in equation (18.18) has a classical name: <strong>Gauss-Hermite quadrature</strong>. It is the standard method for integrating polynomials multiplied by a Gaussian kernel, and it has been studied since the 19th century. The key result is this: given a Gaussian in $D$ dimensions, there exist specific sets of nodes and weights such that the finite sum is <em>exact</em> (not approximate) for all polynomial integrands up to a certain degree.
+The quadrature rule in equation (18.17) has a classical name: <strong>Gauss-Hermite quadrature</strong>. It is the standard method for integrating polynomials multiplied by a Gaussian kernel, and it has been studied since the 19th century. The key result is this: given a Gaussian in $D$ dimensions, there exist specific sets of nodes and weights such that the finite sum is <em>exact</em> (not approximate) for all polynomial integrands up to a certain degree.
 
 <div class="insight insight-intuition">
 <strong>Nodes and Weights Are a Married Pair:</strong> In Gauss-Hermite quadrature, you do not get to choose the nodes and the weights independently. Once you pick a set of sample points on the bell curve, the weights are uniquely determined (and vice versa). This is why every lattice specification &mdash; D2Q5, D2Q9, D3Q7 &mdash; always lists both $\mathbf{e}_i$ AND $w_i$ together. They are a package deal, born from the same Gaussian.
@@ -510,7 +523,7 @@ With the quadrature framework in mind, here are the standard lattices. Each is a
 
 <strong>D1Q3 (One-Dimensional):</strong>
 
-<div class="equation-block"><span class="equation-label">(18.17)</span>$$e_0 = 0, \quad e_1 = 1, \quad e_2 = -1$$</div>
+<div class="equation-block"><span class="equation-label">(18.19)</span>$$e_0 = 0, \quad e_1 = 1, \quad e_2 = -1$$</div>
 
 Three quadrature nodes in one dimension: one at the center of the bell curve (rest), one hop to the right, one hop to the left. The physical velocities are $c_i = e_i \cdot \Delta x / \Delta t$.
 
@@ -879,23 +892,85 @@ All six moving nodes sit at the same distance (one lattice spacing) from the cen
 
 <h4>The Weight Lattice</h4>
 
-The weights paired with each velocity set are determined by Gauss-Hermite quadrature &mdash; equation (18.18). Each weight $w_i$ represents how much of the Gaussian bell curve the quadrature node $\mathbf{e}_i$ is responsible for. Nodes near the peak of the Gaussian (where the bell curve is tallest) represent more of the total area and receive larger weights. Nodes further out (where the bell curve has decayed) represent less area and receive smaller weights.
+The weights paired with each velocity set are determined by Gauss-Hermite quadrature &mdash; equation (18.17). Each weight $w_i$ represents how much of the Gaussian bell curve the quadrature node $\mathbf{e}_i$ is responsible for. Nodes near the peak of the Gaussian (where the bell curve is tallest) represent more of the total area and receive larger weights. Nodes further out (where the bell curve has decayed) represent less area and receive smaller weights.
+
+<div class="figure">
+<svg viewBox="0 0 460 300" xmlns="http://www.w3.org/2000/svg" style="max-width:460px; display:block; margin:1.5em auto;">
+  <style>
+    text { font-family: 'EB Garamond', serif; fill: #16213e; }
+    .mono { font-family: 'Source Code Pro', monospace; }
+  </style>
+  <defs>
+    <marker id="mb-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#5a6175"/>
+    </marker>
+  </defs>
+
+  <!-- shaded area under the Gaussian -->
+  <path d="M 52.0,250 L 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3 L 408.0,250 Z" fill="#0f3460" opacity="0.07"/>
+
+  <!-- Gaussian equilibrium curve -->
+  <path d="M 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3" fill="none" stroke="#16213e" stroke-width="2.5"/>
+
+  <!-- axes -->
+  <line x1="45" y1="250" x2="435" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#mb-arrow)"/>
+  <line x1="45" y1="256" x2="45" y2="55" stroke="#5a6175" stroke-width="1.5" marker-end="url(#mb-arrow)"/>
+
+  <!-- drop lines to sample points -->
+  <g stroke="#5a6175" stroke-width="1" stroke-dasharray="4,4">
+    <line x1="110" y1="209.4" x2="110" y2="250"/>
+    <line x1="230" y1="68.0" x2="230" y2="250"/>
+    <line x1="350" y1="209.4" x2="350" y2="250"/>
+  </g>
+
+  <!-- lattice sample nodes on the curve -->
+  <circle cx="230" cy="68.0" r="6.5" fill="#0f3460"/>
+  <circle cx="110" cy="209.4" r="5.5" fill="#e94560"/>
+  <circle cx="350" cy="209.4" r="5.5" fill="#e94560"/>
+
+  <!-- curve label -->
+  <text x="292" y="64" font-size="17" font-style="italic">f<tspan dy="-7" font-size="11">eq</tspan><tspan dy="7">(c)</tspan></text>
+
+  <!-- weight annotations -->
+  <g font-size="13" text-anchor="middle">
+    <text x="230" y="52" fill="#0f3460" font-weight="600">w₀ = 2/3</text>
+    <text x="110" y="199" fill="#e94560">w = 1/6</text>
+    <text x="350" y="199" fill="#e94560">w = 1/6</text>
+  </g>
+
+  <!-- velocity-axis tick labels -->
+  <g font-size="15" text-anchor="middle">
+    <text x="110" y="271" class="mono">−c</text>
+    <text x="230" y="271" class="mono">0</text>
+    <text x="350" y="271" class="mono">+c</text>
+  </g>
+  <text x="428" y="269" font-size="16" font-style="italic">c</text>
+
+  <!-- Gauss-Hermite node indices -->
+  <g font-size="11" text-anchor="middle" fill="#5a6175">
+    <text x="110" y="288">e = −1</text>
+    <text x="230" y="288">e = 0</text>
+    <text x="350" y="288">e = +1</text>
+  </g>
+</svg>
+<div class="figure-caption"><span class="figure-label">Figure 18.2.</span> The Maxwell&ndash;Boltzmann equilibrium drawn as a bell curve over velocity $c$. The smooth Gaussian is the continuous equilibrium $f^{\text{eq}}(c)$ of &sect;18.1 (equation 18.6); the lattice never stores it directly. Instead it samples the curve at a few points &mdash; here the three D1Q3 velocities $c_i \in \{-c,\,0,\,+c\}$, which are the <em>Gauss&ndash;Hermite quadrature nodes</em> of &sect;18.4. The rest node sits at the peak and carries the largest weight ($w_0 = 2/3$); the two moving nodes sit lower on the curve, where the Gaussian has decayed, and carry less ($w_1 = w_2 = 1/6$). Weighting these samples reproduces the integrals of the Gaussian exactly (equation 18.17), which is why a handful of points can stand in for the entire continuous distribution.</div>
+</div>
 
 <strong>D1Q3 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(18.19)</span>$$w_0 = \frac{2}{3}, \quad w_1 = w_2 = \frac{1}{6}$$</div>
+<div class="equation-block"><span class="equation-label">(18.20)</span>$$w_0 = \frac{2}{3}, \quad w_1 = w_2 = \frac{1}{6}$$</div>
 
 The rest node sits at the peak of the 1D bell curve — it captures two-thirds of the total area. The two moving nodes, one lattice spacing away from the peak, each capture one-sixth. Most of the Gaussian's area is concentrated near the center, which is why the rest weight dominates.
 
 <strong>D2Q5 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(18.20)</span>$$w_0 = \frac{1}{3}, \quad w_1 = w_2 = w_3 = w_4 = \frac{1}{6}$$</div>
+<div class="equation-block"><span class="equation-label">(18.21)</span>$$w_0 = \frac{1}{3}, \quad w_1 = w_2 = w_3 = w_4 = \frac{1}{6}$$</div>
 
 The rest node captures one-third of the 2D bell curve. Each cardinal node captures one-sixth. The total is $1/3 + 4 \times 1/6 = 1$. All four cardinal nodes are at the same distance from the peak, so they receive the same weight — the bell curve is symmetric.
 
 <strong>D2Q9 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(18.21)</span>$$w_0 = \frac{4}{9}, \quad w_{1,2,3,4} = \frac{1}{9} \quad (\text{cardinal}), \quad w_{5,6,7,8} = \frac{1}{36} \quad (\text{diagonal})$$</div>
+<div class="equation-block"><span class="equation-label">(18.22)</span>$$w_0 = \frac{4}{9}, \quad w_{1,2,3,4} = \frac{1}{9} \quad (\text{cardinal}), \quad w_{5,6,7,8} = \frac{1}{36} \quad (\text{diagonal})$$</div>
 
 Three distinct weight classes, directly reflecting the Gaussian's shape. The rest node at the peak captures $4/9$ of the area — nearly half. The cardinal nodes at distance 1 (in lattice units) each capture $1/9$. The diagonal nodes at distance $\sqrt{2}$ each capture only $1/36$ — four times less than a cardinal node. This factor of four is the Gaussian at work: moving from distance $c$ to $\sqrt{2}\,c$ from the peak, the bell curve has decayed, so those nodes represent less area. Check: $4/9 + 4 \times 1/9 + 4 \times 1/36 = 4/9 + 4/9 + 1/9 = 1$ ✓.
 
@@ -905,27 +980,27 @@ Three distinct weight classes, directly reflecting the Gaussian's shape. The res
 
 <strong>D3Q7 weights:</strong>
 
-<div class="equation-block"><span class="equation-label">(18.22)</span>$$w_0 = \frac{1}{4}, \quad w_1 = \cdots = w_6 = \frac{1}{8}$$</div>
+<div class="equation-block"><span class="equation-label">(18.23)</span>$$w_0 = \frac{1}{4}, \quad w_1 = \cdots = w_6 = \frac{1}{8}$$</div>
 
 The rest node captures one-quarter of the 3D bell curve. Each of the six face-centered nodes captures one-eighth. All moving nodes are at the same distance $c$ from the peak (same height on the bell curve), so they receive equal weight. Check: $1/4 + 6 \times 1/8 = 1/4 + 3/4 = 1$ ✓.
 
 <div class="insight insight-math">
-<strong>Deriving D2Q5 Weights from Quadrature:</strong> For D2Q5, we have two unknowns: the rest weight $w_0$ and the cardinal weight $w_c$ (shared by directions 1–4 by symmetry). Two quadrature exactness conditions pin them down. Plugging $p = 1$ into (18.18): $w_0 + 4w_c = 1$ (the weights must sum to one). Plugging $p = e_{ix}^2$ into (18.18): $\sum_i w_i e_{ix}^2 = 1/3$. The rest node ($e_{0x} = 0$) contributes zero. Directions 1 and 2 ($e_{ix} = \pm 1$) each contribute $w_c \cdot 1$. Directions 3 and 4 ($e_{ix} = 0$) contribute nothing. This gives $2w_c = 1/3$, yielding $w_c = 1/6$. Substituting back: $w_0 = 1 - 4(1/6) = 1/3$. The weights are not chosen — they are uniquely determined by Gauss-Hermite quadrature on this lattice geometry.
+<strong>Deriving D2Q5 Weights from Quadrature:</strong> For D2Q5, we have two unknowns: the rest weight $w_0$ and the cardinal weight $w_c$ (shared by directions 1–4 by symmetry). Two quadrature exactness conditions pin them down. Plugging $p = 1$ into (18.17): $w_0 + 4w_c = 1$ (the weights must sum to one). Plugging $p = e_{ix}^2$ into (18.17): $\sum_i w_i e_{ix}^2 = 1/3$. The rest node ($e_{0x} = 0$) contributes zero. Directions 1 and 2 ($e_{ix} = \pm 1$) each contribute $w_c \cdot 1$. Directions 3 and 4 ($e_{ix} = 0$) contribute nothing. This gives $2w_c = 1/3$, yielding $w_c = 1/6$. Substituting back: $w_0 = 1 - 4(1/6) = 1/3$. The weights are not chosen — they are uniquely determined by Gauss-Hermite quadrature on this lattice geometry.
 </div>
 
 <h4>The Navier-Stokes Equilibrium</h4>
 
 For <strong>fluid flow</strong> (Navier-Stokes), the Gaussian is centered at the bulk velocity $\mathbf{u}$ rather than at zero. Expanding the exponential in (18.2) as a Taylor series in $\mathbf{u}/c_s$ (valid when the flow speed is much smaller than the speed of sound &mdash; the low Mach number regime), the discrete equilibrium becomes:
 
-<div class="equation-block"><span class="equation-label">(18.28)</span>$$f_i^{\text{eq}} = w_i \rho \left(1 + \frac{\mathbf{u} \cdot \mathbf{c}_i}{c_s^2} + \frac{(\mathbf{u} \cdot \mathbf{c}_i)^2}{2c_s^4} - \frac{u^2}{2c_s^2}\right)$$</div>
+<div class="equation-block"><span class="equation-label">(18.24)</span>$$f_i^{\text{eq}} = w_i \rho \left(1 + \frac{\mathbf{u} \cdot \mathbf{c}_i}{c_s^2} + \frac{(\mathbf{u} \cdot \mathbf{c}_i)^2}{2c_s^4} - \frac{u^2}{2c_s^2}\right)$$</div>
 
 The terms beyond $w_i \rho$ are the polynomial corrections that arise from shifting the bell curve's center from zero to $\mathbf{u}$. These terms break the directional symmetry &mdash; they bias the distribution toward the direction of flow. Because these corrections involve products like $c_{ix} c_{iy}$, the quadrature must exactly integrate fourth-degree polynomials, which is why fluid flow requires more quadrature nodes (D2Q9 instead of D2Q5).
 
 <h4>Lattice Requirements for Different Physics</h4>
 
-The choice of lattice is determined by how many terms in the polynomial expansion of the Gaussian need to be captured exactly. For diffusion with the isotropic equilibrium (18.27), only terms up to second degree matter — the Gauss-Hermite quadrature (18.18) need only be exact through second order. D2Q5 (and D3Q7 in 3D) satisfy these, making them the most efficient choices for cardiac problems.
+The choice of lattice is determined by how many terms in the polynomial expansion of the Gaussian need to be captured exactly. For diffusion with the isotropic equilibrium (18.18), only terms up to second degree matter — the Gauss-Hermite quadrature (18.17) need only be exact through second order. D2Q5 (and D3Q7 in 3D) satisfy these, making them the most efficient choices for cardiac problems.
 
-For fluid flow with the velocity-dependent equilibrium (18.28), terms up to fourth degree appear. The quadrature must be exact for fourth-order products like $\sum_i w_i e_{i\alpha} e_{i\beta} e_{i\gamma} e_{i\delta}$. D2Q5 does not have enough nodes, but D2Q9 does.
+For fluid flow with the velocity-dependent equilibrium (18.24), terms up to fourth degree appear. The quadrature must be exact for fourth-order products like $\sum_i w_i e_{i\alpha} e_{i\beta} e_{i\gamma} e_{i\delta}$. D2Q5 does not have enough nodes, but D2Q9 does.
 
 In cardiac electrophysiology, we solve diffusion (not Navier-Stokes), so D2Q5 and D3Q7 are sufficient. Using a minimal lattice saves both memory ($Q$ distributions per node) and computation (fewer collision and streaming operations per timestep).
 
@@ -933,7 +1008,7 @@ In cardiac electrophysiology, we solve diffusion (not Navier-Stokes), so D2Q5 an
 
 For each lattice, there is a characteristic speed $c_s$ called the <strong>lattice speed of sound</strong>. From the Gauss-Hermite exactness conditions and the lattice geometry, we have:
 
-<div class="equation-block"><span class="equation-label">(18.23)</span>$$c_s^2 = \frac{c^2}{3}$$</div>
+<div class="equation-block"><span class="equation-label">(18.25)</span>$$c_s^2 = \frac{c^2}{3}$$</div>
 
 
 The parameter $c_s$ plays a dual role. In the continuous Gaussian of Section 18.1, $c_s^2$ is the <strong>variance</strong> &mdash; it controls the width of the bell curve. On the lattice, this same $c_s$ becomes the <strong>lattice speed of sound</strong>, with the specific value $c_s^2 = c^2/3$ where $c = \Delta x / \Delta t$ is the lattice speed. This is not a coincidence: the lattice speed of sound is inherited directly from the variance of the Maxwellian that the lattice discretizes. Every time you see $c_s^2$ in an LBM formula &mdash; in the weights, in the equilibrium, in the $\tau$-$D$ relationship &mdash; it traces back to this Gaussian width.
@@ -942,22 +1017,22 @@ The speed of sound $c_s$ is just a lattice constant — it emerges from the geom
 
 Through Chapman-Enskog analysis, one can show that for the BGK collision operator applied to a diffusion problem, the relationship is:
 
-<div class="equation-block"><span class="equation-label">(18.24)</span>$$D = c_s^2 \left(\tau - \frac{\Delta t}{2}\right)$$</div>
+<div class="equation-block"><span class="equation-label">(18.26)</span>$$D = c_s^2 \left(\tau - \frac{\Delta t}{2}\right)$$</div>
 
 or, rearranging:
 
-<div class="equation-block"><span class="equation-label">(18.25)</span>$$\tau = \frac{\Delta t}{2} + \frac{D}{c_s^2}$$</div>
+<div class="equation-block"><span class="equation-label">(18.27)</span>$$\tau = \frac{\Delta t}{2} + \frac{D}{c_s^2}$$</div>
 
 Substituting $c_s^2 = c^2/3 = \Delta x^2 / (3 \Delta t^2)$:
 
-<div class="equation-block"><span class="equation-label">(18.26)</span>$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2}$$</div>
+<div class="equation-block"><span class="equation-label">(18.28)</span>$$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2}$$</div>
 
 This is the fundamental bridge between the discrete lattice parameter $\tau$ and the physical diffusivity $D$.
 
 <strong>Practical meaning:</strong> To solve a problem with a given physical diffusivity $D$, you:
 <ol>
 <li>Choose your spatial and temporal resolution: $\Delta x$ and $\Delta t$.</li>
-<li>Compute $\tau$ from equation (18.26).</li>
+<li>Compute $\tau$ from equation (18.28).</li>
 <li>Use that $\tau$ in the collision step (equation 18.14).</li>
 </ol>
 
@@ -1162,7 +1237,7 @@ This decomposition reveals the internal structure that equation (18.29) hides. Y
 
 <h4>Worked Example: One D2Q5 Collision in Both Spaces</h4>
 
-Let us make the round trip concrete with numbers. Consider a D2Q5 node with $\phi = 1.0$, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms, and isotropic diffusivity $D = 0.001$ cm$^2$/ms. From equation (18.26):
+Let us make the round trip concrete with numbers. Consider a D2Q5 node with $\phi = 1.0$, $\Delta x = 0.025$ cm, $\Delta t = 0.01$ ms, and isotropic diffusivity $D = 0.001$ cm$^2$/ms. From equation (18.28):
 
 $$\tau = \frac{\Delta t}{2} + \frac{3D\Delta t}{\Delta x^2} = 0.005 + \frac{3(0.001)(0.01)}{0.000625} = 0.005 + 0.048 = 0.053 \text{ ms}$$
 
@@ -1294,7 +1369,7 @@ Applying $\mathbf{f}^* = \mathbf{M}^{-1}\mathbf{m}^*$ gives back the same $\math
 We now have the complete theoretical framework for the lattice-Boltzmann method: the thermodynamic foundation (Section 18.1), the Boltzmann equation and BGK simplification (Section 18.2), the discrete lattice-Boltzmann equation (Section 18.3), the equilibrium distribution and its constraints on weights and velocities (Section 18.4), and the moment-space decomposition that reveals the physical content of the collision operator (Section 18.5). In the next chapter we put this machinery to work on the cardiac monodomain equation: the $f_i$ become our fundamental variables, and — building on the moment-space view of Section 18.5 — we unlock the individual moment relaxation rates to achieve anisotropic diffusion (the Multiple-Relaxation-Time collision operator). Chapter 20 then extends the method to the bidomain equations.
 
 <div class="insight insight-intuition">
-<strong>Complete Reference Tables:</strong> Appendix A collects the velocity vectors $\mathbf{c}_i$ and weights $w_i$ for all standard lattices (D1Q3, D2Q5, D2Q9, D3Q7, D3Q19, D3Q27) in a single reference table. These are derived from Gauss-Hermite quadrature (18.18) applied to the lattice geometries described in this chapter.
+<strong>Complete Reference Tables:</strong> Appendix A collects the velocity vectors $\mathbf{c}_i$ and weights $w_i$ for all standard lattices (D1Q3, D2Q5, D2Q9, D3Q7, D3Q19, D3Q27) in a single reference table. These are derived from Gauss-Hermite quadrature (18.17) applied to the lattice geometries described in this chapter.
 </div>
 
 

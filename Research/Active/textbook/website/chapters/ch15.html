@@ -90,6 +90,69 @@
     </p>
   </div>
 
+  <h4>Worked Example: A 3-Node Elliptic Solve</h4>
+
+  <p>
+    Section 15.1 hands the parabolic solve to Chapter 11, but the elliptic solve is new — so let us
+    do one by hand. Take the smallest cable that still has an interior node: <strong>3 nodes</strong>,
+    reusing the diffusivities from Section 13.5 ($D_i = 1.214\times10^{-3}$,
+    $D_e = 4.429\times10^{-3}$ cm$^2$/ms, $\Delta x = 0.025$ cm). The combined scale factor is
+    $(D_i+D_e)/\Delta x^2 = 9.029$ ms$^{-1}$ and the intracellular scale is
+    $D_i/\Delta x^2 = 1.943$ ms$^{-1}$ (both carried over from Section 13.5).
+  </p>
+
+  <p>
+    With the face-based stencil, the elliptic matrix and the intracellular Laplacian are the same
+    tridiagonals we built before:
+  </p>
+
+  $$\mathbf{A}_{\text{ellip}} = -(\mathbf{L}_i+\mathbf{L}_e) = 9.029\begin{pmatrix} 1 & -1 & 0 \\ -1 & 2 & -1 \\ 0 & -1 & 1\end{pmatrix},
+  \qquad
+  \mathbf{L}_i = 1.943\begin{pmatrix} -1 & 1 & 0 \\ 1 & -2 & 1 \\ 0 & 1 & -1\end{pmatrix}.$$
+
+  <p>
+    Suppose the parabolic solve just handed us a partial upstroke — a wavefront ramp
+    $\mathbf{V}_m = [-85,\,-60,\,-35]^T$ mV. The elliptic right-hand side is
+    $\mathbf{b} = \mathbf{L}_i\,\mathbf{V}_m$. Multiplying row by row:
+    $b_0 = 1.943(85-60) = 48.6$, $b_1 = 1.943(-85+120-35) = 0$, and
+    $b_2 = 1.943(-60+35) = -48.6$, so $\mathbf{b} = [48.6,\,0,\,-48.6]^T$.
+    Notice the entries sum to zero — a necessary condition for the singular system to have a solution.
+  </p>
+
+  <div class="insight insight-math">
+    <p><strong>Pinning and the solve, step by step.</strong></p>
+    <p>
+      $\mathbf{A}_{\text{ellip}}$ is singular: every row sums to zero, so the constant vector
+      $\mathbf{1}$ is a null vector and $\phi_e$ is fixed only up to an additive constant. Pin node 0 —
+      set $\phi_{e,0}=0$, replace row 0 and column 0 with the identity, and zero the first RHS entry.
+      The pinned system is
+    </p>
+    $$\begin{pmatrix} 1 & 0 & 0 \\ 0 & 18.058 & -9.029 \\ 0 & -9.029 & 9.029\end{pmatrix}
+    \begin{pmatrix}\phi_{e,0}\\[2pt] \phi_{e,1}\\[2pt] \phi_{e,2}\end{pmatrix}
+    = \begin{pmatrix} 0 \\[2pt] 0 \\[2pt] -48.6\end{pmatrix}.$$
+    <p>
+      Row 0 fixes $\phi_{e,0}=0$, and the remaining $2\times2$ block is now nonsingular (SPD).
+      From row 2: $-9.029\,\phi_{e,1} + 9.029\,\phi_{e,2} = -48.6$, i.e.
+      $\phi_{e,2}-\phi_{e,1} = -5.383$. Substituting into row 1,
+      $18.058\,\phi_{e,1} - 9.029\,\phi_{e,2} = 0$, gives
+      $18.058\,\phi_{e,1} - 9.029(\phi_{e,1}-5.383) = 0 \Rightarrow 9.029\,\phi_{e,1} = -48.6
+      \Rightarrow \phi_{e,1} = -5.383$, hence $\phi_{e,2} = -10.766$. The solution is
+    </p>
+    $$\boldsymbol{\phi}_e = [\,0,\;-5.383,\;-10.766\,]^T \text{ mV}.$$
+    <p>
+      <strong>Check.</strong> The equation for node 0 that we discarded should still hold:
+      $9.029(\phi_{e,0}-\phi_{e,1}) = 9.029(5.383) = 48.6 = b_0$. It does — the pinned row is
+      automatically satisfied precisely because $\mathbf{b}$ summed to zero.
+    </p>
+  </div>
+
+  <p>
+    The extracellular potential falls monotonically across the wavefront — the electrical "shadow"
+    of the $V_m$ ramp, and exactly the kind of signal an ECG electrode records (Section 14.5).
+    Pinning cost us nothing physical: only $\phi_e$ <em>differences</em> matter, and those are
+    identical no matter which node we pin.
+  </p>
+
   <h3>15.3 &ensp; Three-Tier Automatic Solver Selection</h3>
 
   <p>
@@ -135,6 +198,62 @@
       serve as a <em>preconditioner</em> for PCG (Tier 2) — it captures the dominant structure,
       and PCG handles the anisotropic correction in a few iterations.</li>
   </ol>
+
+  <!-- Solver-selection decision tree -->
+  <div class="figure">
+    <svg viewBox="0 0 580 430" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
+      <defs>
+        <marker id="tree15" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#16213e"/>
+        </marker>
+      </defs>
+
+      <!-- start box -->
+      <rect x="55" y="16" width="230" height="48" rx="8" fill="#16213e" fill-opacity="0.08" stroke="#16213e" stroke-width="1.5"/>
+      <text x="170" y="37" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#16213e" font-weight="600">Elliptic solve</text>
+      <text x="170" y="55" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#0f3460">−(Lᵢ+Lₑ) φₑ = Lᵢ Vₘ</text>
+      <line x1="170" y1="64" x2="170" y2="86" stroke="#16213e" stroke-width="1.6" marker-end="url(#tree15)"/>
+
+      <!-- decision 1 -->
+      <polygon points="170,88 268,124 170,160 72,124" fill="#8a6d00" fill-opacity="0.10" stroke="#8a6d00" stroke-width="1.5"/>
+      <text x="170" y="120" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00">Uniform +</text>
+      <text x="170" y="134" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00">isotropic grid?</text>
+
+      <!-- yes -> spectral -->
+      <line x1="268" y1="124" x2="348" y2="124" stroke="#16213e" stroke-width="1.6" marker-end="url(#tree15)"/>
+      <text x="304" y="116" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f" font-weight="600">yes</text>
+      <rect x="350" y="95" width="214" height="58" rx="8" fill="#2d6a4f" fill-opacity="0.12" stroke="#2d6a4f" stroke-width="1.5"/>
+      <text x="457" y="116" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#2d6a4f" font-weight="600">Tier 1 — Spectral</text>
+      <text x="457" y="131" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9.5" fill="#5a6175">DCT / DST / FFT</text>
+      <text x="457" y="145" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">exact, O(N log N)</text>
+
+      <!-- no -> decision 2 -->
+      <line x1="170" y1="160" x2="170" y2="206" stroke="#16213e" stroke-width="1.6" marker-end="url(#tree15)"/>
+      <text x="183" y="186" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">no</text>
+
+      <!-- decision 2 -->
+      <polygon points="170,208 268,244 170,280 72,244" fill="#8a6d00" fill-opacity="0.10" stroke="#8a6d00" stroke-width="1.5"/>
+      <text x="170" y="240" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00">Eigenvalue</text>
+      <text x="170" y="254" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#8a6d00">bounds known?</text>
+
+      <!-- yes -> chebyshev -->
+      <line x1="268" y1="244" x2="348" y2="244" stroke="#16213e" stroke-width="1.6" marker-end="url(#tree15)"/>
+      <text x="304" y="236" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f" font-weight="600">yes</text>
+      <rect x="350" y="215" width="214" height="58" rx="8" fill="#0f3460" fill-opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
+      <text x="457" y="236" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#0f3460" font-weight="600">Tier 2 — Chebyshev</text>
+      <text x="457" y="251" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">fixed iteration count</text>
+      <text x="457" y="264" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">GPU-friendly</text>
+
+      <!-- no -> pcg+gmg -->
+      <line x1="170" y1="280" x2="170" y2="336" stroke="#16213e" stroke-width="1.6" marker-end="url(#tree15)"/>
+      <text x="183" y="310" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">no</text>
+      <rect x="45" y="335" width="250" height="58" rx="8" fill="#5a6175" fill-opacity="0.14" stroke="#5a6175" stroke-width="1.5"/>
+      <text x="170" y="356" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">Tier 3 — PCG +</text>
+      <text x="170" y="371" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="600">geometric multigrid</text>
+      <text x="170" y="385" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">(general fallback)</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure 15.1.</span> The solver-selection decision tree for the elliptic sub-problem. A uniform, isotropic Cartesian grid is diagonalized exactly by a spectral transform (Tier 1). Otherwise, if eigenvalue bounds are available the fixed-iteration Chebyshev solver applies (Tier 2); when neither holds — unstructured meshes, mixed BCs, general geometry — the engine falls back to preconditioned conjugate gradient with geometric multigrid (Tier 3). Each step down the tree trades exactness and speed for generality.</div>
+  </div>
 
   <div class="insight insight-intuition">
     <p>

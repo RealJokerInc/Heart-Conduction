@@ -105,10 +105,106 @@
     $v$ has two stable branches (resting and excited) and the system jumps between them.
   </p>
 
+  <!-- ─── FitzHugh–Nagumo phase plane ─── -->
+  <div class="figure">
+    <svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <defs>
+        <marker id="fhnTrajArrow" markerWidth="9" markerHeight="9" refX="6" refY="3"
+                orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#2d6a4f"/>
+        </marker>
+      </defs>
+
+      <!-- Faint origin cross -->
+      <line x1="260" y1="30" x2="260" y2="250" stroke="#d0d5e0" stroke-width="0.7" stroke-dasharray="3,3"/>
+      <line x1="60" y1="148" x2="460" y2="148" stroke="#d0d5e0" stroke-width="0.7" stroke-dasharray="3,3"/>
+
+      <!-- Axes -->
+      <line x1="60" y1="250" x2="460" y2="250" stroke="#16213e" stroke-width="1.2"/>
+      <line x1="60" y1="250" x2="60" y2="30" stroke="#16213e" stroke-width="1.2"/>
+
+      <!-- Axis labels -->
+      <text x="260" y="286" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle">v  (membrane-like variable)</text>
+      <text x="22" y="140" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,22,140)">w  (recovery variable)</text>
+
+      <!-- Tick labels -->
+      <text x="100" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-2</text>
+      <text x="180" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-1</text>
+      <text x="260" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">0</text>
+      <text x="340" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">1</text>
+      <text x="420" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">2</text>
+      <text x="52" y="236" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-1</text>
+      <text x="52" y="152" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">0</text>
+      <text x="52" y="67" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">1</text>
+
+      <!-- Cubic v-nullcline (N-shaped) -->
+      <path d="M 84,34 L 100,92 L 140,180 L 180,205 L 220,187 L 260,148 L 300,110 L 340,92 L 380,117 L 420,205 L 432,247"
+            fill="none" stroke="#e94560" stroke-width="2.2"/>
+      <text x="298" y="138" font-size="11" fill="#e94560" font-family="serif" font-weight="600">v-nullcline</text>
+
+      <!-- Linear w-nullcline -->
+      <line x1="127" y1="250" x2="294" y2="30" stroke="#0f3460" stroke-width="2"/>
+      <text x="300" y="52" font-size="11" fill="#0f3460" font-family="serif" font-weight="600">w-nullcline</text>
+
+      <!-- Trajectory loop (excitation–recovery) -->
+      <path d="M 164,201 L 220,210 L 300,213 L 380,213 L 415,208 L 430,180 L 432,150 L 418,115 L 388,98 L 352,90 L 280,84 L 180,82 L 110,84 L 96,88 L 90,120 L 95,160 L 120,190 L 148,199 Z"
+            fill="none" stroke="#2d6a4f" stroke-width="2"/>
+      <!-- Direction arrows -->
+      <line x1="290" y1="213" x2="312" y2="212" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
+      <line x1="431" y1="168" x2="430" y2="150" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
+      <line x1="240" y1="83" x2="218" y2="83" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
+      <line x1="91" y1="135" x2="93" y2="157" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
+      <text x="250" y="199" font-size="10" fill="#2d6a4f" font-family="serif" font-style="italic" text-anchor="middle">excitation</text>
+      <text x="222" y="128" font-size="10" fill="#2d6a4f" font-family="serif" font-style="italic" text-anchor="middle">recovery</text>
+
+      <!-- Fixed point -->
+      <circle cx="164" cy="201" r="6" fill="none" stroke="#16213e" stroke-width="1.2"/>
+      <circle cx="164" cy="201" r="3.2" fill="#16213e"/>
+      <text x="174" y="223" font-size="10" fill="#16213e" font-family="serif">resting state</text>
+    </svg>
+    <div class="figure-caption">
+      <span class="figure-label">Figure 2.1.</span> The FitzHugh–Nagumo phase plane. The cubic
+      <em>v</em>-nullcline (red, where $dv/dt=0$, i.e. $w = v - v^3/3$) is N-shaped; the straight
+      <em>w</em>-nullcline (blue, where $dw/dt=0$) crosses it once, at the stable resting state — the
+      fixed point. A supra-threshold stimulus throws the state rightward across the unstable middle
+      branch: the fast excitation upstroke, in which $v$ jumps while $w$ barely moves. The slow recovery
+      variable $w$ then climbs, carrying the trajectory up the right branch, back across the top, and
+      slowly down the left branch to rest. The wide, flat loop is the phase-plane signature of one
+      action potential.
+    </div>
+  </div>
+
   <p>
     FitzHugh–Nagumo captures excitability, threshold behavior, and refractoriness — but it produces a
     triangular AP, not the flat plateau of a cardiac cell.
   </p>
+
+  <div class="insight insight-intuition">
+    <p>
+      <strong>Worked example — one excitation, stepped by hand.</strong> Take the standard parameters
+      $a=0.7$, $b=0.8$, $\epsilon=0.08$, no applied current ($I_{\text{ext}}=0$), and forward-Euler steps
+      of $\Delta t = 0.1$. The cell rests at the fixed point $(v,w)\approx(-1.2,\,-0.62)$ — the intersection
+      in Figure 2.1. A brief stimulus kicks the voltage variable above threshold to $v_0 = 0$, leaving
+      $w_0 = -0.60$.
+    </p>
+    <p>
+      <strong>Step 1.</strong><br/>
+      $dv/dt = v_0 - v_0^3/3 - w_0 = 0 - 0 - (-0.60) = +0.600$<br/>
+      $dw/dt = \epsilon\,(v_0 + a - b\,w_0) = 0.08\,(0 + 0.7 - 0.8(-0.60)) = 0.08\,(1.18) = 0.0944$<br/>
+      $v_1 = 0 + 0.1(0.600) = 0.060, \qquad w_1 = -0.60 + 0.1(0.0944) = -0.591$
+    </p>
+    <p>
+      <strong>Step 2.</strong> $\;dv/dt = 0.650,\; dw/dt = 0.099 \;\Rightarrow\; v_2 = 0.125,\; w_2 = -0.581$.<br/>
+      <strong>Step 3.</strong> $\;dv/dt = 0.705,\; dw/dt = 0.103 \;\Rightarrow\; v_3 = 0.196,\; w_3 = -0.570$.
+    </p>
+    <p>
+      In three steps $v$ climbed by $0.196$ while $w$ moved only $0.030$ — a $6.5\times$ split in speed.
+      That gap <em>is</em> $\epsilon$: the voltage races up the cubic toward the excited branch
+      ($v \approx +2$) in a fast upstroke while the recovery variable barely stirs. Only later, once $w$
+      has slowly accumulated, does it overtake the balance and drag $v$ back down — the recovery limb of
+      the loop in Figure 2.1.
+    </p>
+  </div>
 
   <h4>The Fenton–Karma Model (3 variables)</h4>
 

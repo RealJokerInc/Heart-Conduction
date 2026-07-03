@@ -743,6 +743,56 @@
     The gradient is $\nabla E = A\mathbf{x} - \mathbf{b} = -\mathbf{r}$, where $\mathbf{r} = \mathbf{b} - A\mathbf{x}$ is the <strong>residual</strong>. CG builds conjugate search directions cheaply — each new direction needs only the current residual and the previous direction.
   </p>
 
+  <p>
+    The picture in Figure C.4 makes the payoff visible. The energy $E(\mathbf{x})$ is a bowl; its level sets are nested ellipses, stretched long and thin when $A$ is ill-conditioned. Steepest descent always steps straight downhill, so it hits each contour at a right angle and ricochets across the narrow valley — dozens of short steps for an elongated bowl. Conjugate gradient corrects each direction against the bowl's shape, so it reaches the exact minimum in at most $N$ steps (here, two).
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 460 316" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
+      <defs>
+        <marker id="arrRedC4" markerWidth="8" markerHeight="7" refX="6.5" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#e94560"/></marker>
+        <marker id="arrGrnC4" markerWidth="8" markerHeight="7" refX="6.5" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#2d6a4f"/></marker>
+      </defs>
+
+      <!-- Energy contours: nested ellipses (level sets of E), center = minimum -->
+      <ellipse cx="240" cy="150" rx="194" ry="92" fill="none" stroke="#c7cde0" stroke-width="1"/>
+      <ellipse cx="240" cy="150" rx="156" ry="74" fill="none" stroke="#bcc3da" stroke-width="1"/>
+      <ellipse cx="240" cy="150" rx="118" ry="56" fill="none" stroke="#aeb6d2" stroke-width="1"/>
+      <ellipse cx="240" cy="150" rx="80" ry="38" fill="none" stroke="#9ea7c8" stroke-width="1"/>
+      <ellipse cx="240" cy="150" rx="42" ry="20" fill="#e6eaf6" stroke="#8a94ba" stroke-width="1"/>
+
+      <text x="240" y="34" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175">energy contours — level sets of E(x)</text>
+
+      <!-- minimum -->
+      <circle cx="240" cy="150" r="4.5" fill="#16213e"/>
+      <text x="250" y="146" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">x*  (minimum)</text>
+
+      <!-- Steepest descent: many short, right-angle steps -->
+      <polyline points="72,100 158,196 220,110 258,168 226,140 248,158 240,150" fill="none" stroke="#e94560" stroke-width="2" marker-end="url(#arrRedC4)"/>
+      <circle cx="72" cy="100" r="3" fill="#e94560"/>
+      <circle cx="158" cy="196" r="3" fill="#e94560"/>
+      <circle cx="220" cy="110" r="3" fill="#e94560"/>
+      <circle cx="258" cy="168" r="3" fill="#e94560"/>
+      <circle cx="226" cy="140" r="3" fill="#e94560"/>
+      <circle cx="248" cy="158" r="3" fill="#e94560"/>
+
+      <!-- Conjugate gradient: same first step, then straight to the minimum -->
+      <polyline points="72,100 158,196 240,150" fill="none" stroke="#2d6a4f" stroke-width="2.4" marker-end="url(#arrGrnC4)"/>
+      <circle cx="158" cy="196" r="3.2" fill="#2d6a4f"/>
+
+      <!-- shared start -->
+      <circle cx="72" cy="100" r="4" fill="#16213e"/>
+      <text x="72" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">start  x₀</text>
+
+      <!-- legend -->
+      <line x1="70" y1="286" x2="104" y2="286" stroke="#e94560" stroke-width="2.4"/>
+      <text x="112" y="290" font-family="EB Garamond,serif" font-size="12" fill="#5a6175">steepest descent — many short, right-angle steps</text>
+      <line x1="70" y1="306" x2="104" y2="306" stroke="#2d6a4f" stroke-width="2.4"/>
+      <text x="112" y="310" font-family="EB Garamond,serif" font-size="12" fill="#5a6175">conjugate gradient — reaches x* in ≤ 2 steps</text>
+    </svg>
+    <div class="figure-caption"><span class="figure-label">Figure C.4.</span> Steepest descent versus conjugate gradient minimizing the same quadratic energy $E(\mathbf{x}) = \tfrac12\mathbf{x}^T A\,\mathbf{x} - \mathbf{b}^T\mathbf{x}$. The contours are level sets of $E$; the long, thin ellipses signal an ill-conditioned $A$ (large $\kappa$). Steepest descent (red) steps straight downhill and meets each contour at a right angle, zig-zagging across the narrow valley in many small steps. Conjugate gradient (green) takes the same first step, then uses an $A$-conjugate direction to land on the minimum $\mathbf{x}^*$ — for this 2D problem, in $N = 2$ steps.</div>
+  </div>
+
   <h4>The CG Algorithm</h4>
 
   <div class="equation-block" style="text-align:left; padding:1em; background:#f8f8f8; border-left:3px solid #666;">
