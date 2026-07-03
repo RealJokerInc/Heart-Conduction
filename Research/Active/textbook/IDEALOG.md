@@ -4,7 +4,7 @@
 > Scan in 30 seconds. Full edit history is in `CHANGELOG.md` (this folder).
 
 ## Current Direction
-Canonical source is now the **split website chapters** (`website/chapters/*.html`) — the monolithic `Bidomain_Textbook.html` was archived 2026-07-02 after a chapter-by-chapter comparison proved the website copy newer (see KNOWLEDGE "Source of Truth"). With the fork resolved, the active work is a **fresh chapter-by-chapter audit of the current source** (the user's request), then closing the audit backlog: Part II cross-ref/depth fixes → Part IV Ch 18 restructure + numbering → Part III re-audit → Reader-B accessibility pass. Rebuilding the missing PDF pipeline is a parallel to-do.
+Canonical source is the **split website chapters** (`website/chapters/*.html`); the monolithic `Bidomain_Textbook.html` is archived (2026-07-02 fork resolution). **The full audit-remediation is COMPLETE** — a fresh chapter + image audit drove a 5-phase fix (correctness bugs → book-wide cross-ref sweep → figure integrity → authoring → PDF pipeline), all committed (7590635→5457c99). The book now has 40 figures and builds to a verified 195-pp PDF via `website/build/html_to_pdf.py`. Remaining work is a short DEFERRED list (see Next Step), not a backlog — the question is close to `/research-complete`-able.
 
 ## Next Step
 **PLAN.md all 5 phases DONE + committed.** The audit-remediation backlog is closed. Remaining OPEN items (deferred, not blockers): Ch 8 full split (only a reading-guide box added); a dedicated Reader-B non-code path; Ch 4 SVGs → literature images; §18.1 "Two Cases" trim. Candidate next sessions: (a) `/textbook-edit` on those deferred items; (b) redesign the website chrome using the new `frontend-design` skill; (c) `/research-complete` if the question is considered answered. Re-run `/textbook-compile` (now working) after any future edits.
@@ -46,6 +46,11 @@ Previously the textbook lived only in `Research/textbook/` with ad-hoc tracking 
 - **Appendix A as a catch-all** (DEs + LinAlg + numerical analysis crammed together). Split in session 14 into A/B/C/D with one job each; don't recombine.
 
 ## Session Log
+
+### 2026-07-02 Session
+**Worked on**: `/research-resume textbook` → discovered the book had forked into two divergent copies; audited every chapter + every image; then executed the entire 5-phase audit-remediation blueprint.
+**Accomplished**: (1) Confirmed `website/chapters/` is canonical; archived the stale monolithic `Bidomain_Textbook.html` + its PDFs; repointed skills + docs. (2) Full chapter-by-chapter audit (book ≈3.8/5) + image audit (31 figs) → `audits/{FULL_CHAPTER,IMAGE}_AUDIT_2026-07-02.md`. (3) `/blueprint` → 5-phase PLAN.md. (4) Executed ALL 5 phases (commits 7590635→5457c99): P1 correctness bugs (BDF2 L-stability, Ch8 FDM arithmetic, Ch13 signs, App-C Chebyshev/DCT, …) + notation; P2 book-wide cross-ref/figure-number sweep (~50 refs, zero residual); P3 figure integrity (LaTeX-in-SVG→Unicode) + B.1/B.2/4.5/3.1 redraws; P4 authoring (5 worked examples + 9 new figures → **40 total** + §11.6 + Ch18 preview + References→18); P5 PDF pipeline (`website/build/html_to_pdf.py` → **195-pp verified PDF**) + INDEX reconcile. Installed the `frontend-design` plugin.
+**Next**: deferred items via `/textbook-edit` — Ch 8 full split, Reader-B non-code path, Ch 4 SVGs→literature images, §18.1 "Two Cases" trim; OR website-chrome redesign via `frontend-design`; OR `/research-complete`. Re-run `/textbook-compile` after any future edits.
 
 - **2026-07-02 (later)** — Fork discovery + resolution: compared the two copies chapter-by-chapter, archived the stale monolithic file, switched canonical source to `website/chapters/`, repointed skills + docs. Flagged missing PDF build script and Part IV tracking-doc overstatement. No textbook *content* edited (structure/plumbing only). Audit of the current source is the next step.
 - **2026-07-02** — Created this question as a tracking wrapper; wrote README/KNOWLEDGE/IDEALOG from existing INDEX.md + CHANGELOG.md + audits/. No textbook content edited yet.
