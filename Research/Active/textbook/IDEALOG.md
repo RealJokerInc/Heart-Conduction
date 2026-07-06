@@ -14,8 +14,24 @@ stay vanilla/no-build so the PDF pipeline survives (interactivity layered over a
 
 Canonical source remains the **split website chapters** (`website/chapters/*.html`); monolithic archived.
 
-## Next Step
-**`PLAN.md` is written and CONVERGED through 2 adversarial /audit rounds — awaiting user "go" to execute Phase 1.**
+## Next Step (updated 2026-07-06 — Phases 1–2 DONE + committed)
+**Phase 1 committed `31f8937`, Phase 2 committed `13f58e7` on branch `textbook-website-refresh`** (isolated from the
+in-flight engine-tuner work). Phase 1: dark-mode figure bug FIXED at root (blanket `svg` override deleted; 62 color
+values migrated to an 18-token `--fig-*` system via census map; verified colored+legible in dark on ch2/ch5/ch18);
+serif×mono + arterial crimson + dropped-justify typography; orphaned cover+part pages wired into the SPA. Phase 2:
+print-safe widget framework (`figures.js` classic→`window.mountFigures`+dynamic import; `figures/_canvas.js`+`fhn.js`),
+FHN phase-plane widget LIVE in ch2 (drag IC, 4 sliders, limit-cycle readout, themeable), static SVG prints. PDF holds
+at exactly 195pp both phases; 0 console errors throughout. Reusable harnesses: `verify_site.py`, `migrate_figure_colors.py`.
+
+**REMAINING — Phase 3 (5–7 more widgets) + Phase 4 (identity/polish).** Each Phase-3 widget needs a figure-target +
+physics-pedagogy decision, some non-obvious:
+- ch10 has clean targets: **Fig 10.1 RK-slope → RK step-size widget (3.2)**; **Fig 10.3 stability-region → CFL widget (3.3)**.
+- **AP shaper (3.1)**: ch3's only figure is Fig 3.1 "five phases + dominant currents" — the Mitchell–Schaeffer shaper
+  reshapes AP/APD but does NOT show the 5 phases/currents, so wrapping it drops that annotation on screen (static
+  fallback keeps it for print). DECISION NEEDED: wrap Fig 3.1 anyway / add a new interactive figure / place AP widget elsewhere.
+- Nernst/GHK (3.4): no existing Nernst figure found — likely a NEW figure (scope beyond "wrap existing").
+- Wavefront (3.5): hardest; 1-D monodomain cable; may split.
+Prototype AP (Mitchell–Schaeffer + APD90) already exists in `plans/2026-07-03_refresh_prototype.html`.
 (Blueprint hard-gate: no implementation until explicit approval.) Phase 1 = CSS+nav, no widgets: build
 `verify_site.py` harness → add the expanded `--fig-*` token system (TWO scopes only: `:root`+`[data-theme=dark]`)
 → census-driven color migration (`migrate_figure_colors.py --census`→review→`--apply`) → delete blanket override
