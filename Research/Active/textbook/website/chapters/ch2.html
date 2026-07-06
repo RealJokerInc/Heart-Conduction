@@ -106,7 +106,9 @@
   </p>
 
   <!-- ─── FitzHugh–Nagumo phase plane ─── -->
-  <div class="figure">
+  <figure class="fig" data-widget="fhn" data-params='{"I":0.5,"a":0.7,"b":0.8,"eps":0.08}'>
+    <div class="fig-stage">
+      <div class="fig-fallback">
     <svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
       <defs>
         <marker id="fhnTrajArrow" markerWidth="9" markerHeight="9" refX="6" refY="3"
@@ -162,7 +164,10 @@
       <circle cx="164" cy="201" r="3.2" style="fill:var(--fig-ink)"/>
       <text x="174" y="223" font-size="10" font-family="serif" style="fill:var(--fig-ink)">resting state</text>
     </svg>
-    <div class="figure-caption">
+      </div>
+    </div>
+    <div class="fig-controls" hidden></div>
+    <figcaption class="figure-caption">
       <span class="figure-label">Figure 2.1.</span> The FitzHugh–Nagumo phase plane. The cubic
       <em>v</em>-nullcline (red, where $dv/dt=0$, i.e. $w = v - v^3/3$) is N-shaped; the straight
       <em>w</em>-nullcline (blue, where $dw/dt=0$) crosses it once, at the stable resting state — the
@@ -171,8 +176,8 @@
       variable $w$ then climbs, carrying the trajectory up the right branch, back across the top, and
       slowly down the left branch to rest. The wide, flat loop is the phase-plane signature of one
       action potential.
-    </div>
-  </div>
+    </figcaption>
+  </figure>
 
   <p>
     FitzHugh–Nagumo captures excitability, threshold behavior, and refractoriness — but it produces a

@@ -806,6 +806,72 @@ tr:nth-child(even) { background: var(--light-bg); }
 }
 .figure-label { font-weight: 600; color: var(--accent2); }
 
+/* ─── Interactive figure widgets (progressive enhancement over static SVG) ───
+   <figure class="fig" data-widget="…"> mounts a canvas over .fig-fallback.
+   On successful mount the loader adds .has-widget → the SVG hides on screen.
+   Print always shows the SVG (canvas hidden) — see @media print below. */
+.fig {
+  margin: 1.6em 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.fig-stage { position: relative; background: var(--fig-stage); }
+.fig-stage .fig-fallback { text-align: center; padding: 0.6em; }
+.fig svg, .fig-fallback svg { max-width: 100%; height: auto; }
+canvas.fig-widget {
+  display: block; width: 100%;
+  height: clamp(280px, 34vw, 380px);
+  touch-action: none; cursor: crosshair;
+}
+.fig.has-widget .fig-fallback { display: none; }   /* screen: hide SVG once widget is live */
+.fig .figure-caption { padding: 0.7em 1.1em; margin-top: 0; text-align: left; }
+
+.fig-controls {
+  padding: 0.9em 1.1em 1.05em;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em 1.4em; }
+.fw-ctrl { margin: 0.15em 0; }
+.fw-row { display: flex; justify-content: space-between; align-items: baseline; }
+.fw-name { color: var(--text-secondary); }
+.fw-val { color: var(--highlight); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fw-ctrl input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px; margin-top: 0.4em;
+  background: var(--border); border-radius: 3px; outline: none;
+}
+.fw-ctrl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--highlight); border: 2px solid var(--bg); cursor: pointer;
+}
+.fw-ctrl input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--highlight); border: 2px solid var(--bg); cursor: pointer;
+}
+.fw-ctrl input[type="range"]:focus-visible { outline: 2px solid var(--highlight); outline-offset: 3px; }
+.fw-btnrow { display: flex; gap: 0.5em; margin-top: 0.9em; }
+.fw-btn {
+  font-family: var(--font-mono); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.45em 0.9em; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text);
+}
+.fw-btn:hover { border-color: var(--highlight); }
+.fw-btn-primary { background: var(--highlight); color: #fff; border-color: var(--highlight); }
+.fw-btn:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+.fw-readout { margin-top: 0.9em; }
+.fw-readout b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 640px) { .fw-grid { grid-template-columns: 1fr; } }
+@media print {
+  canvas.fig-widget { display: none !important; }
+  .fig.has-widget .fig-fallback, .fig-fallback { display: block !important; }
+  .fig-controls { display: none !important; }
+}
+
 /* Code */
 pre {
   font-family: 'Source Code Pro', monospace;

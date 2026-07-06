@@ -198,6 +198,10 @@
         await MathJax.typesetPromise([contentEl]);
       }
 
+      // Mount interactive figure widgets (destroys any from the previous chapter).
+      // Loaded as a classic script exposing a global; absent → figures stay static.
+      if (window.mountFigures) window.mountFigures(contentEl);
+
       // Update sidebar
       updateSidebarActive(chapterId);
 

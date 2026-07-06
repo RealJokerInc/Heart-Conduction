@@ -365,13 +365,11 @@ conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p2
 #### Risk
 (a) Module boundary: making `figures.js` an ES module with `export` would break the classic-IIFE `app.js` call → mitigation: `figures.js` is a classic script exposing `window.mountFigures`, widget files are ES modules loaded via dynamic `import()`. (b) Pointer→data inversion must match the draw transform exactly (see prototype `place()` vs `X/Y`) → reuse the prototype's proven inversion. (c) Dynamic `import()` + `file://` fails → SPA already requires an http server; verify over http.
 
-### Phase 2 Verification / Exit / Cleanup
-```
-conda run -n heart-conduction python website/build/verify_site.py --chapters ch2 --themes light,dark --out /tmp/verify_p2
-conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p2.pdf
-```
-- [ ] One widget fully working + print-safe; leak assertion green; PDF ~195pp
-- [ ] Cleanup: no console logs; instance destroy on renavigation verified; V5.3/engines untouched
+### Phase 2 Verification / Exit / Cleanup — ✅ DONE 2026-07-06
+- [x] FHN widget mounts live in ch2 (both themes): has-widget ✓, canvas ✓, 4 sliders ✓, fallback hidden on screen ✓, 0 console errors
+- [x] Print-safe: PDF = 195pp (no regression); assembled print HTML has the `.fig-fallback` SVG and NO `figures.js`/`mountFigures`/canvas
+- [x] `figures.js` (classic → `window.mountFigures` + dynamic import), `figures/_canvas.js`, `figures/fhn.js` created; app.js calls loader after typeset; renavigation destroys prior instances
+- [x] Cleanup: only intentional `console.warn` on mount failure; V5.3/engines untouched
 
 **-> Commit point: `git commit` after Phase 2** (`feat(textbook-web): figure-widget framework + FHN reference widget`)
 
