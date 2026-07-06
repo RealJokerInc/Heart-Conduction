@@ -128,52 +128,52 @@
     <svg viewBox="0 0 620 280" xmlns="http://www.w3.org/2000/svg" style="max-width:560px;">
       <defs>
         <marker id="flow14" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#16213e"/>
+          <path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-ink)"/>
         </marker>
         <marker id="loop14" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#e94560"/>
+          <path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-crimson)"/>
         </marker>
       </defs>
 
       <!-- input pill Vm^n -->
-      <rect x="10" y="88" width="52" height="30" rx="15" fill="#5a6175" fill-opacity="0.15" stroke="#5a6175" stroke-width="1.4"/>
-      <text x="36" y="107" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" fill="#5a6175">Vₘⁿ</text>
+      <rect x="10" y="88" width="52" height="30" rx="15" fill-opacity="0.15" stroke-width="1.4" style="fill:var(--fig-muted);stroke:var(--fig-muted)"/>
+      <text x="36" y="107" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="11" style="fill:var(--fig-muted)">Vₘⁿ</text>
 
       <!-- Box 1: Ionic -->
-      <rect x="78" y="76" width="118" height="56" rx="6" fill="#2d6a4f" fill-opacity="0.12" stroke="#2d6a4f" stroke-width="1.5"/>
-      <text x="137" y="101" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#16213e" font-weight="600">Ionic update</text>
-      <text x="137" y="118" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">(Rush–Larsen)</text>
+      <rect x="78" y="76" width="118" height="56" rx="6" fill-opacity="0.12" stroke-width="1.5" style="fill:var(--fig-green);stroke:var(--fig-green)"/>
+      <text x="137" y="101" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" font-weight="600" style="fill:var(--fig-ink)">Ionic update</text>
+      <text x="137" y="118" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">(Rush–Larsen)</text>
 
       <!-- Box 2: Parabolic -->
-      <rect x="228" y="76" width="196" height="56" rx="6" fill="#0f3460" fill-opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
-      <text x="326" y="99" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#16213e" font-weight="600">Parabolic solve</text>
-      <text x="326" y="119" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8.5" fill="#0f3460">A<tspan baseline-shift="sub" font-size="6.5">para</tspan> Vₘⁿ⁺¹ = B<tspan baseline-shift="sub" font-size="6.5">para</tspan> Vₘ* + Lᵢ φₑⁿ</text>
+      <rect x="228" y="76" width="196" height="56" rx="6" fill-opacity="0.12" stroke-width="1.5" style="fill:var(--fig-blue);stroke:var(--fig-blue)"/>
+      <text x="326" y="99" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" font-weight="600" style="fill:var(--fig-ink)">Parabolic solve</text>
+      <text x="326" y="119" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8.5" style="fill:var(--fig-blue)">A<tspan baseline-shift="sub" font-size="6.5">para</tspan> Vₘⁿ⁺¹ = B<tspan baseline-shift="sub" font-size="6.5">para</tspan> Vₘ* + Lᵢ φₑⁿ</text>
 
       <!-- Box 3: Elliptic -->
-      <rect x="456" y="76" width="150" height="56" rx="6" fill="#0f3460" fill-opacity="0.12" stroke="#0f3460" stroke-width="1.5"/>
-      <text x="531" y="99" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#16213e" font-weight="600">Elliptic solve</text>
-      <text x="531" y="119" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8.5" fill="#0f3460">−(Lᵢ+Lₑ) φₑⁿ⁺¹ = Lᵢ Vₘⁿ⁺¹</text>
+      <rect x="456" y="76" width="150" height="56" rx="6" fill-opacity="0.12" stroke-width="1.5" style="fill:var(--fig-blue);stroke:var(--fig-blue)"/>
+      <text x="531" y="99" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" font-weight="600" style="fill:var(--fig-ink)">Elliptic solve</text>
+      <text x="531" y="119" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="8.5" style="fill:var(--fig-blue)">−(Lᵢ+Lₑ) φₑⁿ⁺¹ = Lᵢ Vₘⁿ⁺¹</text>
 
       <!-- main-flow arrows -->
-      <line x1="62" y1="103" x2="76" y2="103" stroke="#16213e" stroke-width="1.6" marker-end="url(#flow14)"/>
-      <line x1="196" y1="104" x2="226" y2="104" stroke="#16213e" stroke-width="1.6" marker-end="url(#flow14)"/>
-      <text x="211" y="96" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#5a6175">Vₘ*</text>
-      <line x1="424" y1="104" x2="454" y2="104" stroke="#16213e" stroke-width="1.6" marker-end="url(#flow14)"/>
-      <text x="440" y="96" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#5a6175">Vₘⁿ⁺¹</text>
+      <line x1="62" y1="103" x2="76" y2="103" stroke-width="1.6" marker-end="url(#flow14)" style="stroke:var(--fig-ink)"/>
+      <line x1="196" y1="104" x2="226" y2="104" stroke-width="1.6" marker-end="url(#flow14)" style="stroke:var(--fig-ink)"/>
+      <text x="211" y="96" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-muted)">Vₘ*</text>
+      <line x1="424" y1="104" x2="454" y2="104" stroke-width="1.6" marker-end="url(#flow14)" style="stroke:var(--fig-ink)"/>
+      <text x="440" y="96" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-muted)">Vₘⁿ⁺¹</text>
 
       <!-- phi_e^n input pill + arrow up into parabolic -->
-      <rect x="250" y="208" width="100" height="28" rx="14" fill="#e94560" fill-opacity="0.12" stroke="#e94560" stroke-width="1.4"/>
-      <text x="300" y="226" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">φₑⁿ (lagged)</text>
-      <line x1="300" y1="208" x2="300" y2="134" stroke="#16213e" stroke-width="1.6" marker-end="url(#flow14)"/>
+      <rect x="250" y="208" width="100" height="28" rx="14" fill-opacity="0.12" stroke-width="1.4" style="fill:var(--fig-crimson);stroke:var(--fig-crimson)"/>
+      <text x="300" y="226" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" style="fill:var(--fig-crimson)">φₑⁿ (lagged)</text>
+      <line x1="300" y1="208" x2="300" y2="134" stroke-width="1.6" marker-end="url(#flow14)" style="stroke:var(--fig-ink)"/>
 
       <!-- phi_e^{n+1} output pill + arrow down from elliptic -->
-      <rect x="478" y="208" width="106" height="28" rx="14" fill="#e94560" fill-opacity="0.12" stroke="#e94560" stroke-width="1.4"/>
-      <text x="531" y="226" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" fill="#e94560">φₑⁿ⁺¹</text>
-      <line x1="531" y1="132" x2="531" y2="206" stroke="#16213e" stroke-width="1.6" marker-end="url(#flow14)"/>
+      <rect x="478" y="208" width="106" height="28" rx="14" fill-opacity="0.12" stroke-width="1.4" style="fill:var(--fig-crimson);stroke:var(--fig-crimson)"/>
+      <text x="531" y="226" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="10" style="fill:var(--fig-crimson)">φₑⁿ⁺¹</text>
+      <line x1="531" y1="132" x2="531" y2="206" stroke-width="1.6" marker-end="url(#flow14)" style="stroke:var(--fig-ink)"/>
 
       <!-- loop-back (dashed) -->
-      <line x1="478" y1="222" x2="352" y2="222" stroke="#e94560" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#loop14)"/>
-      <text x="414" y="252" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">advance to next step (n ← n+1)</text>
+      <line x1="478" y1="222" x2="352" y2="222" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#loop14)" style="stroke:var(--fig-crimson)"/>
+      <text x="414" y="252" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">advance to next step (n ← n+1)</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure 14.1.</span> Data-flow of one decoupled Gauss–Seidel bidomain time step (Algorithm 14.1). The lagged extracellular potential $\boldsymbol{\phi}_e^{n}$ feeds the parabolic right-hand side; the parabolic solve produces $\mathbf{V}_m^{n+1}$, which becomes the right-hand side of the elliptic solve $-(\mathbf{L}_i+\mathbf{L}_e)\boldsymbol{\phi}_e^{n+1}=\mathbf{L}_i\mathbf{V}_m^{n+1}$. The new $\boldsymbol{\phi}_e^{n+1}$ loops back as the lagged input for the next step — this sequential reuse of the freshest value is exactly the Gauss–Seidel dependency.</div>
   </div>

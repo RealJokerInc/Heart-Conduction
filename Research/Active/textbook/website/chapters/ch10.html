@@ -130,44 +130,44 @@
   <svg viewBox="0 0 520 280" xmlns="http://www.w3.org/2000/svg" style="max-width:520px; display:block; margin:1.5em auto;">
     <defs>
       <marker id="arr9a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#d32f2f" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-crimson)"/>
       </marker>
       <marker id="arr9b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#1565c0" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-blue)"/>
       </marker>
       <marker id="arr9c" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#2e7d32" stroke-width="1.4"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.4" style="stroke:var(--fig-green)"/>
       </marker>
     </defs>
     <!-- Axes -->
-    <line x1="50" y1="240" x2="490" y2="240" stroke="#333" stroke-width="1.5"/>
-    <line x1="50" y1="240" x2="50" y2="20" stroke="#333" stroke-width="1.5"/>
-    <text x="270" y="270" text-anchor="middle" font-size="13" fill="#333">t</text>
-    <text x="30" y="130" text-anchor="middle" font-size="13" fill="#333" transform="rotate(-90,30,130)">V</text>
+    <line x1="50" y1="240" x2="490" y2="240" stroke-width="1.5" style="stroke:var(--fig-ink)"/>
+    <line x1="50" y1="240" x2="50" y2="20" stroke-width="1.5" style="stroke:var(--fig-ink)"/>
+    <text x="270" y="270" text-anchor="middle" font-size="13" style="fill:var(--fig-ink)">t</text>
+    <text x="30" y="130" text-anchor="middle" font-size="13" transform="rotate(-90,30,130)" style="fill:var(--fig-ink)">V</text>
     <!-- True curve (gray dashed) -->
-    <path d="M80,200 Q200,120 400,80" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4"/>
-    <text x="410" y="75" font-size="11" fill="#999">true solution</text>
+    <path d="M80,200 Q200,120 400,80" fill="none" stroke-width="1.5" stroke-dasharray="6,4" style="stroke:var(--fig-faint)"/>
+    <text x="410" y="75" font-size="11" style="fill:var(--fig-faint)">true solution</text>
     <!-- Point at t_n -->
-    <circle cx="80" cy="200" r="5" fill="#333"/>
-    <text x="75" y="258" font-size="12" fill="#333">tⁿ</text>
-    <text x="60" y="195" font-size="11" fill="#333">Vⁿ</text>
+    <circle cx="80" cy="200" r="5" style="fill:var(--fig-ink)"/>
+    <text x="75" y="258" font-size="12" style="fill:var(--fig-ink)">tⁿ</text>
+    <text x="60" y="195" font-size="11" style="fill:var(--fig-ink)">Vⁿ</text>
     <!-- k1 slope (red) from (t_n, V_n) -->
-    <line x1="80" y1="200" x2="310" y2="108" stroke="#d32f2f" stroke-width="2" marker-end="url(#arr9a)"/>
-    <text x="170" y="138" font-size="12" fill="#d32f2f" font-weight="bold">k₁ slope</text>
+    <line x1="80" y1="200" x2="310" y2="108" stroke-width="2" marker-end="url(#arr9a)" style="stroke:var(--fig-crimson)"/>
+    <text x="170" y="138" font-size="12" font-weight="bold" style="fill:var(--fig-crimson)">k₁ slope</text>
     <!-- FE predictor point -->
-    <circle cx="310" cy="108" r="4" fill="#d32f2f" opacity="0.6"/>
-    <text x="318" y="102" font-size="11" fill="#d32f2f">Ṽ (predictor)</text>
+    <circle cx="310" cy="108" r="4" opacity="0.6" style="fill:var(--fig-crimson)"/>
+    <text x="318" y="102" font-size="11" style="fill:var(--fig-crimson)">Ṽ (predictor)</text>
     <!-- k2 slope (blue) from predicted point -->
-    <line x1="310" y1="108" x2="440" y2="75" stroke="#1565c0" stroke-width="2" marker-end="url(#arr9b)"/>
-    <text x="365" y="80" font-size="12" fill="#1565c0" font-weight="bold">k₂ slope</text>
+    <line x1="310" y1="108" x2="440" y2="75" stroke-width="2" marker-end="url(#arr9b)" style="stroke:var(--fig-blue)"/>
+    <text x="365" y="80" font-size="12" font-weight="bold" style="fill:var(--fig-blue)">k₂ slope</text>
     <!-- t^{n+1} marker -->
-    <text x="300" y="258" font-size="12" fill="#333">tⁿ⁺¹</text>
-    <line x1="310" y1="240" x2="310" y2="235" stroke="#333" stroke-width="1"/>
+    <text x="300" y="258" font-size="12" style="fill:var(--fig-ink)">tⁿ⁺¹</text>
+    <line x1="310" y1="240" x2="310" y2="235" stroke-width="1" style="stroke:var(--fig-ink)"/>
     <!-- Average slope (green) from (t_n, V_n) -->
-    <line x1="80" y1="200" x2="310" y2="137" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arr9c)"/>
-    <text x="130" y="185" font-size="12" fill="#2e7d32" font-weight="bold">average slope → Vⁿ⁺¹</text>
+    <line x1="80" y1="200" x2="310" y2="137" stroke-width="2.5" marker-end="url(#arr9c)" style="stroke:var(--fig-green)"/>
+    <text x="130" y="185" font-size="12" font-weight="bold" style="fill:var(--fig-green)">average slope → Vⁿ⁺¹</text>
     <!-- Final RK2 point -->
-    <circle cx="310" cy="137" r="5" fill="#2e7d32"/>
+    <circle cx="310" cy="137" r="5" style="fill:var(--fig-green)"/>
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
@@ -278,68 +278,68 @@
   <svg viewBox="0 0 560 320" xmlns="http://www.w3.org/2000/svg" style="max-width:560px; display:block; margin:1.5em auto;">
     <defs>
       <marker id="arr9r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#d32f2f" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-crimson)"/>
       </marker>
       <marker id="arr9o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#e65100" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-orange)"/>
       </marker>
       <marker id="arr9p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#6a1b9a" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-purple)"/>
       </marker>
       <marker id="arr9bl" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#1565c0" stroke-width="1.2"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.2" style="stroke:var(--fig-blue)"/>
       </marker>
       <marker id="arr9g2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L8,3 L0,6" fill="none" stroke="#2e7d32" stroke-width="1.4"/>
+        <path d="M0,0 L8,3 L0,6" fill="none" stroke-width="1.4" style="stroke:var(--fig-green)"/>
       </marker>
     </defs>
     <!-- Axes -->
-    <line x1="50" y1="280" x2="530" y2="280" stroke="#333" stroke-width="1.5"/>
-    <line x1="50" y1="280" x2="50" y2="20" stroke="#333" stroke-width="1.5"/>
-    <text x="290" y="308" text-anchor="middle" font-size="13" fill="#333">t</text>
-    <text x="30" y="150" text-anchor="middle" font-size="13" fill="#333" transform="rotate(-90,30,150)">V</text>
+    <line x1="50" y1="280" x2="530" y2="280" stroke-width="1.5" style="stroke:var(--fig-ink)"/>
+    <line x1="50" y1="280" x2="50" y2="20" stroke-width="1.5" style="stroke:var(--fig-ink)"/>
+    <text x="290" y="308" text-anchor="middle" font-size="13" style="fill:var(--fig-ink)">t</text>
+    <text x="30" y="150" text-anchor="middle" font-size="13" transform="rotate(-90,30,150)" style="fill:var(--fig-ink)">V</text>
     <!-- True curve (gray dashed) -->
-    <path d="M80,230 Q250,130 460,70" fill="none" stroke="#aaa" stroke-width="1.5" stroke-dasharray="6,4"/>
-    <text x="468" y="65" font-size="10" fill="#999">true</text>
+    <path d="M80,230 Q250,130 460,70" fill="none" stroke-width="1.5" stroke-dasharray="6,4" style="stroke:var(--fig-faint)"/>
+    <text x="468" y="65" font-size="10" style="fill:var(--fig-faint)">true</text>
     <!-- Time markers -->
-    <text x="75" y="298" font-size="11" fill="#333">tⁿ</text>
-    <line x1="80" y1="280" x2="80" y2="275" stroke="#333"/>
-    <text x="250" y="298" font-size="11" fill="#333">tⁿ + Δt/2</text>
-    <line x1="270" y1="280" x2="270" y2="275" stroke="#333"/>
-    <text x="445" y="298" font-size="11" fill="#333">tⁿ⁺¹</text>
-    <line x1="460" y1="280" x2="460" y2="275" stroke="#333"/>
+    <text x="75" y="298" font-size="11" style="fill:var(--fig-ink)">tⁿ</text>
+    <line x1="80" y1="280" x2="80" y2="275" style="stroke:var(--fig-ink)"/>
+    <text x="250" y="298" font-size="11" style="fill:var(--fig-ink)">tⁿ + Δt/2</text>
+    <line x1="270" y1="280" x2="270" y2="275" style="stroke:var(--fig-ink)"/>
+    <text x="445" y="298" font-size="11" style="fill:var(--fig-ink)">tⁿ⁺¹</text>
+    <line x1="460" y1="280" x2="460" y2="275" style="stroke:var(--fig-ink)"/>
     <!-- Point at t_n -->
-    <circle cx="80" cy="230" r="5" fill="#333"/>
+    <circle cx="80" cy="230" r="5" style="fill:var(--fig-ink)"/>
     <!-- k1 (red) -->
-    <line x1="80" y1="230" x2="270" y2="160" stroke="#d32f2f" stroke-width="2" marker-end="url(#arr9r)" opacity="0.85"/>
-    <text x="120" y="182" font-size="12" fill="#d32f2f" font-weight="bold">k₁</text>
-    <circle cx="270" cy="160" r="3" fill="#d32f2f" opacity="0.5"/>
+    <line x1="80" y1="230" x2="270" y2="160" stroke-width="2" marker-end="url(#arr9r)" opacity="0.85" style="stroke:var(--fig-crimson)"/>
+    <text x="120" y="182" font-size="12" font-weight="bold" style="fill:var(--fig-crimson)">k₁</text>
+    <circle cx="270" cy="160" r="3" opacity="0.5" style="fill:var(--fig-crimson)"/>
     <!-- k2 (orange) - from (t_n, V_n) but using k1/2 -->
-    <line x1="80" y1="230" x2="270" y2="148" stroke="#e65100" stroke-width="2" marker-end="url(#arr9o)" opacity="0.85"/>
-    <text x="140" y="167" font-size="12" fill="#e65100" font-weight="bold">k₂</text>
-    <circle cx="270" cy="148" r="3" fill="#e65100" opacity="0.5"/>
+    <line x1="80" y1="230" x2="270" y2="148" stroke-width="2" marker-end="url(#arr9o)" opacity="0.85" style="stroke:var(--fig-orange)"/>
+    <text x="140" y="167" font-size="12" font-weight="bold" style="fill:var(--fig-orange)">k₂</text>
+    <circle cx="270" cy="148" r="3" opacity="0.5" style="fill:var(--fig-orange)"/>
     <!-- k3 (purple) - from (t_n, V_n) using k2/2 -->
-    <line x1="80" y1="230" x2="270" y2="141" stroke="#6a1b9a" stroke-width="2" marker-end="url(#arr9p)" opacity="0.85"/>
-    <text x="160" y="155" font-size="12" fill="#6a1b9a" font-weight="bold">k₃</text>
-    <circle cx="270" cy="141" r="3" fill="#6a1b9a" opacity="0.5"/>
+    <line x1="80" y1="230" x2="270" y2="141" stroke-width="2" marker-end="url(#arr9p)" opacity="0.85" style="stroke:var(--fig-purple)"/>
+    <text x="160" y="155" font-size="12" font-weight="bold" style="fill:var(--fig-purple)">k₃</text>
+    <circle cx="270" cy="141" r="3" opacity="0.5" style="fill:var(--fig-purple)"/>
     <!-- k4 (blue) - full step using k3 -->
-    <line x1="80" y1="230" x2="460" y2="83" stroke="#1565c0" stroke-width="2" marker-end="url(#arr9bl)" opacity="0.85"/>
-    <text x="310" y="130" font-size="12" fill="#1565c0" font-weight="bold">k₄</text>
-    <circle cx="460" cy="83" r="3" fill="#1565c0" opacity="0.5"/>
+    <line x1="80" y1="230" x2="460" y2="83" stroke-width="2" marker-end="url(#arr9bl)" opacity="0.85" style="stroke:var(--fig-blue)"/>
+    <text x="310" y="130" font-size="12" font-weight="bold" style="fill:var(--fig-blue)">k₄</text>
+    <circle cx="460" cy="83" r="3" opacity="0.5" style="fill:var(--fig-blue)"/>
     <!-- Final RK4 result (green) -->
-    <line x1="80" y1="230" x2="460" y2="93" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arr9g2)"/>
-    <text x="340" y="108" font-size="12" fill="#2e7d32" font-weight="bold">weighted average → Vⁿ⁺¹</text>
-    <circle cx="460" cy="93" r="5" fill="#2e7d32"/>
+    <line x1="80" y1="230" x2="460" y2="93" stroke-width="2.5" marker-end="url(#arr9g2)" style="stroke:var(--fig-green)"/>
+    <text x="340" y="108" font-size="12" font-weight="bold" style="fill:var(--fig-green)">weighted average → Vⁿ⁺¹</text>
+    <circle cx="460" cy="93" r="5" style="fill:var(--fig-green)"/>
     <!-- Legend -->
-    <rect x="350" y="195" width="180" height="80" rx="4" fill="white" stroke="#ddd" stroke-width="1"/>
-    <line x1="360" y1="212" x2="385" y2="212" stroke="#d32f2f" stroke-width="2"/>
-    <text x="392" y="216" font-size="10" fill="#333">k₁: slope at start (×1)</text>
-    <line x1="360" y1="230" x2="385" y2="230" stroke="#e65100" stroke-width="2"/>
-    <text x="392" y="234" font-size="10" fill="#333">k₂: 1st midpoint (×2)</text>
-    <line x1="360" y1="248" x2="385" y2="248" stroke="#6a1b9a" stroke-width="2"/>
-    <text x="392" y="252" font-size="10" fill="#333">k₃: 2nd midpoint (×2)</text>
-    <line x1="360" y1="266" x2="385" y2="266" stroke="#1565c0" stroke-width="2"/>
-    <text x="392" y="270" font-size="10" fill="#333">k₄: slope at end (×1)</text>
+    <rect x="350" y="195" width="180" height="80" rx="4" stroke-width="1" style="fill:var(--fig-stage);stroke:var(--fig-grid)"/>
+    <line x1="360" y1="212" x2="385" y2="212" stroke-width="2" style="stroke:var(--fig-crimson)"/>
+    <text x="392" y="216" font-size="10" style="fill:var(--fig-ink)">k₁: slope at start (×1)</text>
+    <line x1="360" y1="230" x2="385" y2="230" stroke-width="2" style="stroke:var(--fig-orange)"/>
+    <text x="392" y="234" font-size="10" style="fill:var(--fig-ink)">k₂: 1st midpoint (×2)</text>
+    <line x1="360" y1="248" x2="385" y2="248" stroke-width="2" style="stroke:var(--fig-purple)"/>
+    <text x="392" y="252" font-size="10" style="fill:var(--fig-ink)">k₃: 2nd midpoint (×2)</text>
+    <line x1="360" y1="266" x2="385" y2="266" stroke-width="2" style="stroke:var(--fig-blue)"/>
+    <text x="392" y="270" font-size="10" style="fill:var(--fig-ink)">k₄: slope at end (×1)</text>
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">
@@ -462,26 +462,26 @@
   <!-- Layer 3: Stability region diagram -->
   <svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg" style="max-width:500px; display:block; margin:1.5em auto;">
     <!-- Background -->
-    <rect x="40" y="10" width="440" height="270" fill="#f8f9fa" rx="4"/>
+    <rect x="40" y="10" width="440" height="270" rx="4" style="fill:var(--fig-stage)"/>
     <!-- Grid lines -->
-    <line x1="280" y1="20" x2="280" y2="270" stroke="#ddd" stroke-width="1"/>
-    <line x1="50" y1="145" x2="470" y2="145" stroke="#ddd" stroke-width="1"/>
+    <line x1="280" y1="20" x2="280" y2="270" stroke-width="1" style="stroke:var(--fig-grid)"/>
+    <line x1="50" y1="145" x2="470" y2="145" stroke-width="1" style="stroke:var(--fig-grid)"/>
     <!-- Real axis label -->
-    <text x="460" y="162" font-size="11" fill="#666">Re(z)</text>
-    <text x="285" y="28" font-size="11" fill="#666">Im(z)</text>
+    <text x="460" y="162" font-size="11" style="fill:var(--fig-muted)">Re(z)</text>
+    <text x="285" y="28" font-size="11" style="fill:var(--fig-muted)">Im(z)</text>
     <!-- Scale marks on real axis -->
-    <text x="58" y="162" font-size="10" fill="#888">-3</text>
-    <line x1="60" y1="145" x2="60" y2="150" stroke="#888"/>
-    <text x="130" y="162" font-size="10" fill="#888">-2</text>
-    <line x1="133" y1="145" x2="133" y2="150" stroke="#888"/>
-    <text x="203" y="162" font-size="10" fill="#888">-1</text>
-    <line x1="207" y1="145" x2="207" y2="150" stroke="#888"/>
-    <text x="350" y="162" font-size="10" fill="#888">1</text>
-    <line x1="353" y1="145" x2="353" y2="150" stroke="#888"/>
+    <text x="58" y="162" font-size="10" style="fill:var(--fig-faint)">-3</text>
+    <line x1="60" y1="145" x2="60" y2="150" style="stroke:var(--fig-faint)"/>
+    <text x="130" y="162" font-size="10" style="fill:var(--fig-faint)">-2</text>
+    <line x1="133" y1="145" x2="133" y2="150" style="stroke:var(--fig-faint)"/>
+    <text x="203" y="162" font-size="10" style="fill:var(--fig-faint)">-1</text>
+    <line x1="207" y1="145" x2="207" y2="150" style="stroke:var(--fig-faint)"/>
+    <text x="350" y="162" font-size="10" style="fill:var(--fig-faint)">1</text>
+    <line x1="353" y1="145" x2="353" y2="150" style="stroke:var(--fig-faint)"/>
     <!-- FE stability region (circle centered at -1, radius 1) -->
-    <circle cx="207" cy="145" r="73" fill="none" stroke="#d32f2f" stroke-width="2" stroke-dasharray="6,3"/>
+    <circle cx="207" cy="145" r="73" fill="none" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-crimson)"/>
     <!-- RK2 stability region (roughly elliptical, same real axis but taller) -->
-    <ellipse cx="207" cy="145" rx="73" ry="88" fill="none" stroke="#e65100" stroke-width="2" stroke-dasharray="8,3"/>
+    <ellipse cx="207" cy="145" rx="73" ry="88" fill="none" stroke-width="2" stroke-dasharray="8,3" style="stroke:var(--fig-orange)"/>
     <!-- RK4 stability region (larger, characteristic shape) -->
     <path d="M280,145
              C280,90 260,50 207,35
@@ -490,20 +490,20 @@
              C50,160 45,180 60,200
              C75,240 140,275 207,255
              C260,240 280,200 280,145 Z"
-          fill="rgba(21,101,192,0.08)" stroke="#1565c0" stroke-width="2.5"/>
+          fill="rgba(21,101,192,0.08)" stroke-width="2.5" style="stroke:var(--fig-blue)"/>
     <!-- Real axis stability intervals -->
     <!-- FE/RK2: [-2, 0] -->
-    <line x1="133" y1="140" x2="280" y2="140" stroke="#d32f2f" stroke-width="4" opacity="0.5"/>
+    <line x1="133" y1="140" x2="280" y2="140" stroke-width="4" opacity="0.5" style="stroke:var(--fig-crimson)"/>
     <!-- RK4: [-2.785, 0] -->
-    <line x1="75" y1="150" x2="280" y2="150" stroke="#1565c0" stroke-width="4" opacity="0.5"/>
+    <line x1="75" y1="150" x2="280" y2="150" stroke-width="4" opacity="0.5" style="stroke:var(--fig-blue)"/>
     <!-- Legend -->
-    <rect x="310" y="30" width="160" height="74" rx="4" fill="white" stroke="#ddd"/>
-    <line x1="320" y1="48" x2="348" y2="48" stroke="#d32f2f" stroke-width="2" stroke-dasharray="6,3"/>
-    <text x="355" y="52" font-size="11" fill="#333">FE: |z| ≤ 2</text>
-    <line x1="320" y1="68" x2="348" y2="68" stroke="#e65100" stroke-width="2" stroke-dasharray="8,3"/>
-    <text x="355" y="72" font-size="11" fill="#333">RK2: |z| ≤ 2</text>
-    <line x1="320" y1="88" x2="348" y2="88" stroke="#1565c0" stroke-width="2.5"/>
-    <text x="355" y="92" font-size="11" fill="#333">RK4: |z| ≤ 2.785</text>
+    <rect x="310" y="30" width="160" height="74" rx="4" style="fill:var(--fig-stage);stroke:var(--fig-grid)"/>
+    <line x1="320" y1="48" x2="348" y2="48" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-crimson)"/>
+    <text x="355" y="52" font-size="11" style="fill:var(--fig-ink)">FE: |z| ≤ 2</text>
+    <line x1="320" y1="68" x2="348" y2="68" stroke-width="2" stroke-dasharray="8,3" style="stroke:var(--fig-orange)"/>
+    <text x="355" y="72" font-size="11" style="fill:var(--fig-ink)">RK2: |z| ≤ 2</text>
+    <line x1="320" y1="88" x2="348" y2="88" stroke-width="2.5" style="stroke:var(--fig-blue)"/>
+    <text x="355" y="92" font-size="11" style="fill:var(--fig-ink)">RK4: |z| ≤ 2.785</text>
   </svg>
 
   <p style="text-align:center; font-size:0.92em; color:#555; margin-top:-0.5em;">

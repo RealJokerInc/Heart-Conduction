@@ -571,16 +571,16 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </style>
   <defs>
     <marker id="arr-d" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
+      <path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-ink)"/>
     </marker>
     <marker id="arr-diag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#D55E00"/>
+      <path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-orange)"/>
     </marker>
   </defs>
 
   <!-- ═══ PANEL (a): D2Q5 ═══ -->
   <!-- Background grid -->
-  <g stroke="#E0E0E0" stroke-width="0.75" stroke-dasharray="4,4">
+  <g stroke-width="0.75" stroke-dasharray="4,4" style="stroke:var(--fig-grid)">
     <line x1="50" y1="40" x2="250" y2="40"/>
     <line x1="50" y1="140" x2="250" y2="140"/>
     <line x1="50" y1="240" x2="250" y2="240"/>
@@ -590,14 +590,14 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </g>
 
   <!-- Background nodes (open circles) -->
-  <g fill="white" stroke="#999" stroke-width="1">
+  <g stroke-width="1" style="fill:var(--fig-stage);stroke:var(--fig-faint)">
     <circle cx="50" cy="40" r="4"/>  <circle cx="150" cy="40" r="4"/>  <circle cx="250" cy="40" r="4"/>
     <circle cx="50" cy="140" r="4"/> <circle cx="250" cy="140" r="4"/>
     <circle cx="50" cy="240" r="4"/> <circle cx="150" cy="240" r="4"/> <circle cx="250" cy="240" r="4"/>
   </g>
 
   <!-- Arrows from center to cardinal neighbors -->
-  <g stroke="#333" stroke-width="2" marker-end="url(#arr-d)">
+  <g stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)">
     <line x1="158" y1="140" x2="238" y2="140"/>
     <line x1="142" y1="140" x2="62"  y2="140"/>
     <line x1="150" y1="132" x2="150" y2="52"/>
@@ -605,7 +605,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </g>
 
   <!-- Cardinal neighbor nodes (filled) -->
-  <g fill="#E69F00">
+  <g style="fill:var(--fig-amber)">
     <circle cx="250" cy="140" r="7"/>
     <circle cx="50"  cy="140" r="7"/>
     <circle cx="150" cy="40"  r="7"/>
@@ -613,11 +613,11 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </g>
 
   <!-- Center node (largest, distinct color) -->
-  <circle cx="150" cy="140" r="9" fill="#0072B2"/>
+  <circle cx="150" cy="140" r="9" style="fill:var(--fig-blue)"/>
 
   <!-- Weight labels next to nodes -->
-  <g font-size="13" fill="#333" text-anchor="middle">
-    <text x="150" y="125" font-weight="600" fill="#0072B2">w₀=1/3</text>
+  <g font-size="13" text-anchor="middle" style="fill:var(--fig-ink)">
+    <text x="150" y="125" font-weight="600" style="fill:var(--fig-blue)">w₀=1/3</text>
     <text x="250" y="125">w=1/6</text>
     <text x="50"  y="125">w=1/6</text>
     <text x="183" y="38">w=1/6</text>
@@ -625,7 +625,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </g>
 
   <!-- Direction indices -->
-  <g font-size="14" fill="#333" font-weight="600">
+  <g font-size="14" font-weight="600" style="fill:var(--fig-ink)">
     <text x="150" y="160" text-anchor="middle">i=0</text>
     <text x="270" y="145" text-anchor="start">i=1</text>
     <text x="18"  y="145" text-anchor="start">i=2</text>
@@ -634,13 +634,13 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
   </g>
 
   <!-- Panel label -->
-  <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(a) D2Q5</text>
+  <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" style="fill:var(--fig-ink)">(a) D2Q5</text>
 
 
   <!-- ═══ PANEL (b): D2Q9 ═══ -->
   <g transform="translate(320,0)">
     <!-- Background grid -->
-    <g stroke="#E0E0E0" stroke-width="0.75" stroke-dasharray="4,4">
+    <g stroke-width="0.75" stroke-dasharray="4,4" style="stroke:var(--fig-grid)">
       <line x1="50" y1="40" x2="250" y2="40"/>
       <line x1="50" y1="140" x2="250" y2="140"/>
       <line x1="50" y1="240" x2="250" y2="240"/>
@@ -650,7 +650,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Cardinal arrows -->
-    <g stroke="#333" stroke-width="2" marker-end="url(#arr-d)">
+    <g stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)">
       <line x1="158" y1="140" x2="238" y2="140"/>
       <line x1="142" y1="140" x2="62"  y2="140"/>
       <line x1="150" y1="132" x2="150" y2="52"/>
@@ -658,7 +658,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Diagonal arrows (different color for distinction) -->
-    <g stroke="#D55E00" stroke-width="1.5" marker-end="url(#arr-diag)" stroke-dasharray="none">
+    <g stroke-width="1.5" marker-end="url(#arr-diag)" stroke-dasharray="none" style="stroke:var(--fig-orange)">
       <line x1="157" y1="133" x2="240" y2="50"/>
       <line x1="143" y1="133" x2="60"  y2="50"/>
       <line x1="157" y1="147" x2="240" y2="230"/>
@@ -666,7 +666,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Cardinal neighbor nodes -->
-    <g fill="#E69F00">
+    <g style="fill:var(--fig-amber)">
       <circle cx="250" cy="140" r="7"/>
       <circle cx="50"  cy="140" r="7"/>
       <circle cx="150" cy="40"  r="7"/>
@@ -674,7 +674,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Diagonal neighbor nodes -->
-    <g fill="#D55E00">
+    <g style="fill:var(--fig-orange)">
       <circle cx="250" cy="40"  r="6"/>
       <circle cx="50"  cy="40"  r="6"/>
       <circle cx="250" cy="240" r="6"/>
@@ -682,23 +682,23 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Center node -->
-    <circle cx="150" cy="140" r="9" fill="#0072B2"/>
+    <circle cx="150" cy="140" r="9" style="fill:var(--fig-blue)"/>
 
     <!-- Weight labels -->
-    <g font-size="12" fill="#333" text-anchor="middle">
-      <text x="150" y="125" font-weight="600" fill="#0072B2" font-size="13">w₀=4/9</text>
-      <text x="250" y="125" fill="#E69F00">1/9</text>
-      <text x="50"  y="125" fill="#E69F00">1/9</text>
-      <text x="177" y="38"  fill="#E69F00">1/9</text>
-      <text x="177" y="255" fill="#E69F00">1/9</text>
-      <text x="270" y="30"  fill="#D55E00">1/36</text>
-      <text x="25"  y="30"  fill="#D55E00">1/36</text>
-      <text x="270" y="255" fill="#D55E00">1/36</text>
-      <text x="25"  y="255" fill="#D55E00">1/36</text>
+    <g font-size="12" text-anchor="middle" style="fill:var(--fig-ink)">
+      <text x="150" y="125" font-weight="600" font-size="13" style="fill:var(--fig-blue)">w₀=4/9</text>
+      <text x="250" y="125" style="fill:var(--fig-amber)">1/9</text>
+      <text x="50"  y="125" style="fill:var(--fig-amber)">1/9</text>
+      <text x="177" y="38"  style="fill:var(--fig-amber)">1/9</text>
+      <text x="177" y="255" style="fill:var(--fig-amber)">1/9</text>
+      <text x="270" y="30"  style="fill:var(--fig-orange)">1/36</text>
+      <text x="25"  y="30"  style="fill:var(--fig-orange)">1/36</text>
+      <text x="270" y="255" style="fill:var(--fig-orange)">1/36</text>
+      <text x="25"  y="255" style="fill:var(--fig-orange)">1/36</text>
     </g>
 
     <!-- Panel label -->
-    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(b) D2Q9</text>
+    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" style="fill:var(--fig-ink)">(b) D2Q9</text>
   </g>
 
 
@@ -711,7 +711,7 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
          +z → (0, -80), -z → (0, 80) -->
 
     <!-- Cube wireframe (back edges dashed) -->
-    <g stroke="#E0E0E0" stroke-width="0.75">
+    <g stroke-width="0.75" style="stroke:var(--fig-grid)">
       <!-- Back edges (dashed) -->
       <line x1="150" y1="150" x2="81" y2="110" stroke-dasharray="4,4"/>
       <line x1="81" y1="110" x2="12" y2="150" stroke-dasharray="4,4"/>
@@ -736,20 +736,20 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
 
     <!-- Arrows from center to 6 face-centered neighbors -->
     <!-- +x: (150,150) → (219,110) -->
-    <line x1="155" y1="147" x2="210" y2="114" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="155" y1="147" x2="210" y2="114" stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
     <!-- -x: (150,150) → (81,190) -->
-    <line x1="145" y1="153" x2="90"  y2="186" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="145" y1="153" x2="90"  y2="186" stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
     <!-- +y: (150,150) → (81,110) -->
-    <line x1="145" y1="147" x2="90"  y2="114" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="145" y1="147" x2="90"  y2="114" stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
     <!-- -y: (150,150) → (219,190) -->
-    <line x1="155" y1="153" x2="210" y2="186" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="155" y1="153" x2="210" y2="186" stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
     <!-- +z: (150,150) → (150,70) -->
-    <line x1="150" y1="142" x2="150" y2="80"  stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="150" y1="142" x2="150" y2="80"  stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
     <!-- -z: (150,150) → (150,230) -->
-    <line x1="150" y1="158" x2="150" y2="220" stroke="#333" stroke-width="2" marker-end="url(#arr-d)"/>
+    <line x1="150" y1="158" x2="150" y2="220" stroke-width="2" marker-end="url(#arr-d)" style="stroke:var(--fig-ink)"/>
 
     <!-- Face-centered neighbor nodes -->
-    <g fill="#E69F00">
+    <g style="fill:var(--fig-amber)">
       <circle cx="219" cy="110" r="7"/>
       <circle cx="81"  cy="190" r="7"/>
       <circle cx="81"  cy="110" r="7" opacity="0.7"/>
@@ -759,10 +759,10 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Center node -->
-    <circle cx="150" cy="150" r="9" fill="#0072B2"/>
+    <circle cx="150" cy="150" r="9" style="fill:var(--fig-blue)"/>
 
     <!-- Axis labels -->
-    <g font-size="14" fill="#333" font-weight="600">
+    <g font-size="14" font-weight="600" style="fill:var(--fig-ink)">
       <text x="228" y="105" text-anchor="start">+x</text>
       <text x="68"  y="205" text-anchor="end">−x</text>
       <text x="68"  y="105" text-anchor="end">+y</text>
@@ -772,11 +772,11 @@ Five quadrature nodes: one at the peak of the 2D bell curve (rest), four at one 
     </g>
 
     <!-- Weight label at center -->
-    <text x="150" y="170" text-anchor="middle" font-size="13" fill="#0072B2" font-weight="600">w₀=1/4</text>
-    <text x="238" y="138" text-anchor="start" font-size="12" fill="#333">w=1/8</text>
+    <text x="150" y="170" text-anchor="middle" font-size="13" font-weight="600" style="fill:var(--fig-blue)">w₀=1/4</text>
+    <text x="238" y="138" text-anchor="start" font-size="12" style="fill:var(--fig-ink)">w=1/8</text>
 
     <!-- Panel label -->
-    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" fill="#333">(c) D3Q7</text>
+    <text x="150" y="298" text-anchor="middle" font-size="16" font-weight="700" style="fill:var(--fig-ink)">(c) D3Q7</text>
   </g>
 </svg>
 <div class="figure-caption"><strong>Figure 18.1:</strong> Common lattice stencils for LBM. <strong>(a)</strong> D2Q5: five velocities (rest + four cardinal) — sufficient for isotropic diffusion. <strong>(b)</strong> D2Q9: nine velocities (rest + cardinal + diagonal) — required for fluid flow to capture cross-velocity terms. <strong>(c)</strong> D3Q7: seven velocities in 3D (rest + six face-centered) — the minimal 3D stencil for diffusion. Blue center node = rest velocity (peak of the Gaussian); orange = cardinal neighbors; vermillion = diagonal neighbors. Arrows indicate streaming directions; weights $w_i$ annotated at each node.</div>
@@ -902,40 +902,40 @@ The weights paired with each velocity set are determined by Gauss-Hermite quadra
   </style>
   <defs>
     <marker id="mb-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L9,3.5 L0,7 Z" fill="#5a6175"/>
+      <path d="M0,0 L9,3.5 L0,7 Z" style="fill:var(--fig-muted)"/>
     </marker>
   </defs>
 
   <!-- shaded area under the Gaussian -->
-  <path d="M 52.0,250 L 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3 L 408.0,250 Z" fill="#0f3460" opacity="0.07"/>
+  <path d="M 52.0,250 L 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3 L 408.0,250 Z" opacity="0.07" style="fill:var(--fig-blue)"/>
 
   <!-- Gaussian equilibrium curve -->
-  <path d="M 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3" fill="none" stroke="#16213e" stroke-width="2.5"/>
+  <path d="M 52.0,243.3 L 56.0,242.2 L 60.0,241.0 L 64.0,239.7 L 68.0,238.2 L 72.0,236.5 L 76.0,234.6 L 80.0,232.5 L 84.0,230.2 L 88.0,227.7 L 92.0,225.0 L 96.0,222.0 L 100.0,218.7 L 104.0,215.2 L 108.0,211.4 L 112.0,207.3 L 116.0,203.0 L 120.0,198.4 L 124.0,193.5 L 128.0,188.4 L 132.0,183.1 L 136.0,177.5 L 140.0,171.7 L 144.0,165.8 L 148.0,159.7 L 152.0,153.4 L 156.0,147.1 L 160.0,140.8 L 164.0,134.4 L 168.0,128.1 L 172.0,121.8 L 176.0,115.7 L 180.0,109.7 L 184.0,104.0 L 188.0,98.6 L 192.0,93.4 L 196.0,88.6 L 200.0,84.3 L 204.0,80.4 L 208.0,76.9 L 212.0,74.0 L 216.0,71.7 L 220.0,69.9 L 224.0,68.7 L 228.0,68.1 L 232.0,68.1 L 236.0,68.7 L 240.0,69.9 L 244.0,71.7 L 248.0,74.0 L 252.0,76.9 L 256.0,80.4 L 260.0,84.3 L 264.0,88.6 L 268.0,93.4 L 272.0,98.6 L 276.0,104.0 L 280.0,109.7 L 284.0,115.7 L 288.0,121.8 L 292.0,128.1 L 296.0,134.4 L 300.0,140.8 L 304.0,147.1 L 308.0,153.4 L 312.0,159.7 L 316.0,165.8 L 320.0,171.7 L 324.0,177.5 L 328.0,183.1 L 332.0,188.4 L 336.0,193.5 L 340.0,198.4 L 344.0,203.0 L 348.0,207.3 L 352.0,211.4 L 356.0,215.2 L 360.0,218.7 L 364.0,222.0 L 368.0,225.0 L 372.0,227.7 L 376.0,230.2 L 380.0,232.5 L 384.0,234.6 L 388.0,236.5 L 392.0,238.2 L 396.0,239.7 L 400.0,241.0 L 404.0,242.2 L 408.0,243.3" fill="none" stroke-width="2.5" style="stroke:var(--fig-ink)"/>
 
   <!-- axes -->
-  <line x1="45" y1="250" x2="435" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#mb-arrow)"/>
-  <line x1="45" y1="256" x2="45" y2="55" stroke="#5a6175" stroke-width="1.5" marker-end="url(#mb-arrow)"/>
+  <line x1="45" y1="250" x2="435" y2="250" stroke-width="1.5" marker-end="url(#mb-arrow)" style="stroke:var(--fig-muted)"/>
+  <line x1="45" y1="256" x2="45" y2="55" stroke-width="1.5" marker-end="url(#mb-arrow)" style="stroke:var(--fig-muted)"/>
 
   <!-- drop lines to sample points -->
-  <g stroke="#5a6175" stroke-width="1" stroke-dasharray="4,4">
+  <g stroke-width="1" stroke-dasharray="4,4" style="stroke:var(--fig-muted)">
     <line x1="110" y1="209.4" x2="110" y2="250"/>
     <line x1="230" y1="68.0" x2="230" y2="250"/>
     <line x1="350" y1="209.4" x2="350" y2="250"/>
   </g>
 
   <!-- lattice sample nodes on the curve -->
-  <circle cx="230" cy="68.0" r="6.5" fill="#0f3460"/>
-  <circle cx="110" cy="209.4" r="5.5" fill="#e94560"/>
-  <circle cx="350" cy="209.4" r="5.5" fill="#e94560"/>
+  <circle cx="230" cy="68.0" r="6.5" style="fill:var(--fig-blue)"/>
+  <circle cx="110" cy="209.4" r="5.5" style="fill:var(--fig-crimson)"/>
+  <circle cx="350" cy="209.4" r="5.5" style="fill:var(--fig-crimson)"/>
 
   <!-- curve label -->
   <text x="292" y="64" font-size="17" font-style="italic">f<tspan dy="-7" font-size="11">eq</tspan><tspan dy="7">(c)</tspan></text>
 
   <!-- weight annotations -->
   <g font-size="13" text-anchor="middle">
-    <text x="230" y="52" fill="#0f3460" font-weight="600">w₀ = 2/3</text>
-    <text x="110" y="199" fill="#e94560">w = 1/6</text>
-    <text x="350" y="199" fill="#e94560">w = 1/6</text>
+    <text x="230" y="52" font-weight="600" style="fill:var(--fig-blue)">w₀ = 2/3</text>
+    <text x="110" y="199" style="fill:var(--fig-crimson)">w = 1/6</text>
+    <text x="350" y="199" style="fill:var(--fig-crimson)">w = 1/6</text>
   </g>
 
   <!-- velocity-axis tick labels -->
@@ -947,7 +947,7 @@ The weights paired with each velocity set are determined by Gauss-Hermite quadra
   <text x="428" y="269" font-size="16" font-style="italic">c</text>
 
   <!-- Gauss-Hermite node indices -->
-  <g font-size="11" text-anchor="middle" fill="#5a6175">
+  <g font-size="11" text-anchor="middle" style="fill:var(--fig-muted)">
     <text x="110" y="288">e = −1</text>
     <text x="230" y="288">e = 0</text>
     <text x="350" y="288">e = +1</text>

@@ -42,26 +42,26 @@
   <div class="figure">
     <svg viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
       <!-- Axes -->
-      <line x1="50" y1="210" x2="490" y2="210" stroke="#5a6175" stroke-width="1.2"/>
-      <line x1="50" y1="210" x2="50" y2="20" stroke="#5a6175" stroke-width="1.2"/>
-      <text x="270" y="235" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175">position x</text>
-      <text x="30" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" fill="#5a6175" transform="rotate(-90,30,115)">temperature u</text>
+      <line x1="50" y1="210" x2="490" y2="210" stroke-width="1.2" style="stroke:var(--fig-muted)"/>
+      <line x1="50" y1="210" x2="50" y2="20" stroke-width="1.2" style="stroke:var(--fig-muted)"/>
+      <text x="270" y="235" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" style="fill:var(--fig-muted)">position x</text>
+      <text x="30" y="115" text-anchor="middle" font-family="EB Garamond,serif" font-size="13" transform="rotate(-90,30,115)" style="fill:var(--fig-muted)">temperature u</text>
       <!-- t=0: sharp peak -->
-      <path d="M 60,200 Q 150,200 200,195 Q 230,185 250,80 Q 260,35 270,80 Q 290,185 320,195 Q 370,200 480,200" fill="none" stroke="#e94560" stroke-width="2.5"/>
-      <text x="285" y="48" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">t = 0</text>
+      <path d="M 60,200 Q 150,200 200,195 Q 230,185 250,80 Q 260,35 270,80 Q 290,185 320,195 Q 370,200 480,200" fill="none" stroke-width="2.5" style="stroke:var(--fig-crimson)"/>
+      <text x="285" y="48" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-crimson)">t = 0</text>
       <!-- t=1: spreading -->
-      <path d="M 60,198 Q 140,196 190,185 Q 225,165 250,115 Q 265,85 270,115 Q 295,165 330,185 Q 380,196 480,198" fill="none" stroke="#d35400" stroke-width="2" stroke-dasharray="6,3"/>
-      <text x="340" y="170" font-family="EB Garamond,serif" font-size="11" fill="#d35400" font-weight="600">t = 1</text>
+      <path d="M 60,198 Q 140,196 190,185 Q 225,165 250,115 Q 265,85 270,115 Q 295,165 330,185 Q 380,196 480,198" fill="none" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-orange)"/>
+      <text x="340" y="170" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-orange)">t = 1</text>
       <!-- t=3: broad and flat -->
-      <path d="M 60,194 Q 130,190 180,180 Q 220,168 250,152 Q 265,145 270,152 Q 300,168 340,180 Q 390,190 480,194" fill="none" stroke="#e67e22" stroke-width="1.8" stroke-dasharray="3,3"/>
-      <text x="385" y="175" font-family="EB Garamond,serif" font-size="11" fill="#e67e22" font-weight="600">t = 3</text>
+      <path d="M 60,194 Q 130,190 180,180 Q 220,168 250,152 Q 265,145 270,152 Q 300,168 340,180 Q 390,190 480,194" fill="none" stroke-width="1.8" stroke-dasharray="3,3" style="stroke:var(--fig-orange)"/>
+      <text x="385" y="175" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-orange)">t = 3</text>
       <!-- t=10: nearly flat -->
-      <path d="M 60,192 Q 150,190 220,187 Q 255,185 270,184 Q 285,185 330,187 Q 400,190 480,192" fill="none" stroke="#f39c12" stroke-width="1.5" stroke-dasharray="2,4"/>
-      <text x="420" y="182" font-family="EB Garamond,serif" font-size="11" fill="#f39c12" font-weight="600">t = 10</text>
+      <path d="M 60,192 Q 150,190 220,187 Q 255,185 270,184 Q 285,185 330,187 Q 400,190 480,192" fill="none" stroke-width="1.5" stroke-dasharray="2,4" style="stroke:var(--fig-amber)"/>
+      <text x="420" y="182" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-amber)">t = 10</text>
       <!-- Annotation arrow -->
-      <path d="M 270,60 L 270,100" fill="none" stroke="#888" stroke-width="0.8" marker-end="url(#arr)"/>
-      <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker></defs>
-      <text x="270" y="106" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" fill="#888">peak decays</text>
+      <path d="M 270,60 L 270,100" fill="none" stroke-width="0.8" marker-end="url(#arr)" style="stroke:var(--fig-faint)"/>
+      <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-faint)"/></marker></defs>
+      <text x="270" y="106" text-anchor="middle" font-family="EB Garamond,serif" font-size="9" style="fill:var(--fig-faint)">peak decays</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure A.1.</span> A sharp temperature peak (red) diffuses over time, becoming broader and flatter. The heat equation smooths all discontinuities — information about the initial sharp shape is irreversibly lost.</div>
   </div>
@@ -114,38 +114,38 @@
   <div class="figure">
     <svg viewBox="0 0 520 180" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
       <!-- Left panel: point above average -->
-      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Peak: u &gt; neighbors</text>
+      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">Peak: u &gt; neighbors</text>
       <!-- Circle of neighbors -->
-      <circle cx="130" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
+      <circle cx="130" cy="100" r="50" fill="none" stroke-width="1" stroke-dasharray="4,3" style="stroke:var(--fig-grid)"/>
       <!-- Neighbor dots -->
-      <circle cx="80" cy="100" r="5" fill="#42a5f5"/>
-      <circle cx="130" cy="50" r="5" fill="#42a5f5"/>
-      <circle cx="180" cy="100" r="5" fill="#42a5f5"/>
-      <circle cx="130" cy="150" r="5" fill="#42a5f5"/>
+      <circle cx="80" cy="100" r="5" style="fill:var(--fig-blue)"/>
+      <circle cx="130" cy="50" r="5" style="fill:var(--fig-blue)"/>
+      <circle cx="180" cy="100" r="5" style="fill:var(--fig-blue)"/>
+      <circle cx="130" cy="150" r="5" style="fill:var(--fig-blue)"/>
       <!-- Center: hot -->
-      <circle cx="130" cy="100" r="7" fill="#e94560" stroke="#c0392b" stroke-width="1.5"/>
+      <circle cx="130" cy="100" r="7" stroke-width="1.5" style="fill:var(--fig-crimson);stroke:var(--fig-crimson)"/>
       <!-- Arrows inward -->
-      <text x="130" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">H</text>
-      <text x="80" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
-      <text x="130" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
-      <text x="180" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
-      <text x="130" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">C</text>
-      <text x="130" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#c0392b">∇²u &lt; 0 → cools down</text>
+      <text x="130" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" font-weight="700" style="fill:var(--fig-stage)">H</text>
+      <text x="80" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">C</text>
+      <text x="130" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">C</text>
+      <text x="180" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">C</text>
+      <text x="130" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">C</text>
+      <text x="130" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-crimson)">∇²u &lt; 0 → cools down</text>
 
       <!-- Right panel: point below average -->
-      <text x="390" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Valley: u &lt; neighbors</text>
-      <circle cx="390" cy="100" r="50" fill="none" stroke="#b0b8d4" stroke-width="1" stroke-dasharray="4,3"/>
-      <circle cx="340" cy="100" r="5" fill="#e94560"/>
-      <circle cx="390" cy="50" r="5" fill="#e94560"/>
-      <circle cx="440" cy="100" r="5" fill="#e94560"/>
-      <circle cx="390" cy="150" r="5" fill="#e94560"/>
-      <circle cx="390" cy="100" r="7" fill="#42a5f5" stroke="#1565c0" stroke-width="1.5"/>
-      <text x="390" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" fill="white" font-weight="700">C</text>
-      <text x="340" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
-      <text x="390" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
-      <text x="440" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
-      <text x="390" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" fill="white">H</text>
-      <text x="390" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#1565c0">∇²u &gt; 0 → warms up</text>
+      <text x="390" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">Valley: u &lt; neighbors</text>
+      <circle cx="390" cy="100" r="50" fill="none" stroke-width="1" stroke-dasharray="4,3" style="stroke:var(--fig-grid)"/>
+      <circle cx="340" cy="100" r="5" style="fill:var(--fig-crimson)"/>
+      <circle cx="390" cy="50" r="5" style="fill:var(--fig-crimson)"/>
+      <circle cx="440" cy="100" r="5" style="fill:var(--fig-crimson)"/>
+      <circle cx="390" cy="150" r="5" style="fill:var(--fig-crimson)"/>
+      <circle cx="390" cy="100" r="7" stroke-width="1.5" style="fill:var(--fig-blue);stroke:var(--fig-blue)"/>
+      <text x="390" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="9" font-weight="700" style="fill:var(--fig-stage)">C</text>
+      <text x="340" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">H</text>
+      <text x="390" y="50" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">H</text>
+      <text x="440" y="100" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">H</text>
+      <text x="390" y="150" text-anchor="middle" dominant-baseline="central" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-stage)">H</text>
+      <text x="390" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-blue)">∇²u &gt; 0 → warms up</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure A.2.</span> The Laplacian as a "disagreement detector." Left: a hot point (H) surrounded by cool neighbors (C) has $\nabla^2 u < 0$. Right: a cool point surrounded by hot neighbors has $\nabla^2 u > 0$. The heat equation says: resolve the disagreement.</div>
   </div>
@@ -271,20 +271,20 @@
   <div class="figure">
     <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
       <!-- Wire frame (boundary) -->
-      <path d="M 60,160 Q 130,40 200,80 Q 270,120 340,50 Q 410,20 480,130" fill="none" stroke="#16213e" stroke-width="2.5"/>
+      <path d="M 60,160 Q 130,40 200,80 Q 270,120 340,50 Q 410,20 480,130" fill="none" stroke-width="2.5" style="stroke:var(--fig-ink)"/>
       <!-- Membrane surface (smooth interpolation) -->
-      <path d="M 60,160 Q 100,100 140,100 Q 180,100 220,95 Q 260,90 300,75 Q 340,60 380,55 Q 420,60 480,130" fill="none" stroke="#42a5f5" stroke-width="2" stroke-dasharray="6,3"/>
+      <path d="M 60,160 Q 100,100 140,100 Q 180,100 220,95 Q 260,90 300,75 Q 340,60 380,55 Q 420,60 480,130" fill="none" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-blue)"/>
       <!-- Fixed boundary markers -->
-      <circle cx="60" cy="160" r="5" fill="#e94560"/>
-      <circle cx="480" cy="130" r="5" fill="#e94560"/>
+      <circle cx="60" cy="160" r="5" style="fill:var(--fig-crimson)"/>
+      <circle cx="480" cy="130" r="5" style="fill:var(--fig-crimson)"/>
       <!-- Labels -->
-      <text x="55" y="178" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
-      <text x="470" y="148" font-family="EB Garamond,serif" font-size="10" fill="#e94560">fixed</text>
-      <text x="270" y="55" font-family="EB Garamond,serif" font-size="12" fill="#42a5f5" font-weight="600">equilibrium surface</text>
-      <text x="350" y="38" font-family="EB Garamond,serif" font-size="12" fill="#16213e" font-weight="600">boundary shape</text>
+      <text x="55" y="178" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">fixed</text>
+      <text x="470" y="148" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">fixed</text>
+      <text x="270" y="55" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-blue)">equilibrium surface</text>
+      <text x="350" y="38" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-ink)">boundary shape</text>
       <!-- Interior point annotation -->
-      <circle cx="270" cy="85" r="3" fill="#42a5f5"/>
-      <text x="270" y="110" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">u = average of neighbors</text>
+      <circle cx="270" cy="85" r="3" style="fill:var(--fig-blue)"/>
+      <text x="270" y="110" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">u = average of neighbors</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure A.3.</span> The rubber sheet analogy for Laplace's equation. The boundary conditions (wire frame) determine the shape; the interior settles into an equilibrium where each point's value equals the average of its neighbors.</div>
   </div>
@@ -333,22 +333,22 @@
   <div class="figure">
     <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" style="max-width:480px;">
       <!-- Axis -->
-      <line x1="40" y1="100" x2="500" y2="100" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="40" y1="100" x2="500" y2="100" stroke-width="0.8" style="stroke:var(--fig-grid)"/>
       <!-- t=0: initial pulse -->
-      <path d="M 50,100 Q 200,100 230,100 Q 245,95 255,55 Q 260,40 265,55 Q 275,95 290,100 Q 320,100 490,100" fill="none" stroke="#16213e" stroke-width="2.5"/>
-      <text x="260" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#16213e" font-weight="600">t = 0</text>
+      <path d="M 50,100 Q 200,100 230,100 Q 245,95 255,55 Q 260,40 265,55 Q 275,95 290,100 Q 320,100 490,100" fill="none" stroke-width="2.5" style="stroke:var(--fig-ink)"/>
+      <text x="260" y="30" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-ink)">t = 0</text>
       <!-- t=2: two pulses moving apart -->
-      <path d="M 50,100 Q 100,100 130,100 Q 145,96 155,75 Q 160,65 165,75 Q 175,96 190,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
-      <path d="M 330,100 Q 355,96 365,75 Q 370,65 375,75 Q 385,96 400,100 Q 450,100 490,100" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="6,3"/>
-      <text x="160" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
-      <text x="370" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">t = 2</text>
+      <path d="M 50,100 Q 100,100 130,100 Q 145,96 155,75 Q 160,65 165,75 Q 175,96 190,100" fill="none" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-blue)"/>
+      <path d="M 330,100 Q 355,96 365,75 Q 370,65 375,75 Q 385,96 400,100 Q 450,100 490,100" fill="none" stroke-width="2" stroke-dasharray="6,3" style="stroke:var(--fig-blue)"/>
+      <text x="160" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-blue)">t = 2</text>
+      <text x="370" y="56" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-blue)">t = 2</text>
       <!-- Arrows showing propagation -->
-      <path d="M 230,120 L 180,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
-      <text x="195" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed c</text>
-      <path d="M 290,120 L 340,135" fill="none" stroke="#888" stroke-width="1" marker-end="url(#arr)"/>
-      <text x="325" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#888">speed c</text>
+      <path d="M 230,120 L 180,135" fill="none" stroke-width="1" marker-end="url(#arr)" style="stroke:var(--fig-faint)"/>
+      <text x="195" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-faint)">speed c</text>
+      <path d="M 290,120 L 340,135" fill="none" stroke-width="1" marker-end="url(#arr)" style="stroke:var(--fig-faint)"/>
+      <text x="325" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-faint)">speed c</text>
       <!-- Key difference label -->
-      <text x="260" y="188" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">Pulse splits and travels at finite speed — shape preserved</text>
+      <text x="260" y="188" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-muted)">Pulse splits and travels at finite speed — shape preserved</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure A.4.</span> The wave equation splits an initial pulse into two copies traveling in opposite directions at speed $c$. Unlike diffusion, the pulse shape is preserved — no smoothing occurs.</div>
   </div>

@@ -4,12 +4,66 @@
 > Scan in 30 seconds. Full edit history is in `CHANGELOG.md` (this folder).
 
 ## Current Direction
-Canonical source is the **split website chapters** (`website/chapters/*.html`); the monolithic `Bidomain_Textbook.html` is archived (2026-07-02 fork resolution). **The full audit-remediation is COMPLETE** — a fresh chapter + image audit drove a 5-phase fix (correctness bugs → book-wide cross-ref sweep → figure integrity → authoring → PDF pipeline), all committed (7590635→5457c99). The book now has 40 figures and builds to a verified 195-pp PDF via `website/build/html_to_pdf.py`. Remaining work is a short DEFERRED list (see Next Step), not a backlog — the question is close to `/research-complete`-able.
+**NEW TRACK (2026-07-03): website UI/UX refresh + interactive figures.** Content-wise the book is done (5-phase
+audit-remediation COMPLETE, 40 figs, 195-pp PDF). The open front is now the *website presentation*: it's a
+competent-but-anonymous docs template with a real dark-mode figure bug and static/decorative figures. Ran a UI
+audit (`audits/UI_AUDIT_2026-07-03.md`), decided a direction, and built an interactive proof-of-direction
+(artifact `a514e90d`). Plan lives in `REFRESH_PLAN.md`. Direction (set while user away, PENDING CONFIRM):
+explorable-explanation aesthetic · ~6–8 flagship interactive widgets + themeable static SVG for the rest ·
+stay vanilla/no-build so the PDF pipeline survives (interactivity layered over a static SVG print fallback).
+
+Canonical source remains the **split website chapters** (`website/chapters/*.html`); monolithic archived.
 
 ## Next Step
-**PLAN.md all 5 phases DONE + committed.** The audit-remediation backlog is closed. Remaining OPEN items (deferred, not blockers): Ch 8 full split (only a reading-guide box added); a dedicated Reader-B non-code path; Ch 4 SVGs → literature images; §18.1 "Two Cases" trim. Candidate next sessions: (a) `/textbook-edit` on those deferred items; (b) redesign the website chrome using the new `frontend-design` skill; (c) `/research-complete` if the question is considered answered. Re-run `/textbook-compile` (now working) after any future edits.
+**`PLAN.md` is written and CONVERGED through 2 adversarial /audit rounds — awaiting user "go" to execute Phase 1.**
+(Blueprint hard-gate: no implementation until explicit approval.) Phase 1 = CSS+nav, no widgets: build
+`verify_site.py` harness → add the expanded `--fig-*` token system (TWO scopes only: `:root`+`[data-theme=dark]`)
+→ census-driven color migration (`migrate_figure_colors.py --census`→review→`--apply`) → delete blanket override
+`style.css:810-812` (replaced by `.figure text{fill:var(--fig-axis)}`) → shell/type refresh → wire cover/part
+pages. Then P2 figure-widget framework (classic `figures.js`→`window.mountFigures`+dynamic import; print-safe),
+P3 6–8 widgets, P4 identity+PDF-regression. Durable prototype: `plans/2026-07-03_refresh_prototype.html`.
+Deferred *content* items still open (separate track): Ch 8 split, Reader-B non-code path, Ch 4 SVGs, §18.1 trim.
 
 ## Thread
+
+### 2026-07-03: Blueprint → PLAN.md, adversarial audit ×2 → CONVERGED
+`/blueprint` turned `REFRESH_PLAN.md` + codebase analysis into a machine-targeted `PLAN.md` (4 phases: fix/re-shell
+→ figure-widget framework → 6–8 widgets → identity+PDF-verify). Archived the completed audit-remediation plan →
+`plans/2026-07-02_audit-remediation.md`. Then ran the /audit-revise loop the user asked for. **Round 1** (Opus
+auditor, read-only): 2 HIGH + 4 MED + 8 LOW — and it *verified my line numbers/functions/physics were right*, but
+caught two real errors: (HIGH-1) my 8-token figure palette can't express the **61 distinct hexes** the figures
+actually use (census confirmed) → expanded to categorical(7)+ink(4)+stage+tint(6), migration made census-first;
+(HIGH-2) I mis-stated the theme model as 3-scope `@media` — the site is really TWO JS-toggled scopes
+(`:root`+`[data-theme=dark]`), and my instruction would've leaked dark colors into a light-toggled dark-OS view.
+Plus MEDs: deleting `style.css:810` orphaned ch18 group-inherited text (added scoped `.figure text` default); the
+verify leak-assertion was trivially always-true (replaced); app.js-IIFE vs figures.js-ES-module boundary (→ classic
+`window.mountFigures` + dynamic import). Revised all 14. **Round 2**: CONVERGED — 0 crit/0 high, 2 med (fallback
+double-render visibility; census ignored `fill="white"`×42) + 7 low, all folded in; auditor independently
+re-derived the MED-1 text-default is sound (0 corpus cases of a hued group wrapping unfilled text). Persisted the
+prototype into the repo (was ephemeral scratchpad). PLAN ready to execute; blueprint hard-gate holds — awaiting "go".
+
+### 2026-07-03: Website UI audit + interactive-refresh direction + proof-of-direction artifact
+User: "the website ui and images are horrible... currently the images are static and non interactive... make them
+interactive... looks horrid. start with a ui audit, then a plan for a refresh rebuild." **Audited the live site**
+via Playwright screenshots (light+dark, title/ch1/ch2/ch10) — not just the code. Verdict: light-mode book
+typography is genuinely fine (~3.5/5), but two real bugs + a wasted opportunity drag it down. Wrote
+`audits/UI_AUDIT_2026-07-03.md`. Key findings: **(HIGH)** dark-mode figure bug — `style.css:811-812`
+`svg path{stroke:var(--text-secondary)}` blanket-repaints EVERY figure curve one grey (confirmed live: FHN
+red/blue/green nullclines+trajectory all collapse to identical grey → figure meaningless in dark); **(HIGH)**
+figures are hand-drawn static SVG w/ hardcoded coords+hex, ~460px, space-starved, zero interactivity — biggest
+miss for a book about *dynamics*; **(MED)** anonymous docs-template identity, one crimson does everything;
+**(MED)** cover `title.html` + `part-*.html` are ORPHANED — SPA never loads them (only PDF does), so no
+landing/part dividers, `#title`→ch1 fallback. **Hard constraint:** `chapters/*.html` double as PDF source →
+interactivity must be progressive enhancement over a static SVG fallback, stay vanilla.
+**Asked 3 direction forks via AskUserQuestion; user was away** → proceeded on best-judgment defaults:
+explorable-explanation aesthetic · ~6–8 flagship widgets + themeable static SVG rest · enhance-vanilla-in-place.
+Because the complaint is *visual*, built a real **proof-of-direction artifact** (`a514e90d`) instead of prose:
+new serif×mono identity, arterial-crimson accent, always-dark hero AP monitor, a live before/after of the
+dark-mode bug, and TWO working physically-correct interactive widgets — FHN phase plane (drag IC, sliders,
+live limit-cycle detection) + Mitchell–Schaeffer AP shaper (APD₉₀ live). Verified in both themes, 0 console
+errors; figures stay colored+legible in dark (the fix, demonstrated). Wrote `REFRESH_PLAN.md` (design tokens +
+`<figure data-widget>` architecture + flagship list + 4 phases). Prototype widget code (RK4, themeable canvas)
+reusable in the real build. **Nothing in the actual `website/` touched yet** — audit + plan + prototype only.
 
 ### 2026-07-02: PLAN.md Phases 4–5 executed + committed (remediation COMPLETE)
 **Phase 4** (commit d5e332a): authoring via 6 parallel per-chapter agents. Worked examples — ch1 Nernst, ch2 FHN, ch11 BDF2 (5×5 matrix + bootstrap), ch15 3-node elliptic solve, ch20 5-node pseudo-time relaxation (replacing the compute-nothing outline). 9 new SVG figures (2.1 FHN phase plane, 11.1 L-stable-vs-CN-ringing, 13.2 face stencil, 14.1 GS data-flow, 15.1 solver decision tree, 18.2 bell curve, 19.1 bounce-back, 20.1 dual-lattice, C.4 CG-vs-descent). Depth: §11.6 expanded + App C.12–14 links; ch8 reading-guide box; ch18 30-sec preview box; References → 18 entries. ch18 equations renumbered gapless 18.1→18.41 with ALL cross-chapter refs (ch19×8, ch20×1) updated — carefully verified each against ch18's new labels (BGK→18.9, τ-D D-form→18.26, τ-form→18.28, equilibrium→18.18). Fixed a pre-existing orphan </p> in ch19. Book now 40 figures; no $ in any SVG, tags balanced.

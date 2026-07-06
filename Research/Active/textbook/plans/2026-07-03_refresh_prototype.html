@@ -1,0 +1,621 @@
+<title>Cardiac Textbook — Refresh Direction</title>
+<style>
+  /* ─────────────────────────────────────────────
+     TOKENS — light is the base; dark redefined 3× (media, [data-theme])
+     Components read tokens only, never raw hex.
+  ───────────────────────────────────────────── */
+  :root{
+    --paper:#F1F3F9; --surface:#FFFFFF; --surface-2:#F7F8FC;
+    --ink:#161A2B; --ink-soft:#565D77; --ink-faint:#8A90A8;
+    --line:#E1E4EF; --line-soft:#EBEDF5;
+    --crimson:#C31D38; --crimson-ink:#9E162C; --crimson-wash:rgba(195,29,56,0.09);
+    /* figure system — themeable, reads on both grounds */
+    --fig-stage:#FBFBFE; --fig-grid:#E7E9F2; --fig-axis:#4A506A;
+    --fig-crimson:#C31D38; --fig-teal:#0C7480; --fig-amber:#A96C0C;
+    --shadow:0 1px 2px rgba(20,24,45,.06), 0 6px 24px -8px rgba(20,24,45,.12);
+    --shadow-lg:0 2px 6px rgba(20,24,45,.08), 0 20px 50px -18px rgba(20,24,45,.28);
+
+    --font-serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,"Liberation Mono",monospace;
+
+    --measure:64ch;
+    --step--1:clamp(.82rem,.8rem + .1vw,.9rem);
+    --step-0:1.06rem;
+    --step-1:1.3rem;
+    --step-2:1.62rem;
+    --step-3:2.1rem;
+    --step-4:clamp(2.6rem,2rem + 2.8vw,4rem);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#0C0E16; --surface:#141724; --surface-2:#1A1E2D;
+      --ink:#E9EBF4; --ink-soft:#A6ACC3; --ink-faint:#727892;
+      --line:#242838; --line-soft:#1E2230;
+      --crimson:#FF5468; --crimson-ink:#FF7A89; --crimson-wash:rgba(255,84,104,0.13);
+      --fig-stage:#10131F; --fig-grid:#232838; --fig-axis:#9DA3BD;
+      --fig-crimson:#FF5468; --fig-teal:#34C6D2; --fig-amber:#E7A23C;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -10px rgba(0,0,0,.6);
+      --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 24px 60px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="light"]{
+    --paper:#F1F3F9; --surface:#FFFFFF; --surface-2:#F7F8FC;
+    --ink:#161A2B; --ink-soft:#565D77; --ink-faint:#8A90A8;
+    --line:#E1E4EF; --line-soft:#EBEDF5;
+    --crimson:#C31D38; --crimson-ink:#9E162C; --crimson-wash:rgba(195,29,56,0.09);
+    --fig-stage:#FBFBFE; --fig-grid:#E7E9F2; --fig-axis:#4A506A;
+    --fig-crimson:#C31D38; --fig-teal:#0C7480; --fig-amber:#A96C0C;
+    --shadow:0 1px 2px rgba(20,24,45,.06), 0 6px 24px -8px rgba(20,24,45,.12);
+    --shadow-lg:0 2px 6px rgba(20,24,45,.08), 0 20px 50px -18px rgba(20,24,45,.28);
+  }
+  :root[data-theme="dark"]{
+    --paper:#0C0E16; --surface:#141724; --surface-2:#1A1E2D;
+    --ink:#E9EBF4; --ink-soft:#A6ACC3; --ink-faint:#727892;
+    --line:#242838; --line-soft:#1E2230;
+    --crimson:#FF5468; --crimson-ink:#FF7A89; --crimson-wash:rgba(255,84,104,0.13);
+    --fig-stage:#10131F; --fig-grid:#232838; --fig-axis:#9DA3BD;
+    --fig-crimson:#FF5468; --fig-teal:#34C6D2; --fig-amber:#E7A23C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px -10px rgba(0,0,0,.6);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 24px 60px -20px rgba(0,0,0,.75);
+  }
+
+  /* always-dark instrument panel (deliberate single-theme element) */
+  .scope, .panel-dark{
+    --fig-stage:#0A0C14; --fig-grid:#182230; --fig-axis:#8891A8;
+    --fig-crimson:#FF5468; --fig-teal:#35C6D2; --fig-amber:#E7A23C;
+  }
+
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--font-serif); font-size:var(--step-0); line-height:1.72;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  ::selection{background:var(--crimson-wash);}
+  .mono{font-family:var(--font-mono);}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--crimson); font-weight:600;
+  }
+  .wrap{max-width:1120px; margin:0 auto; padding:0 clamp(1.1rem,4vw,2.5rem);}
+
+  /* ── header ── */
+  header.site{
+    position:sticky; top:0; z-index:20;
+    background:color-mix(in srgb, var(--paper) 82%, transparent);
+    backdrop-filter:saturate(1.4) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .site-in{display:flex; align-items:center; gap:1rem; height:56px; max-width:1120px; margin:0 auto; padding:0 clamp(1.1rem,4vw,2.5rem);}
+  .brand{display:flex; align-items:baseline; gap:.6rem; font-family:var(--font-mono); font-size:.8rem; letter-spacing:.04em; color:var(--ink-soft);}
+  .brand b{color:var(--ink); letter-spacing:.14em; text-transform:uppercase; font-size:.72rem;}
+  .brand .pulse{width:8px; height:8px; border-radius:50%; background:var(--crimson); box-shadow:0 0 0 0 var(--crimson-wash); animation:beat 2.4s ease-out infinite;}
+  @keyframes beat{0%{box-shadow:0 0 0 0 var(--crimson-wash);}70%{box-shadow:0 0 0 9px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+  .spacer{margin-left:auto;}
+  .tbtn{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--surface); color:var(--ink-soft); border:1px solid var(--line);
+    border-radius:7px; padding:.42rem .7rem; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .tbtn:hover{border-color:var(--crimson); color:var(--ink);}
+  .tbtn:focus-visible{outline:2px solid var(--crimson); outline-offset:2px;}
+
+  /* ── hero ── */
+  .hero{padding:clamp(2.4rem,5vw,4.6rem) 0 1.6rem;}
+  .hero h1{
+    font-size:var(--step-4); line-height:1.02; letter-spacing:-.02em; font-weight:600;
+    margin:.5rem 0 .1rem; text-wrap:balance; max-width:16ch;
+  }
+  .hero h1 em{font-style:italic; color:var(--crimson);}
+  .hero .lede{font-size:var(--step-1); color:var(--ink-soft); max-width:52ch; line-height:1.5; margin:.9rem 0 0;}
+  .scope-wrap{margin-top:2rem;}
+  .scope{
+    position:relative; background:var(--fig-stage); border:1px solid #1c2636; border-radius:14px;
+    box-shadow:var(--shadow-lg); overflow:hidden;
+  }
+  .scope canvas{display:block; width:100%; height:clamp(200px,26vw,300px);}
+  .scope .readout{
+    position:absolute; top:12px; left:14px; display:flex; gap:1.4rem;
+    font-family:var(--font-mono); font-size:.68rem; letter-spacing:.08em; color:#8891a8;
+  }
+  .scope .readout b{color:#cfd4e6; font-weight:500;}
+  .scope .badge{
+    position:absolute; top:12px; right:14px; font-family:var(--font-mono); font-size:.62rem;
+    letter-spacing:.16em; text-transform:uppercase; color:#FF5468;
+    border:1px solid rgba(255,84,104,.4); border-radius:20px; padding:.24rem .6rem;
+  }
+
+  /* ── generic section ── */
+  section{padding:clamp(2.2rem,5vw,3.6rem) 0;}
+  .kicker{display:flex; align-items:center; gap:.8rem; margin-bottom:1.3rem;}
+  .kicker .line{height:1px; flex:1; background:var(--line);}
+  h2.sec{font-size:var(--step-3); letter-spacing:-.015em; font-weight:600; margin:0 0 .3rem; text-wrap:balance;}
+  .sec-lede{color:var(--ink-soft); max-width:var(--measure); margin:0 0 1.6rem;}
+  .prose{max-width:var(--measure);}
+  .prose p{margin:0 0 1rem;}
+
+  /* ── before/after strip ── */
+  .ba{display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.6rem;}
+  .ba .card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:.9rem .9rem 1rem; box-shadow:var(--shadow);}
+  .ba .card.panel-dark{background:#0E1119; border-color:#1c2636;}
+  .ba canvas{display:block; width:100%; height:190px; border-radius:8px;}
+  .ba .lab{display:flex; align-items:center; gap:.5rem; font-family:var(--font-mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; margin-bottom:.7rem; color:#8891a8;}
+  .ba .lab.bad b{color:#FF5468;} .ba .lab.good b{color:#35C6D2;}
+  .ba .lab .dot{width:7px; height:7px; border-radius:50%;}
+  .ba .bad .dot{background:#FF5468;} .ba .good .dot{background:#35C6D2;}
+  .ba .cap{font-family:var(--font-mono); font-size:.66rem; color:#767c94; margin-top:.6rem; line-height:1.5;}
+
+  /* ── figure / widget ── */
+  .fig{
+    background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow-lg); overflow:hidden; margin-top:.4rem;
+  }
+  .fig-grid{display:grid; grid-template-columns:1.55fr 1fr; gap:0;}
+  .fig-stage{background:var(--fig-stage); border-right:1px solid var(--line); position:relative;}
+  .fig-stage canvas{display:block; width:100%; height:clamp(300px,34vw,400px); cursor:crosshair; touch-action:none;}
+  .fig-legend{position:absolute; left:14px; top:12px; display:flex; flex-direction:column; gap:.35rem; font-family:var(--font-mono); font-size:.66rem; letter-spacing:.03em;}
+  .fig-legend span{display:flex; align-items:center; gap:.45rem; color:var(--ink-soft);}
+  .fig-legend i{width:16px; height:3px; border-radius:2px; display:inline-block;}
+  .fig-hint{position:absolute; right:14px; bottom:12px; font-family:var(--font-mono); font-size:.63rem; color:var(--ink-faint); letter-spacing:.04em;}
+  .panel{padding:1.2rem 1.3rem 1.4rem; display:flex; flex-direction:column; gap:.1rem;}
+  .panel .ptitle{font-family:var(--font-mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:.7rem;}
+  .ctrl{margin:.55rem 0;}
+  .ctrl .row{display:flex; justify-content:space-between; align-items:baseline; font-family:var(--font-mono); font-size:.74rem; letter-spacing:.02em;}
+  .ctrl .row .name{color:var(--ink-soft);}
+  .ctrl .row .val{color:var(--crimson); font-weight:600; font-variant-numeric:tabular-nums;}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; height:4px; margin-top:.5rem;
+    background:var(--line); border-radius:3px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--crimson); border:2px solid var(--surface); box-shadow:var(--shadow); cursor:pointer;}
+  input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--crimson); border:2px solid var(--surface); cursor:pointer;}
+  input[type=range]:focus-visible{outline:2px solid var(--crimson); outline-offset:4px;}
+  .btnrow{display:flex; gap:.5rem; margin-top:.9rem;}
+  .btn{
+    flex:1; font-family:var(--font-mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+    border-radius:8px; padding:.55rem; cursor:pointer; border:1px solid var(--line); background:var(--surface-2); color:var(--ink);
+    transition:border-color .15s, background .15s;
+  }
+  .btn:hover{border-color:var(--crimson);}
+  .btn.primary{background:var(--crimson); color:#fff; border-color:var(--crimson);}
+  .btn.primary:hover{background:var(--crimson-ink);}
+  .btn:focus-visible{outline:2px solid var(--crimson); outline-offset:2px;}
+  .metric{display:flex; align-items:baseline; gap:.5rem; margin-top:1rem; padding-top:.9rem; border-top:1px dashed var(--line);}
+  .metric .m-val{font-family:var(--font-mono); font-size:1.5rem; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .metric .m-lab{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint);}
+  .fig-cap{padding:.9rem 1.3rem; border-top:1px solid var(--line); font-size:.9rem; color:var(--ink-soft); background:var(--surface-2);}
+  .fig-cap b{color:var(--crimson-ink); font-family:var(--font-mono); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; margin-right:.4rem;}
+
+  /* ── plan ── */
+  .plan{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-top:.4rem;}
+  .phase{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.15rem 1.2rem; box-shadow:var(--shadow); position:relative;}
+  .phase .n{font-family:var(--font-mono); font-size:.7rem; letter-spacing:.1em; color:var(--crimson); font-weight:600;}
+  .phase h3{font-size:1.08rem; margin:.3rem 0 .5rem; letter-spacing:-.01em;}
+  .phase p{font-size:.9rem; color:var(--ink-soft); line-height:1.55; margin:0;}
+  .phase .tag{display:inline-block; margin-top:.7rem; font-family:var(--font-mono); font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line); border-radius:6px; padding:.18rem .45rem;}
+
+  .facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-top:1.6rem;}
+  .facts .f{background:var(--surface); padding:1rem 1.1rem;}
+  .facts .f .k{font-family:var(--font-mono); font-size:.64rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint);}
+  .facts .f .v{margin-top:.3rem; font-size:.95rem; color:var(--ink);}
+
+  footer.site{border-top:1px solid var(--line); padding:2rem 0 3rem; color:var(--ink-faint); font-family:var(--font-mono); font-size:.72rem; letter-spacing:.04em;}
+  footer.site .wrap{display:flex; flex-wrap:wrap; gap:1rem 2rem; align-items:center;}
+
+  @media (max-width:760px){
+    .fig-grid{grid-template-columns:1fr;} .fig-stage{border-right:none; border-bottom:1px solid var(--line);}
+    .ba{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){ .brand .pulse{animation:none;} *{scroll-behavior:auto;} }
+</style>
+
+<header class="site">
+  <div class="site-in">
+    <span class="brand"><span class="pulse" aria-hidden="true"></span><b>Cardiac&nbsp;Computational&nbsp;Modeling</b><span>design refresh</span></span>
+    <span class="spacer"></span>
+    <button class="tbtn" id="themeBtn" aria-label="Toggle light or dark theme">◐&nbsp;<span id="themeLabel">Theme</span></button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <!-- ── HERO ── -->
+    <section class="hero">
+      <p class="eyebrow">Proof of direction · not the final site</p>
+      <h1>Make the <em>dynamics</em> move.</h1>
+      <p class="lede">The book's subject is things that change in time — action potentials, phase-plane orbits, stability, wavefronts. The current site draws them as small, static, single-theme thumbnails. This is what the refresh looks and feels like instead.</p>
+      <div class="scope-wrap">
+        <div class="scope">
+          <div class="readout"><span>MODEL <b>Mitchell–Schaeffer</b></span><span>APD₉₀ <b id="heroApd">—</b></span><span>BCL <b>500 ms</b></span></div>
+          <div class="badge">live · running</div>
+          <canvas id="scope"></canvas>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- ── AUDIT / BEFORE-AFTER ── -->
+    <section>
+      <div class="kicker"><span class="eyebrow">Finding #1 · the dark-mode bug</span><span class="line"></span></div>
+      <h2 class="sec">Every figure loses its meaning in dark mode.</h2>
+      <p class="sec-lede prose">One CSS rule — <code class="mono">svg path { stroke: var(--text-secondary) }</code> — repaints every curve in every figure a single grey. The FitzHugh–Nagumo phase plane below has three distinct curves that carry the whole idea. Watch what today's site does to them.</p>
+      <div class="ba">
+        <div class="card panel-dark">
+          <div class="lab bad"><span class="dot"></span><b>Now</b> — colours collapse to one grey</div>
+          <canvas id="baBad"></canvas>
+          <div class="cap">v-nullcline, w-nullcline and the trajectory are indistinguishable. The figure is technically present, but its information is gone.</div>
+        </div>
+        <div class="card panel-dark">
+          <div class="lab good"><span class="dot"></span><b>After</b> — a themeable colour system</div>
+          <canvas id="baGood"></canvas>
+          <div class="cap">Figures read their colours from theme tokens, so red / teal / amber stay legible and semantic on either ground. Fixed at the root, not patched per-figure.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- ── FLAGSHIP WIDGET: FHN ── -->
+    <section>
+      <div class="kicker"><span class="eyebrow">Flagship figure · Chapter 2</span><span class="line"></span></div>
+      <h2 class="sec">The phase plane, made explorable.</h2>
+      <p class="sec-lede prose">Same figure as Fig 2.1 in the book — but now the reader <em>drives</em> it. Drag anywhere to drop an initial condition, move the parameters, and watch the FitzHugh–Nagumo system integrate in real time. The static SVG stays as the print fallback; this runs on top of it in the browser.</p>
+      <div class="fig">
+        <div class="fig-grid">
+          <div class="fig-stage">
+            <canvas id="fhn"></canvas>
+            <div class="fig-legend">
+              <span><i style="background:var(--fig-crimson)"></i>v-nullcline</span>
+              <span><i style="background:var(--fig-teal)"></i>w-nullcline</span>
+              <span><i style="background:var(--fig-amber)"></i>trajectory</span>
+            </div>
+            <div class="fig-hint">drag to place a starting point ✛</div>
+          </div>
+          <div class="panel">
+            <div class="ptitle">FitzHugh–Nagumo · controls</div>
+            <div class="ctrl">
+              <div class="row"><span class="name">I_ext — stimulus</span><span class="val" id="vI">0.50</span></div>
+              <input type="range" id="sI" min="0" max="1.2" step="0.01" value="0.5">
+            </div>
+            <div class="ctrl">
+              <div class="row"><span class="name">a — recovery offset</span><span class="val" id="vA">0.70</span></div>
+              <input type="range" id="sA" min="0" max="1.2" step="0.01" value="0.7">
+            </div>
+            <div class="ctrl">
+              <div class="row"><span class="name">b — recovery slope</span><span class="val" id="vB">0.80</span></div>
+              <input type="range" id="sB" min="0.2" max="1.4" step="0.01" value="0.8">
+            </div>
+            <div class="ctrl">
+              <div class="row"><span class="name">ε — time-scale ratio</span><span class="val" id="vE">0.08</span></div>
+              <input type="range" id="sE" min="0.02" max="0.3" step="0.005" value="0.08">
+            </div>
+            <div class="btnrow">
+              <button class="btn primary" id="fhnPlay">Pause</button>
+              <button class="btn" id="fhnReset">Reset</button>
+            </div>
+            <div class="metric"><span class="m-val" id="fhnState">rest</span><span class="m-lab">regime</span></div>
+          </div>
+        </div>
+        <div class="fig-cap"><b>Figure 2.1</b>Raise I_ext past ≈0.33 and the resting fixed point loses stability — the orbit becomes a self-sustained limit cycle: a cell that fires forever.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- ── SECOND WIDGET: AP shape ── -->
+    <section>
+      <div class="kicker"><span class="eyebrow">Flagship figure · Chapter 3</span><span class="line"></span></div>
+      <h2 class="sec">Reshape the action potential.</h2>
+      <p class="sec-lede prose">The same widget pattern, a different view: a time series instead of a phase plane. Slide the repolarization time-constant and the plateau stretches or collapses — with the resulting APD₉₀ measured live off the trace, exactly the quantity the chapter is about.</p>
+      <div class="fig">
+        <div class="fig-grid">
+          <div class="fig-stage">
+            <canvas id="ap"></canvas>
+            <div class="fig-legend"><span><i style="background:var(--fig-crimson)"></i>V(t)</span><span><i style="background:var(--fig-teal)"></i>APD₉₀ window</span></div>
+          </div>
+          <div class="panel">
+            <div class="ptitle">Mitchell–Schaeffer · controls</div>
+            <div class="ctrl">
+              <div class="row"><span class="name">τ_close — repolarization</span><span class="val" id="vTc">150</span></div>
+              <input type="range" id="sTc" min="60" max="300" step="1" value="150">
+            </div>
+            <div class="ctrl">
+              <div class="row"><span class="name">τ_out — plateau decay</span><span class="val" id="vTo">6.0</span></div>
+              <input type="range" id="sTo" min="3" max="14" step="0.1" value="6">
+            </div>
+            <div class="ctrl">
+              <div class="row"><span class="name">τ_in — upstroke</span><span class="val" id="vTi">0.30</span></div>
+              <input type="range" id="sTi" min="0.1" max="0.8" step="0.01" value="0.3">
+            </div>
+            <div class="metric"><span class="m-val" id="apApd">—</span><span class="m-lab">APD₉₀ · ms</span></div>
+          </div>
+        </div>
+        <div class="fig-cap"><b>Figure 3.4</b>Two variables — a voltage and one gate — reproduce the cardiac plateau that a neuron never has. τ_close sets how long the door stays shut, and therefore the refractory period.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- ── THE PLAN ── -->
+    <section>
+      <div class="kicker"><span class="eyebrow">The rebuild · four phases</span><span class="line"></span></div>
+      <h2 class="sec">How we get from here to there.</h2>
+      <p class="sec-lede prose">Staying vanilla — no build step, no framework — so the same <code class="mono">chapters/*.html</code> keep assembling into the 195-page PDF. Interactivity is layered <em>over</em> a static SVG that still prints.</p>
+      <div class="plan">
+        <div class="phase"><div class="n">Phase 1</div><h3>Fix &amp; re-shell</h3><p>Kill the dark-mode figure bug at the root, replace hardcoded hex with a theme-token figure system, rebuild the CSS shell and typographic scale, wire up the orphaned cover &amp; part-divider pages.</p><span class="tag">CSS · no risk to content</span></div>
+        <div class="phase"><div class="n">Phase 2</div><h3>Figure framework</h3><p>A tiny vanilla <code class="mono">&lt;figure data-widget&gt;</code> convention: canvas widget when JS is on, static SVG when it isn't. One loader, print-safe, reusable across all figures.</p><span class="tag">JS · progressive enhancement</span></div>
+        <div class="phase"><div class="n">Phase 3</div><h3>6–8 hero widgets</h3><p>Build the flagship interactives — phase plane, AP shape, RK step-size, CFL stability, Nernst/GHK, a propagating wavefront — and convert every remaining figure to the themeable static format.</p><span class="tag">the headline work</span></div>
+        <div class="phase"><div class="n">Phase 4</div><h3>Identity &amp; polish</h3><p>Cover moment, part openers, refined palette &amp; motion, accessibility &amp; reduced-motion passes, then re-run the PDF build to confirm nothing regressed in print.</p><span class="tag">verify · ship</span></div>
+      </div>
+      <div class="facts">
+        <div class="f"><div class="k">Stack</div><div class="v">Vanilla JS · no build</div></div>
+        <div class="f"><div class="k">PDF pipeline</div><div class="v">Preserved (static fallback)</div></div>
+        <div class="f"><div class="k">Interactivity</div><div class="v">~6–8 hero widgets</div></div>
+        <div class="f"><div class="k">Themes</div><div class="v">Light + dark, figures included</div></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span>CARDIAC COMPUTATIONAL MODELING</span>
+    <span style="color:var(--ink-soft)">Refresh direction · 2026-07-03</span>
+    <span class="spacer" style="margin-left:auto">Serif × mono · arterial crimson · themeable figure system</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+  function cvar(name, el){ return getComputedStyle(el||document.documentElement).getPropertyValue(name).trim(); }
+
+  // crisp canvas sizing
+  function fit(cv){
+    var dpr = Math.min(window.devicePixelRatio||1, 2);
+    var r = cv.getBoundingClientRect();
+    cv.width = Math.max(1,Math.round(r.width*dpr));
+    cv.height = Math.max(1,Math.round(r.height*dpr));
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return {ctx:ctx, w:r.width, h:r.height};
+  }
+
+  /* ─────────── Mitchell–Schaeffer AP model ─────────── */
+  function simulateMS(p, T, dt){
+    var v=0, h=1, out=[], stimEnd=0, vg=0.13;
+    for(var t=0; t<=T; t+=dt){
+      if(t % p.BCL < dt) stimEnd = t + 1.0;          // 1 ms stimulus
+      var stim = (t < stimEnd) ? 0.25 : 0;
+      var Jin = h*v*v*(1-v)/p.tin;
+      var Jout = -v/p.tout;
+      v += dt*(Jin + Jout + stim);
+      h += dt*((v<vg) ? (1-h)/p.topen : -h/p.tclose);
+      if(v<0)v=0; if(v>1.15)v=1.15; if(h<0)h=0; if(h>1)h=1;
+      out.push(v);
+    }
+    return out;
+  }
+  function apd90(trace, dt){
+    // first beat: find peak then 90% repolarization crossing
+    var peak=0,pi=0,i;
+    for(i=0;i<trace.length && i*dt<400;i++){ if(trace[i]>peak){peak=trace[i];pi=i;} }
+    if(peak<0.3) return null;
+    var thr = peak*0.1, up=-1, down=-1;
+    for(i=0;i<pi;i++){ if(trace[i]>=thr){up=i;break;} }
+    for(i=pi;i<trace.length;i++){ if(trace[i]<=thr){down=i;break;} }
+    if(up<0||down<0) return null;
+    return (down-up)*dt;
+  }
+
+  /* ─────────── HERO: scrolling monitor ─────────── */
+  (function(){
+    var cv=document.getElementById('scope'); if(!cv)return;
+    var dt=0.5, BCL=500, beats=6, T=BCL*beats;
+    var p={tin:0.3,tout:6,topen:120,tclose:150,BCL:BCL};
+    var trace=simulateMS(p,T,dt);
+    document.getElementById('heroApd').textContent = (Math.round(apd90(trace,dt))||'—')+' ms';
+    var off=0;
+    function draw(){
+      var s=fit(cv), ctx=s.ctx, w=s.w, hgt=s.h;
+      var stage=cvar('--fig-stage',cv), grid=cvar('--fig-grid',cv), tr=cvar('--fig-crimson',cv);
+      ctx.fillStyle=stage; ctx.fillRect(0,0,w,hgt);
+      // grid
+      ctx.strokeStyle=grid; ctx.lineWidth=1;
+      for(var gx=0; gx<w; gx+=w/16){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,hgt); ctx.stroke(); }
+      for(var gy=0; gy<hgt; gy+=hgt/6){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(w,gy); ctx.stroke(); }
+      // baseline
+      ctx.strokeStyle=cvar('--fig-teal',cv); ctx.globalAlpha=.35; ctx.beginPath();
+      ctx.moveTo(0,hgt*0.86); ctx.lineTo(w,hgt*0.86); ctx.stroke(); ctx.globalAlpha=1;
+      // trace: map a moving window
+      var span=Math.round(BCL*3/dt);              // ~3 beats visible
+      var pad=18, top=pad, bot=hgt-pad;
+      ctx.lineJoin='round'; ctx.lineWidth=2.4; ctx.strokeStyle=tr;
+      ctx.shadowColor=tr; ctx.shadowBlur=12;
+      ctx.beginPath();
+      for(var x=0;x<=w;x++){
+        var idx=(Math.floor(off)+Math.floor(x/w*span)) % trace.length;
+        var v=trace[idx];
+        var y=bot-(bot-top)*v;
+        if(x===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke(); ctx.shadowBlur=0;
+      if(!reduce){ off=(off+span/220); if(off>trace.length)off-=trace.length; requestAnimationFrame(draw); }
+    }
+    draw();
+    window.addEventListener('resize', function(){ if(reduce) draw(); });
+  })();
+
+  /* ─────────── FHN phase-plane renderer (shared) ─────────── */
+  function fhnDeriv(v,w,p){ return [v - v*v*v/3 - w + p.I, p.eps*(v + p.a - p.b*w)]; }
+  function rk4(v,w,dt,p){
+    var a=fhnDeriv(v,w,p),
+        b=fhnDeriv(v+0.5*dt*a[0], w+0.5*dt*a[1], p),
+        c=fhnDeriv(v+0.5*dt*b[0], w+0.5*dt*b[1], p),
+        d=fhnDeriv(v+dt*c[0], w+dt*c[1], p);
+    return [v+dt/6*(a[0]+2*b[0]+2*c[0]+d[0]), w+dt/6*(a[1]+2*b[1]+2*c[1]+d[1])];
+  }
+  var VMIN=-2.6,VMAX=2.6,WMIN=-1.3,WMAX=2.2, M=34;
+  function drawPhase(cv, p, opt){
+    opt=opt||{};
+    var s=fit(cv), ctx=s.ctx, w=s.w, hgt=s.h;
+    var pal = opt.mono
+      ? (function(){var g=cvar('--fig-axis',cv);return {cr:g,te:g,am:g,ax:g,gr:cvar('--fig-grid',cv),st:cvar('--fig-stage',cv)};})()
+      : {cr:cvar('--fig-crimson',cv),te:cvar('--fig-teal',cv),am:cvar('--fig-amber',cv),ax:cvar('--fig-axis',cv),gr:cvar('--fig-grid',cv),st:cvar('--fig-stage',cv)};
+    var X=function(v){ return M + (v-VMIN)/(VMAX-VMIN)*(w-M*1.5); };
+    var Y=function(ww){ return (hgt-M) - (ww-WMIN)/(WMAX-WMIN)*(hgt-M*1.6); };
+    ctx.fillStyle=pal.st; ctx.fillRect(0,0,w,hgt);
+    // grid
+    ctx.strokeStyle=pal.gr; ctx.lineWidth=1;
+    for(var gv=-2; gv<=2; gv++){ ctx.beginPath(); ctx.moveTo(X(gv),Y(WMAX)); ctx.lineTo(X(gv),Y(WMIN)); ctx.stroke(); }
+    for(var gw=-1; gw<=2; gw++){ ctx.beginPath(); ctx.moveTo(X(VMIN),Y(gw)); ctx.lineTo(X(VMAX),Y(gw)); ctx.stroke(); }
+    // axes
+    ctx.strokeStyle=pal.ax; ctx.globalAlpha=.5; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(X(VMIN),Y(0)); ctx.lineTo(X(VMAX),Y(0)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(0),Y(WMIN)); ctx.lineTo(X(0),Y(WMAX)); ctx.stroke();
+    ctx.globalAlpha=1;
+    // v-nullcline: w = v - v^3/3 + I
+    ctx.strokeStyle=pal.cr; ctx.lineWidth=opt.mini?2:2.6; ctx.beginPath();
+    for(var i=0;i<=120;i++){ var vv=VMIN+(VMAX-VMIN)*i/120; var ww=vv-vv*vv*vv/3+p.I; if(i===0)ctx.moveTo(X(vv),Y(ww)); else ctx.lineTo(X(vv),Y(ww)); }
+    ctx.stroke();
+    // w-nullcline: w = (v+a)/b
+    ctx.strokeStyle=pal.te; ctx.lineWidth=opt.mini?2:2.4; ctx.beginPath();
+    ctx.moveTo(X(VMIN),Y((VMIN+p.a)/p.b)); ctx.lineTo(X(VMAX),Y((VMAX+p.a)/p.b)); ctx.stroke();
+    // trajectory
+    if(opt.traj && opt.traj.length>1){
+      ctx.strokeStyle=pal.am; ctx.lineWidth=opt.mini?1.8:2.2; ctx.lineJoin='round'; ctx.beginPath();
+      for(var k=0;k<opt.traj.length;k++){ var pt=opt.traj[k]; if(k===0)ctx.moveTo(X(pt[0]),Y(pt[1])); else ctx.lineTo(X(pt[0]),Y(pt[1])); }
+      ctx.stroke();
+      var head=opt.traj[opt.traj.length-1];
+      ctx.fillStyle=pal.am; ctx.beginPath(); ctx.arc(X(head[0]),Y(head[1]),opt.mini?3:4.5,0,7); ctx.fill();
+    }
+    // initial-condition marker
+    if(opt.ic){ ctx.strokeStyle=pal.cr; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(X(opt.ic[0]),Y(opt.ic[1]),opt.mini?4:6,0,7); ctx.stroke(); }
+    return {X:X,Y:Y,w:w,h:hgt};
+  }
+
+  /* ─────────── before/after mini planes ─────────── */
+  (function(){
+    var bad=document.getElementById('baBad'), good=document.getElementById('baGood');
+    if(!bad||!good)return;
+    var p={I:0.5,a:0.7,b:0.8,eps:0.08};
+    // precompute a limit-cycle trajectory
+    var v=-1,w=-.6,tr=[]; for(var i=0;i<4000;i++){ var r=rk4(v,w,0.04,p); v=r[0];w=r[1]; if(i>800&&i%3===0)tr.push([v,w]); }
+    function render(){ drawPhase(bad,p,{traj:tr,mono:true,mini:true}); drawPhase(good,p,{traj:tr,mono:false,mini:true}); }
+    render(); window.__baRender=render;
+    window.addEventListener('resize',render);
+  })();
+
+  /* ─────────── FHN interactive ─────────── */
+  (function(){
+    var cv=document.getElementById('fhn'); if(!cv)return;
+    var p={I:0.5,a:0.7,b:0.8,eps:0.08};
+    var ic=[-1.0,-0.6], v=ic[0], w=ic[1], traj=[[v,w]], playing=!reduce, raf=null;
+    var els={I:['sI','vI',2],a:['sA','vA',2],b:['sB','vB',2],e:['sE','vE',3]};
+    function restart(){ v=ic[0]; w=ic[1]; traj=[[v,w]]; }
+    function classify(){
+      // limit cycle if trajectory range in v stays large late
+      if(traj.length<200) return 'transient';
+      var seg=traj.slice(-200), mn=9,mx=-9;
+      for(var i=0;i<seg.length;i++){ if(seg[i][0]<mn)mn=seg[i][0]; if(seg[i][0]>mx)mx=seg[i][0]; }
+      return (mx-mn>1.5)?'limit cycle':'rest';
+    }
+    function step(){
+      if(playing){ for(var n=0;n<3;n++){ var r=rk4(v,w,0.05,p); v=r[0];w=r[1]; traj.push([v,w]); } if(traj.length>1400)traj.splice(0,traj.length-1400); }
+      var geo=drawPhase(cv,p,{traj:traj,ic:ic});
+      var st=classify(); var el=document.getElementById('fhnState');
+      el.textContent=st; el.style.color = st==='limit cycle'?'var(--crimson)':'var(--ink)';
+      raf=requestAnimationFrame(step);
+    }
+    // pointer → set IC
+    function place(e){
+      var r=cv.getBoundingClientRect();
+      var px=(e.clientX-r.left), py=(e.clientY-r.top);
+      var geo=drawPhase(cv,p,{traj:traj,ic:ic}); // get transforms
+      // invert X,Y
+      var vv=VMIN+(px-34)/(geo.w-51)*(VMAX-VMIN);
+      var ww=WMIN+((geo.h-34)-py)/(geo.h-54.4)*(WMAX-WMIN);
+      ic=[Math.max(VMIN,Math.min(VMAX,vv)),Math.max(WMIN,Math.min(WMAX,ww))]; restart();
+    }
+    var dragging=false;
+    cv.addEventListener('pointerdown',function(e){ dragging=true; cv.setPointerCapture(e.pointerId); place(e); });
+    cv.addEventListener('pointermove',function(e){ if(dragging)place(e); });
+    cv.addEventListener('pointerup',function(){ dragging=false; });
+    // sliders
+    Object.keys(els).forEach(function(key){
+      var cfg=els[key], sl=document.getElementById(cfg[0]), out=document.getElementById(cfg[1]);
+      sl.addEventListener('input',function(){
+        var val=parseFloat(sl.value);
+        if(key==='I')p.I=val; if(key==='a')p.a=val; if(key==='b')p.b=val; if(key==='e')p.eps=val;
+        out.textContent=val.toFixed(cfg[2]); restart();
+      });
+    });
+    var playBtn=document.getElementById('fhnPlay');
+    playBtn.addEventListener('click',function(){ playing=!playing; playBtn.textContent=playing?'Pause':'Play'; });
+    document.getElementById('fhnReset').addEventListener('click',function(){ ic=[-1.0,-0.6]; restart(); });
+    if(reduce){ playing=false; playBtn.textContent='Play'; for(var i=0;i<900;i++){var r=rk4(v,w,0.05,p);v=r[0];w=r[1];traj.push([v,w]);} drawPhase(cv,p,{traj:traj,ic:ic}); }
+    else step();
+    window.__fhnRedraw=function(){ drawPhase(cv,p,{traj:traj,ic:ic}); };
+    window.addEventListener('resize',function(){ if(!playing)drawPhase(cv,p,{traj:traj,ic:ic}); });
+  })();
+
+  /* ─────────── AP interactive ─────────── */
+  (function(){
+    var cv=document.getElementById('ap'); if(!cv)return;
+    var dt=0.5, T=900;
+    var p={tin:0.3,tout:6,topen:120,tclose:150,BCL:600};
+    var trace=simulateMS(p,T,dt), apd=apd90(trace,dt), phase=0;
+    function recompute(){ trace=simulateMS(p,T,dt); apd=apd90(trace,dt); document.getElementById('apApd').textContent = apd?Math.round(apd):'—'; }
+    function draw(){
+      var s=fit(cv), ctx=s.ctx, w=s.w, hgt=s.h;
+      var stage=cvar('--fig-stage',cv), grid=cvar('--fig-grid',cv), cr=cvar('--fig-crimson',cv), te=cvar('--fig-teal',cv), ax=cvar('--fig-axis',cv);
+      ctx.fillStyle=stage; ctx.fillRect(0,0,w,hgt);
+      var padL=30,padB=26,padT=16,padR=14, pw=w-padL-padR, ph=hgt-padB-padT;
+      var win=trace.length; // one full window
+      var Xt=function(i){ return padL + i/win*pw; };
+      var Yv=function(v){ return padT+ph - v*ph; };
+      // grid
+      ctx.strokeStyle=grid; ctx.lineWidth=1;
+      for(var gy=0;gy<=4;gy++){ var y=padT+ph*gy/4; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke(); }
+      for(var beat=0;beat*p.BCL<T;beat++){ var x=Xt(beat*p.BCL/dt); ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,padT+ph); ctx.stroke(); }
+      // APD window shading on first beat
+      if(apd){
+        var peak=0,pi=0; for(var i2=0;i2<win&&i2*dt<400;i2++){if(trace[i2]>peak){peak=trace[i2];pi=i2;}}
+        var thr=peak*0.1, up=-1; for(var j=0;j<pi;j++){ if(trace[j]>=thr){up=j;break;} }
+        if(up>=0){ ctx.fillStyle=te; ctx.globalAlpha=.12; ctx.fillRect(Xt(up),padT,apd/dt/win*pw,ph); ctx.globalAlpha=1; }
+      }
+      // axis labels
+      ctx.fillStyle=ax; ctx.font='11px '+cvar('--font-mono',cv); ctx.globalAlpha=.8;
+      ctx.fillText('V',padL-22,padT+8); ctx.fillText('t (ms)',w-padR-42,hgt-8); ctx.globalAlpha=1;
+      // trace
+      ctx.strokeStyle=cr; ctx.lineWidth=2.4; ctx.lineJoin='round'; ctx.beginPath();
+      for(var k=0;k<win;k++){ var xx=Xt(k), yy=Yv(trace[k]); if(k===0)ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy); }
+      ctx.stroke();
+      // playhead
+      if(!reduce){ var idx=Math.floor(phase)%win; ctx.fillStyle=cr; ctx.beginPath(); ctx.arc(Xt(idx),Yv(trace[idx]),4,0,7); ctx.fill();
+        phase+=win/240; if(phase>=win)phase=0; requestAnimationFrame(draw); }
+    }
+    recompute(); draw();
+    var map=[['sTc','vTc','tclose',0],['sTo','vTo','tout',1],['sTi','vTi','tin',2]];
+    map.forEach(function(m){ var sl=document.getElementById(m[0]); sl.addEventListener('input',function(){ var v=parseFloat(sl.value); p[m[2]]=v; document.getElementById(m[1]).textContent = m[3]===0?Math.round(v):v.toFixed(m[3]===2?2:1); recompute(); if(reduce)draw(); }); });
+    window.__apRedraw=function(){ if(reduce)draw(); };
+    window.addEventListener('resize',function(){ if(reduce)draw(); });
+  })();
+
+  /* ─────────── theme toggle ─────────── */
+  (function(){
+    var btn=document.getElementById('themeBtn'), lbl=document.getElementById('themeLabel');
+    function cur(){ return document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'); }
+    function sync(){ lbl.textContent = cur()==='dark'?'Light':'Dark'; }
+    function redrawStatic(){ if(window.__baRender)__baRender(); if(window.__apRedraw)__apRedraw(); if(window.__fhnRedraw)__fhnRedraw(); }
+    btn.addEventListener('click',function(){ document.documentElement.setAttribute('data-theme', cur()==='dark'?'light':'dark'); sync(); redrawStatic(); });
+    matchMedia('(prefers-color-scheme:dark)').addEventListener('change',function(){ if(!document.documentElement.getAttribute('data-theme')){ sync(); redrawStatic(); } });
+    sync();
+  })();
+})();
+</script>

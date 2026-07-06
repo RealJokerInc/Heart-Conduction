@@ -111,56 +111,56 @@
       <defs>
         <marker id="fhnTrajArrow" markerWidth="9" markerHeight="9" refX="6" refY="3"
                 orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#2d6a4f"/>
+          <path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-green)"/>
         </marker>
       </defs>
 
       <!-- Faint origin cross -->
-      <line x1="260" y1="30" x2="260" y2="250" stroke="#d0d5e0" stroke-width="0.7" stroke-dasharray="3,3"/>
-      <line x1="60" y1="148" x2="460" y2="148" stroke="#d0d5e0" stroke-width="0.7" stroke-dasharray="3,3"/>
+      <line x1="260" y1="30" x2="260" y2="250" stroke-width="0.7" stroke-dasharray="3,3" style="stroke:var(--fig-grid)"/>
+      <line x1="60" y1="148" x2="460" y2="148" stroke-width="0.7" stroke-dasharray="3,3" style="stroke:var(--fig-grid)"/>
 
       <!-- Axes -->
-      <line x1="60" y1="250" x2="460" y2="250" stroke="#16213e" stroke-width="1.2"/>
-      <line x1="60" y1="250" x2="60" y2="30" stroke="#16213e" stroke-width="1.2"/>
+      <line x1="60" y1="250" x2="460" y2="250" stroke-width="1.2" style="stroke:var(--fig-ink)"/>
+      <line x1="60" y1="250" x2="60" y2="30" stroke-width="1.2" style="stroke:var(--fig-ink)"/>
 
       <!-- Axis labels -->
-      <text x="260" y="286" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle">v  (membrane-like variable)</text>
-      <text x="22" y="140" font-size="11" fill="#16213e" font-family="serif" text-anchor="middle" transform="rotate(-90,22,140)">w  (recovery variable)</text>
+      <text x="260" y="286" font-size="11" font-family="serif" text-anchor="middle" style="fill:var(--fig-ink)">v  (membrane-like variable)</text>
+      <text x="22" y="140" font-size="11" font-family="serif" text-anchor="middle" transform="rotate(-90,22,140)" style="fill:var(--fig-ink)">w  (recovery variable)</text>
 
       <!-- Tick labels -->
-      <text x="100" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-2</text>
-      <text x="180" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">-1</text>
-      <text x="260" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">0</text>
-      <text x="340" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">1</text>
-      <text x="420" y="263" font-size="9" fill="#5a6175" font-family="serif" text-anchor="middle">2</text>
-      <text x="52" y="236" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">-1</text>
-      <text x="52" y="152" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">0</text>
-      <text x="52" y="67" font-size="9" fill="#5a6175" font-family="serif" text-anchor="end">1</text>
+      <text x="100" y="263" font-size="9" font-family="serif" text-anchor="middle" style="fill:var(--fig-muted)">-2</text>
+      <text x="180" y="263" font-size="9" font-family="serif" text-anchor="middle" style="fill:var(--fig-muted)">-1</text>
+      <text x="260" y="263" font-size="9" font-family="serif" text-anchor="middle" style="fill:var(--fig-muted)">0</text>
+      <text x="340" y="263" font-size="9" font-family="serif" text-anchor="middle" style="fill:var(--fig-muted)">1</text>
+      <text x="420" y="263" font-size="9" font-family="serif" text-anchor="middle" style="fill:var(--fig-muted)">2</text>
+      <text x="52" y="236" font-size="9" font-family="serif" text-anchor="end" style="fill:var(--fig-muted)">-1</text>
+      <text x="52" y="152" font-size="9" font-family="serif" text-anchor="end" style="fill:var(--fig-muted)">0</text>
+      <text x="52" y="67" font-size="9" font-family="serif" text-anchor="end" style="fill:var(--fig-muted)">1</text>
 
       <!-- Cubic v-nullcline (N-shaped) -->
       <path d="M 84,34 L 100,92 L 140,180 L 180,205 L 220,187 L 260,148 L 300,110 L 340,92 L 380,117 L 420,205 L 432,247"
-            fill="none" stroke="#e94560" stroke-width="2.2"/>
-      <text x="298" y="138" font-size="11" fill="#e94560" font-family="serif" font-weight="600">v-nullcline</text>
+            fill="none" stroke-width="2.2" style="stroke:var(--fig-crimson)"/>
+      <text x="298" y="138" font-size="11" font-family="serif" font-weight="600" style="fill:var(--fig-crimson)">v-nullcline</text>
 
       <!-- Linear w-nullcline -->
-      <line x1="127" y1="250" x2="294" y2="30" stroke="#0f3460" stroke-width="2"/>
-      <text x="300" y="52" font-size="11" fill="#0f3460" font-family="serif" font-weight="600">w-nullcline</text>
+      <line x1="127" y1="250" x2="294" y2="30" stroke-width="2" style="stroke:var(--fig-blue)"/>
+      <text x="300" y="52" font-size="11" font-family="serif" font-weight="600" style="fill:var(--fig-blue)">w-nullcline</text>
 
       <!-- Trajectory loop (excitation–recovery) -->
       <path d="M 164,201 L 220,210 L 300,213 L 380,213 L 415,208 L 430,180 L 432,150 L 418,115 L 388,98 L 352,90 L 280,84 L 180,82 L 110,84 L 96,88 L 90,120 L 95,160 L 120,190 L 148,199 Z"
-            fill="none" stroke="#2d6a4f" stroke-width="2"/>
+            fill="none" stroke-width="2" style="stroke:var(--fig-green)"/>
       <!-- Direction arrows -->
-      <line x1="290" y1="213" x2="312" y2="212" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
-      <line x1="431" y1="168" x2="430" y2="150" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
-      <line x1="240" y1="83" x2="218" y2="83" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
-      <line x1="91" y1="135" x2="93" y2="157" stroke="#2d6a4f" stroke-width="2" marker-end="url(#fhnTrajArrow)"/>
-      <text x="250" y="199" font-size="10" fill="#2d6a4f" font-family="serif" font-style="italic" text-anchor="middle">excitation</text>
-      <text x="222" y="128" font-size="10" fill="#2d6a4f" font-family="serif" font-style="italic" text-anchor="middle">recovery</text>
+      <line x1="290" y1="213" x2="312" y2="212" stroke-width="2" marker-end="url(#fhnTrajArrow)" style="stroke:var(--fig-green)"/>
+      <line x1="431" y1="168" x2="430" y2="150" stroke-width="2" marker-end="url(#fhnTrajArrow)" style="stroke:var(--fig-green)"/>
+      <line x1="240" y1="83" x2="218" y2="83" stroke-width="2" marker-end="url(#fhnTrajArrow)" style="stroke:var(--fig-green)"/>
+      <line x1="91" y1="135" x2="93" y2="157" stroke-width="2" marker-end="url(#fhnTrajArrow)" style="stroke:var(--fig-green)"/>
+      <text x="250" y="199" font-size="10" font-family="serif" font-style="italic" text-anchor="middle" style="fill:var(--fig-green)">excitation</text>
+      <text x="222" y="128" font-size="10" font-family="serif" font-style="italic" text-anchor="middle" style="fill:var(--fig-green)">recovery</text>
 
       <!-- Fixed point -->
-      <circle cx="164" cy="201" r="6" fill="none" stroke="#16213e" stroke-width="1.2"/>
-      <circle cx="164" cy="201" r="3.2" fill="#16213e"/>
-      <text x="174" y="223" font-size="10" fill="#16213e" font-family="serif">resting state</text>
+      <circle cx="164" cy="201" r="6" fill="none" stroke-width="1.2" style="stroke:var(--fig-ink)"/>
+      <circle cx="164" cy="201" r="3.2" style="fill:var(--fig-ink)"/>
+      <text x="174" y="223" font-size="10" font-family="serif" style="fill:var(--fig-ink)">resting state</text>
     </svg>
     <div class="figure-caption">
       <span class="figure-label">Figure 2.1.</span> The FitzHugh–Nagumo phase plane. The cubic

@@ -16,8 +16,8 @@
   --topbar-border: #e2e5ed;
   --accent: #16213e;
   --accent2: #0f3460;
-  --highlight: #e94560;
-  --highlight-bg: rgba(233, 69, 96, 0.08);
+  --highlight: #c31d38;
+  --highlight-bg: rgba(195, 29, 56, 0.08);
   --light-bg: #f4f6fb;
   --border: #d0d5e0;
   --caption: #5a6175;
@@ -50,12 +50,44 @@
   --sidebar-width: 290px;
   --topbar-height: 52px;
   --right-margin-width: 220px;
-  --content-max-width: 52em;
+  --content-max-width: 48em;
+
+  /* Font roles: literary serif (body/headings) × instrument mono (labels/eyebrows).
+     'EB Garamond' + 'Source Code Pro' are loaded from the CDN in index.html. */
+  --font-serif: 'EB Garamond', 'Georgia', serif;
+  --font-sans:  'Inter', system-ui, sans-serif;
+  --font-mono:  'Source Code Pro', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* Font sizes */
   --font-size-base: 17px;
   --font-size-small: 15px;
   --font-size-large: 19px;
+
+  /* ─── Figure color system (light) ───────────────────────────
+     Themeable tokens for ALL in-figure color. Figures reference these
+     (via inline style="…:var(--fig-*)"), never hardcoded hex, so a single
+     theme swap recolors every figure correctly. Redefined under
+     [data-theme="dark"]. --fig-axis aliases --fig-ink (defined once here;
+     re-resolves per theme through --fig-ink). See PLAN.md Step 1.1. */
+  --fig-crimson: #c31d38;
+  --fig-blue:    #1f6fb2;
+  --fig-teal:    #0c7480;
+  --fig-green:   #2e7d57;
+  --fig-amber:   #b7791f;
+  --fig-orange:  #c2410c;
+  --fig-purple:  #6d4aa8;
+  --fig-ink:     #1e2438;
+  --fig-axis:    var(--fig-ink);
+  --fig-muted:   #5a6175;
+  --fig-faint:   #8b90a6;
+  --fig-grid:    #d9ddea;
+  --fig-stage:   #fbfbfe;
+  --fig-tint-blue:   #eef2fc;
+  --fig-tint-teal:   #e7f3f6;
+  --fig-tint-red:    #fcebef;
+  --fig-tint-amber:  #fbf1e0;
+  --fig-tint-green:  #e8f4ec;
+  --fig-tint-purple: #f1ecf9;
 }
 
 /* ─── Dark Mode ─── */
@@ -72,8 +104,8 @@
   --topbar-border: #2a2a48;
   --accent: #8eafc8;
   --accent2: #a3c4db;
-  --highlight: #e94560;
-  --highlight-bg: rgba(233, 69, 96, 0.12);
+  --highlight: #ff5468;
+  --highlight-bg: rgba(255, 84, 104, 0.12);
   --light-bg: #1c1c32;
   --border: #333355;
   --caption: #8890a8;
@@ -99,6 +131,26 @@
   --pde-elliptic-border: #3a7a3e;
   --pde-hyperbolic-bg: #1a2230;
   --pde-hyperbolic-border: #3070b0;
+
+  /* ─── Figure color system (dark) ─── (lifted hues; --fig-axis inherits via --fig-ink) */
+  --fig-crimson: #ff5468;
+  --fig-blue:    #5aa9e6;
+  --fig-teal:    #34c6d2;
+  --fig-green:   #57c48a;
+  --fig-amber:   #e7a23c;
+  --fig-orange:  #f97316;
+  --fig-purple:  #b69be0;
+  --fig-ink:     #d4d8e8;
+  --fig-muted:   #9da3bd;
+  --fig-faint:   #6e7690;
+  --fig-grid:    #2a3048;
+  --fig-stage:   #10131f;
+  --fig-tint-blue:   #16223a;
+  --fig-tint-teal:   #123038;
+  --fig-tint-red:    #331a22;
+  --fig-tint-amber:  #2e2515;
+  --fig-tint-green:  #16281e;
+  --fig-tint-purple: #221a33;
 }
 
 /* ─── Reset & Base ─── */
@@ -314,8 +366,9 @@ body {
 
 .sidebar-toc { padding: 0.75rem 0; }
 
-/* Part headers */
+/* Part headers — now clickable links to the part-divider pages */
 .toc-part {
+  display: block;
   padding: 0.6rem 1.25rem 0.3rem;
   font-family: 'Inter', sans-serif;
   font-size: 0.7rem;
@@ -324,8 +377,29 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-top: 0.5rem;
+  text-decoration: none;
+  cursor: pointer;
 }
 .toc-part:first-child { margin-top: 0; }
+.toc-part:hover { background: var(--sidebar-hover); }
+.toc-part.active { background: var(--sidebar-active); }
+
+/* Cover link (top of TOC) */
+.toc-cover {
+  display: block;
+  padding: 0.55rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--caption);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  cursor: pointer;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.toc-cover:hover { background: var(--sidebar-hover); color: var(--text); }
+.toc-cover.active { color: var(--highlight); }
 
 /* Chapter links */
 .toc-chapter {
@@ -630,12 +704,13 @@ h4 {
   color: var(--accent);
   margin: 1.2em 0 0.4em;
 }
-p { margin-bottom: 0.8em; text-align: justify; hyphens: auto; }
+p { margin-bottom: 0.8em; text-align: left; }
 
 /* Equations */
 .equation-block {
+  position: relative;
   margin: 1.2em 0;
-  padding: 0.8em 1em;
+  padding: 0.8em 3.2em 0.8em 1em;   /* reserve right gutter for the equation number */
   background: var(--light-bg);
   border-left: 3px solid var(--accent2);
   border-radius: 0 4px 4px 0;
@@ -648,10 +723,13 @@ mjx-container[jax="SVG"][display="true"] {
   max-width: 100% !important;
 }
 .equation-label {
-  float: right;
-  font-size: 0.9em;
+  position: absolute;
+  top: 0.7em;
+  right: 0.9em;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
   color: var(--caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* Insight boxes */
@@ -716,6 +794,12 @@ tr:nth-child(even) { background: var(--light-bg); }
 /* Figures */
 .figure { margin: 1.5em 0; text-align: center; }
 .figure svg { max-width: 100%; height: auto; }
+/* Themeable figure default: any <text>/currentColor without an explicit fill
+   (incl. group-inherited) follows the theme. Replaces the deleted blanket
+   [data-theme="dark"] svg override (Step 1.2). Scoped to figures so MathJax
+   (mjx-container) SVGs are untouched. Inline style="fill:var(--fig-*)" wins over this. */
+.figure text, figure.fig text { fill: var(--fig-axis); }
+.figure, figure.fig { color: var(--fig-axis); }
 .figure-caption {
   font-size: 0.9em; font-style: italic;
   color: var(--caption); margin-top: 0.5em;
@@ -806,10 +890,20 @@ li { margin-bottom: 0.3em; }
 [data-theme="dark"] tr[style*="background:#fafafa"] {
   background: var(--bg-secondary) !important;
 }
-/* SVG text in dark mode */
-[data-theme="dark"] svg text { fill: var(--text); }
-[data-theme="dark"] svg line,
-[data-theme="dark"] svg path { stroke: var(--text-secondary); }
+/* NOTE: the blanket dark-mode SVG override that used to live here
+   (svg text{fill:var(--text)} + svg line,path{stroke:var(--text-secondary)})
+   was DELETED — it repainted every figure curve one grey and destroyed the
+   color code. Figures now carry themeable `--fig-*` colors (migrate_figure_colors.py),
+   and `.figure text{fill:var(--fig-axis)}` (above) covers any unfilled text. */
+
+/* ─── Instrument-mono labels (serif × mono identity) ───
+   Small caps/eyebrow labels move to the mono face; body + headings stay serif.
+   Placed late so it wins the cascade over the earlier per-element Inter rules. */
+.chapter-number, .part-number, .toc-part, .sidebar-brand,
+.right-margin-header, .figure-label, .equation-label, .nav-direction {
+  font-family: var(--font-mono);
+}
+.figure-label { letter-spacing: 0.02em; }
 
 /* ══════════════════════════════════════════════════════════
    RESPONSIVE

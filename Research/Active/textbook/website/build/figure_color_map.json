@@ -1,0 +1,651 @@
+{
+  "#e94560": {
+    "count": 238,
+    "token": "fig-crimson",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html",
+      "appendix-c.html",
+      "ch1.html",
+      "ch11.html",
+      "ch12.html",
+      "ch13.html",
+      "ch14.html",
+      "ch15.html",
+      "ch18.html",
+      "ch19.html",
+      "ch2.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": false
+  },
+  "#5a6175": {
+    "count": 224,
+    "token": "fig-muted",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html",
+      "appendix-c.html",
+      "ch1.html",
+      "ch11.html",
+      "ch12.html",
+      "ch13.html",
+      "ch14.html",
+      "ch15.html",
+      "ch18.html",
+      "ch19.html",
+      "ch2.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#16213e": {
+    "count": 146,
+    "token": "fig-ink",
+    "files": [
+      "appendix-a.html",
+      "appendix-c.html",
+      "ch1.html",
+      "ch11.html",
+      "ch12.html",
+      "ch13.html",
+      "ch14.html",
+      "ch15.html",
+      "ch18.html",
+      "ch19.html",
+      "ch2.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#2d6a4f": {
+    "count": 118,
+    "token": "fig-green",
+    "files": [
+      "appendix-c.html",
+      "ch11.html",
+      "ch12.html",
+      "ch13.html",
+      "ch14.html",
+      "ch15.html",
+      "ch19.html",
+      "ch2.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": false
+  },
+  "#0f3460": {
+    "count": 110,
+    "token": "fig-blue",
+    "files": [
+      "ch1.html",
+      "ch12.html",
+      "ch13.html",
+      "ch14.html",
+      "ch15.html",
+      "ch18.html",
+      "ch19.html",
+      "ch2.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": false
+  },
+  "#333": {
+    "count": 44,
+    "token": "fig-ink",
+    "files": [
+      "ch10.html",
+      "ch18.html"
+    ],
+    "review": false
+  },
+  "white": {
+    "count": 42,
+    "token": "fig-stage",
+    "files": [
+      "appendix-a.html",
+      "appendix-c.html",
+      "ch10.html",
+      "ch12.html",
+      "ch18.html",
+      "ch19.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html",
+      "ch8.html"
+    ],
+    "review": true
+  },
+  "#42a5f5": {
+    "count": 24,
+    "token": "fig-blue",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html",
+      "appendix-c.html"
+    ],
+    "review": false
+  },
+  "#8a6d00": {
+    "count": 23,
+    "token": "fig-amber",
+    "files": [
+      "ch15.html",
+      "ch19.html",
+      "ch20.html",
+      "ch3.html",
+      "ch4.html",
+      "ch5.html",
+      "ch6.html"
+    ],
+    "review": false
+  },
+  "#d0d5e0": {
+    "count": 20,
+    "token": "fig-grid",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html",
+      "appendix-c.html",
+      "ch1.html",
+      "ch12.html",
+      "ch2.html",
+      "ch3.html"
+    ],
+    "review": false
+  },
+  "#888": {
+    "count": 20,
+    "token": "fig-faint",
+    "files": [
+      "appendix-a.html",
+      "ch10.html",
+      "ch8.html"
+    ],
+    "review": false
+  },
+  "#b36b00": {
+    "count": 19,
+    "token": "fig-amber",
+    "files": [
+      "ch4.html",
+      "ch5.html"
+    ],
+    "review": false
+  },
+  "#1565c0": {
+    "count": 15,
+    "token": "fig-blue",
+    "files": [
+      "appendix-a.html",
+      "ch10.html",
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#b0b8d4": {
+    "count": 14,
+    "token": "fig-grid",
+    "files": [
+      "appendix-a.html",
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#d32f2f": {
+    "count": 13,
+    "token": "fig-crimson",
+    "files": [
+      "ch10.html"
+    ],
+    "review": false
+  },
+  "#2e7d32": {
+    "count": 12,
+    "token": "fig-green",
+    "files": [
+      "ch10.html",
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#f0f4ff": {
+    "count": 12,
+    "token": "fig-tint-blue",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#ccc": {
+    "count": 11,
+    "token": "fig-grid",
+    "files": [
+      "ch4.html",
+      "ch8.html"
+    ],
+    "review": false
+  },
+  "#2980b9": {
+    "count": 11,
+    "token": "fig-blue",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html",
+      "appendix-c.html"
+    ],
+    "review": false
+  },
+  "#999": {
+    "count": 10,
+    "token": "fig-faint",
+    "files": [
+      "ch10.html",
+      "ch18.html",
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#6a1b9a": {
+    "count": 10,
+    "token": "fig-purple",
+    "files": [
+      "ch10.html",
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#1b5e20": {
+    "count": 10,
+    "token": "fig-green",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#c62828": {
+    "count": 9,
+    "token": "fig-crimson",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#66bb6a": {
+    "count": 8,
+    "token": "fig-green",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#e8e8e8": {
+    "count": 8,
+    "token": "fig-grid",
+    "files": [
+      "ch5.html",
+      "ch6.html"
+    ],
+    "review": false
+  },
+  "#c0392b": {
+    "count": 8,
+    "token": "fig-crimson",
+    "files": [
+      "appendix-a.html",
+      "appendix-c.html"
+    ],
+    "review": false
+  },
+  "#e8f4f8": {
+    "count": 8,
+    "token": "fig-tint-teal",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#e65100": {
+    "count": 7,
+    "token": "fig-orange",
+    "files": [
+      "ch10.html"
+    ],
+    "review": false
+  },
+  "#d55e00": {
+    "count": 7,
+    "token": "fig-orange",
+    "files": [
+      "ch18.html"
+    ],
+    "review": false
+  },
+  "#e0e0e0": {
+    "count": 7,
+    "token": "fig-grid",
+    "files": [
+      "ch18.html",
+      "ch5.html",
+      "ch6.html"
+    ],
+    "review": false
+  },
+  "#e69f00": {
+    "count": 7,
+    "token": "fig-amber",
+    "files": [
+      "ch18.html"
+    ],
+    "review": false
+  },
+  "#e67e22": {
+    "count": 7,
+    "token": "fig-orange",
+    "files": [
+      "appendix-a.html",
+      "appendix-b.html"
+    ],
+    "review": false
+  },
+  "#27ae60": {
+    "count": 7,
+    "token": "fig-green",
+    "files": [
+      "appendix-b.html",
+      "appendix-c.html"
+    ],
+    "review": false
+  },
+  "#aaa": {
+    "count": 6,
+    "token": "fig-faint",
+    "files": [
+      "ch10.html",
+      "ch5.html",
+      "ch6.html"
+    ],
+    "review": false
+  },
+  "#0072b2": {
+    "count": 6,
+    "token": "fig-blue",
+    "files": [
+      "ch18.html"
+    ],
+    "review": false
+  },
+  "#fff3e0": {
+    "count": 6,
+    "token": "fig-tint-amber",
+    "files": [
+      "appendix-c.html",
+      "ch4.html",
+      "ch5.html"
+    ],
+    "review": false
+  },
+  "#eef0f8": {
+    "count": 5,
+    "token": "fig-tint-blue",
+    "files": [
+      "ch1.html",
+      "ch4.html",
+      "ch5.html",
+      "ch8.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#fce4ec": {
+    "count": 5,
+    "token": "fig-tint-red",
+    "files": [
+      "appendix-c.html",
+      "ch4.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#4a3d7a": {
+    "count": 4,
+    "token": "fig-purple",
+    "files": [
+      "ch1.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#ddd": {
+    "count": 4,
+    "token": "fig-grid",
+    "files": [
+      "ch10.html"
+    ],
+    "review": false
+  },
+  "#e8f5e9": {
+    "count": 4,
+    "token": "fig-tint-green",
+    "files": [
+      "ch4.html",
+      "ch5.html",
+      "ch8.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#f4f6fb": {
+    "count": 3,
+    "token": "fig-stage",
+    "files": [
+      "ch1.html",
+      "ch12.html"
+    ],
+    "review": false
+  },
+  "#ffffff": {
+    "count": 3,
+    "token": "fig-stage",
+    "files": [
+      "ch13.html"
+    ],
+    "review": false
+  },
+  "#666": {
+    "count": 2,
+    "token": "fig-muted",
+    "files": [
+      "ch10.html"
+    ],
+    "review": false
+  },
+  "#eef1f6": {
+    "count": 2,
+    "token": "fig-stage",
+    "files": [
+      "ch19.html",
+      "ch20.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#c9d2e0": {
+    "count": 2,
+    "token": "fig-grid",
+    "files": [
+      "ch19.html",
+      "ch20.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#d35400": {
+    "count": 2,
+    "token": "fig-orange",
+    "files": [
+      "appendix-a.html"
+    ],
+    "review": false
+  },
+  "#f39c12": {
+    "count": 2,
+    "token": "fig-amber",
+    "files": [
+      "appendix-a.html"
+    ],
+    "review": false
+  },
+  "#fff0f3": {
+    "count": 1,
+    "token": "fig-tint-red",
+    "files": [
+      "ch1.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#f8f9fa": {
+    "count": 1,
+    "token": "fig-stage",
+    "files": [
+      "ch10.html"
+    ],
+    "review": false
+  },
+  "#f4f4f4": {
+    "count": 1,
+    "token": "fig-stage",
+    "files": [
+      "ch19.html"
+    ],
+    "review": false
+  },
+  "#f6eef0": {
+    "count": 1,
+    "token": "fig-stage",
+    "files": [
+      "ch20.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#e5cdd4": {
+    "count": 1,
+    "token": "fig-tint-red",
+    "files": [
+      "ch20.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#e3f2fd": {
+    "count": 1,
+    "token": "fig-tint-blue",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#fff8e1": {
+    "count": 1,
+    "token": "fig-tint-amber",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false
+  },
+  "#f3e5f5": {
+    "count": 1,
+    "token": "fig-tint-purple",
+    "files": [
+      "ch4.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#c7cde0": {
+    "count": 1,
+    "token": "fig-grid",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#bcc3da": {
+    "count": 1,
+    "token": "fig-faint",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#aeb6d2": {
+    "count": 1,
+    "token": "fig-faint",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#9ea7c8": {
+    "count": 1,
+    "token": "fig-muted",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#e6eaf6": {
+    "count": 1,
+    "token": "fig-grid",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  },
+  "#8a94ba": {
+    "count": 1,
+    "token": "fig-muted",
+    "files": [
+      "appendix-c.html"
+    ],
+    "review": false,
+    "reviewed": true
+  }
+}

@@ -88,36 +88,36 @@
   <div class="figure">
     <svg viewBox="0 0 540 220" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
       <!-- Left panel: original unit square -->
-      <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Before: unit square</text>
+      <text x="110" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">Before: unit square</text>
       <!-- Axes -->
-      <line x1="30" y1="190" x2="220" y2="190" stroke="#d0d5e0" stroke-width="0.8"/>
-      <line x1="30" y1="190" x2="30" y2="30" stroke="#d0d5e0" stroke-width="0.8"/>
+      <line x1="30" y1="190" x2="220" y2="190" stroke-width="0.8" style="stroke:var(--fig-grid)"/>
+      <line x1="30" y1="190" x2="30" y2="30" stroke-width="0.8" style="stroke:var(--fig-grid)"/>
       <!-- Unit square -->
-      <polygon points="30,190 110,190 110,110 30,110" fill="#42a5f520" stroke="#42a5f5" stroke-width="1.8"/>
+      <polygon points="30,190 110,190 110,110 30,110" fill="#42a5f520" stroke-width="1.8" style="stroke:var(--fig-blue)"/>
       <!-- Basis vectors -->
-      <line x1="30" y1="190" x2="110" y2="190" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrowR)"/>
-      <line x1="30" y1="190" x2="30" y2="110" stroke="#2980b9" stroke-width="2.5" marker-end="url(#arrowB)"/>
-      <text x="70" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">ê₁</text>
-      <text x="16" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">ê₂</text>
+      <line x1="30" y1="190" x2="110" y2="190" stroke-width="2.5" marker-end="url(#arrowR)" style="stroke:var(--fig-crimson)"/>
+      <line x1="30" y1="190" x2="30" y2="110" stroke-width="2.5" marker-end="url(#arrowB)" style="stroke:var(--fig-blue)"/>
+      <text x="70" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-crimson)">ê₁</text>
+      <text x="16" y="150" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-blue)">ê₂</text>
       <!-- Arrow in between -->
-      <text x="270" y="108" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175">A = [2 1; 0 1]</text>
-      <text x="270" y="126" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" fill="#5a6175">⟶</text>
+      <text x="270" y="108" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" style="fill:var(--fig-muted)">A = [2 1; 0 1]</text>
+      <text x="270" y="126" text-anchor="middle" font-family="EB Garamond,serif" font-size="16" style="fill:var(--fig-muted)">⟶</text>
       <!-- Right panel: transformed parallelogram. Origin (295,190), scale 80px/unit.
            e1→(2,0): tip (455,190).  e2→(1,1): tip (375,110).  e1+e2→(3,1): top-right (535,110). -->
-      <text x="415" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">After: parallelogram</text>
-      <line x1="295" y1="190" x2="530" y2="190" stroke="#d0d5e0" stroke-width="0.8"/>
-      <line x1="295" y1="190" x2="295" y2="30" stroke="#d0d5e0" stroke-width="0.8"/>
+      <text x="415" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">After: parallelogram</text>
+      <line x1="295" y1="190" x2="530" y2="190" stroke-width="0.8" style="stroke:var(--fig-grid)"/>
+      <line x1="295" y1="190" x2="295" y2="30" stroke-width="0.8" style="stroke:var(--fig-grid)"/>
       <!-- Transformed shape: O, Ae1, Ae1+Ae2, Ae2 -->
-      <polygon points="295,190 455,190 535,110 375,110" fill="#42a5f520" stroke="#42a5f5" stroke-width="1.8"/>
+      <polygon points="295,190 455,190 535,110 375,110" fill="#42a5f520" stroke-width="1.8" style="stroke:var(--fig-blue)"/>
       <!-- Transformed basis vectors -->
-      <line x1="295" y1="190" x2="455" y2="190" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrowR)"/>
-      <line x1="295" y1="190" x2="375" y2="110" stroke="#2980b9" stroke-width="2.5" marker-end="url(#arrowB)"/>
-      <text x="375" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560" font-weight="600">Aê₁ = (2,0)</text>
-      <text x="325" y="125" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2980b9" font-weight="600">Aê₂ = (1,1)</text>
+      <line x1="295" y1="190" x2="455" y2="190" stroke-width="2.5" marker-end="url(#arrowR)" style="stroke:var(--fig-crimson)"/>
+      <line x1="295" y1="190" x2="375" y2="110" stroke-width="2.5" marker-end="url(#arrowB)" style="stroke:var(--fig-blue)"/>
+      <text x="375" y="206" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-crimson)">Aê₁ = (2,0)</text>
+      <text x="325" y="125" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-weight="600" style="fill:var(--fig-blue)">Aê₂ = (1,1)</text>
       <!-- Arrowhead defs -->
       <defs>
-        <marker id="arrowR" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#e94560"/></marker>
-        <marker id="arrowB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2980b9"/></marker>
+        <marker id="arrowR" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-crimson)"/></marker>
+        <marker id="arrowB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-blue)"/></marker>
       </defs>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure B.1.</span> A matrix transforms the unit square (left) into a parallelogram (right). The columns of $A$ are the destinations of the basis vectors: $\hat{\mathbf{e}}_1 \to (2,0)$ and $\hat{\mathbf{e}}_2 \to (1,1)$. Every other point follows by linearity.</div>
@@ -317,32 +317,32 @@
   <div class="figure">
     <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
       <!-- Left: SPD bowl (opens UPWARD, unique minimum at the bottom) -->
-      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Positive definite: bowl</text>
+      <text x="130" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">Positive definite: bowl</text>
       <!-- Rim ellipse at the top (opening of the bowl) -->
-      <ellipse cx="130" cy="60" rx="90" ry="15" fill="none" stroke="#42a5f5" stroke-width="1" stroke-dasharray="4,3"/>
+      <ellipse cx="130" cy="60" rx="90" ry="15" fill="none" stroke-width="1" stroke-dasharray="4,3" style="stroke:var(--fig-blue)"/>
       <!-- Bowl cross-section: cubic U, lowest point at (130,146) -->
-      <path d="M 40,60 C 90,175 170,175 220,60" fill="none" stroke="#42a5f5" stroke-width="2"/>
+      <path d="M 40,60 C 90,175 170,175 220,60" fill="none" stroke-width="2" style="stroke:var(--fig-blue)"/>
       <!-- Central axis hint -->
-      <line x1="130" y1="170" x2="130" y2="70" stroke="#d0d5e0" stroke-width="0.6" stroke-dasharray="3,3"/>
+      <line x1="130" y1="170" x2="130" y2="70" stroke-width="0.6" stroke-dasharray="3,3" style="stroke:var(--fig-grid)"/>
       <!-- Unique minimum at the lowest point of the bowl -->
-      <text x="130" y="128" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">unique minimum</text>
-      <circle cx="130" cy="146" r="4" fill="#e94560"/>
-      <text x="130" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">all λᵢ &gt; 0</text>
+      <text x="130" y="128" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">unique minimum</text>
+      <circle cx="130" cy="146" r="4" style="fill:var(--fig-crimson)"/>
+      <text x="130" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">all λᵢ &gt; 0</text>
 
       <!-- Right: Semi-definite trough (opens UPWARD, flat valley floor = line of minima) -->
-      <text x="410" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">Semi-definite: trough</text>
+      <text x="410" y="18" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">Semi-definite: trough</text>
       <!-- Trough cross-section: U with a FLAT bottom from x=380 to 440 at y=150 -->
-      <path d="M 320,60 Q 345,150 380,150 L 440,150 Q 475,150 500,60" fill="none" stroke="#e67e22" stroke-width="2"/>
+      <path d="M 320,60 Q 345,150 380,150 L 440,150 Q 475,150 500,60" fill="none" stroke-width="2" style="stroke:var(--fig-orange)"/>
       <!-- Back cross-section (dashed, gives 3D depth along the flat direction) -->
-      <path d="M 335,50 Q 360,140 395,140 L 455,140 Q 490,140 515,50" fill="none" stroke="#e67e22" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <path d="M 335,50 Q 360,140 395,140 L 455,140 Q 490,140 515,50" fill="none" stroke-width="1.5" stroke-dasharray="4,3" style="stroke:var(--fig-orange)"/>
       <!-- Valley floor = a LINE (parallelogram) of minimizers, not a point -->
-      <line x1="395" y1="140" x2="455" y2="140" stroke="#e94560" stroke-width="1.2" stroke-dasharray="3,2"/>
-      <line x1="380" y1="150" x2="395" y2="140" stroke="#e94560" stroke-width="1.2"/>
-      <line x1="440" y1="150" x2="455" y2="140" stroke="#e94560" stroke-width="1.2"/>
-      <line x1="380" y1="150" x2="440" y2="150" stroke="#e94560" stroke-width="2.5"/>
-      <text x="410" y="116" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">flat direction</text>
-      <text x="410" y="129" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#e94560">(null space)</text>
-      <text x="410" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">some λᵢ = 0</text>
+      <line x1="395" y1="140" x2="455" y2="140" stroke-width="1.2" stroke-dasharray="3,2" style="stroke:var(--fig-crimson)"/>
+      <line x1="380" y1="150" x2="395" y2="140" stroke-width="1.2" style="stroke:var(--fig-crimson)"/>
+      <line x1="440" y1="150" x2="455" y2="140" stroke-width="1.2" style="stroke:var(--fig-crimson)"/>
+      <line x1="380" y1="150" x2="440" y2="150" stroke-width="2.5" style="stroke:var(--fig-crimson)"/>
+      <text x="410" y="116" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">flat direction</text>
+      <text x="410" y="129" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-crimson)">(null space)</text>
+      <text x="410" y="195" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">some λᵢ = 0</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure B.2.</span> Left: a positive-definite matrix defines a bowl — every direction curves upward, and the minimum is unique. Right: a positive semi-definite matrix defines a trough — flat along the null-space direction, so infinitely many minimizers exist along the valley floor.</div>
   </div>
@@ -382,36 +382,36 @@
   <div class="figure">
     <svg viewBox="0 0 540 180" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;">
       <!-- Left: round bowl (low κ) -->
-      <text x="130" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">κ ≈ 1: round bowl</text>
+      <text x="130" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">κ ≈ 1: round bowl</text>
       <!-- Contour rings (concentric circles) -->
-      <ellipse cx="130" cy="100" rx="22" ry="20" fill="none" stroke="#42a5f5" stroke-width="1.2"/>
-      <ellipse cx="130" cy="100" rx="44" ry="40" fill="none" stroke="#42a5f5" stroke-width="1"/>
-      <ellipse cx="130" cy="100" rx="66" ry="60" fill="none" stroke="#42a5f5" stroke-width="0.8"/>
-      <ellipse cx="130" cy="100" rx="88" ry="75" fill="none" stroke="#42a5f5" stroke-width="0.6"/>
+      <ellipse cx="130" cy="100" rx="22" ry="20" fill="none" stroke-width="1.2" style="stroke:var(--fig-blue)"/>
+      <ellipse cx="130" cy="100" rx="44" ry="40" fill="none" stroke-width="1" style="stroke:var(--fig-blue)"/>
+      <ellipse cx="130" cy="100" rx="66" ry="60" fill="none" stroke-width="0.8" style="stroke:var(--fig-blue)"/>
+      <ellipse cx="130" cy="100" rx="88" ry="75" fill="none" stroke-width="0.6" style="stroke:var(--fig-blue)"/>
       <!-- Minimum -->
-      <circle cx="130" cy="100" r="3" fill="#e94560"/>
+      <circle cx="130" cy="100" r="3" style="fill:var(--fig-crimson)"/>
       <!-- Descent path (nearly straight) -->
-      <path d="M 195,52 L 175,65 L 158,78 L 143,90 L 133,98" fill="none" stroke="#27ae60" stroke-width="1.8" marker-end="url(#arrG)"/>
-      <text x="200" y="48" font-family="EB Garamond,serif" font-size="10" fill="#27ae60">fast convergence</text>
-      <text x="130" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">λ_max ≈ λ_min</text>
+      <path d="M 195,52 L 175,65 L 158,78 L 143,90 L 133,98" fill="none" stroke-width="1.8" marker-end="url(#arrG)" style="stroke:var(--fig-green)"/>
+      <text x="200" y="48" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-green)">fast convergence</text>
+      <text x="130" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">λ_max ≈ λ_min</text>
 
       <!-- Right: elongated bathtub (high κ) -->
-      <text x="400" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" fill="#5a6175" font-weight="600">κ ≫ 1: bathtub</text>
+      <text x="400" y="16" text-anchor="middle" font-family="EB Garamond,serif" font-size="12" font-weight="600" style="fill:var(--fig-muted)">κ ≫ 1: bathtub</text>
       <!-- Contour ellipses (very elongated) -->
-      <ellipse cx="400" cy="100" rx="22" ry="6" fill="none" stroke="#e94560" stroke-width="1.2" transform="rotate(-15,400,100)"/>
-      <ellipse cx="400" cy="100" rx="55" ry="15" fill="none" stroke="#e94560" stroke-width="1" transform="rotate(-15,400,100)"/>
-      <ellipse cx="400" cy="100" rx="88" ry="24" fill="none" stroke="#e94560" stroke-width="0.8" transform="rotate(-15,400,100)"/>
-      <ellipse cx="400" cy="100" rx="120" ry="33" fill="none" stroke="#e94560" stroke-width="0.6" transform="rotate(-15,400,100)"/>
+      <ellipse cx="400" cy="100" rx="22" ry="6" fill="none" stroke-width="1.2" transform="rotate(-15,400,100)" style="stroke:var(--fig-crimson)"/>
+      <ellipse cx="400" cy="100" rx="55" ry="15" fill="none" stroke-width="1" transform="rotate(-15,400,100)" style="stroke:var(--fig-crimson)"/>
+      <ellipse cx="400" cy="100" rx="88" ry="24" fill="none" stroke-width="0.8" transform="rotate(-15,400,100)" style="stroke:var(--fig-crimson)"/>
+      <ellipse cx="400" cy="100" rx="120" ry="33" fill="none" stroke-width="0.6" transform="rotate(-15,400,100)" style="stroke:var(--fig-crimson)"/>
       <!-- Minimum -->
-      <circle cx="400" cy="100" r="3" fill="#e94560"/>
+      <circle cx="400" cy="100" r="3" style="fill:var(--fig-crimson)"/>
       <!-- Zigzag descent path -->
-      <path d="M 490,75 L 440,120 L 470,85 L 430,110 L 450,92 L 415,105 L 405,100" fill="none" stroke="#e67e22" stroke-width="1.5" marker-end="url(#arrO)"/>
-      <text x="500" y="70" font-family="EB Garamond,serif" font-size="10" fill="#e67e22">zigzag!</text>
-      <text x="400" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" fill="#5a6175">λ_max ≫ λ_min</text>
+      <path d="M 490,75 L 440,120 L 470,85 L 430,110 L 450,92 L 415,105 L 405,100" fill="none" stroke-width="1.5" marker-end="url(#arrO)" style="stroke:var(--fig-orange)"/>
+      <text x="500" y="70" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-orange)">zigzag!</text>
+      <text x="400" y="178" text-anchor="middle" font-family="EB Garamond,serif" font-size="10" style="fill:var(--fig-muted)">λ_max ≫ λ_min</text>
 
       <defs>
-        <marker id="arrG" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#27ae60"/></marker>
-        <marker id="arrO" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#e67e22"/></marker>
+        <marker id="arrG" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-green)"/></marker>
+        <marker id="arrO" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" style="fill:var(--fig-orange)"/></marker>
       </defs>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure B.3.</span> Contour plots of $E(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T A\mathbf{x}$. Left: well-conditioned ($\kappa \approx 1$) — nearly circular contours, gradient descent converges quickly. Right: ill-conditioned ($\kappa \gg 1$) — elongated contours, gradient descent zigzags across the narrow valley.</div>

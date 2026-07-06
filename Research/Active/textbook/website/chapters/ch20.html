@@ -141,74 +141,74 @@
     <svg viewBox="0 0 460 300" xmlns="http://www.w3.org/2000/svg" style="max-width:460px;">
       <defs>
         <marker id="arrRed20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L8,3 L0,6 Z" fill="#e94560"/>
+          <path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-crimson)"/>
         </marker>
         <marker id="arrGreen20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L8,3 L0,6 Z" fill="#2d6a4f"/>
+          <path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-green)"/>
         </marker>
         <marker id="arrGrey20" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L8,3 L0,6 Z" fill="#5a6175"/>
+          <path d="M0,0 L8,3 L0,6 Z" style="fill:var(--fig-muted)"/>
         </marker>
         <marker id="arrLoop20" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
-          <path d="M0,0 L7,2.5 L0,5 Z" fill="#8a6d00"/>
+          <path d="M0,0 L7,2.5 L0,5 Z" style="fill:var(--fig-amber)"/>
         </marker>
       </defs>
 
       <!-- ===== Lattice 1 block (V_m, parabolic) ===== -->
-      <rect x="18" y="55" width="180" height="150" rx="8" fill="#eef1f6" stroke="#0f3460" stroke-width="1.5"/>
-      <text x="108" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" fill="#16213e">Lattice 1 — Vₘ</text>
-      <text x="108" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" fill="#0f3460">parabolic · physical time t</text>
+      <rect x="18" y="55" width="180" height="150" rx="8" stroke-width="1.5" style="fill:var(--fig-stage);stroke:var(--fig-blue)"/>
+      <text x="108" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" style="fill:var(--fig-ink)">Lattice 1 — Vₘ</text>
+      <text x="108" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" style="fill:var(--fig-blue)">parabolic · physical time t</text>
       <!-- single forward-step icon -->
-      <line x1="88" y1="107" x2="126" y2="107" stroke="#5a6175" stroke-width="2" marker-end="url(#arrGrey20)"/>
-      <text x="132" y="111" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" fill="#5a6175">Δt</text>
+      <line x1="88" y1="107" x2="126" y2="107" stroke-width="2" marker-end="url(#arrGrey20)" style="stroke:var(--fig-muted)"/>
+      <text x="132" y="111" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-muted)">Δt</text>
       <!-- mini lattice -->
-      <g stroke="#c9d2e0" stroke-width="0.75">
+      <g stroke-width="0.75" style="stroke:var(--fig-grid)">
         <line x1="78" y1="128" x2="138" y2="128"/><line x1="78" y1="148" x2="138" y2="148"/><line x1="78" y1="168" x2="138" y2="168"/>
         <line x1="78" y1="128" x2="78" y2="168"/><line x1="108" y1="128" x2="108" y2="168"/><line x1="138" y1="128" x2="138" y2="168"/>
       </g>
-      <g fill="#0f3460">
+      <g style="fill:var(--fig-blue)">
         <circle cx="78" cy="128" r="3.5"/><circle cx="108" cy="128" r="3.5"/><circle cx="138" cy="128" r="3.5"/>
         <circle cx="78" cy="148" r="3.5"/><circle cx="108" cy="148" r="3.5"/><circle cx="138" cy="148" r="3.5"/>
         <circle cx="78" cy="168" r="3.5"/><circle cx="108" cy="168" r="3.5"/><circle cx="138" cy="168" r="3.5"/>
       </g>
-      <text x="108" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">collide → stream</text>
+      <text x="108" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-ink)">collide → stream</text>
 
       <!-- ===== Lattice 2 block (phi_e, elliptic) ===== -->
-      <rect x="262" y="55" width="180" height="150" rx="8" fill="#f6eef0" stroke="#0f3460" stroke-width="1.5"/>
-      <text x="352" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" fill="#16213e">Lattice 2 — φₑ</text>
-      <text x="352" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" fill="#0f3460">elliptic · pseudo-time τ</text>
+      <rect x="262" y="55" width="180" height="150" rx="8" stroke-width="1.5" style="fill:var(--fig-stage);stroke:var(--fig-blue)"/>
+      <text x="352" y="74" text-anchor="middle" font-family="EB Garamond,serif" font-size="14" font-weight="700" style="fill:var(--fig-ink)">Lattice 2 — φₑ</text>
+      <text x="352" y="90" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" font-style="italic" style="fill:var(--fig-blue)">elliptic · pseudo-time τ</text>
       <!-- iteration loop icon -->
-      <path d="M 352,98 A 12,12 0 1 1 342,116" fill="none" stroke="#8a6d00" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrLoop20)"/>
-      <text x="370" y="112" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" fill="#8a6d00">×N</text>
+      <path d="M 352,98 A 12,12 0 1 1 342,116" fill="none" stroke-width="2" stroke-dasharray="3,2" marker-end="url(#arrLoop20)" style="stroke:var(--fig-amber)"/>
+      <text x="370" y="112" text-anchor="start" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-amber)">×N</text>
       <!-- mini lattice -->
-      <g stroke="#e5cdd4" stroke-width="0.75">
+      <g stroke-width="0.75" style="stroke:var(--fig-tint-red)">
         <line x1="322" y1="130" x2="382" y2="130"/><line x1="322" y1="150" x2="382" y2="150"/><line x1="322" y1="170" x2="382" y2="170"/>
         <line x1="322" y1="130" x2="322" y2="170"/><line x1="352" y1="130" x2="352" y2="170"/><line x1="382" y1="130" x2="382" y2="170"/>
       </g>
-      <g fill="#0f3460">
+      <g style="fill:var(--fig-blue)">
         <circle cx="322" cy="130" r="3.5"/><circle cx="352" cy="130" r="3.5"/><circle cx="382" cy="130" r="3.5"/>
         <circle cx="322" cy="150" r="3.5"/><circle cx="352" cy="150" r="3.5"/><circle cx="382" cy="150" r="3.5"/>
         <circle cx="322" cy="170" r="3.5"/><circle cx="352" cy="170" r="3.5"/><circle cx="382" cy="170" r="3.5"/>
       </g>
-      <text x="352" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">collide → stream (relax)</text>
+      <text x="352" y="192" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-ink)">collide → stream (relax)</text>
 
       <!-- ===== Coupling arrows ===== -->
-      <line x1="198" y1="104" x2="262" y2="104" stroke="#e94560" stroke-width="2.5" marker-end="url(#arrRed20)"/>
-      <text x="230" y="96" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#e94560">Vₘ → source</text>
-      <line x1="262" y1="156" x2="198" y2="156" stroke="#2d6a4f" stroke-width="2.5" marker-end="url(#arrGreen20)"/>
-      <text x="230" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#2d6a4f">φₑ → feedback</text>
+      <line x1="198" y1="104" x2="262" y2="104" stroke-width="2.5" marker-end="url(#arrRed20)" style="stroke:var(--fig-crimson)"/>
+      <text x="230" y="96" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-crimson)">Vₘ → source</text>
+      <line x1="262" y1="156" x2="198" y2="156" stroke-width="2.5" marker-end="url(#arrGreen20)" style="stroke:var(--fig-green)"/>
+      <text x="230" y="172" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-green)">φₑ → feedback</text>
 
       <!-- ===== Time axes ===== -->
       <!-- physical time (left): one big step -->
-      <line x1="30" y1="250" x2="188" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#arrGrey20)"/>
-      <line x1="48" y1="245" x2="48" y2="255" stroke="#5a6175" stroke-width="1.5"/>
-      <line x1="172" y1="245" x2="172" y2="255" stroke="#5a6175" stroke-width="1.5"/>
-      <text x="48" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">t</text>
-      <text x="172" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" fill="#16213e">t+Δt</text>
-      <text x="108" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">physical time — one Δt per step</text>
+      <line x1="30" y1="250" x2="188" y2="250" stroke-width="1.5" marker-end="url(#arrGrey20)" style="stroke:var(--fig-muted)"/>
+      <line x1="48" y1="245" x2="48" y2="255" stroke-width="1.5" style="stroke:var(--fig-muted)"/>
+      <line x1="172" y1="245" x2="172" y2="255" stroke-width="1.5" style="stroke:var(--fig-muted)"/>
+      <text x="48" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-ink)">t</text>
+      <text x="172" y="268" text-anchor="middle" font-family="Source Code Pro,monospace" font-size="9" style="fill:var(--fig-ink)">t+Δt</text>
+      <text x="108" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-muted)">physical time — one Δt per step</text>
       <!-- pseudo-time (right): many small steps -->
-      <line x1="272" y1="250" x2="430" y2="250" stroke="#5a6175" stroke-width="1.5" marker-end="url(#arrGrey20)"/>
-      <g stroke="#5a6175" stroke-width="1">
+      <line x1="272" y1="250" x2="430" y2="250" stroke-width="1.5" marker-end="url(#arrGrey20)" style="stroke:var(--fig-muted)"/>
+      <g stroke-width="1" style="stroke:var(--fig-muted)">
         <line x1="282" y1="246" x2="282" y2="254"/><line x1="294" y1="246" x2="294" y2="254"/>
         <line x1="306" y1="246" x2="306" y2="254"/><line x1="318" y1="246" x2="318" y2="254"/>
         <line x1="330" y1="246" x2="330" y2="254"/><line x1="342" y1="246" x2="342" y2="254"/>
@@ -216,8 +216,8 @@
         <line x1="378" y1="246" x2="378" y2="254"/><line x1="390" y1="246" x2="390" y2="254"/>
         <line x1="402" y1="246" x2="402" y2="254"/><line x1="414" y1="246" x2="414" y2="254"/>
       </g>
-      <text x="418" y="242" text-anchor="end" font-family="Source Code Pro,monospace" font-size="8" fill="#8a6d00">∂φₑ/∂τ→0</text>
-      <text x="352" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" fill="#5a6175">pseudo-time τ — many Δτ (inner loop)</text>
+      <text x="418" y="242" text-anchor="end" font-family="Source Code Pro,monospace" font-size="8" style="fill:var(--fig-amber)">∂φₑ/∂τ→0</text>
+      <text x="352" y="286" text-anchor="middle" font-family="EB Garamond,serif" font-size="11" style="fill:var(--fig-muted)">pseudo-time τ — many Δτ (inner loop)</text>
     </svg>
     <div class="figure-caption"><span class="figure-label">Figure 20.1.</span> The dual-lattice bidomain architecture. Lattice 1 marches $V_m$ (parabolic) forward one physical step $\Delta t$; Lattice 2 relaxes $\phi_e$ (elliptic) through many pseudo-time sub-steps $\Delta\tau$ until $\partial\phi_e/\partial\tau \to 0$. The red link carries the $V_m$-derived source $\nabla\!\cdot\!(\mathbf{D}_i\,\nabla V_m)$ that drives $\phi_e$; the green link feeds the converged $\phi_e$ back into the next $V_m$ update. Physical time advances once per timestep (left axis); pseudo-time iterates many times <em>within</em> each timestep (right axis).</div>
   </div>

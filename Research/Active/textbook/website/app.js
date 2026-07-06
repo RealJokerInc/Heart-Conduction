@@ -83,13 +83,18 @@
 
   function buildChapterList() {
     allChapters = [];
+    // Cover (title.html) — not in toc.json; add at the front so it's the landing page
+    // and flows into the bottom-nav. Mirrors the PDF reading order (title → parts → chapters).
+    allChapters.push({ id: 'title', kind: 'cover', num: '', title: 'Cover' });
     for (const entry of tocData) {
       if (entry.type === 'part') {
+        // part divider page (part-i.html … appendices.html) — pull num/title from toc.json
+        allChapters.push({ id: entry.id, kind: 'part', num: entry.num, title: entry.title });
         for (const ch of entry.chapters) {
-          allChapters.push(ch);
+          allChapters.push({ ...ch, kind: 'chapter' });
         }
       } else {
-        allChapters.push(entry);
+        allChapters.push({ ...entry, kind: 'chapter' });
       }
     }
   }
@@ -101,9 +106,13 @@
   function renderSidebar() {
     let html = '';
 
+    // Cover link at the very top
+    html += `<a class="toc-cover" data-id="title" href="#title">Cover</a>`;
+
     for (const entry of tocData) {
       if (entry.type === 'part') {
-        html += `<div class="toc-part">${entry.num} — ${entry.title}</div>`;
+        // clickable part-divider link (was a non-navigable <div>)
+        html += `<a class="toc-part" data-id="${entry.id}" href="#${entry.id}">${entry.num} — ${entry.title}</a>`;
         for (const ch of entry.chapters) {
           html += renderChapterTocEntry(ch);
         }
@@ -142,11 +151,13 @@
 
   function updateSidebarActive(chapterId) {
     // Remove all active states
-    $$('.toc-chapter.active').forEach(el => el.classList.remove('active'));
+    $$('.toc-chapter.active, .toc-part.active, .toc-cover.active').forEach(el => el.classList.remove('active'));
     $$('.toc-sections.expanded').forEach(el => el.classList.remove('expanded'));
 
-    // Set active chapter
-    const activeLink = $(`.toc-chapter[data-id="${chapterId}"]`);
+    // Set active chapter/part/cover (parts & cover highlight too, not just chapters)
+    const activeLink = $(`.toc-chapter[data-id="${chapterId}"]`)
+                    || $(`.toc-part[data-id="${chapterId}"]`)
+                    || $(`.toc-cover[data-id="${chapterId}"]`);
     if (activeLink) {
       activeLink.classList.add('active');
       // Expand its sections
@@ -471,6 +482,7 @@
     sidebarTocEl.addEventListener('click', (e) => {
       const chapterLink = e.target.closest('.toc-chapter');
       const sectionLink = e.target.closest('.toc-section');
+      const partLink = e.target.closest('.toc-part, .toc-cover');
 
       if (sectionLink) {
         e.preventDefault();
@@ -481,6 +493,10 @@
       } else if (chapterLink) {
         e.preventDefault();
         navigateTo(chapterLink.dataset.id);
+        closeMobileSidebar();
+      } else if (partLink) {
+        e.preventDefault();
+        navigateTo(partLink.dataset.id);
         closeMobileSidebar();
       }
     });

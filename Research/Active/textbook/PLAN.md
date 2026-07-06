@@ -1,561 +1,481 @@
-# PLAN: Textbook Audit Remediation
+# PLAN: Textbook Website Refresh — Interactive Figures + Themeable Redesign
 
-Created: 2026-07-02
-Engine(s): None (documentation — HTML source under `website/chapters/`)
+Created: 2026-07-03
+Engine(s): None (website/ front-end + build tooling)
 Research question: [textbook](README.md)
-Source: [IDEALOG.md](IDEALOG.md) — the 2026-07-02 "Full chapter-by-chapter audit" + "Image/figure audit" thread entries
-Audit references (single source of truth for exact locations — do NOT duplicate their tables here):
-- [`audits/FULL_CHAPTER_AUDIT_2026-07-02.md`](audits/FULL_CHAPTER_AUDIT_2026-07-02.md)
-- [`audits/IMAGE_AUDIT_2026-07-02.md`](audits/IMAGE_AUDIT_2026-07-02.md)
+Source: [IDEALOG.md](IDEALOG.md) — 2026-07-03 "Website UI audit + interactive-refresh direction"; design brief in [REFRESH_PLAN.md](REFRESH_PLAN.md); audit in [audits/UI_AUDIT_2026-07-03.md](audits/UI_AUDIT_2026-07-03.md); proof-of-direction artifact `a514e90d`.
+(Prior completed plan archived → [plans/2026-07-02_audit-remediation.md](plans/2026-07-02_audit-remediation.md).)
+**Durable prototype (widget source):** [plans/2026-07-03_refresh_prototype.html](plans/2026-07-03_refresh_prototype.html) (in-repo copy of the session's `refresh_pitch.html`; a cold-start agent ports `rk4`/`fit`/`cvar`/`simulateMS`/`apd90` + the FHN/AP widgets from here — do NOT rely on the ephemeral scratchpad path). Also durable: artifact `a514e90d` (WebFetch to view).
+**Revised 2026-07-03 after adversarial /audit** (2 HIGH + 4 MED + 8 LOW) — see Mutation Log.
 
 ## Objective
-Close the remediation backlog from the two 2026-07-02 audits of the cardiac-modeling textbook. Fix the correctness bugs (wrong math/physics), the book-wide off-by-one cross-reference/figure-number disease, the figure-integrity and figure-correctness defects, then the depth/structure gaps — all in the **canonical `website/chapters/*.html` source**. Order is highest-value / lowest-risk first (correctness + mechanical sweeps) → figure redraws → authoring → infrastructure.
+Refresh the textbook website (`Research/Active/textbook/website/`) from an anonymous static docs template into a themeable "explorable explanation": fix the dark-mode figure bug at its root, give figures a theme-token color system, wire up the orphaned cover/part pages, and add ~6–8 flagship interactive figure widgets — all as progressive enhancement over static SVG so the Playwright PDF pipeline keeps producing the 195-pp PDF unchanged.
 
 ## Success Criteria
-- [ ] All 3 HIGH correctness bugs fixed (Ch 11 BDF2 stability, Ch 8 FDM arithmetic, Ch 13 block-matrix sign incl. Fig 13.1) + the MEDIUM numeric fixes (App C.3, C.10, Ch 3, Ch 20).
-- [ ] Zero stale cross-references and zero mislabeled figure numbers remain (grep-clean per the checks below).
-- [ ] Zero `$...$` LaTeX remains inside any `<svg><text>`; all figure labels render (verified visually).
-- [ ] The 3 HIGH figure-correctness errors redrawn (Fig B.1, B.2, and Fig 13.1 signs) + the MEDIUM figure fixes.
-- [ ] Notation/counts unified book-wide (ORd = 41, TTP06 = 18, R' = recovery var, Ch 4 buffers, Ch 6 current count).
-- [ ] (Phase 4) Missing worked examples + §11.6 depth + highest-value new figures added; (Phase 5) PDF pipeline rebuilt and a correct PDF regenerated.
-- [ ] Mirrors README completion criteria (Part II cross-ref/depth/length, Part IV restructure/numbering/depth, rebuild PDF pipeline, reconcile tracking-doc claims).
-- [ ] No regressions — the multi-page site still loads every chapter; equations/figures still render.
+- [ ] Dark mode: every figure keeps legible, semantic color (no grey-collapse); confirmed by screenshots of ch2/ch5/ch10 in dark.
+- [ ] Every figure-color hex in `chapters/*.html` SVGs resolves to a `var(--fig-*)` token OR is a documented per-figure exception in the census map (target: 0 un-migrated hues; greys collapse to the ink/grid scale, which is NOT a semantic change); blanket `svg path/text` override (style.css:810-812) deleted and replaced by a scoped themeable default.
+- [ ] Cover (`title.html`) + 5 part dividers reachable and in reading-order prev/next flow in the SPA.
+- [ ] ≥6 interactive figure widgets live in the SPA, each keyboard-operable + `prefers-reduced-motion`-aware, each with a static SVG print fallback.
+- [ ] `python website/build/html_to_pdf.py` still builds a ~195-pp PDF; no widget/canvas leaks into print; no raw-LaTeX leak.
+- [ ] Light + dark both render clean with zero console errors on every chapter.
+- [ ] All existing behavior preserved (search, scroll-spy, font/theme toggles, keyboard nav, MathJax-SVG).
 
 ## Architecture Changes
-- MOD: `website/chapters/ch1.html … ch20.html`, `appendix-a/b/c/d.html`, `references.html` — content, cross-ref, figure, and SVG fixes per the audit docs.
-- MOD (Phase 5): `Cardiac_Textbook_Website.html` (regenerated snapshot); `INDEX.md` (reconcile Part IV claims).
-- NEW (Phase 5): `website/build/html_to_pdf.py` (or similar) — assemble `website/chapters/*` in `toc.json` order → single print HTML → Playwright → PDF (replaces the missing `html_to_pdf_v3.py`).
-- Do NOT touch: `_archive/monolithic_pre-fork_2026-07-02/` (stale). `Monodomain/Engine_V5.3/` is read-only (N/A here but standing rule).
+- MOD: `website/style.css` — add an expanded `--fig-*` figure-token block to the site's **TWO** theme scopes only (`:root` = light defaults, line 6; `[data-theme="dark"]` = dark overrides, line 62). **The site has NO `@media (prefers-color-scheme)` block and no `[data-theme="light"]` token scope** — dark mode is driven entirely by the JS-set `data-theme` attribute (`index.html` defaults `data-theme="light"`; `app.js:initTheme/toggleTheme`). Do NOT add an `@media` token block (it would make a dark-OS user who toggles to light get dark figure colors). Also: add a scoped themeable text default (`.figure text, figure.fig text { fill: var(--fig-axis) }`) to REPLACE deleted line 810; `@media print` widget-hide belt; **delete** the blanket override `style.css:810-812`; rebuild type scale (serif×mono), deepen crimson accent, drop `justify`, fix equation-number placement, add cover/part-opener styles.
+- MOD: `website/app.js` — include `title.html` + `part-*.html` in the flat reading order (`buildChapterList`), render clickable part rows + a Cover entry (`renderSidebar`), let `navigateTo`/bottom-nav flow through them; after chapter load, invoke the figure loader.
+- NEW: `website/figures.js` — SPA-only figure-widget loader: scans `[data-widget]`, mounts the matching widget over the static SVG fallback, re-mounts on theme change; **not** referenced by `html_to_pdf.py`.
+- NEW: `website/figures/*.js` — one module per widget (`fhn.js`, `ap.js`, `rk.js`, `cfl.js`, `nernst.js`, `wave.js`) + shared `_canvas.js`; RK4/`fit`/`cvar`/`simulateMS`/`apd90` ported from the durable prototype `plans/2026-07-03_refresh_prototype.html`.
+- NEW: `website/build/migrate_figure_colors.py` — one-shot sweep: hardcoded hex → `style="…:var(--fig-*)"` across all chapter SVGs, with an unmapped-hex report.
+- NEW: `website/build/verify_site.py` — reusable Playwright harness: screenshots key chapters in light+dark, asserts zero console errors, asserts the PDF-assembly HTML contains no mounted widget canvas.
+- MOD: `website/chapters/*.html` — figure SVGs re-colored to tokens (Phase 1); ~6 figures additionally wrapped in the `<figure data-widget>` convention (Phases 2–3).
 
-## Known Failures (from IDEALOG — do NOT repeat)
-- **Editing `Bidomain_Textbook.html`** — it is the ARCHIVED, stale monolithic copy (deleted Part III Schur chapters, only 2 appendices). All edits go to `website/chapters/`.
-- **Reintroducing the monolithic bidomain-solver framing** (2N×2N indefinite / FGMRES / AMG / Schur as the *real* method) — Engine V1 uses decoupled N×N SPD solves. Monolithic stays a labeled sidebar only.
-- **Reference-manual style** — every revised section must keep L1 ELI5 + a L4 worked example, not just L2/L5.
-- **Recombining appendices** into a catch-all — keep A/B/C/D one-job-each.
-- **`$...$` LaTeX inside `<svg><text>`** — MathJax `tex-svg` does NOT typeset it; it renders literally. Use plain Unicode inside SVG (as Ch 6 / Ch 8 already do).
-
----
-
-## Verification model (read once — applies to all phases)
-
-There is **no pytest suite** for the HTML. Verification is:
-1. **grep assertions** — specific stale strings must return zero (commands in each step).
-2. **Visual render check** — open the multi-page site (`website/index.html`) which loads `chapters/` live; confirm the edited chapter renders (equations typeset, figures draw, labels legible). The PDF build is broken until Phase 5.
-3. **Numeric re-derivation** — for the math fixes, recompute the corrected values (Python one-liners) and confirm they match the new prose.
-
-Conda env for any Python: `conda run -n heart-conduction python ...`.
+## Known anti-patterns (do NOT reintroduce — from IDEALOG/audit)
+- **Blanket `[data-theme="dark"] svg line, svg path { stroke: … }`** — the root cause: it repaints every figure curve one grey and adds a stray outline to MathJax glyphs. Never reintroduce a global SVG stroke/fill override; color figures via tokens.
+- **Hardcoded hex inside SVG** (`fill="#e94560"`, `fill="#16213e"`, …) — the reason the blanket override existed. All figure color must resolve from `--fig-*`.
+- **`fill="var(--x)"` as a presentation attribute** — NOT reliably supported. `var()` only resolves inside a `style="…"` attribute or a stylesheet. Migration must emit `style="fill:var(--fig-crimson)"`, never `fill="var(--fig-crimson)"`.
+- **Canvas-only figures** — a figure that exists only as a widget prints blank. Every `[data-widget]` must retain a static SVG fallback.
+- **Injecting the widget loader into the PDF build** — `html_to_pdf.py` must keep injecting only MathJax + PRINT_CSS; never add `figures.js`, or widgets would mount in print.
+- **Editing content while re-coloring** — no prose/equation/caption changes in the color sweep; monolithic-solver framing and appendix-recombination remain forbidden (content anti-patterns).
 
 ---
 
-## Phase 1: Correctness fixes (HIGH + MEDIUM) + notation unification
+## Phase 1: Fix & Re-shell (CSS + nav; no widgets, no content edits)
 
-**Goal**: Every place the book teaches something *wrong* is corrected. Independently deliverable; no figure redraws except Fig 13.1's signs (kept with its prose for atomicity).
-**Tier**: medium
-**Estimated scope**: 4 steps, ~8 chapter files touched, all small localized edits.
+**Goal**: Kill the dark-mode figure bug at the root, make every existing static figure themeable, refresh the visual shell/typography, and wire the orphaned cover/part pages into the SPA. Fully deliverable on its own — the site is already much better after this phase, with zero interactivity added yet.
+**Tier**: large
+**Estimated scope**: 1 new build script + 1 verify harness; heavy edits to `style.css` and `app.js`; scripted edits across ~24 chapter files (color only, never prose).
 
 ### Phase Context
-Exact locations and the wrong-vs-right values are in `FULL_CHAPTER_AUDIT_2026-07-02.md` §"Content-correctness bugs" and `IMAGE_AUDIT_2026-07-02.md` §"Correctness". Read the specific bullet before each edit. These are surgical text edits — preserve surrounding prose voice. After each edit, re-derive the number to confirm.
+- Canonical source: `website/chapters/*.html` (self-contained fragments) + `website/toc.json` + `website/index.html` + `website/app.js` + `website/style.css`. These fragments ALSO build the PDF via `website/build/html_to_pdf.py` (assembles in toc order, wraps with `style.css` + PRINT_CSS + MathJax, `data-theme="light"`, Playwright → A4 PDF).
+- **Never edit prose/equations/captions in this phase** — color/markup only. A content diff should show only attribute/style changes inside `<svg>` and structural nav wiring.
+- **The figures use ~61 distinct hexes** (census: `grep -rhoiE '(fill|stroke)="#[0-9a-f]{3,6}"' website/chapters | …`). An 8-token set cannot express them, so the token system is a **categorical + neutral + tint** palette. Collapsing multiple *greys* into the ink/grid scale is NOT a semantic change; collapsing distinct *hues* that encode different things within one figure IS — the census step (1.2) flags those for a per-figure decision. Token families (exact light/dark values finalized in Step 1.1 against the census + the `dataviz` skill's colorblind/contrast validator):
+  | family | tokens | absorbs (examples from census) |
+  |---|---|---|
+  | categorical hues | `--fig-crimson --fig-blue --fig-teal --fig-green --fig-amber --fig-orange --fig-purple` | crimson: `#e94560 #d32f2f #c62828 #c0392b`; blue: `#0f3460 #42a5f5 #1565c0 #2980b9 #0072b2`; green: `#2d6a4f #2e7d32 #1b5e20`; amber: `#8a6d00 #b36b00 #e69f00`; orange: `#d55e00`; purple: `#6a1b9a #4a3d7a` |
+  | ink / neutral scale | `--fig-ink --fig-muted --fig-faint --fig-grid` | ink: `#16213e #333`; muted: `#5a6175 #666`; faint: `#888 #999 #b0b8d4`; grid/hairline: `#d0d5e0 #e2e5ed #e0e0e0 #ccc #e8e8e8` |
+  | surfaces | `--fig-stage` (fig bg) + panel tints `--fig-tint-{blue,teal,red,amber,green,purple}` | stage: `#fff #fafafa #f8f8f8`; tints: `#f0f4ff #e8f4f8 #fce4ec #e3f2fd #fff3e0 #f3e5f5 #e8f5e9` |
+  Note: `--fig-axis` is an alias of `--fig-ink` for stroke use (axes). The authoritative hex→token map is produced by the census in Step 1.2, not hand-guessed here.
+- Verification is visual, not pytest. Use `conda run -n heart-conduction python website/build/verify_site.py` (built in Step 1.0) and the `--html-only` PDF assembly.
+- Env: `conda run -n heart-conduction` (has playwright + chromium).
 
-### Step 1.1: Fix the three HIGH correctness bugs
+### Step 1.0: Verification harness
 **Model**: opus
-
 #### Read First
-- `FULL_CHAPTER_AUDIT_2026-07-02.md` bullets HIGH-1/2/3 — the exact wrong/right values.
-- `website/chapters/ch11.html` — BDF2 section (ELI5, math box, comparison table).
-- `website/chapters/ch8.html` — the FDM 5-node worked example (node-2 computation + the "node 4 only half" prose).
-- `website/chapters/ch13.html` — the block-matrix prose table AND the Fig 13.1 SVG.
-
+- This session's screenshot pattern (scratchpad `shoot.py`): serve `website/` on a port, screenshot `index.html#<chapter>` in light/dark, capture console errors.
+- `website/app.js:43-82` — how the SPA boots + `#hash` navigation, so screenshots land on the right chapter.
 #### Why
-These three actively teach incorrect facts (a wrong stability class, wrong arithmetic that breaks its own teaching point, a sign-inconsistent central equation). They are the highest-severity items and must be internally self-consistent after the fix.
-
+Every later step's "Verify" depends on a repeatable way to see the site in both themes and to prove no console errors / no widget leak into print. Build it first so it exists for 1.1+.
 #### Implementation Spec
-**Ch 11 — BDF2 L-stability:** Make ELI5, math box, and comparison table all say **L-stable** (BDF2 is L-stable: dominant amplification-factor root → 0 as z → −∞). Replace the garbled `R(z)=(4−1/(1+2z/3))`, |R(∞)|=1/3 with a correct amplification statement (the two-step BDF2 update has |R|→0 as Re(z)→−∞). Keep the CN-vs-BDF2 contrast (CN is A-stable-not-L-stable; BDF2 is L-stable).
-**Ch 8 — FDM worked example:** node-2 bracket is currently −190 → +475. Correct the bracket to `(-1)(-85)+2(-85)+(-1)(20) = -105`, giving **+262.5**. Fix the follow-on prose: with this K, nodes 2 and 4 are **equal (+262.5)** — replace the "node 2 gets +475 … node 4 only half" claim with the correct symmetric reading.
-**Ch 13 — block-matrix sign:** In BOTH the prose block table and Fig 13.1's SVG `<text>`, change the off-diagonals A12 = A21 from **+L_i → −L_i** (with A22 = −(L_i+L_e) unchanged) so row 2 reads −(L_i+L_e)φ_e = +L_i·V_m, matching eq (14.1) / Algorithm 14.1.
-
+**Files to create:** `website/build/verify_site.py` — CLI: `--chapters ch2,ch5,ch10 --themes light,dark --out <dir>`; starts `http.server` on `website/`, screenshots each chapter×theme (full-page), records `console`/`pageerror` events, writes a JSON summary `{chapter, theme, errors[]}`. Exit non-zero if any console error.
+**Print-safety check (meaningful version — the trivial `'fig-widget' in assemble_html()` string check is USELESS because `canvas.fig-widget` is created at runtime by `figures.js`, which the assembled source never contains):** the real guarantee is that the PDF path never loads the widget loader. Assert BOTH: (a) `assemble_html()` (imported from `html_to_pdf.py`) contains no reference to `figures.js`/`mountFigures`; (b) render the assembled print HTML headless (as the PDF build does) and assert `document.querySelectorAll('canvas.fig-widget').length === 0` in the loaded DOM. (a) is vacuously green until Phase 2 but guards against a future regression that wires the loader into the build; (b) is the true end-state test.
 #### Pseudocode
 ```
-# Ch8 recompute to confirm:
-node2 = 0.5 * ( (-1)*(-85) + 2*(-85) + (-1)*(20) )   # = 0.5 * (-105) = -52.5 ... (use the chapter's exact prefactor)
-# Reconcile the printed prefactor so the worked result = +262.5 as the audit states; verify node2 == node4.
+serve website/ :PORT
+for ch in chapters, th in themes: goto index.html#ch; set data-theme=th; wait; screenshot; collect errors
+from html_to_pdf import assemble_html; src = assemble_html()
+assert 'figures.js' not in src and 'mountFigures' not in src        # loader not injected into print
+render src headless (file://) → assert page.eval('document.querySelectorAll("canvas.fig-widget").length')==0
+write summary.json; nonzero exit on any console error or either print-safety failure
 ```
-(Confirm the exact prefactor against the chapter; the audit's corrected target is +262.5 and node2 == node4.)
-
 #### Test Spec
-- Manual: after edit, `grep -n "475" ch8.html` → the stale +475 claim is gone; recomputed value matches prose.
-- Manual: `grep -ni "not L-stable\|A-stable" ch11.html` in the BDF2 context → BDF2 no longer labeled A-stable/not-L-stable.
-
+- Manual: run against current site → baseline screenshots + a known-empty error list (current site has 0 console errors per this session's screenshots).
 #### Checklist
-- [ ] Ch 11 BDF2: ELI5 + math box + table all consistent on L-stable; amplification statement correct.
-- [ ] Ch 8: node-2 arithmetic corrected; dependent prose ("node 4 half") rewritten to the symmetric truth.
-- [ ] Ch 13: prose table A12/A21 → −L_i; Fig 13.1 SVG A12/A21 text → −L_i; both now match eq (14.1).
-
+- [ ] Screenshots land on the correct chapter (hash nav works headless)
+- [ ] Console + pageerror captured per page
+- [ ] Print-assembly widget-leak assertion wired (import `assemble_html`)
+- [ ] JSON summary + non-zero exit on failure
 #### Verify
-```bash
-cd Research/Active/textbook/website/chapters
-grep -n "475" ch8.html || echo "OK: stale +475 gone"
-grep -ni "A-stable\|not L-stable" ch11.html
-grep -n "L_i\|+ L\|- L" ch13.html   # eyeball the block-table + Fig 13.1 signs
 ```
-
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch1,ch2,ch5,ch10 --themes light,dark --out /tmp/verify_baseline
+```
 #### Exit Criteria
-- [ ] All three fixes internally self-consistent; recomputed numbers match prose; Fig 13.1 + Ch 13 table + eq (14.1) agree on signs.
-
+- [x] Baseline run: 0 console errors, screenshots produced for all 8 chapter×theme combos. **DONE 2026-07-06** — `verify_site.py` built; baseline green (`/tmp/verify_baseline`).
 #### Risk
-Ch 8 prefactor ambiguity — mitigation: recompute from the chapter's own stencil definition, don't assume; make node2 == node4 the invariant. Ch 13 sign — mitigation: term-match against Algorithm 14.1 Stage 3 explicitly.
+Headless hash-nav races the async chapter fetch — mitigation: `wait_for_selector('.chapter-content .chapter, .chapter-title')` + a fixed settle delay before screenshot.
 
-### Step 1.2: Appendix C numeric fixes
+### Step 1.1: Figure-token system + themeable defaults (CSS only; keep blanket override for now)
 **Model**: opus
-
 #### Read First
-- `IMAGE_AUDIT`/`FULL_CHAPTER_AUDIT` MEDIUM bullets for App C.3 and C.10.
-- `website/chapters/appendix-c.html` — Algorithm C.3 (Chebyshev) line 3; the C.10 DCT worked example.
-
+- `website/style.css:6` (`:root` = light tokens) and `website/style.css:62` (`[data-theme="dark"]` = dark tokens). **These are the ONLY two theme scopes.** Verify: `grep -n 'prefers-color-scheme' website/style.css` → NONE; `grep -n '\[data-theme="light"\]' website/style.css` → only line 202 (icon display, not tokens). Dark mode is JS-toggled (`app.js:372-386` initTheme/toggleTheme; `index.html` root defaults `data-theme="light"`).
+- `website/style.css:716-723` — `.figure` / `.figure-caption` rules.
+- `website/style.css:789-812` — inline-bg dark overrides + the blanket SVG override (**do not delete yet**).
+- `dataviz` skill `references/palette.md` — to finalize colorblind-safe / AA-contrast values for the 7 categorical hues on both grounds.
 #### Why
-Both are reproducibility bugs in the "crown-jewel" appendix — a reader following the arithmetic gets a different answer than printed.
-
+Introduce the (expanded) color system the migration (1.2) targets, without breaking the current hardcoded figures — the site must stay working between 1.1 and 1.2. Because migrated figures use inline `style="…:var(--fig-*)"` (specificity 1,0,0,0), they already win over the stylesheet blanket override even before it's deleted → no broken intermediate state. The blanket override is deleted in 1.2 once migration is complete.
 #### Implementation Spec
-- **C.3 Chebyshev:** change `ω_{k+1}=1/(1−δ²ω_k/(2γ²))` → `/(4γ²)` (matches C.14's own prose `1/(1−ρ²ω_k/4)`).
-- **C.10 DCT:** recompute the orthonormal DCT-II of the running vector (the audit found [4,2,1,3] → printed [5.000, 1.577, 0.500, −0.224] is wrong). Replace with the correctly computed coefficients and confirm the reader can reproduce them.
-
+**Files to modify:** `website/style.css`
+- Add the full `--fig-*` block (families from Phase Context: 7 categorical hues + `--fig-ink/--fig-axis(=ink alias)/--fig-muted/--fig-faint/--fig-grid` + `--fig-stage` + 6 `--fig-tint-*`) to **BOTH** scopes only: light values under `:root`, dark values under `[data-theme="dark"]`. **Do NOT add an `@media (prefers-color-scheme)` block** — it has no matching `[data-theme="light"]` reset here, so it would leak dark figure colors into a dark-OS user's light-toggled view. Finalize hue values via the `dataviz` palette (e.g. light crimson `#C31D38`/blue `#1F6FB2`/teal `#0C7480`/green `#2E7D57`/amber `#B7791F`/orange `#C2410C`/purple `#6D4AA8`; dark lifts `#FF5468/#5AA9E6/#34C6D2/#57C48A/#E7A23C/#F97316/#B69BE0`; tints = pale fills light, ~12%-alpha-over-stage dark).
+- Add a scoped themeable **default** (load-bearing — replaces the about-to-be-deleted line 810 and covers `<text>` with no own fill, incl. group-inherited): `.figure text, figure.fig text { fill: var(--fig-axis); }` and `.figure, figure.fig { color: var(--fig-axis); }` (so any `currentColor`/unstyled stroke themes too). Scope to figures so MathJax `mjx-container` SVGs are untouched.
+- (Optional, for hand-authored SVGs only) a minimal `.figure .s-cr{stroke:var(--fig-crimson)}`-style utility set — NOTE the 1.2 migration uses inline `style`, not these classes, so keep the set small; the load-bearing piece is the themeable default above.
+- Do NOT yet remove `style.css:810-812`.
 #### Pseudocode
-```python
-import numpy as np; from scipy.fft import dct
-print(dct([4,2,1,3], type=2, norm='ortho'))  # use these values in C.10
 ```
-
+:root { --fig-crimson:#C31D38; --fig-blue:#1F6FB2; … --fig-ink:#1E2438; --fig-axis:var(--fig-ink); --fig-grid:#E7E9F2; --fig-stage:#FBFBFE; --fig-tint-blue:#F0F4FF; … }
+[data-theme="dark"] { --fig-crimson:#FF5468; --fig-blue:#5AA9E6; … --fig-ink:#D4D8E8; --fig-grid:#232838; --fig-stage:#10131F; --fig-tint-blue:#16203A; … }
+/* --fig-axis aliases --fig-ink → define once in :root; it re-resolves per theme via --fig-ink */
+.figure text, figure.fig text { fill: var(--fig-axis); }   /* themeable default; replaces line 810 */
+.figure, figure.fig { color: var(--fig-axis); }
+```
 #### Test Spec
-- Recompute both; printed values must equal the computed ones.
-
+- `verify_site.py` light+dark on ch5 → figures still render (tokens added, override still present); 0 console errors.
 #### Checklist
-- [ ] C.3 denominator fixed (2γ²→4γ²); ω₂ still correct, k≥2 now correct.
-- [ ] C.10 coefficients replaced with reproducible values (state the norm convention used).
-
+- [ ] Confirmed only 2 scopes (`:root`, `[data-theme="dark"]`); no `@media` token block added
+- [ ] All token families present in BOTH scopes
+- [ ] Hue values validated colorblind-safe + AA via `dataviz` palette
+- [ ] `.figure text`/`figure.fig text` themeable default added
+- [ ] Blanket override still present (removed in 1.2)
 #### Verify
-```bash
-conda run -n heart-conduction python -c "from scipy.fft import dct; print(dct([4,2,1,3],type=2,norm='ortho'))"
 ```
-
+for t in fig-crimson fig-blue fig-teal fig-green fig-amber fig-orange fig-purple fig-ink fig-muted fig-faint fig-grid fig-stage; do echo -n "$t="; grep -c "$t" website/style.css; done   # each hue/neutral token expect 2 (one per scope; --fig-axis alias may be 1)
+grep -c 'prefers-color-scheme' website/style.css   # expect 0
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch5 --themes light,dark --out /tmp/verify_1_1
+```
 #### Exit Criteria
-- [ ] Both examples reproduce by hand/Python exactly.
-
+- [ ] Every token defined in both scopes (each hue token count == 2); no `@media` block; site unchanged visually; 0 console errors.
 #### Risk
-DCT normalization mismatch — mitigation: state which convention (ortho vs unnormalized) the chapter uses and make the numbers match THAT convention.
+Defining a token in only one scope → undefined in the other mode. Mitigation: `grep -c` each token == 2. Adding an `@media` block by habit → light-mode leak; the checklist forbids it explicitly.
 
-### Step 1.3: Minor physics / equation corrections
+### Step 1.2: Migrate figure colors → tokens, then delete the blanket override
 **Model**: opus
-
 #### Read First
-- Audit MEDIUM bullets for Ch 3 (I_K1), Ch 20 (eq 20.2), Ch 18 (garbled closing paragraph), Ch 19 (§19.5 D2Q9-vs-D2Q5).
-
+- `website/chapters/ch5.html` (the phase×current grid — densest hardcoded-hex figure) and `website/chapters/ch2.html` (Fig 2.1) — representative markup (`fill="#hex"`, `stroke="#hex"`, existing `style="…"`, `font-family="EB Garamond,serif"`).
+- `website/style.css:810-812` — the blanket override to delete at the end.
+#### Why
+This is the actual fix for the HIGH bug. Converting SVG color to tokens lets a single theme swap recolor every figure correctly, and removes the need for the destructive blanket override.
 #### Implementation Spec
-- **Ch 3:** "large outward current at voltages just **below** E_K" → "just **above** E_K" (outward K⁺ flows above E_K).
-- **Ch 20:** eq 20.2 — replace "1/2" with "Δt/2" to match 19.6/18.26; fix the tensor-fed-into-scalar form.
-- **Ch 18:** rewrite the garbled closing paragraph (~line 1294: "In the next chapter… In Section 18.5 above… moment space, —") into a clean transition to Ch 19.
-- **Ch 19 §19.5:** reconcile "the D2Q9 lattice used in this chapter" — the chapter uses D2Q5; fix the lattice name and the index convention so §19.5 matches the rest of Ch 19.
-
-#### Checklist
-- [ ] Ch 3 I_K1 direction fixed.
-- [ ] Ch 20 eq 20.2 corrected.
-- [ ] Ch 18 closing paragraph rewritten.
-- [ ] Ch 19 §19.5 lattice/index reconciled to D2Q5.
-
-#### Verify
-```bash
-grep -ni "just below E_K\|below \$E_K" ch3.html || echo "OK"
-grep -ni "D2Q9" ch19.html   # confirm remaining D2Q9 mentions are intentional (Ch18 context) only
+**Files to create:** `website/build/migrate_figure_colors.py` — TWO modes:
+- `--census` (run FIRST): scan all `chapters/*.html` + `appendix-*.html`, list every distinct color VALUE — `(fill|stroke)="#hex"` AND **named colors** (`white` ×~42 e.g. ch18 `<g fill="white">` knockouts, `black`, any CSS color keyword) — incl. on `<g>` group elements, with counts and a PROPOSED token, write `website/build/figure_color_map.json` (the authoritative, human-reviewable map). Greys → ink/muted/faint/grid by luminance; hues → nearest categorical token; panel fills → `--fig-tint-*`; **`white` → `--fig-stage` (so a knockout/background follows the theme) but FLAG for review (a white *label on a colored fill* must instead map to `--fig-stage` only if that reads; some belong to `--fig-ink`)**; `black` → `--fig-ink`; unknowns → `null` (flag for manual decision — do NOT guess). `fill="none"`/`stroke="none"` are ignored (not colors).
+- `--apply` (run after the map is reviewed): operate ONLY inside `<svg …>…</svg>` spans (skip any `mjx-container`; source chapters have none, but guard anyway). For each element (including `<g fill=…>`), move any `fill=`/`stroke=` whose value is a mapped hex OR mapped named color → `style` as `fill:var(--fig-TOKEN)` / `stroke:var(--fig-TOKEN)` per `figure_color_map.json` (case-insensitive; expand 3-digit hex; leave `none` alone). Merge into an existing `style="…"` (append `;`), else add `style`. A `null`-mapped value is left untouched and re-reported. Idempotent.
+**Files to modify:** `website/style.css` — after `--apply` verified in dark, DELETE the blanket override `810-812` (BOTH the `svg text{fill:var(--text)}` line 810 AND the `svg line,svg path{stroke:…}` lines 811-812). Line 810's job (keeping figure `<text>` legible in dark) is taken over by the `.figure text{fill:var(--fig-axis)}` default added in Step 1.1. Keep the inline-bg overrides (790-808) but re-point to `--fig-stage` where relevant.
+#### Pseudocode
 ```
-
+census: for file, for each <svg>..</svg>: collect (fill|stroke)="#hex" (incl <g>); propose token by hue/luminance; write figure_color_map.json
+# human/agent reviews figure_color_map.json; resolves any null (add token OR document per-figure exception)
+apply: for file, for each <svg>..</svg> region, for each color attr with mapped token:
+   remove attr; merge "fill|stroke:var(--fig-tok)" into element style=
+write files; re-report any remaining null-mapped hex
+# then: delete style.css 810-812; re-verify dark (defaults + tokens now carry all figure color)
+```
+#### Test Spec
+- After `--apply`: `grep -RInE '(fill|stroke)="#' website/chapters website/chapters/appendix-*.html` → only `null`-mapped exceptions remain (documented); target 0.
+- `verify_site.py` ch2,ch5,ch10,**ch18**,appendix-b in DARK → figures show distinct hues (crimson/blue/teal/green/amber/purple), and **ch18's group-inherited `<text>` labels are legible (not dark-on-dark)** — the specific MED risk. Manual screenshot review.
+#### Checklist
+- [ ] `--census` writes `figure_color_map.json`; all 61 hexes have a proposed token or explicit `null`
+- [ ] Review the map; resolve every `null` (assign token or document a per-figure exception)
+- [ ] `--apply`; grep confirms no un-migrated `(fill|stroke)="#"` in SVGs (besides documented exceptions)
+- [ ] Delete blanket override `style.css:810-812`
+- [ ] Dark screenshots: ch2 FHN nullclines, ch5 phase grid, **ch18 labels**, App-B bowls all colored + legible
+- [ ] MathJax equations unaffected in dark (no stray glyph outline) — spot-check ch1/ch10
+#### Verify
+```
+conda run -n heart-conduction python website/build/migrate_figure_colors.py --census   # writes figure_color_map.json
+# → review figure_color_map.json, resolve nulls, then:
+conda run -n heart-conduction python website/build/migrate_figure_colors.py --apply
+grep -RInE '(stroke|fill)="#' website/chapters/*.html || echo "no un-migrated hex color attrs"
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch2,ch5,ch10,ch18,appendix-b --themes dark --out /tmp/verify_1_2
+```
 #### Exit Criteria
-- [ ] Each corrected; no new inconsistency introduced.
-
+- [ ] Zero un-migrated color values inside chapter SVGs (besides documented `null`-mapped exceptions); blanket override gone; dark-mode figures legible + semantic; equations clean; 0 console errors.
 #### Risk
-Ch 19 lattice reconciliation could ripple — mitigation: confirm which lattice the chapter's equations actually use before renaming.
+(a) `var()` in a presentation attribute → won't resolve. Mitigation: script emits `style="…:var()"` only; grep to confirm no `="var(`. (b) Malformed `style` merge on elements with an existing `style`. Mitigation: idempotent re-run + screenshot review. (c) Over-broad regex touches text outside SVGs. Mitigation: operate only within matched `<svg>…</svg>` spans; content-diff review (prose untouched).
 
-### Step 1.4: Notation & count unification (book-wide)
+### Step 1.3: Shell + typography refresh
 **Model**: opus
-
 #### Read First
-- Audit LOW/"notation" bullets; STYLE_GUIDE §"Cross-Reference Consistency" (canonical counts: TTP06 = 18 = 12 gates + 5 conc + R'; ORd = 41).
-
+- `website/style.css:104-133` (base/body), `526-655` (title/part/chapter/equation), `633` (`p{justify}`), `650-655` (equation-label float).
+- REFRESH_PLAN.md "Design system" (fonts, scale, crimson deepen).
+#### Why
+Turn the anonymous template into the chosen identity (serif×mono, deepened crimson, breathing room) without changing chapter markup/classes (so fragments + PDF are unaffected).
 #### Implementation Spec
-- **ORd count:** "40" in Ch 2 and Ch 7 → 41 (or adopt Ch 6's reconciled phrasing "40 ionic + V stored separately" consistently everywhere).
-- **TTP06 count:** "17" in Ch 8 → 18; keep 18 everywhere.
-- **Ch 5:** stop calling R' a "concentration" → "5 concentrations + R' (SR-release recovery variable)".
-- **Ch 4 buffers:** make Fig 4.1, Fig 4.5, and §4.6 agree — ATP/Mg²⁺ ≈ 15%, Other ≈ 38% (Fig 4.1 currently says "SR membranes 15% / Other 37%").
-- **Ch 6 current count:** reconcile "15" vs "16" vs "15 (+chloride)" — pick the count matching eq (6.1)'s terms and state the chloride caveat once.
-
-#### Checklist
-- [ ] ORd 41 consistent (Ch 2, 7 vs 6).
-- [ ] TTP06 18 consistent (Ch 8).
-- [ ] Ch 5 R' recategorized.
-- [ ] Ch 4 buffer numbers unified across Fig 4.1 / Fig 4.5 / §4.6.
-- [ ] Ch 6 current count unified.
-
-#### Verify
-```bash
-cd Research/Active/textbook/website/chapters
-grep -rni "40 (state\|40 variables\|40 ionic" ch2.html ch7.html
-grep -rni "17 state\|17 ionic" ch8.html
+**Files to modify:** `website/style.css`
+- Add `--font-serif`/`--font-sans`/`--font-mono` (system stacks from REFRESH_PLAN); apply serif to body/headings, mono to `.eyebrow`/`.chapter-number`/`.figure-label`/`.equation-label`/nav labels.
+- Deepen `--highlight`/accent to arterial crimson (`#C31D38` light / `#FF5468` dark); keep the variable NAME `--highlight` (change values only to avoid churn); cool-bias `--accent`/`--accent2`.
+- `p{ text-align:left }` (drop `justify`+hyphens or keep hyphens but left-align); tighten measure to ~64ch.
+- Equation number: position within `.equation-block` without floating over tall displays (absolute top-right with reserved padding, or a caption row).
+- Add cover/part-opener styles (`.cover`, `.part-opener`) — ready before 1.4 markup.
+#### Pseudocode
 ```
-
+:root { --font-serif:"Iowan Old Style",…; --font-sans:system-ui,…; --font-mono:ui-monospace,…; }
+body,h1,h2,h3,h4 { font-family:var(--font-serif); }
+.eyebrow,.chapter-number,.figure-label,.equation-label,.toc-part,.nav-direction { font-family:var(--font-mono); }
+:root{ --highlight:#C31D38 } [data-theme="dark"]{ --highlight:#FF5468 }   /* values only; name kept */
+p { text-align:left; } .chapter-content{ max-width:64ch; }
+.equation-block{ position:relative; padding-right:3.5rem } .equation-label{ position:absolute; top:.5rem; right:.8rem; float:none }
+.cover{…} .part-opener{…}
+```
+#### Test Spec
+- `verify_site.py` sample (ch1, ch8, ch11, ch13, ch18, appendix-a) light+dark: legible, no overflow, equation numbers not overlapping equations.
+#### Checklist
+- [ ] Font tokens applied by role (serif body, mono labels)
+- [ ] Crimson deepened both themes; text contrast AA
+- [ ] Justify dropped; measure ~64ch
+- [ ] Equation-number placement fixed (check a tall display eq, e.g. ch11 BDF2)
+- [ ] Existing chapter classes unchanged (no fragment edits)
+#### Verify
+```
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch1,ch8,ch11,ch13,ch18,appendix-a --themes light,dark --out /tmp/verify_1_3
+```
 #### Exit Criteria
-- [ ] No conflicting state-counts or buffer numbers remain across chapters.
-
+- [ ] Identity visibly shifted (serif×mono, crimson), both themes clean, equations well-placed, 0 console errors, chapters unedited.
 #### Risk
-Over-eager replace hitting unrelated "40"/"17" — mitigation: match the full phrase, edit per-occurrence.
+Changing `--accent`/`--highlight` values ripples widely. Mitigation: values-only change, keep names; screenshot-sweep several chapters.
+
+### Step 1.4: Wire cover + part pages into the SPA
+**Model**: opus
+#### Read First
+- `website/app.js:84-141` (`buildChapterList`, `renderSidebar`, `renderChapterTocEntry`), `164-265` (`navigateTo`, `updateBottomNav`, `updateRightMargin`), `104-116` (`toc-part` rendered as non-clickable div).
+- `website/build/html_to_pdf.py:36-42,95-109` — PDF reading order (title → for each part: divider → chapters). Mirror THIS order in the SPA.
+- `website/chapters/title.html`, `part-i.html` — fragments to load.
+#### Why
+Give the website a cover + part-divider moments (currently PDF-only, orphaned on the web), with prev/next in reading order — closes the "cover & part pages orphaned" finding.
+#### Implementation Spec
+**Files to modify:** `website/app.js`
+- `buildChapterList`: build `allChapters` as `[{id:'title',kind:'cover',num:'',title:'Cover'}, {id:'part-i',kind:'part',num:'Part I',title:'Single Cell Dynamics'}, …chapters (kind:'chapter')…, {id:'part-ii',kind:'part',title:'Tissue-Level Monodomain'}, …, {id:'appendices',kind:'part',title:'Reference Material'}, …]` in PDF order. **Pull `num`/`title` verbatim from the `toc.json` part entries** (e.g. appendices is `num:"Appendices", title:"Reference Material"` — the example must match toc, not be hand-typed). **Every entry MUST carry a `title`** — `updateBottomNav` sets the prev/next label from `.title` (app.js:237,246); an entry without a title would show `undefined`.
+- `renderSidebar`: render each part header as a clickable link to its divider (keep the `toc-part` label styling) + a "Cover" link at top.
+- `navigateTo`: works for `title`/`part-*` ids (files exist); skip `addSectionAnchors` + right-margin logic when `kind!=='chapter'`.
+- `updateSidebarActive`: currently matches only `.toc-chapter[data-id]` (app.js:149) → part/cover links never highlight. Extend it to also set active on the part/Cover link whose id matches (so the promised active-state fires for non-chapter entries).
+- `updateBottomNav`/`updateRightMargin`: tolerate entries without subsections (guard on `kind`).
+#### Pseudocode
+```
+buildChapterList: allChapters=[cover]; for part in toc: allChapters.push({id:part.id,kind:'part',num:part.num,title:part.title}); for ch in part.chapters: allChapters.push({...ch,kind:'chapter'})
+renderSidebar: prepend Cover link; render toc-part as <a href=#part-id> instead of <div>
+navigateTo(id): fetch chapters/id.html (works for title/part-*); if kind!=='chapter' skip addSectionAnchors+updateRightMargin
+updateBottomNav: label = entry.title (now always defined)
+```
+#### Test Spec
+- `#title`, `#part-i`, `#part-iii` render the correct fragment (no ch1 fallback), with a defined prev/next label. Bottom-nav Cover → Part I → Ch 1; last-of-Part-I → Part II divider.
+#### Checklist
+- [ ] `allChapters` includes cover + 5 dividers in PDF order
+- [ ] Sidebar: clickable parts + Cover; active-state works
+- [ ] `#title`/`#part-*` load (no fallback to ch1)
+- [ ] Prev/next flows through dividers; no crash on missing subsections
+- [ ] PDF build unaffected (doesn't use app.js) — `--html-only` still assembles
+#### Verify
+```
+# SPA nav is the thing under test → verify by screenshot: #part-i / #title must LAND on part/cover content (not ch1)
+conda run -n heart-conduction python website/build/verify_site.py --chapters title,part-i,part-iii,ch1 --themes light,dark --out /tmp/verify_1_4
+# (review /tmp/verify_1_4: title.png shows the cover, part-i.png shows the Part I divider — NOT ch1)
+# separately confirm the PDF assembly path is UNCHANGED by this JS-only step (regression guard, not the nav test):
+conda run -n heart-conduction python website/build/html_to_pdf.py --html-only -o /tmp/assemble_check.html && grep -c 'part-page\|title-page' /tmp/assemble_check.html
+```
+#### Exit Criteria
+- [ ] Cover + parts reachable and in prev/next order with defined labels; `#title`/`#part-i` screenshots show cover/part content (no ch1 fallback); PDF assembly unchanged.
+#### Risk
+`addSectionAnchors`/scroll-spy assume chapter structure. Mitigation: guard on `kind==='chapter'`.
 
 ### Phase 1 Verification
-```bash
-cd Research/Active/textbook/website/chapters
-grep -n "475" ch8.html || echo "ch8 OK"
-grep -ni "A-stable" ch11.html    # BDF2 no longer mislabeled
-conda run -n heart-conduction python -c "from scipy.fft import dct; print(dct([4,2,1,3],type=2,norm='ortho'))"
 ```
-Open `website/index.html`, spot-check Ch 8, 11, 13, App C render with the new values.
-
-### Phase 1 Exit Criteria
-- [ ] 3 HIGH + 4 MEDIUM correctness fixes done and self-consistent.
-- [ ] Notation/counts unified.
-- [ ] Site still renders the edited chapters.
-
+conda run -n heart-conduction python website/build/verify_site.py --chapters title,part-i,ch1,ch2,ch5,ch8,ch10,ch11,ch13,ch18,appendix-a,appendix-b --themes light,dark --out /tmp/verify_p1
+conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p1.pdf   # PDF still builds (~195pp)
+```
+### Phase 1 Exit Criteria — ✅ DONE 2026-07-06
+- [x] Dark-mode figures legible + semantic across sampled chapters (verified ch2 FHN, ch5 current-grid, ch18 lattice stencils in dark)
+- [x] No raw figure hex (0 residual; 62 values migrated via census map); blanket override deleted; equations clean in dark
+- [x] Cover + parts reachable, correct prev/next (cover renders, "Next → Single Cell Dynamics" flow)
+- [x] PDF builds, **exactly 195 pages** (no regression), no raw-LaTeX leak
+- [x] 0 console errors across 24 chapter×theme combos, both themes; print-safety green
+- Steps: 1.0 verify_site.py ✅ · 1.1 tokens ✅ · 1.2 census-migration + override delete ✅ · 1.3 serif×mono/crimson/justify/eqn ✅ · 1.4 cover+part nav ✅
+- **NOT yet committed** — awaiting user go on the commit (branch: engine-tuner-cardiac-core has unrelated in-flight changes).
 ### Phase 1 Cleanup
-- No `$...$` introduced inside any SVG (Fig 13.1 edit uses plain Unicode).
-- Canonical source only — no edits leaked into the archived file.
-- Re-derived numbers match prose.
+- [ ] No stray debug logs in app.js / build scripts
+- [ ] `migrate_figure_colors.py` idempotent (re-run = no diff)
+- [ ] V5.3 untouched; no engine/`cardiac_core` files touched
+- [ ] Content diff review: only SVG color attrs + nav wiring changed, zero prose/equation edits
 
-**-> Commit point: git commit after Phase 1 passes**
-
----
-
-## Phase 2: Book-wide cross-reference + figure-number sweep
-
-**Goal**: Zero stale cross-references and zero mislabeled figure numbers. The single highest-value connectiveness fix.
-**Tier**: medium
-**Estimated scope**: 2 steps, mechanical but must avoid clobbering legitimate refs.
-
-### Phase Context
-The exact stale-ref tables are in `FULL_CHAPTER_AUDIT` §"Cross-cutting finding #1" and `IMAGE_AUDIT` §"finding #2" — treat them as the checklist. DANGER: legitimate "Chapter 7/8/9/10" refs also exist; match the **full phrase** from the audit table, not the bare number. Do per-file, verify each with grep after.
-
-### Step 2.1: Parts I–II sweep (ch5, ch6, ch8, ch10, ch11, appendix-d)
-**Model**: opus
-
-#### Read First
-- `FULL_CHAPTER_AUDIT` cross-ref table rows for Ch 5/6/8/10/11 + App D; `IMAGE_AUDIT` figure-number rows for Ch 5/8/10.
-
-#### Implementation Spec (from the audit tables)
-- Ch 5, Ch 6: Rush–Larsen "(Chapter 8)" → "(Chapter 9)".
-- Ch 8: "Figure 7.1/7.2/7.3" → 8.x; "sections 7.5–7.7" → 8.2–8.4; "Godunov splitting (Chapter 8)" → Ch 9; "Chapters 9 and 10 … time integrators" → "10 and 11".
-- Ch 10: "Chapter 10's implicit methods" / "(Chapter 10)" ×2 → Ch 11; "Figure 9.1/9.2/9.3" → 10.x; "Chapter 7" (spatial) → Ch 8.
-- Ch 11: "Explicit methods (Chapter 9)" → Ch 10; "CFL (equation 9.2)" → "(10.2)"; "Chapter 7" (K/M matrices) → Ch 8.
-- App D: "The FFT solver (Chapter 10)" → "Chapter 11 §11.6".
-- Ch 5 figure: caption "Figure 4.1" (calcium cycling) → "Figure 5.2".
-
-#### Checklist
-- [ ] Each row above applied; each verified by grep.
-
-#### Verify
-```bash
-cd Research/Active/textbook/website/chapters
-grep -ni "Chapter 8" ch5.html ch6.html | grep -i "rush\|larsen" || echo "OK: RL ref fixed"
-grep -n "Figure 7\." ch8.html || echo "ch8 fig OK"
-grep -n "Figure 9\." ch10.html || echo "ch10 fig OK"
-grep -ni "equation 9.2\|(9.2)" ch11.html || echo "ch11 CFL OK"
-grep -n "Figure 4.1" ch5.html || echo "ch5 fig relabel OK"
-```
-
-#### Exit Criteria
-- [ ] All Parts I–II stale prose refs + figure numbers resolved; grep-clean.
-
-#### Risk
-Clobbering a legitimate "Chapter 8/9/10" — mitigation: phrase-match; re-read each hit in context before editing.
-
-### Step 2.2: Part IV sweep (ch18, ch19, ch20)
-**Model**: opus
-
-#### Read First
-- `FULL_CHAPTER_AUDIT` cross-ref rows for Ch 18/19/20; `IMAGE_AUDIT` Ch 18 figure row. Ch 19 is the worst (24 bad refs).
-
-#### Implementation Spec (from the audit tables)
-- Ch 18: "equation 17.2/17.3/17.4/17.14" → 18.x; figure caption "Figure 17.1" → "18.1".
-- Ch 19: the 16 "Chapter 17"/"17.x" → 18.x; the 8 "18.x" that are really this chapter's own equations → 19.x (per the audit's explicit mapping 18.1→19.1, 18.2→19.2, 18.10→19.10, 18.3→19.3, 18.8→19.8); "Chapter 19 develops three strategies" → "Chapter 20".
-- Ch 20: "monodomain equation (Chapter 18)" → Ch 19; "(equation 17.26)" → "18.26"; "Part IV (Chapters 17–19)" → "18–20".
-
-#### Checklist
-- [ ] Ch 18 five 17.x refs + figure number fixed.
-- [ ] Ch 19 all 24 refs fixed per the mapping (17→18 for foreign eqs; 18→19 for own eqs).
-- [ ] Ch 20 three refs fixed.
-
-#### Verify
-```bash
-cd Research/Active/textbook/website/chapters
-grep -n "17\.\|Chapter 17\|Figure 17" ch18.html ch19.html ch20.html || echo "OK: no stale 17.x"
-grep -n "Chapter 19 develop" ch19.html || echo "ch19 self-ref OK"
-grep -n "Chapters 17" ch20.html || echo "ch20 range OK"
-```
-
-#### Exit Criteria
-- [ ] Zero "17.x"/"Chapter 17" anywhere in Part IV; self-refs point to 19.x; end-of-Ch19 points to Ch 20.
-
-#### Risk
-Ch 19's dual mapping (some refs go 17→18, others 18→19) — mitigation: follow the audit's explicit per-equation mapping; verify each of the 8 self-refs individually.
-
-### Phase 2 Verification
-```bash
-cd Research/Active/textbook/website/chapters
-echo "--- residual stale patterns (should all be empty) ---"
-grep -n "Figure 7\." ch8.html; grep -n "Figure 9\." ch10.html
-grep -n "Chapter 17\|Figure 17\|17\.2\|17\.26" ch18.html ch19.html ch20.html
-grep -ni "rush.*Chapter 8" ch5.html ch6.html
-```
-Open the site; click through Ch 5→6, 8, 10→11, 18→19→20 and confirm every cross-ref/figure number resolves.
-
-### Phase 2 Exit Criteria
-- [ ] All grep checks empty; figure numbers monotonic per chapter; no duplicate "Figure 4.1".
-- [ ] Site renders; no broken in-text links.
-
-### Phase 2 Cleanup
-- Confirm no legitimate ref was clobbered (spot-check 5 random surviving "Chapter N" refs resolve correctly).
-
-**-> Commit point: git commit after Phase 2 passes**
+**-> Commit point: `git commit` after Phase 1 passes** (`feat(textbook-web): themeable figures + shell refresh + cover/part nav`)
 
 ---
 
-## Phase 3: Figure integrity + correctness redraws
+## Phase 2: Figure-Widget Framework
 
-**Goal**: Every figure renders (no literal LaTeX), fits its viewBox, and depicts correct math/science.
-**Tier**: medium
-**Estimated scope**: 3 steps over ~8 SVGs. Follow `SVG_FIGURES_SKILL.md`.
-
-### Phase Context
-Per-figure defects are in `IMAGE_AUDIT_2026-07-02.md` (per-figure table + fix backlog). RULE: all new/edited SVG text uses **plain Unicode** (`I_Na`, `k₁`, `φ_e`), never `$...$`. Preserve each SVG's viewBox; keep content inside bounds. After editing, open the site and eyeball the figure.
-
-### Step 3.1: LaTeX-in-SVG → plain Unicode sweep
-**Model**: opus
-
-#### Read First
-- `IMAGE_AUDIT` systemic finding #1 (confirmed-broken: Fig 5.1, Ch 10 ×3; at-risk: appendix labels). Ch 6/Ch 8 SVGs as the plain-Unicode reference pattern.
-
-#### Why
-MathJax `tex-svg` cannot typeset math inside `<svg><text>`, so these labels currently show raw `$...$`. Plain Unicode is the proven fix already used elsewhere in the book.
-
-#### Implementation Spec
-Find every `$...$` inside an `<svg>…</svg>` block and replace with Unicode: subscripts (₀₁₂ₑ), Greek (φ ω γ δ ρ λ Δ), `≈ ≤ ×`, italic vars as plain letters. Files: ch5.html (Fig 5.1), ch10.html (10.1/10.2/10.3), and any appendix SVG using `$` (appendix-a/b/c).
-
-#### Pseudocode
-```python
-# detection: for each file, extract <svg>..</svg> blocks and flag any containing '$'
-import re,glob
-for f in glob.glob('website/chapters/*.html'):
-    s=open(f).read()
-    for m in re.findall(r'<svg.*?</svg>', s, re.S):
-        if '$' in m: print(f, 'has $ in SVG')
-```
-
-#### Test Spec
-- After edits, the detection script prints nothing.
-
-#### Checklist
-- [ ] Fig 5.1 current labels → Unicode.
-- [ ] Ch 10 Figs axis/legend/stage labels → Unicode.
-- [ ] Any appendix SVG `$` labels → Unicode.
-
-#### Verify
-```bash
-cd Research/Active/textbook
-conda run -n heart-conduction python -c "
-import re,glob
-bad=[f for f in glob.glob('website/chapters/*.html') for m in re.findall(r'<svg.*?</svg>',open(f).read(),re.S) if '\$' in m]
-print('SVGs with \$:', bad or 'NONE')"
-```
-Open the site; confirm the labels typeset as real symbols.
-
-#### Exit Criteria
-- [ ] Zero `$` inside any SVG; all affected labels render.
-
-#### Risk
-Losing a subscript/Greek nuance in translation — mitigation: map against the equation the label references.
-
-### Step 3.2: HIGH figure-correctness redraws (Fig B.1, Fig B.2)
-**Model**: opus
-
-#### Read First
-- `IMAGE_AUDIT` HIGH-2 (Fig B.2) and HIGH-3 (Fig B.1). (Fig 13.1's signs were fixed in Step 1.1.)
-
-#### Implementation Spec
-- **Fig B.2 (appendix-b):** redraw so both surfaces curve **UP** — positive-definite paraboloid with the unique minimum at the BOTTOM; the semi-definite trough shows the flat/degenerate direction (a valley) with the min-line at the bottom. Currently both are concave-down domes.
-- **Fig B.1 (appendix-b):** redraw the parallelogram so ê₂ → (1,1) to match the labeled matrix (2 1; 0 1) (currently ê₂ → (0.625,1), shear under-drawn ~37%). Move the in-`<text>` `\begin{pmatrix}` label out to plain Unicode or a caption.
-
-#### Test Spec
-- Geometry check: B.1 top-right vertex at ê₁+ê₂ = (2,0)+(1,1) = (3,1) in figure coords; B.2 min y at the bottom, curvature opens upward.
-
-#### Checklist
-- [ ] Fig B.2 concave-up, min at bottom.
-- [ ] Fig B.1 shear matches its matrix; matrix label rendered as Unicode/caption.
-
-#### Verify
-Open the site; visually confirm the bowl opens up and the parallelogram shear matches (2 1; 0 1).
-
-#### Exit Criteria
-- [ ] Both figures depict the stated math correctly.
-
-#### Risk
-SVG path math is fiddly — mitigation: recompute vertex coordinates from the matrix before drawing; keep within viewBox.
-
-### Step 3.3: MEDIUM figure fixes (Fig 4.5, 4.1, 3.1, 1.2, 4.4)
-**Model**: opus
-
-#### Read First
-- `IMAGE_AUDIT` MEDIUM bullets 4–8.
-
-#### Implementation Spec
-- **Fig 4.5:** stacked-bar heights and pie-wedge angles proportional to the stated percentages (35/15/12/38; free-Ca ≈ 1–2% → ~4–7°).
-- **Fig 4.1:** buffer legend → ATP/Mg²⁺ 15% / Other 38% (match §4.6 + Fig 4.5); move the x=470 labels inside the width-500 viewBox (or widen viewBox).
-- **Fig 3.1:** linear, correctly-spaced voltage and time axes (equal ms per tick).
-- **Fig 1.2:** reconcile the annotated resting values with the drawn curves (either move the V_rest marker or relabel to the drawn h_inf≈0.95 / n_inf≈0.04 at cardiac rest).
-- **Fig 4.4:** flip the two "OUT" arrows to point outward across the membrane.
-
-#### Checklist
-- [ ] 4.5 proportional; 4.1 legend + in-bounds; 3.1 linear axes; 1.2 consistent; 4.4 arrows outward.
-
-#### Verify
-Open the site; measure/eyeball each corrected figure against its caption/percentages.
-
-#### Exit Criteria
-- [ ] Each figure quantitatively matches its labels/text.
-
-#### Risk
-Fig 4.1/4.5 must agree with the Step 1.4 buffer-number unification — mitigation: do 1.4 first; use the same numbers here.
-
-### Phase 3 Verification
-```bash
-cd Research/Active/textbook
-conda run -n heart-conduction python -c "
-import re,glob
-print('SVGs with \$:', [f for f in glob.glob('website/chapters/*.html') for m in re.findall(r'<svg.*?</svg>',open(f).read(),re.S) if '\$' in m] or 'NONE')"
-```
-Open the site; walk every edited figure.
-
-### Phase 3 Exit Criteria
-- [ ] Zero `$`-in-SVG; Fig B.1/B.2/13.1 correct; MEDIUM figures proportional/in-bounds; all render.
-
-### Phase 3 Cleanup
-- All SVG text is Unicode; every edited SVG stays within its viewBox.
-
-**-> Commit point: git commit after Phase 3 passes**
-
----
-
-## Phase 4: Depth & structure (Tier 3 authoring)
-
-**Goal**: Close the pedagogical-depth gaps — worked examples, thin sections, missing figures, references. This is authoring, so steps are specified by intent + acceptance criteria rather than exact diffs.
-**Tier**: large (worth `/audit` before executing)
-**Estimated scope**: 4 steps; new prose + new SVGs. Each new/revised section MUST carry L1 ELI5 + L4 worked example (Known Failure: no reference-manual style).
-
-### Phase Context
-Follow STYLE_GUIDE (Feynman 5-layer) and SVG_FIGURES_SKILL. New SVGs use plain Unicode labels. Do not reintroduce monolithic-solver framing in any bidomain section.
-
-### Step 4.1: Add missing worked examples (L4)
-**Model**: opus
-- **Ch 11:** a numeric BDF2 worked example (two-history-level RHS on a small grid).
-- **Ch 15:** a tiny elliptic-solve worked example (don't just defer to Ch 11).
-- **Ch 20:** replace the §20.4 "outline that computes nothing" with a real numeric bidomain-LBM step.
-- **Part I:** at least one L4 example in the weakest chapters (e.g., a Nernst/Rush–Larsen gate update in Ch 1; an FHN excitation-cycle trace in Ch 2).
-- **Verify:** each new example is reproducible by hand; numbers stated.
-- **Exit:** the "missing worked example" audit items for Ch 11/15/20 + Part I closed.
-
-### Step 4.2: Expand §11.6 + address Ch 8 length
-**Model**: opus
-- **§11.6:** expand PCG / Chebyshev / FFT beyond one paragraph each (motivation + when-to-use + cost); add cross-links to App C.12–C.14.
-- **Ch 8:** add a "reading guide" box at the top (or split FVM/BC into a clearly-marked sub-part) to tame the ~1100-line length.
-- **Exit:** §11.6 no longer one-paragraph-each; Ch 8 has a navigational on-ramp.
-
-### Step 4.3: Add the highest-value missing figures
-**Model**: opus
-- Priority SVGs (from `FULL_CHAPTER_AUDIT` finding #2): Ch 13 face-based-stencil; Ch 14 Gauss-Seidel data-flow (φe→parabolic→Vm→elliptic); Ch 15 three-tier decision tree; Ch 2 FHN phase-plane; Ch 11 L-stable-damping vs CN-ringing; Ch 18 Gaussian/bell-curve; Ch 19 bounce-back reflection; Ch 20 dual-lattice architecture; App C.12 CG-vs-gradient zigzag.
-- **Constraint:** plain-Unicode labels; correct math (unlike the B.1/B.2 originals).
-- **Exit:** the eight zero-figure chapters each gain ≥1 figure; the priority list is drawn.
-
-### Step 4.4: Ch 18 preview box + equation reorder + References
-**Model**: opus
-- **Ch 18:** add the 10-line "30-second preview" (6-step collide-stream loop) before §18.1; reorder the out-of-sequence equation defs (18.9/18.10 after 18.11/18.12; 18.27; 18.28).
-- **References:** add the numerical-analysis + 3Blue1Brown sources actually cited in App B/C, plus ionic-model (TTP06/ORd) and monodomain/FEM refs; verify the footnote folder paths exist.
-- **Exit:** Ch 18 opens with a preview; equations monotonic; References cover all parts.
-
-### Phase 4 Verification
-Open the site; confirm new examples render, new figures draw (Unicode labels), §11.6 expanded, Ch 18 preview present.
-
-### Phase 4 Exit Criteria
-- [ ] Worked examples added (Ch 11/15/20 + Part I); §11.6 expanded; ≥1 figure in each formerly-zero-figure chapter; Ch 18 preview + reorder; References expanded.
-- [ ] Every revised section keeps L1 + L4 (no reference-manual regressions).
-
-### Phase 4 Cleanup
-- No `$`-in-SVG in any new figure; no monolithic-solver framing introduced; appendices stay A/B/C/D.
-
-**-> Commit point: git commit after Phase 4 passes**
-
----
-
-## Phase 5: Infrastructure — PDF pipeline + tracking-doc reconciliation
-
-**Goal**: Restore a working PDF build from the website source and correct the overstated INDEX claims.
+**Goal**: A tiny, print-safe convention + loader that mounts an interactive canvas over a static SVG fallback, proven end-to-end on ONE figure (FHN, Fig 2.1). De-risks all of Phase 3.
 **Tier**: large
-**Estimated scope**: 2 steps; new build script + doc edits + regenerated deliverables.
+**Estimated scope**: 1 new loader, 1 new widget module + shared helpers, 1 chapter figure converted, PDF-leak test.
 
 ### Phase Context
-`html_to_pdf_v3.py` is missing. The `/textbook-compile` skill documents the intended pipeline. Canonical source = `website/chapters/` in `toc.json` order.
+- Widget contract: `export function mount(canvas, params) -> { redraw(), destroy() }`. Widgets read colors via `getComputedStyle(document.documentElement).getPropertyValue('--fig-*')` and redraw on theme change. All physics in-browser, no deps.
+- Markup convention:
+  ```html
+  <figure class="fig" data-widget="fhn" data-params='{"I":0.5,"a":0.7,"b":0.8,"eps":0.08}'>
+    <div class="fig-fallback"><svg …themeable static…></svg></div>
+    <div class="fig-controls" hidden>…progressively revealed control rail…</div>
+    <figcaption class="figure-caption"><span class="figure-label">Figure 2.1.</span> …</figcaption>
+  </figure>
+  ```
+- Loader mounts ONLY in the SPA (imported by `index.html`/`app.js`), never by `html_to_pdf.py`. Print CSS also hides `canvas.fig-widget` and shows `.fig-fallback` as a double guard.
+- Reuse prototype code: `rk4`, `simulateMS`, `apd90`, themeable-canvas `fit()`/`cvar()` from the durable prototype `plans/2026-07-03_refresh_prototype.html`.
 
-### Step 5.1: Rebuild the PDF build script
+### Step 2.1: Loader + `<figure data-widget>` convention + FHN reference widget
 **Model**: opus
-- Write `website/build/html_to_pdf.py`: read `website/toc.json` for order → concatenate `website/chapters/*.html` fragments into one print HTML with the print `<head>`/MathJax/CSS (crib from `Cardiac_Textbook_Website.html` or `website/standalone.html`) → Playwright headless Chrome, wait for MathJax typeset → `page.pdf(...)` → `Cardiac_Computational_Modeling.pdf`.
-- **Verify:** PDF builds; page count sane; spot-check Part III shows Ch 12–15 (not the archived Schur Ch 16/17) and appendices A/B/C/D.
-- **Exit:** a correct, current PDF regenerated; `/textbook-compile` unblocked.
-
-### Step 5.2: Reconcile INDEX Part IV claims + regenerate snapshot
-**Model**: opus
-- **INDEX.md:** remove/soften the "Quadrature First v4.0" claim for Ch 18 (phrase absent from source); keep "Ω^NR/Ω^R" for Ch 19 (confirmed present). Update the verification/status tables to reflect the 2026-07-02 audit.
-- **Regenerate** `Cardiac_Textbook_Website.html` snapshot from the edited chapters.
-- **Exit:** INDEX matches reality; whole-book render current.
-
-### Phase 5 Verification
-```bash
-cd Research/Active/textbook
-conda run -n heart-conduction python website/build/html_to_pdf.py   # builds PDF
-conda run -n heart-conduction python -c "from pypdf import PdfReader; print(len(PdfReader('Cardiac_Computational_Modeling.pdf').pages),'pages')"
+#### Read First
+- **`plans/2026-07-03_refresh_prototype.html`** (durable in-repo prototype) — FHN block (`drawPhase`, `rk4`, pointer→IC inversion, slider wiring, reduced-motion branch) and `fit()`/`cvar()`. Port these. (Do NOT depend on the ephemeral scratchpad copy.)
+- `website/index.html:127` — **`app.js` is loaded as a CLASSIC script and is an IIFE** (`(function(){…})()`). A classic-script IIFE CANNOT reference an ES-module `export`. This dictates the loader's module strategy below.
+- `website/app.js:164-216` (`navigateTo`) — call the loader after `MathJax.typesetPromise`.
+- `website/style.css:718` — `.figure svg{max-width:100%;height:auto}` (the new `.fig` wrapper must re-provide this for the fallback SVG).
+- `website/chapters/ch2.html:109` — current `<div class="figure">` Fig 2.1 (now themeable) to keep as fallback.
+#### Why
+One reference implementation end-to-end (markup → loader → widget → theme swap → print fallback) sets the pattern every Phase-3 widget copies; getting the print gate AND the module boundary right here protects the PDF and avoids a broken import for all later widgets.
+#### Implementation Spec
+**Files to create:**
+- `website/figures.js` — a **CLASSIC script** (NOT an ES module) that defines `window.mountFigures(root)`. Internally it uses **dynamic `import()`** (allowed from classic scripts) to load each widget ES module from `figures/`. This reconciles the boundary: `app.js` (classic IIFE) calls the global `window.mountFigures`; widget files stay clean ES modules. Keep mounted instances; `destroy()` them on re-navigation; theme hook (MutationObserver on `<html>` `data-theme` + `matchMedia` change) calls each instance's `redraw()`.
+- `website/figures/_canvas.js` — ES module exporting shared `fit`, `cvar`, `rk4`, `simulateMS`, `apd90`.
+- `website/figures/fhn.js` — ES module `export function mount(canvas, params) -> {redraw, destroy}`, porting the prototype's phase-plane widget.
+**Files to modify:**
+- `website/index.html` — add `<script src="figures.js"></script>` (classic, alongside `app.js`; order doesn't matter since `app.js` calls `window.mountFigures` only at navigate time).
+- `website/app.js` — after typeset in `navigateTo`, `if (window.mountFigures) window.mountFigures(contentEl)`; destroy prior instances on renavigation (loader tracks them).
+- `website/style.css` — `.fig`, `.fig-fallback`, `.fig-controls`, `canvas.fig-widget` styles **including `.fig svg, .fig-fallback svg{max-width:100%;height:auto}`** (restores the `.figure svg` rule lost by the `div.figure`→`figure.fig` reclass). **Fallback-visibility contract (screen):** `.fig-fallback` visible by DEFAULT (so no-JS / failed-mount shows the static SVG); the loader adds `.has-widget` to the `<figure>` only on SUCCESSFUL mount, and `.fig.has-widget .fig-fallback{display:none}` hides the SVG once the canvas is live (no duplicate figure). Reduced-motion still MOUNTS the widget (it renders a static integrated frame on the canvas, per the prototype) → fallback hidden, canvas shown. **Print contract:** `@media print{ canvas.fig-widget{display:none!important} .fig.has-widget .fig-fallback,.fig-fallback{display:block!important} .fig-controls{display:none!important} }` (print always shows the SVG regardless of `.has-widget`).
+- `website/chapters/ch2.html` — wrap Fig 2.1 in `<figure class="fig" data-widget="fhn" …>` with the themeable SVG as `.fig-fallback`. (Confirm the Step-1 `.figure text` default also covers `figure.fig text` — it does, per 1.1.)
+#### Pseudocode
 ```
+// figures.js — classic script
+window.mountFigures = async function(root){
+  destroyAll();
+  for (el of root.querySelectorAll('[data-widget]')){
+    try {
+      const mod = await import(`./figures/${el.dataset.widget}.js`);   // dynamic import OK from classic script
+      const canvas = el-inserts <canvas class="fig-widget">;
+      const inst = mod.mount(canvas, JSON.parse(el.dataset.params||'{}'));
+      el.querySelector('.fig-controls').hidden = false;
+      el.classList.add('has-widget');       // ← hides .fig-fallback on screen (CSS); success only
+      instances.push(inst);
+    } catch(e){ /* leave .fig-fallback visible; no .has-widget; console.warn */ }
+  }
+};
+// theme hook: new MutationObserver(...).observe(documentElement,{attributes:true,attributeFilter:['data-theme']}) → instances.forEach(i=>i.redraw?.())
+// app.js navigateTo(): after MathJax.typesetPromise([contentEl]) → window.mountFigures && window.mountFigures(contentEl)
+```
+#### Test Spec
+- SPA: ch2 shows the live, draggable FHN widget; theme toggle keeps colors correct; reduced-motion → static integrated trajectory.
+- Print: `verify_site.py` widget-leak assertion passes; `html_to_pdf.py` build shows the static SVG for Fig 2.1.
+#### Checklist
+- [ ] `figures.js` + `_canvas.js` + `fhn.js` created; dynamic import works
+- [ ] ch2 Fig 2.1 wrapped; static SVG remains as fallback
+- [ ] Widget mounts in SPA, drag+sliders+play work, theme-aware
+- [ ] On successful mount `.fig-fallback` is hidden on screen (no duplicate SVG+canvas); forcing a mount failure leaves the static SVG visible
+- [ ] `@media print` hides canvas / shows fallback (even with `.has-widget`)
+- [ ] `html_to_pdf.py` unchanged; PDF Fig 2.1 = static SVG
+- [ ] Re-navigation destroys prior instance (no leak / double-mount)
+#### Verify
+```
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch2 --themes light,dark --out /tmp/verify_2_1
+conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p2.pdf
+```
+#### Exit Criteria
+- [ ] FHN widget live + theme-correct in SPA; static fallback prints; leak assertion green; 0 console errors.
+#### Risk
+(a) Module boundary: making `figures.js` an ES module with `export` would break the classic-IIFE `app.js` call → mitigation: `figures.js` is a classic script exposing `window.mountFigures`, widget files are ES modules loaded via dynamic `import()`. (b) Pointer→data inversion must match the draw transform exactly (see prototype `place()` vs `X/Y`) → reuse the prototype's proven inversion. (c) Dynamic `import()` + `file://` fails → SPA already requires an http server; verify over http.
 
-### Phase 5 Exit Criteria
-- [ ] PDF builds from website source and shows current content; INDEX reconciled; snapshot regenerated.
+### Phase 2 Verification / Exit / Cleanup
+```
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch2 --themes light,dark --out /tmp/verify_p2
+conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p2.pdf
+```
+- [ ] One widget fully working + print-safe; leak assertion green; PDF ~195pp
+- [ ] Cleanup: no console logs; instance destroy on renavigation verified; V5.3/engines untouched
 
-### Phase 5 Cleanup
-- New build script documented in `/textbook-compile`; no reference to the archived file in the build path.
-
-**-> Commit point: git commit after Phase 5 passes**
+**-> Commit point: `git commit` after Phase 2** (`feat(textbook-web): figure-widget framework + FHN reference widget`)
 
 ---
 
-## Final Cleanup (cross-phase de-sloppify)
+## Phase 3: Flagship Interactive Widgets
 
-- [ ] No `$...$` inside any `<svg><text>` anywhere in `website/chapters/`.
-- [ ] No stale "Chapter 7/9/10/17" or "Figure 7.x/9.x/17.x" refs; figure numbers monotonic; no duplicate "Figure 4.1".
-- [ ] State counts consistent book-wide (TTP06 = 18, ORd = 41).
-- [ ] No edits leaked into `_archive/monolithic_pre-fork_2026-07-02/`.
-- [ ] No monolithic bidomain-solver framing introduced; appendices remain A/B/C/D.
-- [ ] Re-run the full-audit grep checks (Phases 1–3 Verify blocks) — all clean.
-- [ ] Update `CHANGELOG.md` with the remediation entry; update `KNOWLEDGE.md` audit-backlog status (mark closed items); tick README completion criteria.
+**Goal**: 5–7 more hero widgets, each following the Phase-2 pattern. Every widgetized figure keeps its Phase-1 themeable SVG as fallback.
+**Tier**: large
+**Estimated scope**: one module per widget; each a self-contained copy of the 2.1 pattern with different physics.
 
-1. Archive the completed plan:
+### Phase Context
+- Per widget: (0) **first `grep`/read the target chapter to identify the EXACT figure by its caption/`figure-label`** — several chapters have multiple figures (e.g. ch10 has both an RK-slope diagram *and* a stability/CFL figure; 3.2 wraps the former, 3.3 the latter). Record the specific `Figure N.M` each widget replaces; (1) create `website/figures/<name>.js` (ES module) exporting `mount(canvas,params)->{redraw,destroy}`; (2) wrap THAT figure with `<figure class="fig" data-widget="<name>">` keeping its Phase-1-themed SVG as `.fig-fallback`; (3) validate the physics against a known value / engine; (4) keyboard-operable controls + `prefers-reduced-motion` static branch; (5) verify SPA live + PDF static.
+- Reuse `figures/_canvas.js` helpers (`rk4`/`fit`/`cvar`/`simulateMS`/`apd90`) — do NOT copy them per widget.
+- Physics correctness is non-negotiable (textbook). Cross-check each model against a cited value or the engine.
+- Already ported/correct: FHN (2.1), Mitchell–Schaeffer AP + APD90 (durable prototype `plans/2026-07-03_refresh_prototype.html`).
+
+### Step 3.1: Action-potential shaper (`ap.js`, Ch 3)
+**Model**: opus · Mitchell–Schaeffer, sliders τ_close/τ_out/τ_in, live APD₉₀. Port from prototype. Validate: default params → APD₉₀ ~250–300 ms; larger τ_close ⇒ longer APD (monotone). Fallback: static AP-trace SVG.
+### Step 3.2: RK step-size explorer (`rk.js`, Ch 10)
+**Model**: opus · Integrate a test ODE (`y'=-y` or the AP upstroke) with Euler/RK2/RK4 at slider `h`; plot true vs numerical + global error. Validate: error slopes ~O(h),O(h²),O(h⁴) on a log-log check; RK4 ≈ exact at small h. Fallback: existing Ch 10 RK diagram.
+### Step 3.3: CFL stability (`cfl.js`, Ch 10)
+**Model**: opus · 1-D explicit diffusion of a Gaussian; slider Δt across `Δt ≤ h²/2D`; show bounded decay vs oscillatory blow-up. Validate: crossing the bound flips stability; matches Ch 10 CFL text. Fallback: static stability-region SVG.
+### Step 3.4: Nernst / GHK (`nernst.js`, Ch 1/3)
+**Model**: opus · Sliders for [K⁺]ᵢ/ₒ, [Na⁺], …; live E_ion (RT/zF·ln) + resting Vm (GHK). Validate: default concentrations → E_K ≈ −90 mV, E_Na ≈ +65 mV (matches Ch 1). Fallback: static bar/number SVG.
+### Step 3.5: Propagating wavefront (`wave.js`, Ch 7/8)
+**Model**: opus · 1-D monodomain cable (FHN or MS reaction + explicit diffusion), play button, live CV readout. Validate: CV scales ~√D (double D ⇒ ~1.41× CV); qualitative monodomain match. Fallback: static wavefront SVG. Highest effort — may split.
+### Step 3.6 (stretch): HH gating (`hh.js`, Ch 1) and/or restitution (`restitution.js`, Ch 3/6)
+**Model**: opus · Only if budget allows; same pattern.
+
+Per-step Verify (template): `conda run -n heart-conduction python website/build/verify_site.py --chapters <chapter> --themes light,dark --out /tmp/verify_3_x`
+Per-step Exit: widget live + theme-correct; physics validation value met; static fallback prints; 0 console errors.
+Per-step Risk: model instability at slider extremes → clamp params to a validated range; blow-up handled without NaN spam.
+
+### Phase 3 Verification / Exit / Cleanup
+```
+conda run -n heart-conduction python website/build/verify_site.py --chapters ch1,ch2,ch3,ch7,ch10 --themes light,dark --out /tmp/verify_p3
+conda run -n heart-conduction python website/build/html_to_pdf.py -o /tmp/ccm_p3.pdf
+```
+- [ ] ≥6 widgets total live + print-safe; each physics-validated
+- [ ] PDF still ~195pp, all fallbacks static; leak assertion green
+- [ ] Cleanup: shared helpers live in `_canvas.js` only (no per-widget copy of rk4/fit); no console logs
+
+**-> Commit point: `git commit` after Phase 3** (`feat(textbook-web): flagship interactive figure widgets`)
+
+---
+
+## Phase 4: Identity, Polish & PDF-Regression Verify
+
+**Goal**: Cover moment + part openers, motion/a11y pass, and a hard confirmation the PDF didn't regress.
+**Tier**: medium
+**Estimated scope**: cover/part-opener markup+CSS, a11y sweep, final PDF diff.
+
+### Step 4.1: Cover + part openers
+**Model**: opus · Style `title.html` as a real cover (`.cover` from 1.3) and give each `part-*.html` a considered opener (big part number, one-line thesis). Content exists; presentation only. Verify: light+dark; prints as cover/part page.
+### Step 4.2: Motion, a11y, reduced-motion, focus
+**Model**: opus · Every widget: visible focus states, ARIA labels on sliders/buttons, full `prefers-reduced-motion` static branch; ambient motion respects it. Verify: keyboard-only operate one widget end-to-end; reduced-motion screenshot shows static figures.
+### Step 4.3: PDF regression gate
+**Model**: opus · Re-run full build; compare page count + spot content vs the pre-refresh 195-pp PDF; confirm 0 raw-LaTeX leak, 0 widget canvas, all figures present as static SVG. Update INDEX/KNOWLEDGE/README with the new website state.
+
+### Phase 4 Verification / Exit / Cleanup
+```
+conda run -n heart-conduction python website/build/html_to_pdf.py -o Cardiac_Computational_Modeling.pdf
+conda run -n heart-conduction python website/build/verify_site.py --chapters title,part-i,part-ii,part-iii,part-iv,ch1 --themes light,dark --out /tmp/verify_p4
+```
+- [ ] Cover + part openers land in both web + PDF
+- [ ] a11y: keyboard + reduced-motion pass
+- [ ] PDF ~195pp, no regressions, figures all static in print
+- [ ] README completion criteria + KNOWLEDGE updated
+
+**-> Commit point: `git commit` after Phase 4** (`feat(textbook-web): cover/part identity + a11y + verified PDF`)
+
+---
+
+## Final Cleanup
+- [ ] `migrate_figure_colors.py` + `verify_site.py` documented (module docstring, usage) and idempotent
+- [ ] `_canvas.js` is the single home for rk4/fit/cvar/simulateMS/apd90 — no duplication across widgets
+- [ ] No hardcoded hex anywhere in `chapters/*.html` SVGs; no blanket SVG override in `style.css`
+- [ ] `html_to_pdf.py` still injects only MathJax + PRINT_CSS (never `figures.js`)
+- [ ] V5.3 untouched; no `cardiac_core`/engine files touched; no code duplication into engines
+- [ ] Any figures/screenshots kept for the record saved under `media/textbook/...` (not next to scripts)
+- [ ] Update `README.md` completion criteria + `KNOWLEDGE.md` "Current State" + INDEX with refreshed-website status
+- [ ] Archive this plan:
 ```bash
 mkdir -p Research/Active/textbook/plans
-cp Research/Active/textbook/PLAN.md "Research/Active/textbook/plans/$(date +%Y-%m-%d)_textbook-audit-remediation.md"
-```
-
-2. Revert the bottom tmux pane from PLAN.md back to WHITEBOARD.md:
-```bash
-tmux send-keys -t 2 C-c
-sleep 0.3
-tmux send-keys -t 2 'W=$(tput cols); H=""; while true; do N=$(md5sum Research/Active/textbook/WHITEBOARD.md 2>/dev/null | cut -d" " -f1); if [ "$N" != "$H" ]; then clear; glow -s .glow-style.json -w $W Research/Active/textbook/WHITEBOARD.md 2>/dev/null; H=$N; fi; sleep 1; done' Enter
+cp Research/Active/textbook/PLAN.md "Research/Active/textbook/plans/$(date +%Y-%m-%d)_website-refresh-interactive-figures.md"
 ```
 
 ## Mutation Log
-_(populated during execution: `**MUTATED {date}**: Step X.Y {SKIPPED|SPLIT|INSERTED} — {reason}`)_
+**REVISED 2026-07-03 (adversarial /audit round 1 — 2 HIGH, 4 MED, 8 LOW; all addressed):**
+- HIGH-1 (token palette too small): census confirms 61 distinct hexes. Expanded the token system to categorical(7)+ink/neutral(4)+stage+tint(6); Step 1.2 is now census-first (`--census`→`figure_color_map.json`→review→`--apply`); Success Criterion #2 relaxed to "resolves to a token or documented per-figure exception; greys collapse (not semantic)".
+- HIGH-2 (wrong theme-scope model): site has ONLY `:root` + `[data-theme="dark"]` (JS-toggled), no `@media prefers-color-scheme`/`[data-theme="light"]`. Corrected all scope references to TWO scopes; forbade adding an `@media` token block (would leak dark colors into a light-toggled dark-OS user); Risk mitigation now "grep == 2".
+- MED-1 (delete line 810 ⇒ ch18 group-inherited `<text>` goes dark-on-dark): added scoped themeable default `.figure text,figure.fig text{fill:var(--fig-axis)}` in Step 1.1 to replace line 810; migration now handles `<g fill=…>`; added ch18 to the dark spot-check.
+- MED-2 (verify leak-assertion trivially true): replaced with (a) assert `assemble_html()` never references `figures.js`/`mountFigures`, (b) headless-render the print HTML and assert 0 `canvas.fig-widget`.
+- MED-3 (app.js IIFE vs figures.js ES-module boundary): `figures.js` is now a CLASSIC script exposing `window.mountFigures`, using dynamic `import()` for widget ES modules.
+- MED-4 (Steps 1.1/1.3/1.4 missing Pseudocode): added.
+- LOWs: durable prototype persisted → `plans/2026-07-03_refresh_prototype.html` (refs repointed off scratchpad); `.fig svg{max-width}` restored; part/cover `allChapters` entries carry `title` (nav-label fix); Step 1.4 Verify relabeled (screenshot = the real nav test); Phase 3 now requires identifying the exact target figure; utility classes de-emphasized in favor of the themeable default; migration scoped to `<svg>` spans + skips `mjx-container`.
+
+**REVISED 2026-07-03 (adversarial /audit round 2 — CONVERGED: 0 crit, 0 high, 2 med, 7 low; all 6 round-1 fixes verified genuinely reflected, incl. independent re-derivation that the MED-1 text default is sound). Folded in the round-2 gaps:**
+- MED-B1 (fallback-visibility): Step 2.1 now specifies `.fig-fallback` visible by default; loader adds `.has-widget` on SUCCESSFUL mount → `.fig.has-widget .fig-fallback{display:none}` on screen (no duplicate SVG+canvas); try/catch keeps the SVG on failure; print always shows the SVG.
+- MED-B2 (named colors): Step 1.2 census now also captures `white`(×42)/`black`/keywords → `--fig-stage`/`--fig-ink` (flagged), not just `#hex`.
+- LOWs: repointed the two lingering scratchpad refs (lines 27, 302) → durable prototype; fixed the appendices example title (`Reference Material`, from toc.json) + "pull verbatim from toc"; added `updateSidebarActive` extension for part/cover active-state; defined the `--fig-axis`→`--fig-ink` alias in pseudocode; Step 1.1 Verify now loops all tokens (not just `fig-crimson`); Step 1.2 Exit wording reconciled with the "documented exception" criterion.
+- Round-2 LOWs left as-is (non-blocking polish): grep-count-vs-alias nuance noted inline.
+
+**Plan is CONVERGED and ready to execute** (no CRITICAL/HIGH across two audit rounds). Awaiting user "go" before Phase 1.
+
+_(execution mutations appended below: `**MUTATED {date}**: Step X.Y {SKIPPED|SPLIT|INSERTED} — {reason}`)_
