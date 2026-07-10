@@ -62,6 +62,19 @@ class MHAS13Model(IonicModel):
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         super().__init__(device)
         self.params = MHAS13Parameters()
+        # --- Na-kinetic multipliers (Engine Tuner V2 / P1.5) ---------------------
+        # Per-INSTANCE knobs that reshape the Na current in TIME (not amplitude), so
+        # the joint fit can decouple dV/dt (peak I_Na) from CV (charge-to-sink) —
+        # conductance scaling alone cannot (architecture §5). Identity by default
+        # (1.0/0.0) → the gate hooks are bitwise-unchanged, so nothing changes unless
+        # a tuner sets them. Applied in the HOOKS (compute_gate_*), NOT step(), because
+        # the tissue Rush-Larsen solver drives the model via the hooks and never calls
+        # step() (whose Cai-dependent ICaL constf1/constfCa are off the tissue path).
+        # PHAS13 is UNAFFECTED — these live only on MHAS13 instances.
+        self.tau_m_scale = 1.0      # I_Na activation time constant scale
+        self.tau_h_scale = 1.0      # fast inactivation time constant scale
+        self.tau_j_scale = 1.0      # slow inactivation time constant scale
+        self.v_half_shift = 0.0     # mV shift of the Na steady-state (in)activation V
 
     @property
     def name(self) -> str:
@@ -289,8 +302,12 @@ class MHAS13Model(IonicModel):
 
         Cai = ionic_states[:, StateIndex.Cai]
 
+        # Na-kinetic V-shift (P1.5): shift the Na (in)activation midpoint by v_half_shift
+        # (identity when 0.0). Only the Na gates (m,h,j) are shifted.
+        Vna = V + self.v_half_shift
+
         return torch.stack([
-            INa_m_inf(V), INa_h_inf(V), INa_j_inf(V),
+            INa_m_inf(Vna), INa_h_inf(Vna), INa_j_inf(Vna),
             ICaL_d_inf(V), ICaL_f1_inf(V), ICaL_f2_inf(V),
             ICaL_fCa_inf(Cai),
             IKr_Xr1_inf(V, self.params.Cao), IKr_Xr2_inf(V),
@@ -307,8 +324,12 @@ class MHAS13Model(IonicModel):
             V = V.unsqueeze(0)
             ionic_states = ionic_states.unsqueeze(0)
 
+        # Na-kinetic time-constant scales (P1.5): reshape the Na current in time
+        # (identity when 1.0). Only the Na gate taus (m,h,j) are scaled.
         return torch.stack([
-            INa_m_tau(V), INa_h_tau(V), INa_j_tau(V),
+            self.tau_m_scale * INa_m_tau(V),
+            self.tau_h_scale * INa_h_tau(V),
+            self.tau_j_scale * INa_j_tau(V),
             ICaL_d_tau(V), ICaL_f1_tau(V), ICaL_f2_tau(V),
             torch.full_like(V, FCAL_TAU),
             IKr_Xr1_tau(V), IKr_Xr2_tau(V),

@@ -54,7 +54,7 @@ def _default_t_end(config: TuningConfig) -> float:
 
 def run_1d_cable(theta_ionic, D: float, config: TuningConfig,
                  *, t_end: float = None, save_every: float = 1.0,
-                 return_vmax: bool = False):
+                 return_vmax: bool = False, model=None):
     """Measure conduction velocity (cm/s) for a cable with diffusion `D`.
 
     Dispatches by `config.engine` over the cardiac_core functional API.
@@ -62,9 +62,12 @@ def run_1d_cable(theta_ionic, D: float, config: TuningConfig,
     returns ``(cv, vmax)`` — the peak |V| over the whole field, which distinguishes
     a high-D over-depolarization blow-up (Vmax non-physical) from a low-D source-sink
     block (Vmax physiological but the wave dies) when cv is NaN (used by the Step 1.3
-    hiPSC-window diagnostic).
+    hiPSC-window diagnostic). Pass a pre-built ``model`` (e.g. a kinetic-scaled
+    instance from decision_space.apply) to bypass ``_build_model``; else the model is
+    built from ``theta_ionic``.
     """
-    model = _build_model(theta_ionic, config)
+    if model is None:
+        model = _build_model(theta_ionic, config)
     dx = config.dx_cm
     L = config.cable_length_cm
     Ly = max(4 * dx, 0.04)            # thin strip across the cable
@@ -139,20 +142,21 @@ def _bracket_down(cv_fn, D_start, D_lo):
 
 
 def fit_D_for_cv(theta_ionic, target_cv, config, *, D0=0.001, n=8, tol=0.02,
-                 D_lo=1e-6, D_hi=1e-2, t_end=None):
+                 D_lo=1e-6, D_hi=1e-2, t_end=None, model=None):
     """Secant on diffusion D to hit `target_cv` (cm/s) via run_1d_cable.
 
     Warm-started by CV ∝ √D, then two-point secant (NOT Newton — Known Failure).
     On a non-propagating start, brackets DOWN into the propagating window (the chip
     window is BELOW D0; the old ×4-up-bump was a Known Failure). Returns
     (D, cv_achieved), or **(NaN, NaN)** if no propagating D is found down to D_lo —
-    honest infeasibility, never a fake fallback D.
+    honest infeasibility, never a fake fallback D. Pass a pre-built ``model`` (e.g. a
+    kinetic-scaled instance) to fit D at fixed kinetics (used by the P1b re-map).
     Shared by run_chip_fit (Phase 3) and cross_engine.recalibrate_lbm (Phase 4).
     """
     import math
 
     def cv(D):
-        return run_1d_cable(theta_ionic, D, config, t_end=t_end)
+        return run_1d_cable(theta_ionic, D, config, t_end=t_end, model=model)
 
     def ok(x):
         return math.isfinite(x) and x > 0

@@ -48,7 +48,7 @@ _STRIP_D = 1.0e-3
 
 def run_single_cell_cc(theta_ionic, config: TuningConfig,
                        *, n_beats: int = None, cl: float = None,
-                       return_trace: bool = False) -> CellResult:
+                       return_trace: bool = False, model=None) -> CellResult:
     """Single-cell AP biomarkers (APD90, dV/dt_max, V_rest, V_peak) on cardiac_core.
 
     Drives a small uniform strip via `run_monodomain` (hook path), paced to steady
@@ -61,6 +61,10 @@ def run_single_cell_cc(theta_ionic, config: TuningConfig,
     config : TuningConfig
         Uses `dt_cell` (cell dt), `n_beats`, `pacing_cl`, stim_* and `ionic_model`.
     n_beats, cl : optional overrides for beat count / cycle length.
+    model : optional pre-built ionic model (e.g. a kinetic-scaled instance from
+        decision_space.apply). If given, `theta_ionic` is ignored — the SAME model is
+        used for the cell AP as for tissue CV, so a P1.5 kinetics axis is identifiable
+        from both observables.
     """
     if n_beats is None:
         n_beats = config.n_beats
@@ -68,7 +72,8 @@ def run_single_cell_cc(theta_ionic, config: TuningConfig,
         cl = config.pacing_cl
 
     dt = config.dt_cell
-    model = _build_model(theta_ionic, config)
+    if model is None:
+        model = _build_model(theta_ionic, config)
 
     # --- uniform strip mesh; stimulate the WHOLE strip (stim_width ≥ Lx) ---
     dx = config.dx_cm

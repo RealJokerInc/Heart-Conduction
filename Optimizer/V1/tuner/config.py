@@ -120,6 +120,21 @@ TISSUE_PARAMS = {
 }
 
 
+# Na-kinetic axes (P1.5) — per-INSTANCE MHAS13 attributes (identity 1.0 / 0.0),
+# applied in the gate hooks (compute_gate_*), NOT step(). These reshape I_Na in TIME
+# so the joint fit can decouple dV/dt (peak I_Na) from CV (charge-to-sink), which
+# conductance scaling alone cannot (architecture §5). Registered here so
+# decision_space imports FROM config (never the reverse). PHAS13 is unaffected.
+# Bounds are on the multiplier (tau_*_scale) / mV shift (v_half_shift). τ_m is the
+# primary decoupling knob; the rest are the "if needed" set (architecture §9-P1.5).
+KINETIC_REGISTRY = {
+    'tau_m_scale':  (0.5, 3.0),
+    'tau_h_scale':  (0.5, 3.0),
+    'tau_j_scale':  (0.5, 3.0),
+    'v_half_shift': (-10.0, 10.0),   # mV
+}
+
+
 def get_params_for_tier(tier: int) -> Dict[str, ParamSpec]:
     """Return parameter specs for a given tier (cumulative)."""
     return {k: v for k, v in PHAS13_REGISTRY.items() if v.tier <= tier}
