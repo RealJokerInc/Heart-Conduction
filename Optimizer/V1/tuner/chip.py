@@ -32,13 +32,24 @@ PARKER_HIPSC = TuningTargets(
 PARKER = {"nrvm": PARKER_NRVM, "hipsc": PARKER_HIPSC}
 
 
-def chip_mesh(domain_mm: float = 16.0, dx_mm: float = 0.1,
+# Resolved chip resolution (architecture lock-3 / P0 feasibility): the SLOW corner
+# needs r*/dx ≳ 3 to RESOLVE source-sink. At the transverse corner r* ≈ 62 µm so
+# k=3 ⇒ dx ≲ 20 µm ≈ 0.02 mm (0.03 mm gives only r*/dx≈2). The P0 feasibility map
+# confirmed dx=0.1 mm is unresolved (r*/dx≈1.9–2.2) while dx≤0.03 mm resolves the
+# fast axis (r*/dx≈7). ≈25× more cells than the old 0.1 mm — the reentry campaign
+# inherits this heavier grid (documented in the hand-off).
+RESOLVED_DX_MM = 0.02
+
+
+def chip_mesh(domain_mm: float = 16.0, dx_mm: float = RESOLVED_DX_MM,
               D_long: float = None, D_trans: float = None,
               ionic_model: str = "mhas13", dt: float = 0.02):
     """Build the chip CardiacMeshData (per-axis D, chi=1.0).
 
     D_long/D_trans are effective diffusion (cm²/ms) from the fit. If omitted, a
-    placeholder isotropic-ish pair is used (real D comes from Phase 3/4).
+    placeholder isotropic-ish pair is used (real D comes from Phase 3/4). ``dx_mm``
+    defaults to the RESOLVED 0.02 mm (r*/dx≥3 at the slow corner); pass 0.1 mm only
+    for the legacy/coarse behaviour.
     """
     L = domain_mm / 10.0          # mm -> cm
     dx = dx_mm / 10.0
@@ -50,6 +61,65 @@ def chip_mesh(domain_mm: float = 16.0, dx_mm: float = 0.1,
         Lx=L, Ly=L, dx=dx, D=D_long, D_yy=D_trans,
         chi=1.0, Cm=1.0, ionic_model=ionic_model, dt=dt,
     )
+
+
+# --- Lateral boundary-speedup guide (boundary_conduction_speedup, 2026-06-25) ---
+# The side-wall isochrone crescent is controlled by the LBM relaxation number
+#   β = D·dt/dx²  ⟺  τ = 0.5 + β/c_s²  (c_s² = 1/3), matching the engine's tau_from_D.
+# CV is INERT to it. CRUCIALLY the regime is BC-SPECIFIC (bcs KNOWLEDGE 2026-06-25):
+#   • HBB (halfway bounce-back) — FORWARD (slow-down) at ALL τ; |C| grows with τ;
+#     NO speed-up ever. ← this is what cardiac_core's LBM actually runs (the chip).
+#   • same-cell specular — the only rule that FLIPS sign with τ:
+#       τ ≲ 0.67 inverse → wall SPEED-UP · τ ≈ 0.75 flat (C≈0) · τ ≳ 0.84 forward.
+#       NOT wired into cardiac_core's _lbm (HBB-only) → speed-up is unreachable
+#       on the chip until the specular/α-blend BC is added to the engine.
+#   • neighbour-cell ("zero") — flat (C≈0) at all τ.
+# Distinct from the source-sink dx/r* number (geometry/CV-driven; comes later). No
+# converged scalar curvature metric yet → use this number to GUIDE the (free) dt knob.
+# NOTE: dt is SHARED with the Rush-Larsen ionic step, so moving dt to shift τ also
+# coarsens the ionic upstroke/APD — bounds how far dt can be pushed.
+CS2 = 1.0 / 3.0
+TAU_SPEEDUP_MAX = 0.67     # specular only — τ ≤ this: inverse crescent (speed-up)
+TAU_FORWARD_MIN = 0.84     # specular only — τ ≥ this: forward crescent (slow-down)
+
+# BC aliases → the three named wall families. Names match cardiac_core's WALL_MODES
+# ('neumann','hbb','specular_nextcell','specular_samecell','combined') so the same
+# string passed to run_lbm(boundary=...) can be handed straight to this guide.
+_HBB_BC = {"hbb", "neumann", "insulated", "bounce", "bounce_back", "no_flux"}
+# sign-flipping family (same-cell specular; 'combined' with alpha<1 rides this branch).
+_SPECULAR_BC = {"specular_samecell", "scs", "specular", "same_cell", "same-cell",
+                "combined", "alpha0"}
+_ZERO_BC = {"specular_nextcell", "ncs", "zero", "neighbour", "neighbor", "neighbour_cell"}
+
+
+def boundary_number(D: float, dt: float, dx_mm: float, bc: str = "hbb") -> dict:
+    """Lateral-wall crescent guide from (D, dt, dx, bc). τ matches LBM `tau_from_D`.
+
+    β = D·dt/dx²,  τ = 0.5 + β/c_s²  (c_s² = 1/3). D in cm²/ms, dt in ms, dx_mm in
+    mm. `bc` selects the wall family — the regime is BC-SPECIFIC:
+      - "hbb" (DEFAULT — cardiac_core's actual LBM wall): forward at all τ, no speed-up.
+      - "specular" (same-cell; NOT in cardiac_core's _lbm): flips sign at τ≈0.75.
+      - "zero" (neighbour-cell): flat (C≈0) at all τ.
+    Returns {"beta", "tau", "bc", "regime"}. Guide only — no curvature is fit.
+    """
+    dx = dx_mm / 10.0                          # mm -> cm (D is cm²/ms)
+    beta = D * dt / (dx * dx)
+    tau = 0.5 + beta / CS2                      # == 0.5 + 3·β  (c_s² = 1/3)
+    bc_l = bc.lower()
+    if bc_l in _HBB_BC:
+        regime = "forward (wall slow-down; |C|∝τ, no speed-up under HBB)"
+    elif bc_l in _ZERO_BC:
+        regime = "flat (C≈0 at all τ)"
+    elif bc_l in _SPECULAR_BC:
+        if tau <= TAU_SPEEDUP_MAX:
+            regime = "inverse (wall speed-up)"
+        elif tau >= TAU_FORWARD_MIN:
+            regime = "forward (wall slow-down)"
+        else:
+            regime = "crossover (~flat)"
+    else:
+        raise ValueError(f"unknown bc {bc!r}; expected one of hbb/specular/zero")
+    return {"beta": beta, "tau": tau, "bc": bc_l, "regime": regime}
 
 
 def wavelength_mm(cv_cm_s: float, apd_ms: float) -> float:

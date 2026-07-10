@@ -31,7 +31,8 @@ def make_record(name: str, baseline: str, theta_ionic: dict, tissue: dict,
                 targets: dict, validation: Optional[dict] = None,
                 provenance: Optional[dict] = None,
                 ionic_model: str = "mhas13",
-                domain_mm: float = 16.0, dx_mm: float = 0.1) -> dict:
+                domain_mm: float = 16.0, dx_mm: float = 0.02,
+                kinetics: Optional[dict] = None) -> dict:
     """Assemble a Tier-1 record (the canonical fit artifact).
 
     Parameters
@@ -41,7 +42,12 @@ def make_record(name: str, baseline: str, theta_ionic: dict, tissue: dict,
         {"monodomain": {"D_long":.., "D_trans":.., "dt_ms":..},
          "lbm": {"D_long":.., "D_trans":.., "collision":"mrt",
                  "s_jx":.., "s_jy":.., "dx_mm":.., "dt_ms":..}}
-    targets, validation, provenance : dict (provenance e.g. date/git_sha filled by caller)
+    kinetics : dict      Na-kinetic multipliers from the JOINT fit (P1.5), e.g.
+        {"tau_m_scale":.., "v_half_shift":..}. Empty/None for a conductance-only fit.
+    targets, validation, provenance : dict. The joint fit records the resolved-grid
+        provenance in `validation`: `achieved_rstar_over_dx` (per axis) + the `dx_ladder`
+        used, so the reentry campaign inherits a certified-resolvable grid.
+    dx_mm : the RESOLVED chip resolution (default 0.02 mm; architecture lock-3).
     """
     if baseline not in _VALID_BASELINES:
         raise ValueError(f"baseline must be one of {_VALID_BASELINES}, got {baseline!r}")
@@ -50,6 +56,7 @@ def make_record(name: str, baseline: str, theta_ionic: dict, tissue: dict,
         "baseline": baseline,
         "ionic_model": ionic_model,
         "theta_ionic": dict(theta_ionic),
+        "kinetics": dict(kinetics) if kinetics else {},
         "mesh": {"domain_mm": domain_mm, "dx_mm": dx_mm},
         "tissue": tissue,
         "targets": targets,
@@ -122,10 +129,26 @@ def export_lab_preset(record: dict, engine: str = "lbm",
 
     Parameters-only (no API calls), per the /sim-preset schema (extended:
     ionic mhas13, ionic_scaling block, per-axis D + LBM rates). Returns the path.
+
+    If the record has no tissue block for `engine` (e.g. a monodomain-only fit and
+    engine="lbm" — the pre-existing KeyError), falls back to whichever engine the
+    record DOES carry (deterministically) and warns, instead of crashing.
     """
+    import warnings
     import yaml
 
-    t = record["tissue"][engine]
+    tissue = record.get("tissue", {})
+    if engine not in tissue:
+        if not tissue:
+            raise KeyError(f"record {record.get('name')!r} has no tissue params at all")
+        fallback = sorted(tissue)[0]
+        warnings.warn(
+            f"export_lab_preset: record {record.get('name')!r} has no '{engine}' "
+            f"tissue block (have: {sorted(tissue)}); exporting '{fallback}' instead.",
+            stacklevel=2,
+        )
+        engine = fallback
+    t = tissue[engine]
     mesh = record["mesh"]
     L = mesh["domain_mm"] / 10.0          # mm -> cm
     dx = mesh["dx_mm"] / 10.0

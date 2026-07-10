@@ -9,7 +9,7 @@ from tuner.presets import make_record, save_record, load_record, list_records, t
 
 def _record():
     return make_record(
-        name="chip_nrvm", baseline="nrvm",
+        name="chip_nrvm", baseline="nrvm", dx_mm=0.1,
         theta_ionic={"g_Na": 0.83, "g_CaL": 1.12, "kNaCa": 0.9},
         tissue={
             "monodomain": {"D_long": 4.2e-4, "D_trans": 1.05e-4, "dt_ms": 0.02},
@@ -56,7 +56,7 @@ def test_lab_preset_export(tmp_path):
 
     rec = make_record(
         name="chip_nrvm", baseline="nrvm", ionic_model="mhas13",
-        theta_ionic={"g_Na": 0.83},
+        theta_ionic={"g_Na": 0.83}, dx_mm=0.1,
         tissue={"lbm": {"D_long": 4e-4, "D_trans": 1e-4, "collision": "mrt",
                         "s_jx": 1.8, "s_jy": 1.95, "dx_mm": 0.1, "dt_ms": 0.05},
                 "monodomain": {"D_long": 4e-4, "D_trans": 1e-4, "dt_ms": 0.02}},
@@ -72,3 +72,27 @@ def test_lab_preset_export(tmp_path):
     assert c["mode"] == "anisotropic_lbm" and c["D_long"] == 4e-4 and c["s_jx"] == 1.8
     assert y["geometry"]["dx"] == 0.01          # 0.1 mm -> 0.01 cm
     assert y["measure"] == "reentry"
+
+
+def test_export_no_keyerror(tmp_path):
+    """Pre-existing bug: export_lab_preset(engine='lbm') on a MONODOMAIN-only record
+    raised KeyError reading record['tissue']['lbm']. It must now fall back to the
+    engine the record DOES carry (with a warning), not crash."""
+    import warnings
+    import yaml
+    from tuner.presets import export_lab_preset
+
+    rec = make_record(
+        name="chip_hipsc", baseline="hipsc", ionic_model="mhas13",
+        theta_ionic={"g_Na": 0.5},
+        tissue={"monodomain": {"D_long": 1e-4, "D_trans": 5e-5, "dt_ms": 0.02}},
+        targets={"cv_longitudinal": 5.2, "cv_transverse": 2.6, "apd_90": 350},
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        path = export_lab_preset(rec, engine="lbm", lab_dir=str(tmp_path))
+    assert os.path.exists(path)
+    with open(path) as f:
+        y = yaml.safe_load(f)
+    assert y["engine"] == "monodomain"          # fell back to the present engine
+    assert any("no 'lbm' tissue block" in str(x.message) for x in w)
