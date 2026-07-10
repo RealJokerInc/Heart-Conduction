@@ -1,0 +1,324 @@
+"""
+Optimizer V1 — constrained-scalarization joint fit on a GP emulator (Steps 3.2/3.3).
+
+The V2 joint fit that supersedes the sequential cell→tissue pipeline (architecture §7).
+It reuses the joint_refiner GP-emulator PATTERN but rebuilds it on the P-1 backend and
+the resolution-aware constraint graph:
+
+  - decision vector spans {conductances, (kinetics), D_long, D_trans} via decision_space
+    (D_trans FREE); ONE apply(vector) → (kinetic-scaled model, per-axis mesh).
+  - each design point is evaluated on cardiac_core (cell AP via cell_runner_cc, tissue
+    CV via cc_runner) — ONE model for both observables, so kinetics is identifiable.
+  - the block region is a NON-STATIONARY CLIFF: blocked propagation returns NaN, which
+    is MASKED (a feasibility classifier), NOT smoothed by a 50.0 penalty the GP would
+    interpolate through (the joint_refiner bug, architecture §7). CV GPs train on
+    resolved+feasible points only; NaN never enters a GP target (isfinite guard).
+  - METHOD is constrained scalarization, NOT 4-obj qNEHVI: minimize AP-morphology error
+    s.t. CV_L/CV_T tol + r*/dx≥k + dV/dt band. It SURFACES infeasibility explicitly
+    (which lock binds) instead of returning silent dominated compromises.
+
+Cost: training points run sims at a FIXED resolved dx (feasibility-map-chosen) + an
+r*/dx≥k filter — equivalent to a per-point ladder where feasible (r*/dx≥3 ⇒ CV
+resolved) but ~Nx cheaper; the resolved_cv LADDER is reserved for final top-k
+validation. All heavy work is injectable (`evaluate_fn`) so tests use a synthetic
+oracle (no sims).
+"""
+from dataclasses import dataclass, field
+from dataclasses import replace as _replace
+import math
+from typing import Callable, Dict, List, Optional
+
+import numpy as np
+import torch
+
+from botorch.models import SingleTaskGP
+from botorch.models.transforms.outcome import Standardize
+from botorch.models.transforms.input import Normalize
+from botorch.fit import fit_gpytorch_mll
+from botorch.utils.sampling import draw_sobol_samples
+from gpytorch.mlls import ExactMarginalLogLikelihood
+
+from .decision_space import Axis, apply, bounds_arrays
+from .cc_runner import run_1d_cable
+from .cell_runner_cc import run_single_cell_cc
+from .cv_estimator import rstar_cm, resolved_cv
+
+RSTAR_OVER_DX_FLOOR = 3.0
+
+
+@dataclass
+class PointEval:
+    """One evaluated design point (all metrics; NaN where blocked)."""
+    vector: list
+    apd90: float
+    dvdt: float
+    cv_l: float
+    cv_t: float
+    rstar_over_dx_l: float
+    rstar_over_dx_t: float
+    feasible_sim: bool          # propagated AND resolved (r*/dx≥k) on BOTH axes
+
+
+@dataclass
+class JointFitResult:
+    theta: Dict[str, float]
+    kinetics: Dict[str, float]
+    D_long: float
+    D_trans: float
+    achieved: Dict[str, float]
+    infeasible: bool = False
+    binding_lock: Optional[str] = None
+
+
+@dataclass
+class InfeasReport:
+    """Returned when no feasible (θ, D) exists — names the binding lock instead of a
+    fake fit (architecture §7: surface infeasibility explicitly)."""
+    binding_lock: str
+    detail: str
+    infeasible: bool = True
+
+
+# --------------------------------------------------------------------------- eval
+def _extract_D(vector, axes):
+    D_long = D_trans = None
+    for ax, v in zip(axes, vector):
+        if ax.name == "D_long":
+            D_long = float(v)
+        elif ax.name == "D_trans":
+            D_trans = float(v)
+    return D_long, D_trans
+
+
+def make_sim_evaluator(config, axes, base_theta, resolved_dx_cm, *,
+                       k=RSTAR_OVER_DX_FLOOR, n_beats_cell=4):
+    """The real (cardiac_core) evaluator: apply(vector) → cell AP + tissue CV at the
+    resolved dx, on ONE kinetic-scaled model. Blocked axes → NaN CV → feasible_sim=False."""
+    cfg_dx = _replace(config, dx_cm=resolved_dx_cm)
+
+    def ev(vector):
+        model, _mesh = apply(vector, axes, config, base_theta=base_theta)
+        cell = run_single_cell_cc(None, config, model=model, n_beats=n_beats_cell)
+        D_long, D_trans = _extract_D(vector, axes)
+        cv_l = run_1d_cable(None, D_long, cfg_dx, model=model)
+        cv_t = run_1d_cable(None, D_trans, cfg_dx, model=model)
+        rox_l = (rstar_cm(D_long, cv_l) / resolved_dx_cm) if math.isfinite(cv_l) else float("nan")
+        rox_t = (rstar_cm(D_trans, cv_t) / resolved_dx_cm) if math.isfinite(cv_t) else float("nan")
+        feasible = (math.isfinite(cv_l) and math.isfinite(cv_t)
+                    and rox_l >= k and rox_t >= k)
+        apd = cell.apd90 if cell.apd90 is not None else float("nan")
+        dvdt = cell.dvdt_max if cell.dvdt_max is not None else float("nan")
+        return PointEval(list(vector), apd, dvdt, cv_l, cv_t, rox_l, rox_t, bool(feasible))
+
+    return ev
+
+
+def build_training_set(axes, evaluate_fn, *, n=40, seed=42):
+    """Sobol design over the decision box → evaluated PointEvals (X, evals)."""
+    lo, hi = bounds_arrays(axes)
+    bounds = torch.tensor([lo, hi], dtype=torch.float64)
+    X = draw_sobol_samples(bounds=bounds, n=n, q=1, seed=seed).squeeze(1)
+    evals = [evaluate_fn(x.tolist()) for x in X]
+    return X, evals
+
+
+# ------------------------------------------------------------------------ emulator
+def _fit_gp(X, y):
+    # Normalize inputs to the unit cube — the D axes (~1e-4) and conductance scales
+    # (~1) span 4 orders of magnitude; without this the RBF kernel cannot fit CV and
+    # the D-solve fails (GP over-predicts CV at low D → D driven to the floor).
+    gp = SingleTaskGP(X, y, outcome_transform=Standardize(m=1),
+                      input_transform=Normalize(d=X.shape[-1]))
+    fit_gpytorch_mll(ExactMarginalLogLikelihood(gp.likelihood, gp))
+    return gp
+
+
+def build_emulator(X, evals):
+    """GPs for {apd, dvdt} (all AP-valid points) + {cv_l, cv_t} (FEASIBLE only) + a
+    feasibility classifier GP (0/1). NaN CV never enters a CV GP target (isfinite guard
+    — the architecture §7 block-masking, NOT a 50.0 penalty)."""
+    feas = torch.tensor([e.feasible_sim for e in evals])
+    y_feas = torch.tensor([[1.0 if e.feasible_sim else 0.0] for e in evals], dtype=torch.float64)
+    gp_feas = _fit_gp(X, y_feas)
+
+    def _ap_gp(attr):
+        rows = [(x, getattr(e, attr)) for x, e in zip(X, evals)
+                if math.isfinite(getattr(e, attr))]
+        if len(rows) < 2:
+            return None
+        Xa = torch.stack([r[0] for r in rows])
+        ya = torch.tensor([[r[1]] for r in rows], dtype=torch.float64)
+        return _fit_gp(Xa, ya)
+
+    gp_apd = _ap_gp("apd90")
+    gp_dvdt = _ap_gp("dvdt")
+
+    def _cv_gp(attr):
+        rows = [(x, getattr(e, attr)) for x, e in zip(X, evals)
+                if e.feasible_sim and math.isfinite(getattr(e, attr))]
+        if len(rows) < 2:
+            return None
+        Xc = torch.stack([r[0] for r in rows])
+        yc = torch.tensor([[r[1]] for r in rows], dtype=torch.float64)
+        # guard: NaN must never reach a GP target
+        assert torch.isfinite(yc).all(), "NaN leaked into CV GP target"
+        return _fit_gp(Xc, yc)
+
+    gp_cvl = _cv_gp("cv_l")
+    gp_cvt = _cv_gp("cv_t")
+    return {"feas": gp_feas, "apd": gp_apd, "dvdt": gp_dvdt, "cvl": gp_cvl, "cvt": gp_cvt,
+            "n_feasible": int(feas.sum())}
+
+
+def _pred(gp, X):
+    with torch.no_grad():
+        return gp.posterior(X).mean.squeeze(-1)
+
+
+def _solve_D_batch(gp_cv, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
+    """Batched bisection: for each candidate, find D (at axis idx_D) whose EMULATED CV
+    equals target_cv (CV is monotone-increasing in D). Vectorized over all candidates.
+    Clamps to [D_lo, D_hi] when even the endpoints don't bracket the target."""
+    n = C.shape[0]
+    lo = torch.full((n,), float(D_lo), dtype=C.dtype)
+    hi = torch.full((n,), float(D_hi), dtype=C.dtype)
+    for _ in range(n_iter):
+        mid = 0.5 * (lo + hi)
+        Cm = C.clone()
+        Cm[:, idx_D] = mid
+        cv = _pred(gp_cv, Cm)
+        below = cv < target_cv          # need MORE D → raise the lower bound
+        lo = torch.where(below, mid, lo)
+        hi = torch.where(below, hi, mid)
+    return 0.5 * (lo + hi)
+
+
+# ------------------------------------------------------------- constrained scalarize
+def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
+                    n_training=40, n_candidates=4000, n_validate=15, seed=42,
+                    cv_tol=0.12, dvdt_band=(20.0, 130.0), k=RSTAR_OVER_DX_FLOOR,
+                    emulator_margin=0.6, verbose=False):
+    """Joint fit: train emulator, run constrained scalarization on it, validate top-k.
+
+    Objective: minimize AP-morphology error (|APD−target|) subject to hard constraints
+    CV_L/CV_T within tol, r*/dx≥k (from D/CV), and dV/dt in band. Returns a validated
+    JointFitResult, or an InfeasReport naming the binding lock when the feasible set is
+    empty (architecture §7).
+    """
+    CV_L, CV_T = targets.cv_longitudinal, targets.cv_transverse
+    X, evals = build_training_set(axes, evaluate_fn, n=n_training, seed=seed)
+    emu = build_emulator(X, evals)
+
+    # If almost nothing propagated+resolved, the binding lock is resolution/excitability.
+    if emu["n_feasible"] < 2 or emu["cvt"] is None or emu["cvl"] is None:
+        return InfeasReport(
+            binding_lock="resolution/excitability",
+            detail=(f"only {emu['n_feasible']}/{n_training} training points reached "
+                    f"r*/dx≥{k} on both axes — CV_T={CV_T} unresolvable in this box "
+                    f"(refine dx / widen g_Na / add kinetics)."))
+
+    lo, hi = bounds_arrays(axes)
+    bounds = torch.tensor([lo, hi], dtype=torch.float64)
+    C = draw_sobol_samples(bounds=bounds, n=n_candidates, q=1, seed=seed + 1).squeeze(1)
+
+    idx_Dl = [i for i, a in enumerate(axes) if a.name == "D_long"][0]
+    idx_Dt = [i for i, a in enumerate(axes) if a.name == "D_trans"][0]
+    dx_cm = getattr(config, "dx_mm", 1.0) / 10.0 if config is not None else None
+
+    # SOLVE D on the emulator so every candidate HITS its CV target (D determines CV
+    # given θ — the emulator analog of the secant). Random D rarely lands within tol of
+    # BOTH CV_L and CV_T at once (a thin manifold); solving makes the CV constraints hit
+    # by construction, then dV/dt + r*/dx + feasibility do the real carving.
+    Dl_range = next(a.bounds for a in axes if a.name == "D_long")
+    Dt_range = next(a.bounds for a in axes if a.name == "D_trans")
+    C[:, idx_Dl] = _solve_D_batch(emu["cvl"], C, idx_Dl, CV_L, Dl_range[0], Dl_range[1])
+    C[:, idx_Dt] = _solve_D_batch(emu["cvt"], C, idx_Dt, CV_T, Dt_range[0], Dt_range[1])
+
+    feas_p = _pred(emu["feas"], C)
+    cvl_p = _pred(emu["cvl"], C)
+    cvt_p = _pred(emu["cvt"], C)
+    apd_p = _pred(emu["apd"], C) if emu["apd"] is not None else torch.full((len(C),), float("nan"))
+    dvdt_p = _pred(emu["dvdt"], C) if emu["dvdt"] is not None else torch.full((len(C),), float("nan"))
+
+    # constraint masks (track each so we can name the binding lock). Candidate CV must
+    # be well INSIDE tol (× emulator_margin) so GP drift doesn't push the validated
+    # exact CV outside tol — the fix for the "emulator_drift" failure mode.
+    m_feas = feas_p > 0.5
+    m_cvl = (cvl_p - CV_L).abs() / CV_L < cv_tol * emulator_margin
+    m_cvt = (cvt_p - CV_T).abs() / CV_T < cv_tol * emulator_margin
+    m_dvdt = (dvdt_p >= dvdt_band[0]) & (dvdt_p <= dvdt_band[1])
+    if dx_cm:
+        # r*/dx from the SOLVED D and the TARGET CV (CV≈target by construction).
+        rox_l = (C[:, idx_Dl] / (CV_L / 1000.0)) / dx_cm
+        rox_t = (C[:, idx_Dt] / (CV_T / 1000.0)) / dx_cm
+        m_rox = (rox_l >= k) & (rox_t >= k)
+    else:
+        m_rox = torch.ones(len(C), dtype=torch.bool)
+
+    feasible = m_feas & m_cvl & m_cvt & m_dvdt & m_rox
+    if not feasible.any():
+        # name the lock that eliminated the most CV-feasible candidates
+        cv_ok = m_feas & m_cvl & m_cvt
+        lock = _binding_lock(cv_ok, m_dvdt, m_rox, m_feas)
+        return InfeasReport(binding_lock=lock,
+                            detail=f"no candidate satisfied all constraints "
+                                   f"(feas={int(m_feas.sum())}, cvL={int(m_cvl.sum())}, "
+                                   f"cvT={int(m_cvt.sum())}, dvdt={int(m_dvdt.sum())}, "
+                                   f"r*/dx={int(m_rox.sum())} of {len(C)}).")
+
+    # rank feasible by AP-morphology error (|APD − target|); validate top-k on the oracle
+    ap_err = (apd_p - targets.apd_90).abs()
+    ap_err = torch.where(feasible, ap_err, torch.full_like(ap_err, float("inf")))
+    order = torch.argsort(ap_err)[:n_validate]
+
+    best = None
+    for i in order.tolist():
+        ev = evaluate_fn(C[i].tolist())
+        if not ev.feasible_sim:
+            continue
+        cvl_ok = abs(ev.cv_l - CV_L) / CV_L < cv_tol
+        cvt_ok = abs(ev.cv_t - CV_T) / CV_T < cv_tol
+        if cvl_ok and cvt_ok and (best is None or
+                                  abs(ev.apd90 - targets.apd_90) < abs(best.apd90 - targets.apd_90)):
+            best = ev
+
+    if best is None:
+        return InfeasReport(binding_lock="emulator_drift",
+                            detail="emulator-feasible candidates failed real validation "
+                                   "(refit near the validation set).")
+
+    theta, kinetics, D_long, D_trans = _unpack(best.vector, axes, base_theta)
+    return JointFitResult(
+        theta=theta, kinetics=kinetics, D_long=D_long, D_trans=D_trans,
+        achieved={"apd90": best.apd90, "dvdt": best.dvdt, "cv_l": best.cv_l,
+                  "cv_t": best.cv_t, "rstar_over_dx_l": best.rstar_over_dx_l,
+                  "rstar_over_dx_t": best.rstar_over_dx_t})
+
+
+def _binding_lock(cv_ok, m_dvdt, m_rox, m_feas):
+    """Which lock removes the last CV-feasible candidates?"""
+    if int(m_feas.sum()) == 0:
+        return "resolution (nothing propagated+resolved)"
+    if int((cv_ok & m_rox).sum()) == 0:
+        return "dx/resolution (r*/dx≥3 unreachable at CV target)"
+    if int((cv_ok & m_dvdt).sum()) == 0:
+        return "dV/dt target (band excludes the g_Na that hits CV_T)"
+    if int(cv_ok.sum()) == 0:
+        return "excitability/CV (CV_T unreachable within g_Na bounds)"
+    return "combined (no single constraint; the intersection is empty)"
+
+
+def _unpack(vector, axes, base_theta):
+    theta, kinetics = dict(base_theta or {}), {}
+    D_long = D_trans = None
+    for ax, v in zip(axes, vector):
+        v = float(v)
+        if ax.subsystem == "cond":
+            theta[ax.name] = v
+        elif ax.subsystem == "kinetic":
+            kinetics[ax.name] = v
+        elif ax.name == "D_long":
+            D_long = v
+        elif ax.name == "D_trans":
+            D_trans = v
+    return theta, kinetics, D_long, D_trans
