@@ -42,6 +42,24 @@ Deferred *content* items still open (separate track): Ch 8 split, Reader-B non-c
 
 ## Thread
 
+### 2026-07-10: NEW track — AP-morphology / ion-current playground (Phase 3 widgets on HOLD)
+User asked for a new interactive **simulation page**: choose an ionic engine, tune per-current conductances, watch AP
+morphology change — motivated by the newly-exposed "PHA-S / HIPSE-like" engine with unfamiliar currents (I_funny etc.).
+Ran 3 parallel Explore agents (ground-truth the code, don't assume). Findings: **"PHA-S" = PHAS13 = Paci 2013 hiPSC-CM**
+("HIPSE"≈hiPSC), spontaneously beating via **I_f (funny current)**; matured sibling **MHAS13** (g_f=0). cardiac_core
+wires up exactly **4 production engines**: TTP06 (18st, default, ENDO/EPI/M), ORd (40st, ENDO/EPI/M), PHAS13 (17st,
+spontaneous), MHAS13 (17st). Selected via `build_ionic_model(name,cell_type,device)`. FHN not in repo; Mitchell-Schaeffer
+only in vendored torchcor (so the ch2/prototype widgets are pedagogical JS ports, NOT cardiac_core engines). Conductance
+knobs = mutable `model.params` dataclass fields; clean tuning via relative `conductance_scaling` or direct mutation.
+**Key architecture reality:** engines are PyTorch → can't run in browser. **User chose: precompute + knob grids** —
+exact real-engine traces offline (GPU: one steady-state AP ≈ 0.065s, whole dataset in minutes), combinable N-D grid for
+3 headline knobs + 1-D isolated sweeps for the rest; sliders snap to grid levels (every trace physically exact).
+PHAS13 nuance: free-run (no stim) + report spontaneous cycle length (g_f → automaticity demo). Wrote detailed design
+brief `AP_EXPLORER_PLAN.md` (engines+knobs table, `gen_ap_traces.py` generation spec, JSON data format, page UI with
+combine/isolate panels + current glossary, Tools-nav integration, NOT in PDF). Cheatsheet doc-gap flagged (§4 lists only
+ttp06/ord). Next: `/blueprint` AP_EXPLORER_PLAN → PLAN, then Phase 1 = generation script + validated trace bank.
+Textbook-refresh Phases 1–2 remain committed on branch `textbook-website-refresh`; Phase 3 widgets paused.
+
 ### 2026-07-03: Blueprint → PLAN.md, adversarial audit ×2 → CONVERGED
 `/blueprint` turned `REFRESH_PLAN.md` + codebase analysis into a machine-targeted `PLAN.md` (4 phases: fix/re-shell
 → figure-widget framework → 6–8 widgets → identity+PDF-verify). Archived the completed audit-remediation plan →

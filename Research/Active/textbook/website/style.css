@@ -872,6 +872,67 @@ canvas.fig-widget {
   .fig-controls { display: none !important; }
 }
 
+/* ─── Ion-Current Playground (AP explorer tool) ─── */
+.chapter-content:has(.tool-page) { max-width: 66em; }   /* widen the tool page */
+.toc-part-static { cursor: default; }
+.toc-part-static:hover { background: none; }
+.ap-if { color: var(--highlight); font-weight: 600; }
+
+.ap-explorer canvas.fig-widget { height: clamp(280px, 32vw, 360px); cursor: default; }
+.apx-enginebar {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: stretch;
+  padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--border); background: var(--bg-secondary);
+}
+.apx-eng {
+  flex: 1 1 auto; min-width: 8rem; text-align: left; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 0.5rem 0.75rem;
+  display: flex; flex-direction: column; gap: 0.1rem; transition: border-color .15s, background .15s;
+}
+.apx-eng:hover { border-color: var(--highlight); }
+.apx-eng.active { border-color: var(--highlight); background: var(--highlight-bg); }
+.apx-eng b { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text); letter-spacing: .02em; }
+.apx-eng span { font-family: var(--font-mono); font-size: 0.62rem; color: var(--caption); text-transform: uppercase; letter-spacing: .06em; }
+.apx-ct { display: flex; gap: 0.3rem; align-items: center; margin-left: auto; }
+.apx-ctbtn {
+  font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: .06em;
+  padding: 0.4rem 0.7rem; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary);
+}
+.apx-ctbtn:hover { border-color: var(--highlight); }
+.apx-ctbtn.active { background: var(--highlight); color: #fff; border-color: var(--highlight); }
+
+.apx-metrics { display: flex; flex-wrap: wrap; gap: 0.5rem 1.6rem; padding: 0.7rem 1.1rem; border-top: 1px solid var(--border); }
+.apx-m { display: flex; flex-direction: column; }
+.apx-m b { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.apx-m span { font-family: var(--font-mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: .08em; color: var(--caption); }
+
+.ap-explorer .fig-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.6rem; }
+.apx-panel { min-width: 0; }
+.apx-ptitle { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--caption); margin-bottom: 0.6rem; }
+.apx-ctrl { margin: 0.35rem 0; }
+.ap-explorer input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px; margin-top: 0.4rem;
+  background: var(--border); border-radius: 3px; outline: none;
+}
+.ap-explorer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--highlight); border: 2px solid var(--bg); cursor: pointer;
+}
+.ap-explorer input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%; background: var(--highlight); border: 2px solid var(--bg); cursor: pointer;
+}
+.ap-explorer input[type="range"]:focus-visible { outline: 2px solid var(--highlight); outline-offset: 3px; }
+.apx-select {
+  width: 100%; font-family: var(--font-mono); font-size: 0.74rem; padding: 0.4rem 0.5rem; margin-bottom: 0.4rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px;
+}
+.apx-glossary { grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 0.8rem; }
+.apx-gitem { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); padding: 0.15rem 0; }
+.apx-gitem.unfamiliar { color: var(--text); }
+.apx-gitem.unfamiliar span::after { content: ' — worth knowing'; color: var(--highlight); font-size: 0.66rem; }
+
+@media (max-width: 720px) { .ap-explorer .fig-controls { grid-template-columns: 1fr; } .apx-ct { margin-left: 0; width: 100%; } }
+
 /* Code */
 pre {
   font-family: 'Source Code Pro', monospace;

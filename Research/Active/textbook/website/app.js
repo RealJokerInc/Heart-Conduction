@@ -97,6 +97,8 @@
         allChapters.push({ ...entry, kind: 'chapter' });
       }
     }
+    // Interactive tools — not in toc.json (kept out of the PDF), appended after the book.
+    allChapters.push({ id: 'playground', kind: 'tool', num: '', title: 'Ion-Current Playground' });
   }
 
   // ══════════════════════════════════════════════════════════
@@ -120,6 +122,10 @@
         html += renderChapterTocEntry(entry);
       }
     }
+
+    // Tools section (interactive, not in the PDF)
+    html += `<div class="toc-part toc-part-static">Interactive Tools</div>`;
+    html += `<a class="toc-chapter toc-tool" data-id="playground" href="#playground">Ion-Current Playground</a>`;
 
     sidebarTocEl.innerHTML = html;
   }

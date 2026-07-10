@@ -1,0 +1,48 @@
+<div class="chapter tool-page">
+  <div class="chapter-number">Interactive Tool</div>
+  <h2 class="chapter-title">Ion-Current Playground</h2>
+  <div class="chapter-intro">
+    Every action potential is a tug-of-war between a dozen ionic currents. Pick one of the engines that
+    <code>cardiac_core</code> ships, scale any current's conductance, and watch the AP change shape in real time —
+    each trace is an exact single-cell simulation from the real engine, not a cartoon.
+  </div>
+
+  <p>
+    Four ionic engines are available. <b>TTP06</b> (ten&nbsp;Tusscher–Panfilov 2006) and <b>ORd</b>
+    (O'Hara–Rudy 2011) are human-ventricular models with endocardial, epicardial, and M-cell variants.
+    <b>PHAS13</b> (Paci 2013) is a human <em>induced-pluripotent-stem-cell</em> cardiomyocyte — it beats
+    <em>spontaneously</em>, driven by the funny current <span class="ap-if">I<sub>f</sub></span>; turn
+    <span class="ap-if">g<sub>f</sub></span> down and its automaticity slows, to zero and it goes quiet.
+    <b>MHAS13</b> is a matured PHAS13 with the funny current switched off.
+  </p>
+
+  <p>
+    The three <b>Combine</b> sliders tune the headline morphology drivers together (sodium sets the upstroke,
+    L-type calcium the plateau, rapid&nbsp;K⁺ the repolarization). The <b>Isolate</b> control lets you perturb a
+    single current while everything else is held at baseline — the cleanest way to see what each one does,
+    including the ones you may not recognize: the funny current, the Na/Ca exchanger, the Na/K and Ca pumps,
+    and the background leaks (marked ★).
+  </p>
+
+  <figure class="fig ap-explorer" data-widget="ap-explorer">
+    <div class="fig-stage"></div>
+    <div class="fig-controls" hidden></div>
+    <div class="fig-fallback">
+      <p><em>This is an interactive tool — open the website to run it. (It is deliberately not part of the printed PDF.)</em></p>
+    </div>
+    <figcaption class="figure-caption">
+      <span class="figure-label">Ion-Current Playground.</span> Single-cell action potentials from the real
+      <code>cardiac_core</code> engines (steady-state paced; PHAS13 free-running). Grey = baseline, red = your
+      tuning. Metrics — APD₉₀/₅₀, upstroke velocity dV/dt, resting and peak voltage (and spontaneous cycle length
+      for PHAS13) — are measured off each exact trace. Traces precomputed by
+      <code>website/build/gen_ap_traces.py</code>.
+    </figcaption>
+  </figure>
+
+  <p>
+    Try: on <b>PHAS13</b>, drag <span class="ap-if">g<sub>f</sub></span> from 0 to 2× and watch the spontaneous
+    rate climb. On <b>TTP06 EPI</b>, isolate <b>I_Kr</b> and cut it to 0.5× — the plateau stretches and APD₉₀
+    lengthens, the same mechanism behind drug-induced long-QT. Compare <b>ENDO</b> vs <b>M-cell</b> to see the
+    intrinsic APD gradient across the ventricular wall.
+  </p>
+</div>
