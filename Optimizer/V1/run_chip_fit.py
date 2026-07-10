@@ -11,13 +11,11 @@ The FULL fit (`main()`, smoke=False) is a multi-hour GPU run — gated.
 
 Run (GATED): conda run -n heart-conduction python Optimizer/V1/run_chip_fit.py
 """
-import math
-
 import torch
 
 from tuner.config import TuningConfig, TuningTargets, theta_to_dict
-from tuner.cc_runner import run_1d_cable
-from tuner.chip import PARKER
+from tuner.cc_runner import fit_D_for_cv
+from tuner.chip import PARKER, boundary_number
 from tuner.presets import make_record, save_record, PRESETS_DIR
 
 
@@ -27,41 +25,11 @@ def select_best(cellres) -> torch.Tensor:
     return cellres.pareto_X[int(scores.argmax())]
 
 
-def _fit_D_for_cv(theta_ionic, target_cv, config, *, D0=0.001, n=6, tol=0.02,
-                  D_lo=1e-6, D_hi=1e-2, t_end=None):
-    """Secant on diffusion D to hit `target_cv` (cm/s) via cc_runner.
-
-    Warm-started by CV ∝ √D, then two-point secant (NOT Newton — Known Failure).
-    Returns (D, cv_achieved). Robust to a non-propagating warm-start guess.
-    """
-    def cv(D):
-        return run_1d_cable(theta_ionic, D, config, t_end=t_end)
-
-    cv0 = cv(D0)
-    if not (math.isfinite(cv0) and cv0 > 0):
-        D0 = min(D_hi, D0 * 4.0)                 # bump D for propagation
-        cv0 = cv(D0)
-        if not (math.isfinite(cv0) and cv0 > 0):
-            return D0, float("nan")
-
-    # analytic warm start
-    D1 = min(D_hi, max(D_lo, D0 * (target_cv / cv0) ** 2))
-    cv1 = cv(D1)
-    if not (math.isfinite(cv1) and cv1 > 0):
-        return D0, cv0                            # keep the propagating point
-
-    it = 2
-    while it < n and abs(cv1 - target_cv) / target_cv > tol:
-        if cv1 == cv0:
-            break
-        D2 = D1 + (target_cv - cv1) * (D1 - D0) / (cv1 - cv0)
-        D2 = min(D_hi, max(D_lo, D2))
-        cv2 = cv(D2)
-        if not (math.isfinite(cv2) and cv2 > 0):
-            break
-        D0, cv0, D1, cv1 = D1, cv1, D2, cv2
-        it += 1
-    return D1, cv1
+# NOTE: the secant `_fit_D_for_cv` that used to live here was DE-DUPLICATED into the
+# single `cc_runner.fit_D_for_cv` (imported above), which now brackets DOWN on a
+# non-propagating start (the old ×4-up-bump was a Known Failure) and returns
+# (NaN, NaN) — never a fake D — when nothing propagates. This retired the block-
+# masking garbage-D fallback that produced the `D=0.004, CV=nan` records.
 
 
 def _cell_fit(config, targets, smoke):
@@ -81,8 +49,8 @@ def fit_chip_baseline(baseline, config, *, targets=None, smoke=False,
     theta_ionic, theta_dict = _cell_fit(config, targets, smoke)
 
     n = 2 if smoke else n_secant
-    D_long, cvL = _fit_D_for_cv(theta_ionic, targets.cv_longitudinal, config, n=n, t_end=t_end)
-    D_trans, cvT = _fit_D_for_cv(theta_ionic, targets.cv_transverse, config, n=n, t_end=t_end)
+    D_long, cvL = fit_D_for_cv(theta_ionic, targets.cv_longitudinal, config, n=n, t_end=t_end)
+    D_trans, cvT = fit_D_for_cv(theta_ionic, targets.cv_transverse, config, n=n, t_end=t_end)
 
     rec = make_record(
         name=f"chip_{baseline}", baseline=baseline, theta_ionic=theta_dict,
@@ -95,6 +63,14 @@ def fit_chip_baseline(baseline, config, *, targets=None, smoke=False,
         ionic_model=config.ionic_model,
         domain_mm=config.domain_mm, dx_mm=config.dx_mm,
     )
+    # Lateral boundary-speedup GUIDE (β=D·dt/dx², τ=0.5+3β) for the free dt knob —
+    # not fit (no curvature metric yet); just records which wall-crescent regime
+    # this (D, dt, dx) lands in, per axis. See chip.boundary_number.
+    rec["boundary"] = {
+        "dt_ms": config.dt, "dx_mm": config.dx_mm,
+        "long": boundary_number(D_long, config.dt, config.dx_mm),
+        "trans": boundary_number(D_trans, config.dt, config.dx_mm),
+    }
     save_record(rec, presets_dir=presets_dir or PRESETS_DIR)
     return rec
 
@@ -110,6 +86,10 @@ def main():  # pragma: no cover — gated full run
     for baseline in ("nrvm", "hipsc"):
         rec = fit_chip_baseline(baseline, cfg, smoke=False, n_secant=8)
         print(baseline, rec["tissue"]["monodomain"], rec["validation"])
+        b = rec["boundary"]   # lateral-wall speedup guide for the free dt knob
+        print(f"  boundary @dt={b['dt_ms']}ms: "
+              f"long τ={b['long']['tau']:.3f} [{b['long']['regime']}] | "
+              f"trans τ={b['trans']['tau']:.3f} [{b['trans']['regime']}]")
 
 
 if __name__ == "__main__":  # pragma: no cover

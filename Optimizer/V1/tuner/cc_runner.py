@@ -53,11 +53,16 @@ def _default_t_end(config: TuningConfig) -> float:
 
 
 def run_1d_cable(theta_ionic, D: float, config: TuningConfig,
-                 *, t_end: float = None, save_every: float = 1.0) -> float:
+                 *, t_end: float = None, save_every: float = 1.0,
+                 return_vmax: bool = False):
     """Measure conduction velocity (cm/s) for a cable with diffusion `D`.
 
     Dispatches by `config.engine` over the cardiac_core functional API.
-    Returns NaN if the wave fails to cross both probes.
+    Returns NaN if the wave fails to cross both probes. With ``return_vmax=True``
+    returns ``(cv, vmax)`` — the peak |V| over the whole field, which distinguishes
+    a high-D over-depolarization blow-up (Vmax non-physical) from a low-D source-sink
+    block (Vmax physiological but the wave dies) when cv is NaN (used by the Step 1.3
+    hiPSC-window diagnostic).
     """
     model = _build_model(theta_ionic, config)
     dx = config.dx_cm
@@ -96,6 +101,9 @@ def run_1d_cable(theta_ionic, D: float, config: TuningConfig,
         V, times, dx=dx, x1=Nx // 4, x2=3 * Nx // 4, y=Ny // 2,
         threshold=_ACT_THRESHOLD,
     )
+    if return_vmax:
+        vmax = float(V.max()) if torch.is_tensor(V) else float(np.max(V))
+        return float(cv), vmax
     return float(cv)
 
 
@@ -112,12 +120,33 @@ def run_2d_tissue(theta_ionic, D_long: float, D_trans: float, config: TuningConf
     return {"cv_long": cv_long, "cv_trans": cv_trans}
 
 
+def _bracket_down(cv_fn, D_start, D_lo):
+    """Halve D from D_start toward D_lo until a propagating point is found.
+
+    Chip regime: the default warm-start D0≈1e-3 sits ABOVE the propagating window
+    (high-D over-depolarization → NaN), and the window is BELOW it. Bumping D *up*
+    on failure (the old ×4 fallback) walks into the NaN zone and returns a fake D
+    (Known Failure); bracketing DOWN steps into the window. Returns (D, cv) or None.
+    """
+    import math
+    D = D_start
+    while D >= D_lo:
+        c = cv_fn(D)
+        if math.isfinite(c) and c > 0:
+            return D, c
+        D *= 0.5
+    return None
+
+
 def fit_D_for_cv(theta_ionic, target_cv, config, *, D0=0.001, n=8, tol=0.02,
                  D_lo=1e-6, D_hi=1e-2, t_end=None):
     """Secant on diffusion D to hit `target_cv` (cm/s) via run_1d_cable.
 
     Warm-started by CV ∝ √D, then two-point secant (NOT Newton — Known Failure).
-    Returns (D, cv_achieved). Robust to a non-propagating warm-start guess.
+    On a non-propagating start, brackets DOWN into the propagating window (the chip
+    window is BELOW D0; the old ×4-up-bump was a Known Failure). Returns
+    (D, cv_achieved), or **(NaN, NaN)** if no propagating D is found down to D_lo —
+    honest infeasibility, never a fake fallback D.
     Shared by run_chip_fit (Phase 3) and cross_engine.recalibrate_lbm (Phase 4).
     """
     import math
@@ -125,23 +154,31 @@ def fit_D_for_cv(theta_ionic, target_cv, config, *, D0=0.001, n=8, tol=0.02,
     def cv(D):
         return run_1d_cable(theta_ionic, D, config, t_end=t_end)
 
+    def ok(x):
+        return math.isfinite(x) and x > 0
+
     cv0 = cv(D0)
-    if not (math.isfinite(cv0) and cv0 > 0):
-        D0 = min(D_hi, D0 * 4.0)
-        cv0 = cv(D0)
-        if not (math.isfinite(cv0) and cv0 > 0):
-            return D0, float("nan")
+    if not ok(cv0):
+        found = _bracket_down(cv, D0 * 0.5, D_lo)
+        if found is None:
+            return float("nan"), float("nan")     # no propagating D — do NOT fake one
+        D0, cv0 = found
+
     D1 = min(D_hi, max(D_lo, D0 * (target_cv / cv0) ** 2))
     cv1 = cv(D1)
-    if not (math.isfinite(cv1) and cv1 > 0):
-        return D0, cv0
+    if not ok(cv1):
+        # warm-start jumped out of the window — bracket down toward the known point.
+        found = _bracket_down(cv, min(D1, D0) * 0.5, D_lo)
+        if found is None:
+            return D0, cv0                         # keep the known propagating point
+        D1, cv1 = found
     it = 2
     while it < n and abs(cv1 - target_cv) / target_cv > tol:
         if cv1 == cv0:
             break
         D2 = min(D_hi, max(D_lo, D1 + (target_cv - cv1) * (D1 - D0) / (cv1 - cv0)))
         cv2 = cv(D2)
-        if not (math.isfinite(cv2) and cv2 > 0):
+        if not ok(cv2):
             break
         D0, cv0, D1, cv1 = D1, cv1, D2, cv2
         it += 1
