@@ -50,7 +50,7 @@ def test_nan_guard():
     X, evals = build_training_set(axes, synth_evaluator(axes), n=32, seed=1)
     assert any(not e.feasible_sim for e in evals)     # some blocked points exist
 
-    emu = build_emulator(X, evals)                    # must not raise (isfinite guard)
+    emu = build_emulator(X, evals, axes)              # must not raise (isfinite guard)
     for key in ('cvl', 'cvt'):
         if emu[key] is not None:
             assert torch.isfinite(emu[key].train_targets).all()
@@ -64,7 +64,7 @@ def test_feasible_only_training():
     X, evals = build_training_set(axes, synth_evaluator(axes), n=32, seed=2)
     n_feas = sum(e.feasible_sim for e in evals)
 
-    emu = build_emulator(X, evals)
+    emu = build_emulator(X, evals, axes)
     assert emu['n_feasible'] == n_feas
     assert 0 < n_feas < len(evals)                    # a real mask (some in, some out)
     if emu['cvl'] is not None:

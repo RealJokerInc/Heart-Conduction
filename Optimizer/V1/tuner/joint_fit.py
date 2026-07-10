@@ -113,11 +113,16 @@ def make_sim_evaluator(config, axes, base_theta, resolved_dx_cm, *,
     return ev
 
 
-def build_training_set(axes, evaluate_fn, *, n=40, seed=42):
-    """Sobol design over the decision box → evaluated PointEvals (X, evals)."""
+def build_training_set(axes, evaluate_fn, *, n=40, seed=42, seed_points=None):
+    """Sobol design over the decision box → evaluated PointEvals (X, evals). `seed_points`
+    (a list of known-propagating warm-start vectors) are prepended so the CV GP has
+    feasible anchors — pure Sobol rarely lands in the thin slow-CV feasible manifold."""
     lo, hi = bounds_arrays(axes)
     bounds = torch.tensor([lo, hi], dtype=torch.float64)
     X = draw_sobol_samples(bounds=bounds, n=n, q=1, seed=seed).squeeze(1)
+    if seed_points:
+        S = torch.tensor(seed_points, dtype=torch.float64)
+        X = torch.cat([S, X], dim=0)
     evals = [evaluate_fn(x.tolist()) for x in X]
     return X, evals
 
@@ -133,52 +138,58 @@ def _fit_gp(X, y):
     return gp
 
 
-def build_emulator(X, evals):
-    """GPs for {apd, dvdt} (all AP-valid points) + {cv_l, cv_t} (FEASIBLE only) + a
-    feasibility classifier GP (0/1). NaN CV never enters a CV GP target (isfinite guard
-    — the architecture §7 block-masking, NOT a 50.0 penalty)."""
+def _feature_idx(axes, predicate):
+    return [i for i, a in enumerate(axes) if predicate(a)]
+
+
+def build_emulator(X, evals, axes):
+    """GPs trained on REDUCED feature sets so CV-irrelevant axes don't add noise to the
+    CV emulator (architecture open-Q8 — the fix that makes a high-dim fit tractable):
+      - cv_l ~ f(g_Na, kinetics, D_long); cv_t ~ f(g_Na, kinetics, D_trans)  (the
+        repolarizing/Ca conductances do NOT drive the upstroke-limited CV);
+      - apd, dvdt ~ f(conductances, kinetics)  (D does not affect the 0-D cell AP);
+      - feasibility ~ f(full vector)  (depends on D AND excitability).
+    NaN CV never enters a CV GP target (isfinite guard — block masking, NOT a 50.0 penalty).
+    Each GP carries its feature indices so prediction/D-solve slice consistently."""
     feas = torch.tensor([e.feasible_sim for e in evals])
     y_feas = torch.tensor([[1.0 if e.feasible_sim else 0.0] for e in evals], dtype=torch.float64)
     gp_feas = _fit_gp(X, y_feas)
+    feas_idx = list(range(X.shape[-1]))
 
-    def _ap_gp(attr):
+    cvl_idx = _feature_idx(axes, lambda a: a.name == "g_Na" or a.subsystem == "kinetic" or a.name == "D_long")
+    cvt_idx = _feature_idx(axes, lambda a: a.name == "g_Na" or a.subsystem == "kinetic" or a.name == "D_trans")
+    ap_idx = _feature_idx(axes, lambda a: a.subsystem in ("cond", "kinetic"))
+
+    def _gp_on(row_ok, attr, idx):
         rows = [(x, getattr(e, attr)) for x, e in zip(X, evals)
-                if math.isfinite(getattr(e, attr))]
+                if row_ok(e) and math.isfinite(getattr(e, attr))]
         if len(rows) < 2:
             return None
-        Xa = torch.stack([r[0] for r in rows])
-        ya = torch.tensor([[r[1]] for r in rows], dtype=torch.float64)
-        return _fit_gp(Xa, ya)
+        Xg = torch.stack([r[0] for r in rows])[:, idx]
+        yg = torch.tensor([[r[1]] for r in rows], dtype=torch.float64)
+        assert torch.isfinite(yg).all(), f"NaN leaked into {attr} GP target"
+        return _fit_gp(Xg, yg)
 
-    gp_apd = _ap_gp("apd90")
-    gp_dvdt = _ap_gp("dvdt")
-
-    def _cv_gp(attr):
-        rows = [(x, getattr(e, attr)) for x, e in zip(X, evals)
-                if e.feasible_sim and math.isfinite(getattr(e, attr))]
-        if len(rows) < 2:
-            return None
-        Xc = torch.stack([r[0] for r in rows])
-        yc = torch.tensor([[r[1]] for r in rows], dtype=torch.float64)
-        # guard: NaN must never reach a GP target
-        assert torch.isfinite(yc).all(), "NaN leaked into CV GP target"
-        return _fit_gp(Xc, yc)
-
-    gp_cvl = _cv_gp("cv_l")
-    gp_cvt = _cv_gp("cv_t")
-    return {"feas": gp_feas, "apd": gp_apd, "dvdt": gp_dvdt, "cvl": gp_cvl, "cvt": gp_cvt,
+    gp_apd = _gp_on(lambda e: True, "apd90", ap_idx)
+    gp_dvdt = _gp_on(lambda e: True, "dvdt", ap_idx)
+    gp_cvl = _gp_on(lambda e: e.feasible_sim, "cv_l", cvl_idx)
+    gp_cvt = _gp_on(lambda e: e.feasible_sim, "cv_t", cvt_idx)
+    return {"feas": gp_feas, "feas_idx": feas_idx,
+            "apd": gp_apd, "dvdt": gp_dvdt, "ap_idx": ap_idx,
+            "cvl": gp_cvl, "cvl_idx": cvl_idx, "cvt": gp_cvt, "cvt_idx": cvt_idx,
             "n_feasible": int(feas.sum())}
 
 
-def _pred(gp, X):
+def _pred(gp, C, idx):
     with torch.no_grad():
-        return gp.posterior(X).mean.squeeze(-1)
+        return gp.posterior(C[:, idx]).mean.squeeze(-1)
 
 
-def _solve_D_batch(gp_cv, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
+def _solve_D_batch(gp_cv, gp_idx, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
     """Batched bisection: for each candidate, find D (at axis idx_D) whose EMULATED CV
     equals target_cv (CV is monotone-increasing in D). Vectorized over all candidates.
-    Clamps to [D_lo, D_hi] when even the endpoints don't bracket the target."""
+    gp_idx = the CV GP's feature columns. Clamps to [D_lo, D_hi] when the endpoints
+    don't bracket the target."""
     n = C.shape[0]
     lo = torch.full((n,), float(D_lo), dtype=C.dtype)
     hi = torch.full((n,), float(D_hi), dtype=C.dtype)
@@ -186,7 +197,7 @@ def _solve_D_batch(gp_cv, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
         mid = 0.5 * (lo + hi)
         Cm = C.clone()
         Cm[:, idx_D] = mid
-        cv = _pred(gp_cv, Cm)
+        cv = _pred(gp_cv, Cm, gp_idx)
         below = cv < target_cv          # need MORE D → raise the lower bound
         lo = torch.where(below, mid, lo)
         hi = torch.where(below, hi, mid)
@@ -197,7 +208,7 @@ def _solve_D_batch(gp_cv, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
 def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
                     n_training=40, n_candidates=4000, n_validate=15, seed=42,
                     cv_tol=0.12, dvdt_band=(20.0, 130.0), k=RSTAR_OVER_DX_FLOOR,
-                    emulator_margin=0.6, verbose=False):
+                    emulator_margin=0.6, seed_points=None, verbose=False):
     """Joint fit: train emulator, run constrained scalarization on it, validate top-k.
 
     Objective: minimize AP-morphology error (|APD−target|) subject to hard constraints
@@ -206,8 +217,9 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
     empty (architecture §7).
     """
     CV_L, CV_T = targets.cv_longitudinal, targets.cv_transverse
-    X, evals = build_training_set(axes, evaluate_fn, n=n_training, seed=seed)
-    emu = build_emulator(X, evals)
+    X, evals = build_training_set(axes, evaluate_fn, n=n_training, seed=seed,
+                                  seed_points=seed_points)
+    emu = build_emulator(X, evals, axes)
 
     # If almost nothing propagated+resolved, the binding lock is resolution/excitability.
     if emu["n_feasible"] < 2 or emu["cvt"] is None or emu["cvl"] is None:
@@ -231,14 +243,14 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
     # by construction, then dV/dt + r*/dx + feasibility do the real carving.
     Dl_range = next(a.bounds for a in axes if a.name == "D_long")
     Dt_range = next(a.bounds for a in axes if a.name == "D_trans")
-    C[:, idx_Dl] = _solve_D_batch(emu["cvl"], C, idx_Dl, CV_L, Dl_range[0], Dl_range[1])
-    C[:, idx_Dt] = _solve_D_batch(emu["cvt"], C, idx_Dt, CV_T, Dt_range[0], Dt_range[1])
+    C[:, idx_Dl] = _solve_D_batch(emu["cvl"], emu["cvl_idx"], C, idx_Dl, CV_L, Dl_range[0], Dl_range[1])
+    C[:, idx_Dt] = _solve_D_batch(emu["cvt"], emu["cvt_idx"], C, idx_Dt, CV_T, Dt_range[0], Dt_range[1])
 
-    feas_p = _pred(emu["feas"], C)
-    cvl_p = _pred(emu["cvl"], C)
-    cvt_p = _pred(emu["cvt"], C)
-    apd_p = _pred(emu["apd"], C) if emu["apd"] is not None else torch.full((len(C),), float("nan"))
-    dvdt_p = _pred(emu["dvdt"], C) if emu["dvdt"] is not None else torch.full((len(C),), float("nan"))
+    feas_p = _pred(emu["feas"], C, emu["feas_idx"])
+    cvl_p = _pred(emu["cvl"], C, emu["cvl_idx"])
+    cvt_p = _pred(emu["cvt"], C, emu["cvt_idx"])
+    apd_p = _pred(emu["apd"], C, emu["ap_idx"]) if emu["apd"] is not None else torch.full((len(C),), float("nan"))
+    dvdt_p = _pred(emu["dvdt"], C, emu["ap_idx"]) if emu["dvdt"] is not None else torch.full((len(C),), float("nan"))
 
     # constraint masks (track each so we can name the binding lock). Candidate CV must
     # be well INSIDE tol (× emulator_margin) so GP drift doesn't push the validated
