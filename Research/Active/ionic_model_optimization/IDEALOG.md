@@ -5,12 +5,148 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Cross-plan with `geometry_induced_reentry` (build owner here): Engine Tuner → cardiac_core multi-engine.** All 6 phases of the chip-EP fit are IMPLEMENTED + tested + committed on branch `engine-tuner-cardiac-core`: tune MHAS13 (+ diffusion) through cardiac_core's *functional* API to Kit Parker tissue-chip targets (NRVM CV_L 9.33 / hiPSC 5.2 cm/s, anisotropic ~2:1) across monodomain/bidomain/LBM. The prior V1 BayesOpt core (qNEHVI, MHAS13 tier-2, best APD=352ms/CV_L=14.6) remains the cell/tissue-fit engine; this session wrapped it in the cross-engine cardiac_core layer + chip targets + record/preset storage.
+**Engine Tuner V2 — JOINT ionic+conduction tuning (redesign; audit-converged, pre-implementation).** The
+sequential cell→tissue fit (the V1 cross-plan, now on branch `engine-tuner-cardiac-core`) is
+**architecturally dead**: running the gated chip fits proved the tissue leg produces garbage (r*/dx
+source-sink block) on both baselines, because θ is frozen after the cell fit and D alone can't reach
+slow CV without collapsing r* (G_Na is shared between dV/dt and CV). The settled replacement is a
+**joint** fit — {θ, D_long, D_trans(free), (kinetics)} optimized together via constrained
+scalarization on a GP emulator, with the grid *resolved-not-fit* (r*/dx≥3) and known-true pair
+constraints. Design in `Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md` (audit-converged, 3 iters);
+execution plan in `PLAN.md` (audit-converged, 3 iters; P-1 backend-unification blocker first). The V1
+cross-plan (mono/bidomain/LBM cardiac_core layer, chip targets, MRT anisotropy) stands as the
+implemented substrate the redesign builds on. **Gated: no implementation before explicit "go".**
 
 ## Next Step
-Run the **GATED** full fits (scaffolded + smoke-tested, not yet executed): `python Optimizer/V1/run_chip_fit.py` (both baselines → Tier-1 records) then `run_chip_baseline_lbm.py` (LBM chip baseline + Lab presets). Watch the slowest (hiPSC 5.2) baseline for dx adequacy at chip dx=0.1 mm (effD≈2.5e-5 propagates there per the diagnostic; refine dx if the upstroke runs hot). Optional follow-ons: rewire legacy `tissue_fitter` through `cc_runner`; fix the `create_cardiac_mesh` chi API-debt (logged in `engine_consolidation`). Still-open V1 items: joint refinement (GP+NSGA-II), multi-rate pacing for IKr/IKs.
+**REDESIGN to JOINT tuning (post-audit).** Sequential cell→tissue fit is dead; both baselines
+reproduce the r*/dx block (garbage tissue). **Blocked on 3 user decisions** before P1:
+(1) revise hiPSC **dV/dt** target to physiological (~30 V/s?) or hold 110 (then CV_T=2.6
+unreachable); (2) **Na kinetics** — conductance-scaling-only, or add Na gating-τ to the
+decision space (audit: only kinetics decouple dV/dt from CV); (3) **dx budget** — is the
+reentry campaign OK inheriting ~0.03 mm (r*/dx≳3, ~10× cells) or scope per-baseline dx.
+Then: **P0** (offered, awaiting go) cheap CPU discriminators — fix the secant ×4-up-bump
+(bracket-down, may rescue CV_L); re-sweep cable at **hiPSC θ** (warm-starts saved in
+`presets/`); settle the D=1e-3 nan (real block vs CV-measurement artifact). **P1** feasibility
+map (g_Na×D at dx∈{0.1,0.05,0.03} vs CV_T/dV/dt/r*/dx≥3). **P2** build the constrained-
+scalarization joint fit (AP-error objective s.t. CV_L/CV_T/r*/dx + AP bounds; NOT 4-obj
+qNEHVI). **P3** refine `chip.py` dx for the reentry hand-off. Also queued: fix
+`export_lab_preset(engine="lbm")` KeyError on monodomain-only records.
 
 ## Thread
+
+### 2026-07-10: EXECUTION STARTED — PLAN Phase 0 (P-1 backend unification) DONE + committed
+Greenlit ("plan.md is finished, begin implementation"). Branch `engine-tuner-v2-joint`
+(off `textbook-website-refresh`, itself off the implemented `engine-tuner-cardiac-core`
+substrate). **Phase 0 (P-1) complete, committed `be21bfe`.**
+- `tuner/cell_runner_cc.py::run_single_cell_cc` — cell AP on cardiac_core via a 0-D
+  `run_monodomain` on a uniform strip (all cells stimulated → flat field → diffusion
+  inert), driven through the SAME hook-based Rush-Larsen path the tissue-CV runner
+  (`cc_runner`) uses. Multi-pulse pacing patched into the mesh stimulus
+  (`num_pulses`/`bcl`; create_cardiac_mesh hard-codes 1 pulse). So dV/dt (cell) and CV
+  (tissue) now come from ONE model/path → the P1.5 kinetics axis will be identifiable.
+- `tuner/cell_result.py` — CellResult extracted (backend-neutral) so the default AP
+  path imports without pulling `cardiac_sim`; `cell_runner` re-exports it. `config.
+  ionic_backend` flag (default `cardiac_core`); `cell_fitter._evaluate_batch` routes on
+  it, lazy cardiac_sim imports (V5.4 kept for parity only).
+- **KEY FINDING — the V5.4↔cardiac_core parity delta is PACING HISTORY, not the
+  step()-vs-hooks (constf1/constfCa) formulation delta I first suspected.** APD Δ
+  9.35%@6 beats → 1.80%@12 → **0.67%@20**; dV/dt 8.33% → 1.24% → **0.76%**; V_rest
+  0.06% throughout; V_peak 0.56%@20. Both backends converge to a common steady state →
+  the port is FAITHFUL and parity ≤1% holds once paced to steady state (~20 beats). The
+  plan's Risk ordering ("fix multi-pulse pacing FIRST before blaming the model") was
+  right. No re-anchor needed; cardiac_core is the single reference going forward.
+  Downstream cost note: 20-beat cell eval ≈100k CN steps (~min); the feasibility map
+  can use fewer beats where absolute APD precision isn't the gate.
+- Also fixed a pre-existing broken assertion in `test_cell_fitter` (slow, never run in
+  the non-slow baseline): BO's descending `q_batch=min(4, n_iter−i)` gives 4+3+2+1=10
+  candidates, not n_initial+n_iterations. Baseline non-slow suite: 45 passed.
+### 2026-07-10: PLAN Phase 1 (P0 discriminators) DONE + committed (`0c4e349`, `a95ac8a`)
+- **1.1 secant bracket-DOWN** (de-duplicated to the single `cc_runner.fit_D_for_cv`;
+  `run_chip_fit` delegates). On a non-propagating start it now brackets D DOWN into the
+  window (chip window is BELOW D0=1e-3) not the old ×4-up-bump; returns (NaN,NaN) on a
+  genuine block, never a fake D. Calib: target CV=6 → D=5.1e-5 (was returning 0.004,NaN).
+- **1.2 `cv_estimator.resolved_cv`** — dx-ladder (fix θ,D,dt; vary dx), every rung must
+  sit at **r*/dx≥3** (below 3 the CV is grid-corrupted / sign-inverts, arch §4), else
+  converged=False. Verified: resolvable (D=2e-4 fine ladder → converged, CV plateau 12.0,
+  r*/dx 4→17) vs blocked (D=5e-5 coarse ladder → converged=False, r*/dx<3). **Cost note:
+  the fine dx=0.001 ladder is heavy (~8 min for 2 tests) → Phase 2/3 must call it
+  economically** (emulator training shell, not an inner loop).
+- **1.3 hiPSC-window diagnostic — KEY FINDINGS:**
+  - At the saved hiPSC θ (`g_Na=0.5`), **dx=0.1 mm the propagating window is a RAZOR'S
+    EDGE: only D=1e-4 propagates** (CV=5.31 ≈ CV_L target 5.2), and even that at
+    **r*/dx=1.88 (<3, grid-corrupted)**. CV_T=2.6 needs ~4× lower D → deep in the block.
+    ⇒ conductance-only feasibility at dx=0.1 mm for hiPSC is ~NIL; **strongly anticipates
+    lock-3 (finer dx REQUIRED)** — Phase 2's map will test dx∈{0.1,0.05,0.03,0.02}.
+  - **The HIGH-D NaN is SINK OVERLOAD ('no_capture': Vmax stays sub-threshold −41…−67 mV,
+    the sink drains the stimulus before it fires), NOT over-depolarization** — this
+    **CORRECTS architecture §4's hypothesis**. Low-D NaN is the classic source-sink block
+    (Vmax fires +15…+25 but the wave dies). Figure: `media/ionic_model_optimization/
+    images/2026-07-10/hipsc-window_02.png`. (`run_1d_cable` gained `return_vmax`.)
+**Next: P1a (Phase 2) — conductance-only feasibility map over (g_Na,D)×dx×dV/dt_target;
+GATE decides whether P1.5 kinetics is needed. Expect infeasible at dx=0.1 mm per 1.3.**
+
+### 2026-07-10: PLAN Phases 2–4 IMPLEMENTED + committed (`09a7044`,`f08950c`,`bf22fbd`)
+All remaining code written + tested (synthetic where sims are prohibitive); P-1/P0 plus
+these = the full 5-phase plan. Commits on branch `engine-tuner-v2-joint`.
+
+**P1a feasibility map (`feasibility_map.py`) — GATE = conductance-only INFEASIBLE.**
+For each (g_Na, dx) the fixed secant finds the D hitting CV_T, then checks r*/dx≥3.
+Result (hiPSC, CV_T=2.6): infeasible at EVERY dx {0.1,0.05,0.03,0.02 mm}. g_Na=0.5
+floors at **CV≈5.86** even when fully resolved (r*/dx=10.7 @0.02 mm); g_Na=0.15/0.30
+**BLOCK** (nan) at all dx. dV/dt by g_Na = 60/83/109/159 — the widened floor g_Na=0.15
+still can't both slow CV and stay resolved. **The source-sink floor (~5.8 cm/s at
+g_Na=0.5) is the wall: reducing g_Na to slow CV just blocks → conductance scaling
+cannot reach CV_T=2.6.** ⇒ kinetics required. Fig `media/.../feasibility-hipsc_01.png`.
+Design note (vs plan): the map uses the fixed-dx secant + r*/dx≥3 filter (feasible ⇒
+resolved ⇒ CV trustworthy), not a per-point ladder — equivalent, ~Nx cheaper.
+
+**P1.5 kinetics (`cardiac_core/ionic/mhas13/model.py`) — built + validated.** Na knobs
+`tau_m/h/j_scale`, `v_half_shift` on the MHAS13 INSTANCE, applied in the gate HOOKS
+(compute_gate_*), NOT step() — so the tissue solver sees them. Identity default → hooks
+bitwise-unchanged (cardiac_core 11 ionic tests green; PHAS13 untouched). Tests: identity
+parity, PHAS13-safe, **τ_m MOVES cv** (the guard — CV genuinely responds), τ_m
+decouples dV/dt:CV (dV/dt more sensitive than CV — the predicted decoupling; needed
+τ_m×3 + fine CV sampling to clear quantization noise). `cc_runner`/`cell_runner_cc` gain
+a `model=` passthrough so AP + CV use ONE kinetic-scaled model.
+
+**P2 joint fit (`decision_space.py` + `joint_fit.py`) — built + validated (synthetic).**
+- `decision_space`: one `apply(vector)→(kinetic-scaled model, per-axis mesh)`;
+  D_trans FREE; hard r*/dx≥k, soft √D/2:1 warm-starts.
+- `joint_fit`: GP-emulator pattern on the P-1 backend. Three load-bearing fixes found
+  by TDD: (1) **block region MASKED** (NaN never enters a CV GP target — the isfinite
+  guard, fixing joint_refiner's 50.0-penalty cliff); (2) **candidates SOLVE D on the
+  emulator** (batched bisection) to hit each CV target — random D never lands on the
+  thin 'hits both CV' manifold; (3) **GP inputs NORMALIZED** — D~1e-4 vs g_Na~1 span 4
+  orders, so the RBF cannot fit CV without it (this was the real cause of an early
+  all-infeasible result). Constrained scalarization (min AP err s.t. CV tol + r*/dx≥k +
+  dV/dt band) SURFACES infeasibility (names the binding lock). Legacy joint_refiner +
+  pipeline left intact (retired with the sequential path). Note for the REAL high-dim
+  fit: train the CV GP on a REDUCED CV-relevant feature set (g_Na + kinetics + D), not
+  the full 16-dim vector — CV-irrelevant conductances add GP noise (arch open-Q8).
+- Tests (synthetic oracle, no sims): NaN-mask, feasible-only training, known-feasible
+  target converges (CV in tol at r*/dx≥3), infeasible→InfeasReport naming the lock.
+
+**P3 chip/presets (`chip.py`,`presets.py`) — built + tested.** chip_mesh default dx
+0.1→**0.02 mm** (RESOLVED_DX_MM; lock-3, ≈25× cells, reentry inherits). `make_record`
+gains `kinetics` + resolved-grid provenance (achieved_rstar_over_dx, dx_ladder) in
+`validation`. Fixed the pre-existing `export_lab_preset(engine="lbm")` KeyError on
+monodomain-only records (falls back to the present engine + warns).
+
+**P1b re-map with kinetics (DONE) — τ_m is a real lever but INSUFFICIENT ALONE.** Sweeping
+τ_m at g_Na=0.5 (`feasibility-hipsc_02.png`): τ_m LOWERS the CV floor at the tissue level
+(dx=0.05 mm: 5.81→**4.31** @τ_m=1.5; dx=0.03 mm: 5.86→5.60→**5.48** @τ_m=1.0/1.5/2.0),
+confirming the decoupling propagates to CV — but it does NOT reach CV_T=2.6 at r*/dx≥3, and
+high τ_m (≥2.0 @dx=0.05; ≥3.0 @dx=0.03) BLOCKS. This is a 1-axis slice at one g_Na, so it
+does NOT prove infeasibility — the definitive test is the **full joint fit** (τ_m+τ_h+τ_j+
+v_half + g_Na + D jointly, which `joint_fit.refine_joint_cc` does). Escalation if the joint
+fit still can't reach CV_T=2.6 at r*/dx≥3: combine kinetic axes / revisit whether
+CV_T=2.6-at-resolved-grid is physical for MHAS13-matured (the architecture's "change the
+base model" path).
+
+**STATUS: all 11 plan steps implemented + tested; full Optimizer non-slow suite 59 passed /
+0 failed (no regressions); cardiac_core ionic 11 passed. Committed on `engine-tuner-v2-joint`
+(be21bfe, 0c4e349, a95ac8a, 09a7044, f08950c, bf22fbd + docs). REMAINING (gated heavy run,
+not code): the production joint fit → a real θ* on the resolved grid with kinetics.**
 
 ### 2026-03-15: Literature survey reveals single-AP fitting is fundamentally non-unique
 Reviewed 6 key papers on ionic model parameter optimization. Groenendaal 2015 is the critical finding: fitting 9 parameters to a single AP gives near-perfect waveform match (SSE < 0.01 mV^2) but parameters converge to *wrong values*. Adding stochastic stimulation, voltage-clamp data, and iterative refinement drops prediction error by 3 orders of magnitude. This established our requirement for multi-objective optimization with tissue-level targets, not just AP shape.
@@ -55,7 +191,146 @@ The reentry question needs the tuner to fit a **Kit Parker tissue-chip EP set** 
 - **P5**: `export_lab_preset` (Tier-2 YAML) + `_SCHEMA.md` extension + `run_chip_baseline_lbm.py` (LBM planar-wave chip baseline → reentry hand-off).
 - **Key engineering finding**: effective-D meshes need **chi=1.0** (the FDM operator divides by chi; chi=1400 silently kills propagation, Vmax→123 mV). No regressions (32 upstream LBM + cardiac_core suites green). Remaining: full gated fit run + (optional) tissue_fitter rewire.
 
+### 2026-06-30: dt as a 4th tunable, guided by the lateral boundary-speedup number
+Mid-session redirect (before running the gated fits): add **one more fitting
+parameter** to the chip fit. Disambiguated two dimensionless numbers from
+`boundary_conduction_speedup` — the user wants the **lateral boundary speedup**
+(β = D·dt/dx² ⟺ τ = 0.5 + 3β, the side-wall crescent; CV-inert, BC+dt-driven), NOT the
+source-sink `dx/r* = dx·CV/D` (geometry/CV-driven, deferred to the reentry app). The
+knob is **dt** (free; D pinned by CV, dx by chip → dt is the only β dial). Key reality
+checks the user supplied: (1) "dt is free"; (2) no meaningful curvature metric yet, so
+**don't fit to curvature — use the number as a guide**; (3) dt is shared (it also moves
+ionic tuning / APD / CV), so it can't be a clean post-hoc boundary knob. Resolved by
+implementing a **guide, not an optimizer**: `chip.boundary_number(D,dt,dx,bc)→{beta,tau,
+bc,regime}` (matches the engine `tau_from_D`), surfaced in every Tier-1 record (`boundary`,
+per-axis) and the LBM baseline output at the actual run dt. β∝D so dt is per-baseline.
+Avoided over-engineering (the user explicitly stopped an outer-dt/inner-refit design as
+premature without a metric).
+
+**FINAL CHECK (2026-06-30, same session) — the regime is BC-specific, and the chip's BC
+is HBB.** User: "final check. boundaries, ionic engine." Traced cardiac_core: the chip
+LBM wall is `apply_neumann_d2q9` = **full halfway bounce-back (HBB)**, and HBB is
+**forward at ALL τ — no speed-up ever** (the inverse crescent is same-cell-specular-
+specific). So the first version of the guide (labelling τ≲0.67 as "wall speed-up") was
+**wrong for the chip's actual BC**. Fixed: `boundary_number` is now **BC-aware**
+(default `hbb` → truthful "forward, no speed-up"; `specular` → the flip thresholds;
+`zero` → flat). **Root-cause diagnosis (answering "are we miswired?"): NO — the tuner
+uses `run_lbm` correctly; it's an ENGINE GAP.** `run_lbm`/`lbm()` have no LBM BC param,
+`LBMSimulation` is HBB-only, and the specular/α-blend op (`apply_combined`) lives ONLY
+in `boundary_conduction_speedup` research scripts — never ported into any engine src.
+→ The wall speed-up is **unreachable until specular/α-blend is wired into the LBM engine**
+(3-layer port + selector + `lbm()`/`run_lbm` plumbing, mirroring the Phase-0 MRT pattern).
+**Ionic-engine coupling confirmed:** the LBM step integrates Rush-Larsen with the same
+`self.dt`, so the dt knob perturbs APD/upstroke (bounds usable dt). 8 chip tests green
+(BC-aware regimes + HBB-never-speeds-up + engine-τ consistency), no regressions.
+
+### 2026-07-02 (cont.): sequential fit is architecturally BROKEN → JOINT tuning decision + audit
+The GPU overnight run was killed (200 iters + degenerate spontaneous-CL objective → >10 h, no
+records; also the shared GPU got a colleague's 29 GB Jupyter kernel — left untouched, ran on CPU
+instead). Relaunched lean on CPU (n_iter=40, dropped the CL objective, dt-visible): NRVM cell fit
+converged clean (APD err 3.1 ms, dV/dt 0.4 V/s) — **but the tissue leg produced garbage**
+(`D_long=D_trans=0.004`, `CV=nan`). Cable D-sweep diagnosed a **source-sink `r*/dx` block**: at
+dx=0.1 mm the cable only propagates D∈~[5e-5,1e-4] (CV 5–7); below that `r*=D/CV<dx` → block, so
+hiPSC **CV_T=2.6 is unreachable** at chip dx. **User's diagnosis (correct):** we're tuning the
+ionic engine and conduction **independently/sequentially** — cell fit θ→(APD,dV/dt), then frozen-θ
+secant D→CV. Since `CV~sqrt(D·excitability(θ))` and **G_Na is shared** between dV/dt (cell) and
+CV/r* (tissue), the frozen-θ secant can only push D down into the block; it cannot trade G_Na↓+D↑
+to hit slow CV on-grid. **Decision: ionic + conduction must be tuned JOINTLY (never sequential)** —
+one optimizer over θ+D, tissue-in-the-loop, with an `r*≥k·dx` resolvability constraint. This is
+the deferred "Joint refinement" criterion, now on the critical path. Documented:
+`Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md` (proposal + 8 open questions). **Running `/audit` on it
+next.** hiPSC cell fit left running for its θ warm-start; both tissue records superseded.
+
+### 2026-07-02: /audit on the joint-tuning proposal — necessary but NOT sufficient (12 issues, 2 crit / 4 high)
+Adversarial Opus audit of `JOINT_TUNING_ARCHITECTURE.md` (cross-referenced the tuner code + source-sink
+findings). Verdict: joint tuning is the right direction but is **one of four coupled fixes**, and the
+slow hiPSC **CV_T=2.6 cm/s at dx=0.1 mm is unreachable** under current constraints. Key findings:
+(CRIT-1) **dV/dt=110 target structurally forbids the G_Na↓ trade** — at dV/dt≈110 g_Na≈0.83× → CV_T=2.6
+lands at D≈1.6e-5 → r*/dx≈0.62 → block even when joint. Must revise dV/dt to physiological hiPSC ~20–50
+V/s (the open README criterion, now critical-path). (CRIT-2) **dx refinement unavoidable** — the reentry
+campaign needs r*/dx≳3 to *resolve* source-sink; CV_T=2.6 at r*/dx≥3 ⇒ g_Na≈0.17× (< the 0.5 bound →
+infeasible). k=1 only marginally propagates on a grid that doesn't resolve the physics → **k=1 tuning is
+fitting CV to a numerical artifact.** (HIGH) my failure diagnosis was slightly off — the garbage record is
+the secant's **×4 up-bump init failure** (D0=0.001 above window→nan→0.004→nan→fallback), NOT a down-secant
+reaching the block; anisotropy makes **CV_T block first** (r*_trans = r*_long/2); the diagnostic sweep was
+at **NRVM θ not hiPSC**; adding CV creates a **G_Na–D degeneracy** that only dV/dt breaks (catch-22), and
+conductance scaling alone can't decouple dV/dt from CV — needs **Na *kinetics* (gating τ), absent from
+tier-2**. (MED) D=1e-3 nan unexplained (maybe CV-measurement artifact → window may be wider); dead
+`TISSUE_PARAMS` D_trans lower bound (2.5e-5) sits in the block. **Method recommendation: constrained
+scalarization** (minimize AP-morphology error s.t. hard CV_L/CV_T/r*/dx≥k + V_rest/V_peak/dV/dt), NOT
+4-obj qNEHVI — cheaper, reuses `_check_constraints`, and surfaces infeasibility explicitly.
+
+**Revised plan (post-audit): three locks must open together** — (1) revise dV/dt target; (2) widen g_Na /
+add Na kinetics; (3) refine dx (r*/dx as a first-class precondition, ~0.1→~0.03 mm). Method → constrained
+scalarization. Sequenced: **P0** cheap discriminators (fix secant ×4-up-bump→bracket-down [may rescue CV_L];
+re-sweep cable at hiPSC θ; settle D=1e-3 nan) → **P1** feasibility map (sweep g_Na×D at dx∈{0.1,0.05,0.03}
+vs CV_T=2.6/dV/dt/r*/dx≥3, *plot* feasible region) → **P2** build the constrained joint fit only where P1
+proves feasible → **P3** refine chip mesh dx in `chip.py` for the reentry hand-off.
+
+**CPU fit COMPLETED** (both baselines, ~35 min each): cell fits converged (APD err 3.1 ms, dV/dt 0.4 V/s),
+θ saved as warm-starts (`presets/chip_{nrvm,hipsc}.json`); **both tissue fits garbage** (D=0.004, CV=nan —
+block confirmed on BOTH). LBM baseline crashed on a **separate pre-existing bug**: `export_lab_preset(
+engine="lbm")` reads `record["tissue"]["lbm"]` but the monodomain fit only writes `"monodomain"` → KeyError.
+
+### 2026-07-10: JOINT_TUNING_ARCHITECTURE audit-CONVERGED (3 iters) → blueprint next
+Ran the revise→audit→converge loop on `Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md` (Opus auditor,
+read-only, cross-referencing code+research each pass): **iter1** 0c/2h/7m/4l (wrong cost argument;
+ignored existing `joint_refiner.py` GP-emulator; wrong CFL story — solver is implicit CN; constraint
+table self-contradiction) → **iter2** 1c/3h/5m/4l (⚑ CRITICAL two-backend blocker: cell fit runs
+`cardiac_sim`/V5.4, tissue runs `cardiac_core` → kinetics unidentifiable; kinetics file path didn't
+exist; emulator overclaim; wrong g_Na/dx numbers) → **iter3 CONVERGED 0c/0h** (all fixes verified
+true against code, 1m/3l folded). Settled architecture (details in the doc): **three-leg** =
+resolution shell (dx/dt resolved-not-fit via convergence-extrapolating CV estimator) ⊃ constraint
+graph (known-true pair relations; anisotropy is SOFT) ⊃ physical joint fit ({θ, kinetics, D_long,
+D_trans free, Cm}) via **constrained scalarization on a GP emulator** (extend `joint_refiner.py`).
+**Plan skeleton P-1→P3**: P-1 backend unification (blocker) → P0 discriminators (secant bump, hiPSC-θ
+sweep, high-D nan) → P1a conductance-only feasibility map → P1.5 kinetics model change (gated) → P1b
+→ P2 emulator joint fit → P3 refine chip dx (~0.02 mm). **Three coupled locks** (dV/dt target
+CONTESTED vs README, g_Na floor ≤0.17, dx ~0.02 mm) + necessary-not-sufficient.
+
+**PLAN.md generated + audit-CONVERGED (3 iters, 2026-07-10).** `/blueprint` → PLAN.md (5 phases, 11
+steps, cold-start format) superseding the completed cross-plan (archived). Audit-converge loop:
+**iter1** 1c/1h/6m/4l — ⚑ CRITICAL: kinetics scaling was placed in `MHAS13.step()`, but the tissue
+Rush-Larsen solver drives the model via the `compute_gate_*` HOOKS and never calls `step()` → the
+axis would be invisible to CV (re-creating the two-backend bug). Fixed: scale in
+`compute_gate_time_constants`/`compute_gate_steady_states`; cell AP driven via a 0-D `run_monodomain`
+(same hook path). **iter2** 0c/1h/1m/2l — Step 0.1 needed multi-pulse pacing-to-steady-state (parity)
++ correct metric arg order / V-node reduction. **iter3 CONVERGED 0c/0h** (all fixes code-verified; 2
+residual minors folded: save_every, measure_peak arg). **Both docs now audit-converged: architecture
+(3 iters) + plan (3 iters).** Plan is execution-ready — **hard gate: no implementation before explicit
+"go".** Next physical step when greenlit: P-1 (backend unification).
+
+### 2026-07-02: engine gap CLOSED (user fixed cardiac_core) + overnight fit FIRED
+User implemented the specular BC in cardiac_core over 2026-07-01/02 (commits `40cd2ca`
+P1 run_lbm/simulate forward boundary+alpha; `1dda8f6` C1 MRT/per-axis wall modes; Phase
+3–5 hardening). I re-checked both gaps: (1) `run_lbm(boundary=,alpha=)` forwards ✓;
+(2) collision-gate removed + new `lbm_step_d2q9_mrt_wall` → **specular works on the
+anisotropic MRT chip** ✓. Smoke via `run_lbm` on an anisotropic chip: specular changes
+the field 1.38 mV, wall-localized (1.38 wall vs 0.68 interior), combined(α=0.5)
+intermediate (0.67) = correct α-blend. 67 cc LBM tests green. Aligned the guide's BC
+vocab to the engine's WALL_MODES names (9 chip tests green). **Green light → FIRED the
+overnight run** (`run_chip_fit.py` full BayesOpt EP fit → Tier-1 records for nrvm+hipsc,
+then `run_chip_baseline_lbm.py`), GPU, logged to `Optimizer/V1/chip_fit_overnight_2026-07-02.log`.
+LBM baseline runs HBB (neutral) by default; specular is now an opt-in wall-curvature study.
+**Next: read results in the morning** — CV_L/CV_T achieved, APD, λ, cross-engine offsets,
+preset paths → log to KNOWLEDGE + tick completion criteria.
+
 ## Failed Approaches
+
+- **Sequential cell→tissue tuning** (2026-07-02) — failed because: CV depends on (θ,D) jointly and
+  G_Na is shared between dV/dt (cell stage) and CV/r* (tissue stage); freezing θ leaves only D to
+  hit CV, driving slow targets into the r*/dx<1 source-sink block. Ionic + conduction must be tuned
+  JOINTLY. Both baselines reproduced garbage tissue (D=0.004, CV=nan).
+- **Secant D fallback that bumps D UP ×4 on failure** (`_fit_D_for_cv`, 2026-07-02) — failed because:
+  for slow chip targets the propagating window is BELOW D0=0.001, so bumping up (→0.004) goes the
+  wrong way into the nan zone → returns (0.004, nan). Should bracket-DOWN into the window.
+- **k=1 resolvability constraint (r*/dx≥1)** (2026-07-02, audit) — insufficient because: r*/dx≥1 only
+  marginally propagates on a grid that does NOT resolve source-sink curvature (needs r*/dx≳3); CV
+  there is grid-dependent/"fudgable" → fitting CV to a numerical artifact. Use k≈3.
+- **4-objective qNEHVI for the joint fit** (2026-07-02, audit) — rejected in favor of constrained
+  scalarization: 4-obj hypervolume under tissue-in-the-loop is expensive and returns silent dominated
+  compromises instead of surfacing infeasibility ("no (θ,D) hits CV_T at r*/dx≥3 within g_Na bounds").
+
 
 - **dVdt target of 25 V/s** (2026-03-16) — failed because: this target was derived from mature ventricular CM literature, but MHAS13 with TTP06 IK1 injection inherently has fast sodium kinetics. Its physiological range is 80-130 V/s. The target and the model are fundamentally mismatched; fixing it requires either revising the target or modifying Na channel gating (not conductance scaling).
 
@@ -76,3 +351,13 @@ The reentry question needs the tuner to fit a **Kit Parker tissue-chip EP set** 
 - **Implemented all 6 phases** on branch `engine-tuner-cardiac-core` (11 commits, ~30 new tests, no regressions — 32 upstream LBM + cardiac_core suites green): P0 cardiac_core seam (`create_cardiac_mesh(D_yy=)` + `lbm()` instance pass-through) + **LBM D2Q9-MRT anisotropy** (vendored `cardiac_core/_lbm` + upstream `LBM/Engine_V1`) + dx≠dt diffusion benchmark proving the s→D mapping; P1 `cc_runner.py` (CV via functional API, mono/bidomain/lbm, CV∝√D); P2 `chip.py` (161² Parker mesh + anisotropic targets); P3 `presets.py` Tier-1 records + `run_chip_fit.py` (smoke; full fit GATED); P4 `cross_engine.py` (mono↔bidomain CV_T ~12%, mono↔lbm ~29%); P5 `export_lab_preset` + `_SCHEMA.md` ext + `run_chip_baseline_lbm.py`.
 - **Engine finding (chi convention)**: effective-D meshes require **chi=1.0** — the monodomain FDM operator solves χ·Cm·∂V/∂t=∇·(D·∇V), so membrane-effective D = D/(χ·Cm); the default chi=1400 silently under-diffuses ~1400× → discretization conduction block (Vmax pools 80–123 mV). Empirically confirmed: degeneracy (D=1e-3,χ=1400 ≡ D=7.14e-7,χ=1, bit-identical block) + block-is-discretization (propagates at finer dx) + **the real chip regime (effD=2.5e-5) propagates cleanly at chip dx, CV≈6 cm/s — no artificial block**. Logged as API-debt to `engine_consolidation` IDEALOG (firewall bypass; recommend a `mode=` flag or routing through `ConductivityConfig`).
 **Next**: Run the gated full fits (`run_chip_fit.main`, then `run_chip_baseline_lbm.main`); watch hiPSC-5.2 dx adequacy. Optional: tissue_fitter rewire; `create_cardiac_mesh` chi fix.
+
+### 2026-07-02 → 07-10 Session (long, multi-thread)
+**Worked on**: (1) the lateral-boundary-speedup dt guide; (2) the cardiac_core specular-BC engine gap + fix verification; (3) executing the gated chip fits — which exposed a fundamental tissue-fit failure; (4) diagnosing it to a sequential-architecture flaw; (5) the JOINT tuning architecture redesign, audit-converged; (6) the PLAN.md blueprint, audit-converged.
+**Accomplished**:
+- **dt boundary-speedup guide** (`chip.boundary_number`, β=D·dt/dx²=τ) shipped BC-aware (default HBB → truthful "no speed-up"; specular flip only under specular). Final-check found the chip runs HBB, not specular → user fixed cardiac_core (commits `40cd2ca`/`1dda8f6`: run_lbm forwards boundary/alpha; MRT+specular co-exist). Verified: anisotropic-MRT chip + specular runs, wall-localized field change (1.38 mV), α-blend monotone.
+- **Gated chip fits run** (GPU run killed at 10.5 h — n_iter=200 + degenerate spontaneous-CL 5 s-sims; also a colleague's 29 GB Jupyter kernel on the shared GPU, left untouched → moved to CPU). Lean CPU rerun (n_iter=40, dropped CL objective): **cell fits converged** (APD err 3.1 ms, dV/dt 0.4) but **tissue fits garbage** (D=0.004, CV=nan) on BOTH baselines.
+- **Root cause = sequential architecture** (user's diagnosis, correct): θ frozen after cell fit, D-only secant → slow targets driven into the **r*/dx<1 source-sink block**; G_Na shared between dV/dt (cell) and CV/r* (tissue) → can't trade. **Decision: joint (never sequential).**
+- **Architecture `JOINT_TUNING_ARCHITECTURE.md` audit-CONVERGED (3 iters)** — three-leg (resolution shell / constraint graph / physical joint fit); FIT physical / RESOLVE numerical; convergence-aware CV estimator; attack-all high-dim; known-true pair constraints. Audits caught: ignored `joint_refiner.py`, wrong CFL story (implicit CN), **two ionic backends** (cell=cardiac_sim/V5.4 vs tissue=cardiac_core → P-1 unification blocker), kinetics-in-hooks.
+- **PLAN.md audit-CONVERGED (3 iters)** — 5 phases P-1→P3; audit caught the kinetics-scaling-in-`step()`-vs-hooks bug (tissue solver uses `compute_gate_*` hooks, never `step()`) + pacing-to-steady-state parity.
+**Next**: GATED — execute PLAN.md starting at **P-1 (backend unification)**. Awaiting explicit "go". Session-end commit pending (user commits after /clear).
