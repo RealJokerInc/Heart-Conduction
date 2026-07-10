@@ -38,6 +38,11 @@ class TuningTargets:
 class TuningConfig:
     """Configuration for an optimization run."""
     ionic_model: str = 'mhas13'     # 'mhas13' | 'phas13'
+    # Backend for single-cell AP evaluation (P-1 backend unification):
+    #   'cardiac_core' (default) — AP on the cardiac_core hook path, one model with
+    #                              the tissue-CV path (kinetics axis identifiable).
+    #   'cardiac_sim'  — legacy V5.4 batched path (cell_runner), kept for parity tests.
+    ionic_backend: str = 'cardiac_core'
     tier: int = 2                   # Parameter tier (1=6, 2=10, 3=14 params)
     seed: int = 42                  # Reproducibility seed
     device: str = 'cuda'

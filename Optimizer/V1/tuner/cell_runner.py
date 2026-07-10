@@ -30,18 +30,10 @@ _V_REST = {
 }
 
 
-@dataclass
-class CellResult:
-    """Results from a single-cell simulation."""
-    apd90: Optional[float] = None
-    dvdt_max: Optional[float] = None
-    v_rest: float = 0.0
-    v_peak: float = 0.0
-    cl: Optional[float] = None
-    V_trace: Optional[np.ndarray] = None
-    t_trace: Optional[np.ndarray] = None
-    restitution: Optional[List[Tuple[float, float]]] = None
-    converged: bool = True
+# CellResult moved to cell_result.py (backend-neutral — importable without the
+# cardiac_sim/V5.4 import this module performs above). Re-exported here so existing
+# `from .cell_runner import CellResult` call sites keep working.
+from .cell_result import CellResult  # noqa: E402,F401
 
 
 def run_single_cell_batch(theta_batch: torch.Tensor,

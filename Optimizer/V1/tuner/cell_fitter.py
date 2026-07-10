@@ -24,10 +24,10 @@ from .config import (
     TuningConfig, TuningTargets,
     get_bounds_tensor, get_param_names,
 )
-from .cell_runner import (
-    run_single_cell_batch, extract_biomarkers_batch,
-    run_spontaneous, CellResult,
-)
+from .cell_result import CellResult
+# The V5.4 (`cardiac_sim`) AP functions in cell_runner are imported LAZILY inside
+# _evaluate_batch so the default cardiac_core AP path never triggers the cardiac_sim
+# import at module load (P-1 backend unification).
 
 
 CONSTRAINT_PENALTY = -2000.0  # Heavy penalty for constraint violations
@@ -72,8 +72,13 @@ def _evaluate_batch(theta_batch: torch.Tensor, config: TuningConfig,
     if targets.spontaneous_cl is not None:
         n_obj = 3
 
-    t, V_all = run_single_cell_batch(theta_batch, config)
-    results = extract_biomarkers_batch(t, V_all, config, targets)
+    if config.ionic_backend == 'cardiac_core':
+        from .cell_runner_cc import run_cell_batch_cc
+        results = run_cell_batch_cc(theta_batch, config, targets)
+    else:
+        from .cell_runner import run_single_cell_batch, extract_biomarkers_batch
+        t, V_all = run_single_cell_batch(theta_batch, config)
+        results = extract_biomarkers_batch(t, V_all, config, targets)
 
     Y = torch.full((M, n_obj), CONSTRAINT_PENALTY, dtype=config.dtype)
 
@@ -101,6 +106,9 @@ def _evaluate_batch(theta_batch: torch.Tensor, config: TuningConfig,
         for i in range(M):
             if Y[i, 0] <= CONSTRAINT_PENALTY + 1:
                 continue  # Already penalized
+            # Deprecated spontaneous-CL objective: MHAS13 is quiescent, so this only
+            # has meaning on the V5.4 path (lazy import — off the default AP path).
+            from .cell_runner import run_spontaneous
             spont = run_spontaneous(theta_batch[i], config, duration_ms=5000.0)
             if spont.cl is not None and spont.converged:
                 Y[i, 2] = -abs(spont.cl - targets.spontaneous_cl)
