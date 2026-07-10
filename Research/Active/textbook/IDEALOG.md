@@ -57,8 +57,15 @@ exact real-engine traces offline (GPU: one steady-state AP ≈ 0.065s, whole dat
 PHAS13 nuance: free-run (no stim) + report spontaneous cycle length (g_f → automaticity demo). Wrote detailed design
 brief `AP_EXPLORER_PLAN.md` (engines+knobs table, `gen_ap_traces.py` generation spec, JSON data format, page UI with
 combine/isolate panels + current glossary, Tools-nav integration, NOT in PDF). Cheatsheet doc-gap flagged (§4 lists only
-ttp06/ord). Next: `/blueprint` AP_EXPLORER_PLAN → PLAN, then Phase 1 = generation script + validated trace bank.
-Textbook-refresh Phases 1–2 remain committed on branch `textbook-website-refresh`; Phase 3 widgets paused.
+ttp06/ord). **BUILT & COMMITTED same day (`4c70236`):** `gen_ap_traces.py` (torch.compile-batched CPU, 4.5M cell-steps/s;
+per-cell tensor conductances broadcast in `model.step`) → exact trace bank `website/data/ap_explorer/*.json` (8 configs,
+924KB, Vm uint8+b64); widget `figures/ap-explorer.js` + `chapters/playground.html` + "Interactive Tools" nav + `.apx-*` CSS.
+Validated all 4 engines (TTP06 236/236/293 ENDO/EPI/M · ORd 258/239/377 · PHAS13 CL1634/APD568 · MHAS13 537 ms), GNa
+1×→0× drops Vpeak 57.7→22.8 live, PHAS13 shows spontaneous pacemaker beats (I_f flagship knob), both themes, 0 console
+errors, PDF unchanged 195pp (tool excluded). Metrics computed on full-dt trace (upstroke not aliased); PHAS13 APD measured
+on a single spontaneous beat (not the multi-beat window). **REMAINING:** textbook-refresh Phase 3 figure-widgets (still
+paused), Phase 4 polish; possible AP-explorer polish (crop paced x-axis diastole; MHAS13 beats-to-SS). Cheatsheet §4
+doc-gap (add phas13/mhas13) still open. All on branch `textbook-website-refresh` (Phases 1–2 + AP explorer committed).
 
 ### 2026-07-03: Blueprint → PLAN.md, adversarial audit ×2 → CONVERGED
 `/blueprint` turned `REFRESH_PLAN.md` + codebase analysis into a machine-targeted `PLAN.md` (4 phases: fix/re-shell
