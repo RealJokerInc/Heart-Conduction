@@ -29,34 +29,41 @@ from tuner.joint_fit import (make_sim_evaluator, refine_joint_cc,       # noqa: 
 from tuner.presets import make_record, save_record, load_record, PRESETS_DIR  # noqa: E402
 
 
-def _seed_vectors(axes, base_theta):
-    """Known-propagating warm-start vectors (from the P0/P1a map): the saved cell-fit
-    conductances × a couple τ_m values × D pairs that DO propagate at the resolved grid.
-    These anchor the CV GP with feasible points (pure Sobol rarely hits the thin manifold)."""
+def _seed_vectors(axes, base_theta, *, tunable_dx=True):
+    """Known-propagating warm-start vectors: the saved cell-fit conductances × a couple
+    τ_m values × D pairs × (if tunable) coarse dx values. These anchor the CV GP with
+    propagating points (pure Sobol rarely hits the slow-CV manifold). With dx tunable, the
+    seeds span coarse dx (0.2–0.3 mm) where slow CV lives at a moderate, non-blocking D."""
+    dx_seeds_cm = [0.02, 0.03] if tunable_dx else [None]     # 0.2, 0.3 mm
+    D_pairs = [(1.25e-4, 6.25e-5), (2.0e-4, 1.0e-4), (3.0e-4, 1.5e-4)]
     seeds = []
     for tau_m in (1.0, 1.5, 2.0):
-        for D_long, D_trans in [(1.25e-4, 6.25e-5), (2.0e-4, 1.0e-4), (3.0e-4, 1.5e-4)]:
-            v = []
-            for a in axes:
-                if a.subsystem == "cond":
-                    v.append(float(base_theta.get(a.name, 1.0)))
-                elif a.name == "tau_m_scale":
-                    v.append(tau_m)
-                elif a.subsystem == "kinetic":
-                    v.append(0.0 if a.name == "v_half_shift" else 1.0)
-                elif a.name == "D_long":
-                    v.append(D_long)
-                elif a.name == "D_trans":
-                    v.append(D_trans)
-                else:
-                    v.append(1.0)
-            seeds.append(v)
+        for D_long, D_trans in D_pairs:
+            for dx_cm in dx_seeds_cm:
+                v = []
+                for a in axes:
+                    if a.subsystem == "cond":
+                        v.append(float(base_theta.get(a.name, 1.0)))
+                    elif a.name == "tau_m_scale":
+                        v.append(tau_m)
+                    elif a.subsystem == "kinetic":
+                        v.append(0.0 if a.name == "v_half_shift" else 1.0)
+                    elif a.name == "D_long":
+                        v.append(D_long)
+                    elif a.name == "D_trans":
+                        v.append(D_trans)
+                    elif a.name == "dx_cm":
+                        v.append(dx_cm if dx_cm is not None else 0.02)
+                    else:
+                        v.append(1.0)
+                seeds.append(v)
     return seeds
 
 
 def run(baseline="hipsc", dx_mm=RESOLVED_DX_MM, n_training=40, n_validate=12,
         n_candidates=4000, n_beats_cell=6, gNa_floor=0.15, kinetics=True,
-        cable_length_cm=0.4, seed=42, smoke=False):
+        cable_length_cm=0.4, seed=42, smoke=False, tunable_dx=True,
+        dx_bounds_mm=(0.02, 0.5)):
     dx_cm = dx_mm / 10.0
     config = TuningConfig(
         device="cpu", ionic_model="mhas13", tier=2,
@@ -65,28 +72,29 @@ def run(baseline="hipsc", dx_mm=RESOLVED_DX_MM, n_training=40, n_validate=12,
         n_beats=n_beats_cell, pacing_cl=1000.0, dt_cell=0.2,
         dx_mm=dx_mm, domain_mm=16.0,
     )
-    axes = build_axes(tier=2, gNa_floor=gNa_floor, include_kinetics=kinetics)
+    dx_bounds_cm = (dx_bounds_mm[0] / 10.0, dx_bounds_mm[1] / 10.0)
+    axes = build_axes(tier=2, gNa_floor=gNa_floor, include_kinetics=kinetics,
+                      include_dx=tunable_dx, dx_bounds_cm=dx_bounds_cm)
     base_theta = load_record(f"chip_{baseline}")["theta_ionic"]
     targets = PARKER[baseline]
 
     if smoke:
         n_training, n_validate, n_candidates = 6, 3, 500
-        dx_cm = 0.005; config.dx_cm = dx_cm; config.dx_mm = 0.05; cable_length_cm = 0.3
-        config.cable_length_cm = cable_length_cm
 
     ev = make_sim_evaluator(config, axes, base_theta, resolved_dx_cm=dx_cm,
-                            n_beats_cell=n_beats_cell)
+                            n_beats_cell=n_beats_cell, require_resolved=not tunable_dx)
 
-    print(f"[joint fit] baseline={baseline} dx={config.dx_mm}mm axes={len(axes)} "
-          f"n_training={n_training} n_validate={n_validate} "
+    print(f"[joint fit] baseline={baseline} axes={len(axes)} tunable_dx={tunable_dx} "
+          f"dx_bounds={dx_bounds_mm}mm n_training={n_training} n_validate={n_validate} "
           f"targets(CV_L={targets.cv_longitudinal},CV_T={targets.cv_transverse})",
           flush=True)
 
-    seeds = _seed_vectors(axes, base_theta)
+    seeds = _seed_vectors(axes, base_theta, tunable_dx=tunable_dx)
     res = refine_joint_cc(
         axes, ev, targets, config=config, base_theta=base_theta,
         n_training=n_training, n_candidates=n_candidates, n_validate=n_validate,
-        cv_tol=0.12, dvdt_band=(20.0, 130.0), seed=seed, seed_points=seeds, verbose=True,
+        cv_tol=0.12, dvdt_band=(20.0, 130.0), seed=seed, seed_points=seeds,
+        require_resolved=not tunable_dx, verbose=True,
     )
 
     if isinstance(res, JointFitResult):
@@ -103,13 +111,15 @@ def run(baseline="hipsc", dx_mm=RESOLVED_DX_MM, n_training=40, n_validate=12,
                             "long": res.achieved["rstar_over_dx_l"],
                             "trans": res.achieved["rstar_over_dx_t"]}},
             provenance={"tuner_version": "V2",
-                        "fit": "joint_constrained_scalarization"},
-            dx_mm=config.dx_mm,
+                        "fit": "joint_constrained_scalarization",
+                        "dx_tunable": tunable_dx},
+            dx_mm=(res.dx_cm * 10.0 if res.dx_cm else config.dx_mm),
         )
         path = save_record(rec, name=f"chip_{baseline}_joint")
+        dxmm = (res.dx_cm * 10.0) if res.dx_cm else config.dx_mm
         print(f"\n=== JOINT FIT SUCCESS ===\nθ*={res.theta}\nkinetics={res.kinetics}\n"
-              f"D_long={res.D_long:.3e} D_trans={res.D_trans:.3e}\nachieved={res.achieved}\n"
-              f"saved: {path}", flush=True)
+              f"D_long={res.D_long:.3e} D_trans={res.D_trans:.3e} dx={dxmm:.3f}mm\n"
+              f"achieved={res.achieved}\nsaved: {path}", flush=True)
     else:
         print(f"\n=== INFEASIBLE (binding lock: {res.binding_lock}) ===\n{res.detail}",
               flush=True)

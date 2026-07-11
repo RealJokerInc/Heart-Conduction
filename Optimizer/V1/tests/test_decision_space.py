@@ -48,6 +48,26 @@ def test_apply_roundtrip():
     assert float(mesh.D_yy.max()) == pytest.approx(5e-5)      # D_trans (free)
 
 
+def test_dx_axis():
+    """include_dx adds a tunable grid axis; apply() uses it for the mesh; dx_of reads it."""
+    from tuner.decision_space import build_axes, apply, dx_of
+    cfg = _cfg()
+    axes = build_axes(tier=2, include_kinetics=False, include_dx=True,
+                      dx_bounds_cm=(0.002, 0.05))
+    dx_ax = [a for a in axes if a.name == 'dx_cm']
+    assert len(dx_ax) == 1 and dx_ax[0].subsystem == 'grid'
+    assert dx_ax[0].bounds == (0.002, 0.05)
+
+    vec = _vector(axes, {'dx_cm': 0.02, 'D_long': 1e-4, 'D_trans': 5e-5})
+    assert dx_of(vec, axes) == pytest.approx(0.02)
+    _model, mesh = apply(vec, axes, cfg)
+    assert float(mesh.dx) == pytest.approx(0.02)        # dx_cm=0.02 → 0.2 mm mesh
+
+    # dx-absent build → dx_of returns None (back-compat)
+    axes0 = build_axes(tier=2, include_kinetics=False, include_dx=False)
+    assert dx_of(_vector(axes0, {}), axes0) is None
+
+
 def test_dtrans_free():
     from tuner.decision_space import build_axes, apply
     cfg = _cfg()

@@ -38,7 +38,7 @@ from botorch.fit import fit_gpytorch_mll
 from botorch.utils.sampling import draw_sobol_samples
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from .decision_space import Axis, apply, bounds_arrays
+from .decision_space import Axis, apply, bounds_arrays, dx_of
 from .cc_runner import run_1d_cable
 from .cell_runner_cc import run_single_cell_cc
 from .cv_estimator import rstar_cm, resolved_cv
@@ -66,6 +66,7 @@ class JointFitResult:
     D_long: float
     D_trans: float
     achieved: Dict[str, float]
+    dx_cm: Optional[float] = None
     infeasible: bool = False
     binding_lock: Optional[str] = None
 
@@ -91,21 +92,30 @@ def _extract_D(vector, axes):
 
 
 def make_sim_evaluator(config, axes, base_theta, resolved_dx_cm, *,
-                       k=RSTAR_OVER_DX_FLOOR, n_beats_cell=4):
-    """The real (cardiac_core) evaluator: apply(vector) → cell AP + tissue CV at the
-    resolved dx, on ONE kinetic-scaled model. Blocked axes → NaN CV → feasible_sim=False."""
-    cfg_dx = _replace(config, dx_cm=resolved_dx_cm)
+                       k=RSTAR_OVER_DX_FLOOR, n_beats_cell=4, require_resolved=True):
+    """The real (cardiac_core) evaluator: apply(vector) → cell AP + tissue CV, on ONE
+    kinetic-scaled model. If a 'dx_cm' axis is present, CV is measured at the candidate's
+    OWN dx (dx as a physical decision variable); else at `resolved_dx_cm`. The cable
+    length is bounded so there are always ~enough cells to time the front regardless of
+    dx. `require_resolved=False` drops the r*/dx≥k feasibility requirement (dx is a
+    physical knob — slow source-sink-limited CV lives at r*/dx<3); r*/dx is still recorded
+    for provenance. Blocked axes → NaN CV → feasible_sim=False."""
 
     def ev(vector):
         model, _mesh = apply(vector, axes, config, base_theta=base_theta)
         cell = run_single_cell_cc(None, config, model=model, n_beats=n_beats_cell)
         D_long, D_trans = _extract_D(vector, axes)
+        dx_cm = dx_of(vector, axes) or resolved_dx_cm
+        # keep ~30-150 cells (bounded physical length so t_end stays sane at coarse dx)
+        cable_cm = min(1.5, max(0.3, 50.0 * dx_cm))
+        cfg_dx = _replace(config, dx_cm=dx_cm, cable_length_cm=cable_cm)
         cv_l = run_1d_cable(None, D_long, cfg_dx, model=model)
         cv_t = run_1d_cable(None, D_trans, cfg_dx, model=model)
-        rox_l = (rstar_cm(D_long, cv_l) / resolved_dx_cm) if math.isfinite(cv_l) else float("nan")
-        rox_t = (rstar_cm(D_trans, cv_t) / resolved_dx_cm) if math.isfinite(cv_t) else float("nan")
-        feasible = (math.isfinite(cv_l) and math.isfinite(cv_t)
-                    and rox_l >= k and rox_t >= k)
+        rox_l = (rstar_cm(D_long, cv_l) / dx_cm) if math.isfinite(cv_l) else float("nan")
+        rox_t = (rstar_cm(D_trans, cv_t) / dx_cm) if math.isfinite(cv_t) else float("nan")
+        propagate = math.isfinite(cv_l) and math.isfinite(cv_t)
+        resolved = (rox_l >= k and rox_t >= k) if propagate else False
+        feasible = propagate and (resolved if require_resolved else True)
         apd = cell.apd90 if cell.apd90 is not None else float("nan")
         dvdt = cell.dvdt_max if cell.dvdt_max is not None else float("nan")
         return PointEval(list(vector), apd, dvdt, cv_l, cv_t, rox_l, rox_t, bool(feasible))
@@ -156,8 +166,10 @@ def build_emulator(X, evals, axes):
     gp_feas = _fit_gp(X, y_feas)
     feas_idx = list(range(X.shape[-1]))
 
-    cvl_idx = _feature_idx(axes, lambda a: a.name == "g_Na" or a.subsystem == "kinetic" or a.name == "D_long")
-    cvt_idx = _feature_idx(axes, lambda a: a.name == "g_Na" or a.subsystem == "kinetic" or a.name == "D_trans")
+    # CV depends on g_Na + kinetics + the D axis + (if tunable) dx; the 0-D cell AP does
+    # NOT depend on D or dx, so apd/dvdt use only conductances+kinetics.
+    cvl_idx = _feature_idx(axes, lambda a: a.name in ("g_Na", "D_long", "dx_cm") or a.subsystem == "kinetic")
+    cvt_idx = _feature_idx(axes, lambda a: a.name in ("g_Na", "D_trans", "dx_cm") or a.subsystem == "kinetic")
     ap_idx = _feature_idx(axes, lambda a: a.subsystem in ("cond", "kinetic"))
 
     def _gp_on(row_ok, attr, idx):
@@ -208,7 +220,8 @@ def _solve_D_batch(gp_cv, gp_idx, C, idx_D, target_cv, D_lo, D_hi, n_iter=30):
 def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
                     n_training=40, n_candidates=4000, n_validate=15, seed=42,
                     cv_tol=0.12, dvdt_band=(20.0, 130.0), k=RSTAR_OVER_DX_FLOOR,
-                    emulator_margin=0.6, seed_points=None, verbose=False):
+                    emulator_margin=0.6, seed_points=None, require_resolved=True,
+                    verbose=False):
     """Joint fit: train emulator, run constrained scalarization on it, validate top-k.
 
     Objective: minimize AP-morphology error (|APD−target|) subject to hard constraints
@@ -221,13 +234,14 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
                                   seed_points=seed_points)
     emu = build_emulator(X, evals, axes)
 
-    # If almost nothing propagated+resolved, the binding lock is resolution/excitability.
+    # If almost nothing was feasible, we can't train the CV emulator.
     if emu["n_feasible"] < 2 or emu["cvt"] is None or emu["cvl"] is None:
+        gate = ("propagate + r*/dx≥%g on both axes" % k) if require_resolved else "propagate on both axes"
         return InfeasReport(
-            binding_lock="resolution/excitability",
-            detail=(f"only {emu['n_feasible']}/{n_training} training points reached "
-                    f"r*/dx≥{k} on both axes — CV_T={CV_T} unresolvable in this box "
-                    f"(refine dx / widen g_Na / add kinetics)."))
+            binding_lock="excitability/propagation",
+            detail=(f"only {emu['n_feasible']} training points could {gate} — too few to "
+                    f"train the CV emulator for CV_T={CV_T} (add seeds / widen g_Na / "
+                    f"kinetics / dx)."))
 
     lo, hi = bounds_arrays(axes)
     bounds = torch.tensor([lo, hi], dtype=torch.float64)
@@ -235,6 +249,7 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
 
     idx_Dl = [i for i, a in enumerate(axes) if a.name == "D_long"][0]
     idx_Dt = [i for i, a in enumerate(axes) if a.name == "D_trans"][0]
+    idx_dx = next((i for i, a in enumerate(axes) if a.name == "dx_cm"), None)
     dx_cm = getattr(config, "dx_mm", 1.0) / 10.0 if config is not None else None
 
     # SOLVE D on the emulator so every candidate HITS its CV target (D determines CV
@@ -259,13 +274,15 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
     m_cvl = (cvl_p - CV_L).abs() / CV_L < cv_tol * emulator_margin
     m_cvt = (cvt_p - CV_T).abs() / CV_T < cv_tol * emulator_margin
     m_dvdt = (dvdt_p >= dvdt_band[0]) & (dvdt_p <= dvdt_band[1])
-    if dx_cm:
-        # r*/dx from the SOLVED D and the TARGET CV (CV≈target by construction).
-        rox_l = (C[:, idx_Dl] / (CV_L / 1000.0)) / dx_cm
-        rox_t = (C[:, idx_Dt] / (CV_T / 1000.0)) / dx_cm
-        m_rox = (rox_l >= k) & (rox_t >= k)
+    # r*/dx from the SOLVED D and the TARGET CV, at each candidate's OWN dx (if tunable).
+    dx_vec = (C[:, idx_dx] if idx_dx is not None
+              else torch.full((len(C),), float(dx_cm) if dx_cm else 1.0, dtype=C.dtype))
+    rox_l = (C[:, idx_Dl] / (CV_L / 1000.0)) / dx_vec
+    rox_t = (C[:, idx_Dt] / (CV_T / 1000.0)) / dx_vec
+    if require_resolved:
+        m_rox = (rox_l >= k) & (rox_t >= k)      # continuum-resolved (hard) constraint
     else:
-        m_rox = torch.ones(len(C), dtype=torch.bool)
+        m_rox = torch.ones(len(C), dtype=torch.bool)   # dx is a physical knob → no floor
 
     feasible = m_feas & m_cvl & m_cvt & m_dvdt & m_rox
     if not feasible.any():
@@ -299,12 +316,12 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
                             detail="emulator-feasible candidates failed real validation "
                                    "(refit near the validation set).")
 
-    theta, kinetics, D_long, D_trans = _unpack(best.vector, axes, base_theta)
+    theta, kinetics, D_long, D_trans, dx_cm = _unpack(best.vector, axes, base_theta)
     return JointFitResult(
-        theta=theta, kinetics=kinetics, D_long=D_long, D_trans=D_trans,
+        theta=theta, kinetics=kinetics, D_long=D_long, D_trans=D_trans, dx_cm=dx_cm,
         achieved={"apd90": best.apd90, "dvdt": best.dvdt, "cv_l": best.cv_l,
                   "cv_t": best.cv_t, "rstar_over_dx_l": best.rstar_over_dx_l,
-                  "rstar_over_dx_t": best.rstar_over_dx_t})
+                  "rstar_over_dx_t": best.rstar_over_dx_t, "dx_cm": dx_cm})
 
 
 def _binding_lock(m_feas, m_cvl, m_cvt, m_dvdt, m_rox, n):
@@ -328,7 +345,7 @@ def _binding_lock(m_feas, m_cvl, m_cvt, m_dvdt, m_rox, n):
 
 def _unpack(vector, axes, base_theta):
     theta, kinetics = dict(base_theta or {}), {}
-    D_long = D_trans = None
+    D_long = D_trans = dx_cm = None
     for ax, v in zip(axes, vector):
         v = float(v)
         if ax.subsystem == "cond":
@@ -339,4 +356,6 @@ def _unpack(vector, axes, base_theta):
             D_long = v
         elif ax.name == "D_trans":
             D_trans = v
-    return theta, kinetics, D_long, D_trans
+        elif ax.name == "dx_cm":
+            dx_cm = v
+    return theta, kinetics, D_long, D_trans, dx_cm
