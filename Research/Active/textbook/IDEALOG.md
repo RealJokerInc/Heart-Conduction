@@ -4,41 +4,25 @@
 > Scan in 30 seconds. Full edit history is in `CHANGELOG.md` (this folder).
 
 ## Current Direction
-**NEW TRACK (2026-07-03): website UI/UX refresh + interactive figures.** Content-wise the book is done (5-phase
-audit-remediation COMPLETE, 40 figs, 195-pp PDF). The open front is now the *website presentation*: it's a
-competent-but-anonymous docs template with a real dark-mode figure bug and static/decorative figures. Ran a UI
-audit (`audits/UI_AUDIT_2026-07-03.md`), decided a direction, and built an interactive proof-of-direction
-(artifact `a514e90d`). Plan lives in `REFRESH_PLAN.md`. Direction (set while user away, PENDING CONFIRM):
-explorable-explanation aesthetic · ~6–8 flagship interactive widgets + themeable static SVG for the rest ·
-stay vanilla/no-build so the PDF pipeline survives (interactivity layered over a static SVG print fallback).
+**Website UI/UX refresh + interactive tooling** (book CONTENT is done: 5-phase remediation, 40 figs, 195-pp PDF).
+All work on branch **`textbook-website-refresh`** (isolated from in-flight engine-tuner work). DONE: dark-mode figure
+bug fixed at root + themeable figure system + serif×mono/crimson identity + cover/part nav (Phase 1); print-safe
+figure-widget framework + FHN widget (Phase 2); and a full **Ion-Current Playground** (AP-morphology explorer over
+all 4 cardiac_core ionic engines). Aesthetic = explorable-explanation; stay vanilla/no-build so the PDF pipeline
+survives (interactivity is progressive enhancement over static SVG). Canonical source = `website/chapters/*.html`.
+See KNOWLEDGE.md "Website Refresh + Interactive Tooling" for the durable reference.
 
-Canonical source remains the **split website chapters** (`website/chapters/*.html`); monolithic archived.
-
-## Next Step (updated 2026-07-06 — Phases 1–2 DONE + committed)
-**Phase 1 committed `31f8937`, Phase 2 committed `13f58e7` on branch `textbook-website-refresh`** (isolated from the
-in-flight engine-tuner work). Phase 1: dark-mode figure bug FIXED at root (blanket `svg` override deleted; 62 color
-values migrated to an 18-token `--fig-*` system via census map; verified colored+legible in dark on ch2/ch5/ch18);
-serif×mono + arterial crimson + dropped-justify typography; orphaned cover+part pages wired into the SPA. Phase 2:
-print-safe widget framework (`figures.js` classic→`window.mountFigures`+dynamic import; `figures/_canvas.js`+`fhn.js`),
-FHN phase-plane widget LIVE in ch2 (drag IC, 4 sliders, limit-cycle readout, themeable), static SVG prints. PDF holds
-at exactly 195pp both phases; 0 console errors throughout. Reusable harnesses: `verify_site.py`, `migrate_figure_colors.py`.
-
-**REMAINING — Phase 3 (5–7 more widgets) + Phase 4 (identity/polish).** Each Phase-3 widget needs a figure-target +
-physics-pedagogy decision, some non-obvious:
-- ch10 has clean targets: **Fig 10.1 RK-slope → RK step-size widget (3.2)**; **Fig 10.3 stability-region → CFL widget (3.3)**.
-- **AP shaper (3.1)**: ch3's only figure is Fig 3.1 "five phases + dominant currents" — the Mitchell–Schaeffer shaper
-  reshapes AP/APD but does NOT show the 5 phases/currents, so wrapping it drops that annotation on screen (static
-  fallback keeps it for print). DECISION NEEDED: wrap Fig 3.1 anyway / add a new interactive figure / place AP widget elsewhere.
-- Nernst/GHK (3.4): no existing Nernst figure found — likely a NEW figure (scope beyond "wrap existing").
-- Wavefront (3.5): hardest; 1-D monodomain cable; may split.
-Prototype AP (Mitchell–Schaeffer + APD90) already exists in `plans/2026-07-03_refresh_prototype.html`.
-(Blueprint hard-gate: no implementation until explicit approval.) Phase 1 = CSS+nav, no widgets: build
-`verify_site.py` harness → add the expanded `--fig-*` token system (TWO scopes only: `:root`+`[data-theme=dark]`)
-→ census-driven color migration (`migrate_figure_colors.py --census`→review→`--apply`) → delete blanket override
-`style.css:810-812` (replaced by `.figure text{fill:var(--fig-axis)}`) → shell/type refresh → wire cover/part
-pages. Then P2 figure-widget framework (classic `figures.js`→`window.mountFigures`+dynamic import; print-safe),
-P3 6–8 widgets, P4 identity+PDF-regression. Durable prototype: `plans/2026-07-03_refresh_prototype.html`.
-Deferred *content* items still open (separate track): Ch 8 split, Reader-B non-code path, Ch 4 SVGs, §18.1 trim.
+## Next Step
+Three tracks, all optional / user-directed:
+1. **Textbook figure-widgets — PAUSED** (user hold). Phase 3 = 5–7 more widgets. Clean targets: ch10 Fig 10.1 (RK
+   step-size) & Fig 10.3 (CFL stability). OPEN pedagogy calls: AP shaper on ch3 Fig 3.1 (would drop its 5-phase
+   annotation on screen); Nernst/GHK has no existing figure (would be new). Prototype widgets (FHN, MS-AP, RK4) in
+   `plans/2026-07-03_refresh_prototype.html`. Then Phase 4 = cover/part identity + a11y + PDF-regression.
+2. **AP-explorer polish** (small): crop the paced x-axis diastole (~¾ flat); revisit MHAS13 beats-to-steady-state
+   (APD 537 ms single-cell vs 349 ms tissue). Regenerate via `website/build/gen_ap_traces.py --compile`.
+3. **cardiac_core cheatsheet doc-gap** (`API_CHEATSHEET.md §4` lists only ttp06/ord; phas13/mhas13 fully supported) —
+   a small separate fix.
+Deferred *content* items (separate track): Ch 8 split, Reader-B non-code path, Ch 4 SVGs, §18.1 trim.
 
 ## Thread
 
@@ -141,6 +125,28 @@ Previously the textbook lived only in `Research/textbook/` with ad-hoc tracking 
 - **Appendix A as a catch-all** (DEs + LinAlg + numerical analysis crammed together). Split in session 14 into A/B/C/D with one job each; don't recombine.
 
 ## Session Log
+
+### 2026-07-03 → 2026-07-10 Session (website refresh + Ion-Current Playground)
+**Worked on**: `/research-resume textbook` → UI audit of the live website → `/blueprint` + 2-round adversarial
+`/audit` to convergence → executed the refresh (Phases 1–2) → then a new user-requested feature: an interactive
+AP-morphology / ion-current explorer over all cardiac_core ionic engines.
+**Accomplished** (all on branch `textbook-website-refresh`):
+- **UI audit** (`audits/UI_AUDIT_2026-07-03.md`) via Playwright — found the dark-mode figure bug, static/anonymous
+  figures, orphaned cover/part pages. Built a proof-of-direction artifact (`a514e90d`). Wrote `REFRESH_PLAN.md`.
+- **PLAN.md** blueprinted + hardened through 2 Opus audit rounds (2 HIGH + 4 MED + 8 LOW → CONVERGED). Key fixes:
+  61-hex census → expanded token palette; corrected 2-scope theme model; classic-script loader vs ES-module widgets.
+- **Phase 1** (`31f8937`): killed the blanket dark-mode SVG override; census-migrated 62 figure colors → 18-token
+  `--fig-*` system (`migrate_figure_colors.py`); serif×mono + arterial crimson + dropped justify; wired cover/part
+  pages into the SPA. Built `verify_site.py`. Verified dark-legible on ch2/ch5/ch18; PDF still 195 pp.
+- **Phase 2** (`13f58e7`): print-safe figure-widget framework (`figures.js` classic → `window.mountFigures` + dynamic
+  import; `_canvas.js` + `fhn.js`); FHN phase-plane widget LIVE in ch2. Widget stays out of the PDF (fallback SVG prints).
+- **Ion-Current Playground** (`4c70236`): 3 parallel Explore agents mapped the 4 engines (TTP06/ORd/PHAS13/MHAS13);
+  decoded PHA-S = PHAS13 (Paci hiPSC, funny-current-driven). `gen_ap_traces.py` (torch.compile-batched CPU, 4.5M
+  cell-steps/s; per-cell tensor conductances) → exact trace bank `data/ap_explorer/*.json` (8 configs, 924 KB).
+  Widget `ap-explorer.js` + `playground.html` + "Interactive Tools" nav. Validated all engines vs physiology;
+  live tuning works (GNa 1×→0× drops Vpeak 57.7→22.8); PHAS13 shows spontaneous beats with I_f the flagship knob.
+**Next**: (1) resume the PAUSED textbook figure-widgets (Phase 3) + Phase 4 polish; (2) AP-explorer polish (crop
+paced diastole; MHAS13 SS); (3) cheatsheet doc-gap (add phas13/mhas13). See Next Step above.
 
 ### 2026-07-02 Session
 **Worked on**: `/research-resume textbook` → discovered the book had forked into two divergent copies; audited every chapter + every image; then executed the entire 5-phase audit-remediation blueprint.

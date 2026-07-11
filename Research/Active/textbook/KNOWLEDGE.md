@@ -29,6 +29,11 @@ Every divergence favored the split; the monolithic file had no unique content wo
 
 The textbook is **fully drafted (Parts I–IV + appendices A–D) and the full audit-remediation backlog is CLOSED.** Book quality ≈ **3.8/5** pre-remediation; all correctness bugs, the book-wide cross-reference disease, and the figure-integrity issues are fixed, and the depth gaps (worked examples, figures) are largely filled. The book now has **40 SVG figures** (was 31) and **builds to a correct 195-pp PDF**.
 
+> **Content is done; active work is now the WEBSITE** (refresh + interactive tooling) — see the "Website Refresh +
+> Interactive Tooling" section below. Branch `textbook-website-refresh`: dark-mode figure system + identity + cover/part
+> nav + a print-safe widget framework + the Ion-Current Playground are committed; the textbook figure-widgets (Phase 3)
+> are paused. IDEALOG has the narrative trail.
+
 ### Structure
 
 | Part | Chapters | Title | State |
@@ -43,6 +48,68 @@ Chapter-number gap remains: Part III ends at Ch 15, Part IV starts at Ch 18 (old
 
 ### Engine Verification
 Ch 1, 5, 6, 7, 8, 9, 10, 11, 19 verified (engine box and/or equations) against V5.4 / LBM V1 code. Part III (Ch 12–15) class names verified against Bidomain V1 (nits noted below). Ch 18, 20, appendices not equation-by-equation verified against code (mostly kinetic-theory / general numerics, limited direct engine mapping).
+
+## Website Refresh + Interactive Tooling (2026-07-03 → 07-10)
+
+The book **content** is done; this is about the **website presentation + interactive tools**. All on branch
+`textbook-website-refresh` (isolated from in-flight engine-tuner work). Aesthetic = explorable-explanation; **stay
+vanilla / no build step** so the same `chapters/*.html` keep assembling into the 195-pp PDF. Interactivity is
+**progressive enhancement over a static SVG fallback** — the loader (`figures.js`) is SPA-only and never injected by
+`html_to_pdf.py`, so widgets never mount in print. PDF held at exactly **195 pp** through every change.
+
+### Design — themeable figure system (Phase 1, commit `31f8937`)
+- **Root-cause fix for the dark-mode figure bug**: deleted the blanket `[data-theme=dark] svg text/line/path` override
+  (it repainted every figure curve one grey). Figures now carry themeable color via inline `style="…:var(--fig-*)"`.
+- **Figure token system** — the site has exactly **two theme scopes** (`:root` light + `[data-theme="dark"]`; NO
+  `@media prefers-color-scheme` — dark mode is JS-toggled). `--fig-*` palette (18 tokens): 7 categorical hues +
+  ink/muted/faint/grid/stage + 6 panel tints. `--fig-axis` aliases `--fig-ink`. `.figure text{fill:var(--fig-axis)}`
+  default covers group-inherited/unfilled text (replaces deleted line 810).
+- **Color migration** (`website/build/migrate_figure_colors.py --census`→review `figure_color_map.json`→`--apply`):
+  swept all **62 distinct color values** across 19 chapter SVGs → tokens. `var()` MUST be in a `style=` attribute,
+  never a presentation attribute (`fill="var(--x)"` does not resolve). Idempotent.
+- **Identity**: literary-serif × instrument-mono (labels/eyebrows/axis in mono), deepened arterial crimson
+  `#c31d38`/`#ff5468`, left-aligned body (dropped justify). Wired the orphaned cover (`title.html`) + 5 part-divider
+  pages into the SPA (were PDF-only); cover is the landing page.
+- **Verification harness** `website/build/verify_site.py` — dual-theme Playwright screenshots + console-error capture
+  + a print-safety assertion (loader absent from the PDF assembly; 0 `canvas.fig-widget` in print HTML).
+
+### Design — figure-widget framework (Phase 2, commit `13f58e7`)
+- `<figure class="fig" data-widget="NAME" data-params='…'>` with a `.fig-fallback` static SVG + a `.fig-controls` rail.
+- **Module boundary**: `figures.js` is a **classic script** exposing `window.mountFigures` (so the IIFE `app.js` can
+  call it); widget files are **ES modules** loaded via dynamic `import()`. `_canvas.js` holds shared helpers
+  (`fit`/`cvar`/`rk4`/…). On successful mount the loader adds `.has-widget` → CSS hides the SVG on screen; print always
+  shows the SVG. Reference widget: `figures/fhn.js` (FHN phase plane, LIVE in ch2).
+
+### Design — Ion-Current Playground (AP-morphology explorer, commit `4c70236`)
+Interactive tool: pick an ionic engine, tune per-current conductances, watch the single-cell AP change shape.
+`chapters/playground.html` + `figures/ap-explorer.js` + an "Interactive Tools" sidebar section; NOT in `toc.json`
+(kept out of the PDF). Widened via `.chapter-content:has(.tool-page)`.
+- **Architecture** = precompute + knob grids (engines are PyTorch → can't run in browser). `website/build/gen_ap_traces.py`
+  runs the REAL cardiac_core engines offline; every displayed trace is exact engine output; **sliders snap to grid
+  levels** (no physically-invalid interpolation). Per engine: baseline + a **3-knob combinable grid** (5³) + **1-D
+  isolated sweeps** for the rest. Output `data/ap_explorer/*.json` (8 configs, 924 KB; Vm as uint8 + base64).
+- **Batched generation on CPU**: set each conductance field on `model.params` to an **(N,) tensor** (broadcasts inside
+  `model.step`) → all cells of a config in one pacing loop. **`torch.compile` = 4.5M cell-steps/s** (16× over eager) →
+  whole bank in minutes. Metrics computed on the **full-dt** trace (else the sub-ms upstroke aliases Vpeak/dV/dt).
+- **UI**: engine + cell-type selector, AP plot (grey baseline vs red tuned), live metrics (APD₉₀/₅₀, dV/dt, V_rest/peak,
+  + cycle length for PHAS13), Combine (grid) + Isolate (sweep) panels, current glossary with unfamiliar currents badged.
+
+### Reference — the 4 cardiac_core ionic engines (verified against code)
+Selected by string via `cardiac_core.ionic.registry.build_ionic_model(name, cell_type='ENDO', device)`.
+Conductances are mutable `model.params` dataclass fields (tune = scale × default). FHN is NOT in the repo;
+Mitchell–Schaeffer only in vendored `torchcor` — so the ch2/prototype pedagogical widgets are JS ports, not engines.
+
+| name | model | states | beating | cell types | conductance knobs |
+|------|-------|--------|---------|-----------|-------------------|
+| `ttp06` (default) | ten Tusscher–Panfilov 2006 | 18 | paced | ENDO/EPI/M | GNa, PCa(ICaL), GKr, GKs, GK1, Gto, GpCa, GpK, GbNa, GbCa |
+| `ord` | O'Hara–Rudy 2011 | 40 | paced | ENDO/EPI/M | GNa, GNaL(late Na), PCa, GKr, GKs, GK1, Gto, GKb, GpCa, Gncx, Pnak |
+| `phas13` (="PHA-S") | Paci 2013 hiPSC-CM ("HIPSE"≈hiPSC) | 17 | **spontaneous** (I_f) | — | g_Na, g_CaL, g_Kr, g_Ks, g_K1, g_to, **g_f (funny)**, kNaCa, PNaK, g_pCa, g_bNa, g_bCa |
+| `mhas13` | matured PHAS13 (g_f=0, TTP06 IK1) | 17 | paced | — | as PHAS13 minus funny |
+
+Validated baselines (single-cell, BCL 1000, 12 beats): TTP06 APD90 236/236/293 ms (ENDO/EPI/M — M>Endo gradient
+correct); ORd 258/239/377; PHAS13 CL 1634 ms / APD90 568; MHAS13 537. PHAS13's 12 currents include the "unfamiliar"
+ones the tool demystifies: `I_f` (funny/HCN pacemaker, E_f=−17 mV), `I_NaCa` (exchanger), `I_NaK` (pump), `I_pCa`,
+`I_bNa`/`I_bCa` (leaks). **Doc-gap**: `cardiac_core/API_CHEATSHEET.md §4` advertises only ttp06/ord.
 
 ## The 2026-07-02 Audit + Remediation (the authoritative reference)
 
