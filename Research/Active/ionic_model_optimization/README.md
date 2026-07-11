@@ -26,11 +26,13 @@ Ionic model parameters are not universal — they must be tuned to match specifi
       candidates, normalized GP inputs, surfaces infeasibility. (Production fit = gated
       multi-hour run; machinery validated on a synthetic oracle.)
 - [x] P-1 backend unification — dV/dt/APD and CV on ONE cardiac_core model (parity ≤1%)
-- [x] P0 discriminators + convergence-aware CV estimator (r*/dx≥3 resolution shell)
-- [x] P1a feasibility map — **conductance-only INFEASIBLE** for hiPSC CV_T=2.6 at every
-      dx (floor CV≈5.86 at g_Na=0.5; lower g_Na blocks) → kinetics required
-- [x] P1.5 Na-kinetics axes on MHAS13 (τ_m/h/j, V_half; in the hooks; identity-safe)
-- [x] Resolved chip mesh (dx→0.02 mm) + joint-fit record schema + preset export fix
+- [x] P0 secant bracket-down fix + diagnostics (the r*/dx "resolution shell" is SCS-specific
+      — NOT a general fit gate; see KNOWLEDGE → THE MISTAKE)
+- [~] P1a feasibility map — BUILT, but its "conductance-only infeasible" verdict is **WITHDRAWN**
+      (it was defined by the wrongly-applied r*/dx≥3 constraint; artifact, not a finding)
+- [x] P1.5 Na-kinetics axes on MHAS13 (τ_m/h/j, V_half; in the hooks; identity-safe) — a working
+      decoupling knob (NOT a claim that kinetics is *required*)
+- [x] Chip mesh dx knob + joint-fit record schema (kinetics + per-axis D) + preset export fix
 - [ ] Optimizer Validation suite (novel CL, stimulus robustness, stability)
 - [ ] Cross-engine validation (V5.4 vs Bidomain vs LBM)
 - [ ] Multi-rate pacing (break IKr/IKs degeneracy)

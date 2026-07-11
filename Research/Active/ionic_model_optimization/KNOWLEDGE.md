@@ -22,11 +22,11 @@ The Optimizer V1 pipeline is implemented end-to-end across both engines:
 they must be **joint / "parallel"**, because *ionic parameters must be fit with respect to the
 whole tissue chip* (conduction, geometry, grid resolution), not a 0-D cell in isolation.
 
-**What forced it.** The 2026-07-02 chip fit produced garbage tissue records (`D_long=D_trans
-=0.004` fallback, `CV=nan`). Cable D-sweep (dx=0.1 mm, fitted NRVM θ) shows propagation only in
-a narrow window ~5e-5–1e-4 cm²/ms (CV ~5–7); below it `r*=D/CV < dx` → source-sink
-discretization block (the `dx/r*` control parameter). hiPSC **CV_T=2.6 cm/s is unreachable at
-dx=0.1 mm**.
+**What forced it.** The 2026-07-02 sequential chip fit produced garbage tissue records
+(`D_long=D_trans=0.004` fallback, `CV=nan`) — a real failure, caused by the secant's ×4-up-bump
+bug (since fixed → bracket-DOWN) *and* the frozen-θ structural problem below. (An earlier reading
+of this as an r*/dx "source-sink discretization block → CV_T unreachable" was the seed of THE
+MISTAKE; that interpretation is withdrawn — r*/dx is SCS-specific.)
 
 **Why sequential is structurally broken.** `CV ~ sqrt(D·excitability(θ))`, `r*=D/CV`. The V1
 pipeline fits θ→(APD,dV/dt) on a 0-D cell, then freezes θ and secants **D alone**→CV. For a
@@ -36,13 +36,14 @@ it sets dV/dt (cell objective, stage 1) AND source strength → CV/r* (tissue ob
 No single stage can trade them. (Groenendaal 2015: single-objective ionic fitting is non-unique;
 Pouranbarani 2019 fits AP **and** tissue CV jointly.)
 
-**The fix (proposal, pre-audit):** one optimization over θ_ionic **+** D_long/D_trans, evaluated
-**tissue-in-the-loop** (each candidate runs 0-D cell → APD/dV/dt AND cable → CV_L/CV_T), with a
-**resolvability constraint `r*=D/CV ≥ k·dx`** so it never fits into the block (and flags when a
-target needs finer dx). The secant stage is removed; D becomes a decision variable. This
-operationalizes the still-open **"Joint refinement (GP + NSGA-II)"** criterion. Full design +
-open questions: [`Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md`](../../../Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md)
-(audit-converged, 3 iters); execution plan `PLAN.md` (audit-converged, 3 iters).
+**The fix (valid part):** one optimization over θ_ionic **+** D_long/D_trans, each candidate
+evaluated on cell (APD/dV/dt) AND cable (CV_L/CV_T) on ONE model; the secant stage is removed, D
+becomes a decision variable. This operationalizes the "Joint refinement" criterion. **⚠ The
+architecture's `r*=D/CV ≥ k·dx` "resolvability constraint" is the piece that turned out WRONG
+(THE MISTAKE) — it is SCS-specific, not a general fit gate. Everything else in
+[`JOINT_TUNING_ARCHITECTURE.md`](../../../Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md) that hangs
+off r*/dx (feasibility gate, "resolution shell", the three-lock framing) is likewise suspect and
+should be re-derived without it.**
 
 **Load-bearing implementation findings (surfaced by audit, 2026-07-10):**
 - **Two ionic backends (the P-1 blocker).** V1 measures dV/dt/APD on `cardiac_sim` (V5.4, via
@@ -55,31 +56,51 @@ open questions: [`Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md`](../../../Optimizer
 - **Method: constrained scalarization on a GP emulator** (extend `joint_refiner.py`), NOT tissue-in-the-loop
   (sims dominate cost); block region masked, not penalty-smoothed; dt accuracy-bounded (implicit CN, no CFL wall).
 
-## ⚑ ENGINE TUNER V2 — IMPLEMENTED 2026-07-10 (branch `engine-tuner-v2-joint`)
+## ⚑⚑ THE MISTAKE (2026-07-10) — `r*/dx≥3` was wrongly applied; the last fit's "INFEASIBLE" is VOID
 
-The full 5-phase joint-tuning plan is implemented + tested (P-1 → P3). Key results:
+The joint fit baked in **`r*/dx ≥ 3`** (r* = D/CV) as a HARD FEASIBILITY constraint. That rule
+is **SPECIFIC to the LBM specular-same-cell (SCS) wall / wavefront-curvature regime**
+([[boundary_conduction_speedup]] / source_sink_mismatch_investigation) — it is **NOT** a general
+resolution requirement for a monodomain or HBB CV fit. Applying it outside SCS was the error,
+and it produced *every* "infeasible" verdict: of 4000 D-solved candidates, **37 actually hit
+CV_T=2.6** and 538 hit CV_L=5.2, but they were discarded by the bogus filter. The dx /
+coarse-dx / "excitability floor" excursion was all downstream of the same mistake.
 
-**P-1 backend unification (DONE).** `tuner/cell_runner_cc.py` drives the cell AP as a 0-D
+**Nuance — do NOT over-correct.** r*/dx is not universally irrelevant; it is a real concern *for
+SCS*. The correction is contextual: the **next run uses HBB**, where r*/dx does not apply, so we
+drop it *there* — this is not a permanent rejection of r*/dx.
+
+**WITHDRAWN conclusions (artifacts of the bogus constraint — do NOT cite as facts):**
+"conductance-only is INFEASIBLE for CV_T=2.6"; "kinetics is NECESSARY (but not sufficient)";
+"CV_T=2.6 is the wall / a physical excitability floor robust to dx"; the three locks (dV/dt /
+g_Na floor / dx-refinement) framed as necessary; the P1a feasibility-map "gate = infeasible"
+(its feasibility was *defined* by r*/dx≥3); and `presets/chip_hipsc_joint_INFEASIBLE.json` (VOID).
+
+**Corrected next step:** re-run the joint fit on the **LBM engine + HBB wall** (not monodomain,
+not SCS), **no r*/dx** (`require_resolved=False`, already wired), targeting only the real EP
+numbers — CV_L=5.2, CV_T=2.6, APD=350, dV/dt, 2:1 anisotropy — and take whatever (θ, kinetics,
+D) reaches them. Honest open question kept: whether a plain low-D conduction block exists in
+LBM+HBB (if so, lower excitability is the lever) — but do NOT assert infeasibility until it is
+run on the right engine without the filter.
+
+## ⚑ Engine Tuner V2 — what is BUILT and VALID (branch `engine-tuner-v2-joint`, 2026-07-10)
+
+The machinery is implemented + tested; only the r*/dx-driven *conclusions* were wrong.
+
+**P-1 backend unification (VALID).** `tuner/cell_runner_cc.py` drives the cell AP as a 0-D
 `run_monodomain` on a uniform strip → the SAME hook-based Rush-Larsen path the tissue-CV
 runner uses, so dV/dt (cell) and CV (tissue) come from ONE cardiac_core model → a kinetics
 axis is identifiable. **Parity finding:** the V5.4↔cardiac_core delta is PACING HISTORY,
 not a formulation delta — APD Δ 9.35%@6 beats → 0.67%@20; V_rest matches 0.06% throughout.
 Port is faithful; parity ≤1% at steady state. cardiac_core is the single reference.
 
-**P0 resolution shell (DONE).** `tuner/cv_estimator.py::resolved_cv` runs a dx-ladder (fix
-θ,D,dt; vary dx), requires every rung at **r*/dx≥3** (below 3 the CV is grid-corrupted),
-else `converged=False`. The secant bracket-DOWN fix (`cc_runner.fit_D_for_cv`) returns
-(NaN,NaN) on a genuine block — never the old fake `D=0.004`. hiPSC-θ diagnostic: at
-dx=0.1 mm the window is a razor's edge (only D=1e-4 propagates, CV=5.31, r*/dx=1.88); the
-high-D NaN is **sink overload** (`no_capture`, Vmax sub-threshold), not over-depolarization
-(corrects architecture §4).
-
-**P1a GATE — conductance-only INFEASIBLE.** `feasibility_map.py`: for hiPSC CV_T=2.6, NO
-(g_Na, dx) hits the target at r*/dx≥3, at ANY dx {0.1,0.05,0.03,0.02 mm}. The source-sink
-floor is the wall: **g_Na=0.5 floors at CV≈5.86** (fully resolved, r*/dx=10.7 @0.02 mm),
-and g_Na≤0.30 BLOCKS. dV/dt by g_Na = 60/83/109/159 (widened floor 0.15 still gives 60).
-⇒ **conductance scaling cannot reach CV_T=2.6 — kinetics required** (confirms the whole V2
-premise on data). `media/.../feasibility-hipsc_01.png`.
+**P0 secant + diagnostics (VALID; the r*/dx "resolution shell" is SCS-only, not a fit gate).**
+The secant bracket-DOWN fix (`cc_runner.fit_D_for_cv`) brackets D *down* into the propagating
+window and returns (NaN,NaN) on a genuine block — never the old fake `D=0.004`. Diagnostic
+finding that stands: at low CV the failure mode is a real conduction *block* (source too weak),
+and the high-D NaN is **sink overload** (`no_capture`, Vmax sub-threshold), not
+over-depolarization. `cv_estimator.resolved_cv` (dx-ladder + r*/dx check) exists but its r*/dx
+gate is SCS-specific — do not use it as a feasibility filter for HBB/monodomain fits.
 
 **P1.5 kinetics (DONE).** MHAS13 gained per-instance Na knobs `tau_m/h/j_scale`,
 `v_half_shift`, applied in the gate HOOKS (not `step()`), identity-safe (cardiac_core green,
@@ -95,19 +116,16 @@ g_Na~1 span 4 orders → the RBF cannot fit CV otherwise). The fit SURFACES infe
 (names the binding lock) instead of a fake fit. For the real high-dim fit, train the CV GP
 on a reduced CV-relevant feature set (g_Na + kinetics + D), not the full vector (open-Q8).
 
-**P3 hand-off (DONE).** chip_mesh dx → **0.02 mm** (resolved; ≈25× cells); records carry
-kinetics + achieved r*/dx + dx-ladder; `export_lab_preset` KeyError fixed.
+**P3 hand-off (VALID).** `chip.chip_mesh` exposes dx as a knob; the Tier-1 record schema gains a
+`kinetics` block + per-axis D; the pre-existing `export_lab_preset(engine="lbm")` KeyError on
+monodomain-only records is fixed. (The former "resolved 0.02 mm default" was an r*/dx artifact —
+dx is just a knob now.) `run_joint_fit.py` + `--smoke` exercise the whole pipeline end-to-end.
 
-**Production joint fit RAN (2026-07-10) → INFEASIBLE, wall named.** `run_joint_fit.py` at
-dx=0.02 mm, 16 axes, 49 training points (seeded) → no θ* satisfies all constraints. Counts
-(of 4000 D-solved candidates): feas=2072, cvL=538, **cvT=37**, dvdt=2361, r*/dx=4000. The
-binding constraint is **CV_T=2.6** (only 0.9% of (θ,kinetics) reach it without blocking, and
-none also hit CV_L=5.2 + dV/dt band); r*/dx is NOT the wall (all resolved). **Kinetics is
-necessary but not sufficient** — MHAS13-matured cannot jointly reach CV_L=5.2 AND CV_T=2.6 at
-r*/dx≥3. Escalation: reconsider the base model (slower-upstroke hiPSC), relax a lock (dV/dt
-band / CV_T / 2:1 anisotropy), or a larger training budget + active learning near the CV_T
-boundary. **The V2 machine surfaced this honestly with a quantified binding lock** — vs V1's
-silent garbage record. Record: `Optimizer/V1/presets/chip_hipsc_joint_INFEASIBLE.json`.
+**Production run (2026-07-10) — result VOID (see THE MISTAKE).** A full run was executed
+(`run_joint_fit.py`, monodomain, 16 axes, 49 seeded points). It returned "INFEASIBLE", but that
+verdict is an ARTIFACT of the r*/dx≥3 filter and is withdrawn — 37/4000 candidates *did* reach
+CV_T=2.6. No valid θ* was produced; the record is void. The re-run (LBM+HBB, no r*/dx) is the
+next step.
 
 ### The core degeneracy problem
 

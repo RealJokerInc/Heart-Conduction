@@ -5,34 +5,36 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**Engine Tuner V2 — JOINT ionic+conduction tuning (redesign; audit-converged, pre-implementation).** The
-sequential cell→tissue fit (the V1 cross-plan, now on branch `engine-tuner-cardiac-core`) is
-**architecturally dead**: running the gated chip fits proved the tissue leg produces garbage (r*/dx
-source-sink block) on both baselines, because θ is frozen after the cell fit and D alone can't reach
-slow CV without collapsing r* (G_Na is shared between dV/dt and CV). The settled replacement is a
-**joint** fit — {θ, D_long, D_trans(free), (kinetics)} optimized together via constrained
-scalarization on a GP emulator, with the grid *resolved-not-fit* (r*/dx≥3) and known-true pair
-constraints. Design in `Optimizer/V1/JOINT_TUNING_ARCHITECTURE.md` (audit-converged, 3 iters);
-execution plan in `PLAN.md` (audit-converged, 3 iters; P-1 backend-unification blocker first). The V1
-cross-plan (mono/bidomain/LBM cardiac_core layer, chip targets, MRT anisotropy) stands as the
-implemented substrate the redesign builds on. **Gated: no implementation before explicit "go".**
+**Engine Tuner V2 joint fit is BUILT + committed (branch `engine-tuner-v2-joint`), but the last
+run's verdict was WRONG.** ⚑ THE MISTAKE: the fit enforced **`r*/dx ≥ 3`** as a hard feasibility
+constraint. That rule is **SCS-specific** (LBM specular-same-cell wall / curvature,
+[[boundary_conduction_speedup]]) — NOT a general resolution gate for a monodomain/HBB CV fit.
+Applying it outside SCS produced the false "INFEASIBLE" (37/4000 candidates actually hit CV_T=2.6,
+discarded by the filter). All the "conductance-only infeasible / kinetics required / CV_T is the
+wall" conclusions are **withdrawn** as artifacts. Nuance: r*/dx is real *for SCS* — not a permanent
+rejection; the next run just uses HBB, where it doesn't apply. The MACHINERY is sound (P-1 backend
+unification, bracket-down secant, kinetics axes, GP-emulator joint fit with block-masking + input
+normalization + D-solve + constrained scalarization, chip/preset/export fixes).
 
 ## Next Step
-**REDESIGN to JOINT tuning (post-audit).** Sequential cell→tissue fit is dead; both baselines
-reproduce the r*/dx block (garbage tissue). **Blocked on 3 user decisions** before P1:
-(1) revise hiPSC **dV/dt** target to physiological (~30 V/s?) or hold 110 (then CV_T=2.6
-unreachable); (2) **Na kinetics** — conductance-scaling-only, or add Na gating-τ to the
-decision space (audit: only kinetics decouple dV/dt from CV); (3) **dx budget** — is the
-reentry campaign OK inheriting ~0.03 mm (r*/dx≳3, ~10× cells) or scope per-baseline dx.
-Then: **P0** (offered, awaiting go) cheap CPU discriminators — fix the secant ×4-up-bump
-(bracket-down, may rescue CV_L); re-sweep cable at **hiPSC θ** (warm-starts saved in
-`presets/`); settle the D=1e-3 nan (real block vs CV-measurement artifact). **P1** feasibility
-map (g_Na×D at dx∈{0.1,0.05,0.03} vs CV_T/dV/dt/r*/dx≥3). **P2** build the constrained-
-scalarization joint fit (AP-error objective s.t. CV_L/CV_T/r*/dx + AP bounds; NOT 4-obj
-qNEHVI). **P3** refine `chip.py` dx for the reentry hand-off. Also queued: fix
-`export_lab_preset(engine="lbm")` KeyError on monodomain-only records.
+**Re-run the joint fit on LBM + HBB, with r*/dx dropped** (`require_resolved=False`, already wired),
+targeting ONLY the real EP numbers: CV_L=5.2, CV_T=2.6, APD=350, dV/dt, 2:1 anisotropy — take
+whatever (θ, kinetics, D) reaches them. (For SCS work later, use LBM SCS as originally intended;
+r*/dx belongs there.) Keep the honest open question: does a plain low-D conduction *block* exist in
+LBM+HBB? If yes, lower excitability (kinetics / lower g_Na) is the lever — but do NOT assert
+infeasibility until run on the right engine without the filter. Secondary: the warm-start θ
+(`presets/chip_hipsc.json`) is a V5.4-era fit and gives APD≈276 (not 350) on cardiac_core → the
+ionic AP still needs a cardiac_core re-tune (dV/dt≈113 is fine; APD short).
 
 ## Thread
+
+> ⚑ **DECONTAMINATION NOTE (2026-07-11).** The 2026-07-10 execution entries below reach scientific
+> conclusions — "conductance-only INFEASIBLE", "kinetics is required", "CV_T=2.6 is the wall /
+> excitability floor", the P1a "gate = infeasible", and the production "INFEASIBLE" — that are all
+> **WITHDRAWN**. They are artifacts of a wrongly-applied **`r*/dx ≥ 3`** constraint (SCS-specific,
+> not a general fit gate; see Current Direction → THE MISTAKE). The **engineering** in those entries
+> stands (backend unification, secant fix, kinetics axes, joint-fit machinery, fixes); the
+> **scientific verdicts do not**. Read them as "how the mistake happened", not as findings.
 
 ### 2026-07-10: EXECUTION STARTED — PLAN Phase 0 (P-1 backend unification) DONE + committed
 Greenlit ("plan.md is finished, begin implementation"). Branch `engine-tuner-v2-joint`
@@ -342,6 +344,16 @@ preset paths → log to KNOWLEDGE + tick completion criteria.
 
 ## Failed Approaches
 
+- **⚑ Applying `r*/dx ≥ 3` as a hard feasibility constraint in the joint fit** (2026-07-10, THE
+  MISTAKE) — WRONG because: r*/dx≥k is **SCS-specific** (LBM specular-same-cell wall / wavefront
+  curvature, [[boundary_conduction_speedup]]), NOT a general resolution gate for a monodomain/HBB
+  CV fit. It produced the false "INFEASIBLE" (37/4000 candidates *did* hit CV_T=2.6; all discarded
+  by the filter) and every downstream "kinetics required / CV_T is the wall / dx rabbit hole"
+  conclusion. Fix: drop r*/dx for HBB fits (`require_resolved=False`); re-run on LBM+HBB. **This
+  also voids the two older r*/dx entries below** ("k=1 insufficient, use k≈3"; the "r*/dx<1
+  source-sink block" reading of the sequential-fit garbage) — those framed a real secant bug and a
+  real frozen-θ problem through the wrong r*/dx lens. r*/dx is real *only for SCS*.
+
 - **Sequential cell→tissue tuning** (2026-07-02) — failed because: CV depends on (θ,D) jointly and
   G_Na is shared between dV/dt (cell stage) and CV/r* (tissue stage); freezing θ leaves only D to
   hit CV, driving slow targets into the r*/dx<1 source-sink block. Ionic + conduction must be tuned
@@ -386,3 +398,27 @@ preset paths → log to KNOWLEDGE + tick completion criteria.
 - **Architecture `JOINT_TUNING_ARCHITECTURE.md` audit-CONVERGED (3 iters)** — three-leg (resolution shell / constraint graph / physical joint fit); FIT physical / RESOLVE numerical; convergence-aware CV estimator; attack-all high-dim; known-true pair constraints. Audits caught: ignored `joint_refiner.py`, wrong CFL story (implicit CN), **two ionic backends** (cell=cardiac_sim/V5.4 vs tissue=cardiac_core → P-1 unification blocker), kinetics-in-hooks.
 - **PLAN.md audit-CONVERGED (3 iters)** — 5 phases P-1→P3; audit caught the kinetics-scaling-in-`step()`-vs-hooks bug (tissue solver uses `compute_gate_*` hooks, never `step()`) + pacing-to-steady-state parity.
 **Next**: GATED — execute PLAN.md starting at **P-1 (backend unification)**. Awaiting explicit "go". Session-end commit pending (user commits after /clear).
+
+### 2026-07-11 Session
+**Worked on**: Executed the full PLAN (P-1→P3) + ran the production joint fit — then, on the user's
+push, found and corrected **THE MISTAKE**.
+**Accomplished**:
+- Built + committed the entire Engine Tuner V2 machinery on `engine-tuner-v2-joint` (P-1 backend
+  unification; bracket-down secant; `cv_estimator`; feasibility map; MHAS13 Na-kinetics axes;
+  `decision_space` + `joint_fit` GP-emulator constrained-scalarization fit with block-masking,
+  input normalization, D-solve, reduced CV feature set; chip/preset/export fixes; dx-as-tunable-axis).
+  Optimizer non-slow suite 59 passed / 0 failed; cardiac_core ionic green.
+- Ran the production joint fit → returned "INFEASIBLE". **This verdict is WRONG.** The user
+  identified that the `r*/dx ≥ 3` hard constraint driving it is **SCS-specific** (from the LBM
+  specular boundary/curvature work), not a general fit gate — 37/4000 candidates actually hit
+  CV_T=2.6 but were filtered out. All "conductance-only infeasible / kinetics necessary / CV_T is
+  the wall / coarse-dx / excitability-floor" conclusions are **artifacts** and are withdrawn.
+- Side finding (valid): the warm-start `chip_hipsc.json` θ is a V5.4-era fit; on cardiac_core it
+  gives **APD≈276** (target 350), dV/dt≈113 — so the ionic AP still needs a cardiac_core re-tune
+  (dV/dt fine, APD short). The joint fit never emitted a tuned θ (it errored out on the bogus filter).
+- Ran `/save-session` to **decontaminate** KNOWLEDGE + IDEALOG: withdrew the wrong conclusions,
+  documented THE MISTAKE, preserved the valid engineering.
+**Next**: re-run the joint fit on **LBM + HBB** with **no r*/dx** (`require_resolved=False`),
+targeting only CV_L=5.2 / CV_T=2.6 / APD=350 / dV/dt / 2:1 — take whatever (θ, kinetics, D) reaches
+them; don't assert infeasibility until run on the right engine. (SCS work later uses LBM SCS, where
+r*/dx belongs.)

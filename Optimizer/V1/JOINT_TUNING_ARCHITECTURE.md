@@ -1,5 +1,17 @@
 # Joint Ionic + Conduction Tuning — Architecture
 
+> ⚑⚑ **CORRECTION (2026-07-11) — READ FIRST.** This doc makes **`r*/dx ≥ 3`** a load-bearing HARD
+> constraint (the "resolution shell", the feasibility gate, "lock-3", the resolved-not-fit split).
+> **That is WRONG.** `r*/dx≥k` is **SCS-specific** (LBM specular-same-cell wall / wavefront
+> curvature) — NOT a general resolution requirement for a monodomain or HBB CV fit. Enforcing it in
+> the joint fit produced a **false "INFEASIBLE"** (37/4000 candidates actually hit CV_T=2.6, all
+> filtered out). Everything below that hangs off r*/dx (the resolution shell, the feasibility gate,
+> the three-lock "necessary" framing, the "CV_T unreachable" conclusion) is **withdrawn**. The
+> code already supports dropping it (`joint_fit.refine_joint_cc(require_resolved=False)`). The
+> corrected plan: re-run on **LBM + HBB with no r*/dx**, targeting only CV_L/CV_T/APD/dV/dt/2:1. The
+> non-r*/dx machinery (backend unification, GP emulator, D-solve, constrained scalarization) is
+> sound. See `Research/Active/ionic_model_optimization/KNOWLEDGE.md` → "THE MISTAKE".
+
 Created: 2026-07-02
 Revised: 2026-07-02 (architecture deep-dive: attack-all fit, FIT/RESOLVE split, constraint graph)
 Revised: 2026-07-10 (audit iter 1 → fixes: emulator-accelerated method [joint_refiner], implicit-solver/no-CFL,
