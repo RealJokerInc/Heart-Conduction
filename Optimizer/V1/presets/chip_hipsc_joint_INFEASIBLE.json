@@ -1,0 +1,29 @@
+{
+  "baseline": "hipsc",
+  "dx_mm": 0.02,
+  "result": "INFEASIBLE",
+  "binding_lock": "CV_T match (slow transverse target) — fewest passing (37/4000); not simultaneously reachable with CV_L=5.2 (538/4000). CV_T=2.6 at r*/dx>=3 is at the edge of MHAS13-matured's joint reach even with kinetics.",
+  "binding_lock_auto": "dx/resolution (heuristic mislabel — corrected; r*/dx passed 4000/4000, so resolution was NOT the wall)",
+  "constraint_counts_of_4000": {
+    "feasibility_propagation": 2072,
+    "CV_L_match_5.2": 538,
+    "CV_T_match_2.6": 37,
+    "dVdt_band_20_130": 2361,
+    "rstar_over_dx_ge_3": 4000
+  },
+  "interpretation": "With D solved on the emulator to hit each CV target, ALL candidates resolve (r*/dx>=3). The wall is CV_T=2.6: only 0.9% of (theta, kinetics) combinations can be driven that slow without blocking, and NONE of those also hit CV_L=5.2 + the dV/dt band. Kinetics helps (P1b: it lowers the CV floor) but is insufficient to reach the slow transverse target jointly with the longitudinal target on a resolved grid. Consistent with the architecture's necessary-but-not-sufficient verdict.",
+  "escalation_options": [
+    "Reconsider whether CV_T=2.6-at-r*/dx>=3 is physical for MHAS13-matured (the architecture's 'change the base model' path) — the Kit-Parker hiPSC 5.2/2.6 targets may need a slower-upstroke base model.",
+    "Relax a lock: widen the dV/dt band, or accept CV_T slightly above 2.6, or revisit the 2:1 anisotropy target (cross-construct assumption, 2.1+/-0.8).",
+    "Add kinetic axes beyond tau_m (v_half_shift + tau_h/tau_j jointly) with active-learning refill near the CV_T boundary and a larger training budget."
+  ],
+  "provenance": {
+    "tuner_version": "V2",
+    "fit": "joint_constrained_scalarization",
+    "n_training": 49,
+    "n_candidates": 4000,
+    "axes": 16,
+    "warm_start": "presets/chip_hipsc.json",
+    "note": "n_training kept modest for a first production run; a larger budget + active learning near the CV_T=2.6 boundary would tighten the verdict."
+  }
+}

@@ -271,7 +271,7 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
     if not feasible.any():
         # name the lock that eliminated the most CV-feasible candidates
         cv_ok = m_feas & m_cvl & m_cvt
-        lock = _binding_lock(cv_ok, m_dvdt, m_rox, m_feas)
+        lock = _binding_lock(m_feas, m_cvl, m_cvt, m_dvdt, m_rox, len(C))
         return InfeasReport(binding_lock=lock,
                             detail=f"no candidate satisfied all constraints "
                                    f"(feas={int(m_feas.sum())}, cvL={int(m_cvl.sum())}, "
@@ -307,17 +307,23 @@ def refine_joint_cc(axes, evaluate_fn, targets, *, config=None, base_theta=None,
                   "rstar_over_dx_t": best.rstar_over_dx_t})
 
 
-def _binding_lock(cv_ok, m_dvdt, m_rox, m_feas):
-    """Which lock removes the last CV-feasible candidates?"""
-    if int(m_feas.sum()) == 0:
-        return "resolution (nothing propagated+resolved)"
-    if int((cv_ok & m_rox).sum()) == 0:
-        return "dx/resolution (r*/dx≥3 unreachable at CV target)"
-    if int((cv_ok & m_dvdt).sum()) == 0:
-        return "dV/dt target (band excludes the g_Na that hits CV_T)"
-    if int(cv_ok.sum()) == 0:
-        return "excitability/CV (CV_T unreachable within g_Na bounds)"
-    return "combined (no single constraint; the intersection is empty)"
+def _binding_lock(m_feas, m_cvl, m_cvt, m_dvdt, m_rox, n):
+    """Name the constraint that makes the feasible set empty, from the per-constraint
+    pass counts (D is already solved to hit each CV target, so m_rox is usually all-pass;
+    the binding wall is normally CV_T or the CV_L∩CV_T anisotropy, not resolution)."""
+    counts = {
+        "feasibility/propagation": int(m_feas.sum()),
+        "CV_L match": int(m_cvl.sum()),
+        "CV_T match (slow transverse target)": int(m_cvt.sum()),
+        "dV/dt band": int(m_dvdt.sum()),
+        "r*/dx>=3 resolution": int(m_rox.sum()),
+    }
+    both_cv = int((m_cvl & m_cvt).sum())
+    if both_cv == 0 and counts["CV_L match"] > 0 and counts["CV_T match (slow transverse target)"] > 0:
+        return ("anisotropy — CV_L and CV_T not simultaneously reachable "
+                f"(CV_L {counts['CV_L match']}/{n}, CV_T {counts['CV_T match (slow transverse target)']}/{n}, both 0)")
+    binding = min(counts, key=counts.get)
+    return f"{binding} — fewest passing ({counts[binding]}/{n})"
 
 
 def _unpack(vector, axes, base_theta):

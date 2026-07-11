@@ -98,8 +98,16 @@ on a reduced CV-relevant feature set (g_Na + kinetics + D), not the full vector 
 **P3 hand-off (DONE).** chip_mesh dx → **0.02 mm** (resolved; ≈25× cells); records carry
 kinetics + achieved r*/dx + dx-ladder; `export_lab_preset` KeyError fixed.
 
-**Remaining:** run the gated production joint fit (real θ*, multi-hour) with kinetics on the
-resolved grid; P1b confirms whether τ_m alone suffices or v_half/base-model change is needed.
+**Production joint fit RAN (2026-07-10) → INFEASIBLE, wall named.** `run_joint_fit.py` at
+dx=0.02 mm, 16 axes, 49 training points (seeded) → no θ* satisfies all constraints. Counts
+(of 4000 D-solved candidates): feas=2072, cvL=538, **cvT=37**, dvdt=2361, r*/dx=4000. The
+binding constraint is **CV_T=2.6** (only 0.9% of (θ,kinetics) reach it without blocking, and
+none also hit CV_L=5.2 + dV/dt band); r*/dx is NOT the wall (all resolved). **Kinetics is
+necessary but not sufficient** — MHAS13-matured cannot jointly reach CV_L=5.2 AND CV_T=2.6 at
+r*/dx≥3. Escalation: reconsider the base model (slower-upstroke hiPSC), relax a lock (dV/dt
+band / CV_T / 2:1 anisotropy), or a larger training budget + active learning near the CV_T
+boundary. **The V2 machine surfaced this honestly with a quantified binding lock** — vs V1's
+silent garbage record. Record: `Optimizer/V1/presets/chip_hipsc_joint_INFEASIBLE.json`.
 
 ### The core degeneracy problem
 

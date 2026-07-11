@@ -145,8 +145,33 @@ base model" path).
 
 **STATUS: all 11 plan steps implemented + tested; full Optimizer non-slow suite 59 passed /
 0 failed (no regressions); cardiac_core ionic 11 passed. Committed on `engine-tuner-v2-joint`
-(be21bfe, 0c4e349, a95ac8a, 09a7044, f08950c, bf22fbd + docs). REMAINING (gated heavy run,
-not code): the production joint fit → a real θ* on the resolved grid with kinetics.**
+(be21bfe, 0c4e349, a95ac8a, 09a7044, f08950c, bf22fbd + docs).**
+
+### 2026-07-10: PRODUCTION joint fit RAN → INFEASIBLE (the definitive answer)
+`run_joint_fit.py --baseline hipsc` at dx=0.02 mm, 16 axes (tier-2 + 4 kinetics + free
+D_long/D_trans), 49 training points (9 propagating warm-start seeds + 40 Sobol), GP
+emulator with the **reduced CV feature set** + **warm-start seeding** (both added so the
+result isn't a sparse-sampling/GP-noise artifact). Verdict: **INFEASIBLE**, and the
+constraint counts (of 4000 D-solved candidates) name the wall precisely:
+`feas=2072, cvL=538, cvT=37, dvdt=2361, r*/dx=4000`.
+- **The binding constraint is CV_T=2.6**: only **37/4000 (0.9%)** of (θ, kinetics) combos
+  can be driven that slow without blocking, and NONE of those also hit CV_L=5.2 + the dV/dt
+  band. r*/dx passed 4000/4000 (D is solved to the target CV → all resolved), so resolution
+  is NOT the wall — the auto-label "dx/resolution" was a heuristic mislabel (fixed
+  `_binding_lock` to report from the constraint counts + an anisotropy check).
+- **Conclusion: kinetics is NECESSARY but NOT SUFFICIENT** — it lowers the CV floor (P1b:
+  5.8→4.3) but the joint fit still cannot reach CV_T=2.6-at-r*/dx≥3 simultaneously with
+  CV_L=5.2 for MHAS13-matured. This is exactly the sharpest tension the audits flagged
+  (architecture §9 lock-1/3), now confirmed on a resolved-grid joint fit.
+- **Escalation (for the user / reentry campaign):** (1) reconsider whether CV_T=2.6-at-
+  resolved-grid is physical for MHAS13-matured (the "change the base model" path — a
+  slower-upstroke hiPSC base may be needed); (2) relax a lock (wider dV/dt band, CV_T
+  slightly >2.6, or revisit the 2:1 anisotropy — cross-construct 2.1±0.8); (3) a larger
+  training budget + active-learning refill near the CV_T boundary to tighten the verdict
+  (this first run kept n_training modest). Record: `presets/chip_hipsc_joint_INFEASIBLE.json`.
+- **The MACHINE WORKS**: the joint fit surfaced infeasibility honestly with a named,
+  quantified binding lock instead of a fake θ* — which is precisely what the V2
+  architecture was built to do (vs V1's silent garbage `D=0.004, CV=nan`).
 
 ### 2026-03-15: Literature survey reveals single-AP fitting is fundamentally non-unique
 Reviewed 6 key papers on ionic model parameter optimization. Groenendaal 2015 is the critical finding: fitting 9 parameters to a single AP gives near-perfect waveform match (SSE < 0.01 mV^2) but parameters converge to *wrong values*. Adding stochastic stimulation, voltage-clamp data, and iterative refinement drops prediction error by 3 orders of magnitude. This established our requirement for multi-objective optimization with tissue-level targets, not just AP shape.
