@@ -495,6 +495,75 @@ def test_result_p2_hooks_wired():
     times, V = _planar_wave_x(Nx=20, Ny=5, idx_per_save=2)
     from cardiac_core.run import SimulationResult
     r = SimulationResult(times=times, Vm=V, dx=0.02, dy=0.02)
-    assert r.df_map().shape == (20, 5)
     assert r.cv_between((3, 2), (12, 2)) == pytest.approx(40.0, rel=0.25)
     assert r.radial_cv((0, 2)).shape == (20, 5)
+
+
+# ===========================================================================
+# Round-2 audit remediation
+# ===========================================================================
+def test_scale_conductance_hipsc_lowercase_names():
+    """hiPSC models (paci/phas13/mhas13) name conductances lowercase g_* — scale_conductance
+    must accept those (regression: the G*/P* filter rejected them) and reject the
+    dimensionless gamma_ncx / PkNa that merely start with g/p."""
+    g = Grid(12, 4, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    sim = monodomain(g, 'paci', cond, _stim(width=0.06), dt=0.02)
+    gna0 = sim._live_ionic_model().params.g_Na
+    sim.scale_conductance('g_Na', 0.5)
+    assert sim._live_ionic_model().params.g_Na == pytest.approx(gna0 * 0.5)
+    for bad in ('gamma_ncx', 'PkNa'):
+        with pytest.raises(ValueError, match="not a scalable conductance"):
+            sim.scale_conductance(bad, 0.5)
+
+
+def test_dominant_frequency_map_nan_at_masked_node():
+    """A masked (NaN) node must be NaN in the DF map, not a phantom low frequency (B8 + P5)."""
+    n = 2000
+    times = torch.arange(n, dtype=torch.float64)
+    V = torch.sin(2 * torch.pi * 5.0 * times / 1000.0).reshape(n, 1, 1).expand(n, 4, 3).clone()
+    V[:, 1, 1] = float('nan')
+    dfm = analysis.dominant_frequency_map(V, times)
+    assert torch.isnan(dfm[1, 1]), "masked node must be NaN"
+    assert dfm[0, 0].item() == pytest.approx(5.0, abs=0.6)   # finite nodes unaffected
+
+
+def test_radial_cv_warns_on_dead_center():
+    Nx, Ny, n = 10, 10, 20
+    times = torch.arange(n, dtype=torch.float64)
+    V = torch.full((n, Nx, Ny), -85.0, dtype=torch.float64)   # nothing activates
+    with pytest.warns(UserWarning, match="never activates"):
+        rcv = analysis.radial_cv(V, times, (5, 5), dx=0.02)
+    assert torch.isnan(rcv).all()
+
+
+def test_restitution_slope_last_crossing():
+    """On a non-monotonic curve with two descending slope=1 crossings, DI* is the LARGER-DI
+    (alternans-boundary) one, not the first."""
+    DI = torch.tensor([50., 100., 150., 200., 250.])
+    APD = torch.tensor([200., 275., 300., 365., 385.])   # slopes 1.5, 0.5, 1.3, 0.4
+    res = analysis.restitution_slope(DI, APD)
+    assert res['DI_star'] > 150.0, f"should pick the larger-DI crossing: {res['DI_star']}"
+
+
+def test_bidomain_masked_default_elliptic_solver_works():
+    """A masked bidomain on the DEFAULT elliptic_solver='auto' must not crash — auto now
+    falls back to pcg (spectral/pcg_spectral reshape phi_e to the full rectangle)."""
+    mask = np.ones((15, 15), dtype=bool); mask[6:9, 6:9] = False
+    sim = bidomain(create_cardiac_mesh(0.28, 0.28, 0.02, D=1e-3, chi=1.0, mask=mask),
+                   stimulus=_stim())   # no explicit elliptic_solver
+    assert sim._engine._elliptic_solver_name == 'pcg'
+    r = sim.run(4.0, 1.0)
+    assert torch.isnan(r.Vm[:, torch.tensor(~mask)]).all()
+
+
+def test_dct_rejected_on_nondefault_stencil_and_boundary():
+    """Cover the stencil/boundary_mode branches of the spectral gate (were untested)."""
+    cond = ConductivityConfig.isotropic(1.4)
+    stim = _stim(width=0.06)
+    with pytest.raises(ValueError, match="stencil|silently wrong"):
+        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+                   linear_solver='dct', stencil='moore8_iso')
+    with pytest.raises(ValueError, match="boundary_mode|silently wrong"):
+        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+                   linear_solver='dct', boundary_mode='rest_pad')

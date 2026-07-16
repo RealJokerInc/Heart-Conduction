@@ -6,7 +6,7 @@
 > `cardiac_core/tests/test_usability_fixes.py::test_cheatsheet_examples_execute` — the canaries; if
 > they break, fix this file.
 
-Verified against the shipped `cardiac_core` (242 tests green, 2026-07-16). CPU + `float64` by default;
+Verified against the shipped `cardiac_core` (254 tests green, 2026-07-16). CPU + `float64` by default;
 deterministic.
 
 ```python
@@ -33,9 +33,9 @@ mask = cc.circle_mask(Nx, Ny, dx, center=(cx,cy), radius=r)
 mask = cc.rectangle_mask(Nx, Ny, dx, x0, y0, x1, y1)
 mask = cc.annulus_mask(Nx, Ny, dx, center, inner_radius, outer_radius)
 ```
-Masked-out (out-of-domain) nodes come back as **NaN** in `r.Vm` (not 0 mV), so `cv/apd/lat` correctly
-skip them. (Monodomain/bidomain; the bidomain **spectral** elliptic solver can't take a masked domain —
-pass `elliptic_solver="pcg"` for a bidomain with a hole.)
+Masked-out (out-of-domain) nodes come back as **NaN** in `r.Vm` (monodomain/bidomain), so `cv/apd/lat`
+correctly skip them. A masked bidomain now **auto-selects `pcg`** for the elliptic solve, so the default
+works on a hole. **LBM** masked nodes stay at resting voltage (not NaN).
 
 ## 2. Conductivity — `cc.ConductivityConfig`
 
@@ -129,7 +129,7 @@ r.phi_e     # (T,Nx,Ny) bidomain only, else None
 r.ionic_states   # (T, n_states, Nx, Ny) only if record=(...,"ionic_states")
 ```
 `record=` accepts only `"Vm"` and `"ionic_states"` — an unknown key (e.g. `"I_Kr"`) raises, it does not
-silently record nothing.
+silently record nothing. (`"ionic_states"` is monodomain/bidomain only — LBM raises `NotImplementedError`.)
 
 ## 7. Measure — hooks on the result (+ `cc.<analysis>`)
 

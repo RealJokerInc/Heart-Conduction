@@ -81,6 +81,14 @@ class BidomainSimulation:
         bc = spatial.grid.boundary_spec
         cond = spatial.conductivity
 
+        # A masked/irregular domain (n_dof < nx*ny) can't use the spectral or pcg_spectral
+        # tiers — both reshape phi_e to the full nx*ny rectangle and would crash on a hole.
+        # Fall back to the mask-agnostic iterative solver (clear default, no cryptic reshape
+        # RuntimeError on a scar/hole bidomain run).
+        dm = getattr(spatial.grid, 'domain_mask', None)
+        if dm is not None and not bool(dm.all()):
+            return 'pcg'
+
         if bc.phi_e_spectral_eligible and cond.is_isotropic:
             return 'spectral'
         elif bc.phi_e_spectral_eligible:

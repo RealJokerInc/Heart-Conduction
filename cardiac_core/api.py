@@ -53,10 +53,19 @@ def _scale_ionic_conductances(model, scalings):
     import copy as _copy
     model = _copy.deepcopy(model)
     params = model.params
-    # Only true maximal conductances / permeabilities (G*, P*) are scalable — NOT the
-    # `*_scale` tuning factors, and NOT concentrations/constants (Nao, Cm, F, T, ...),
-    # which a bare `hasattr` check would silently accept and corrupt.
-    conductances = {a for a in vars(params) if a[:1] in ('G', 'P') and not a.endswith('_scale')}
+    # Scalable = a true maximal conductance / permeability / transporter rate: an ohmic
+    # `G*` (TTP06/ORd) or `g_*` (hiPSC paci/phas13/mhas13, LOWERCASE) or a `P*`
+    # permeability/pump. EXCLUDES the `*_scale` tuning factors and the dimensionless
+    # parameters that merely start with g/p — `gamma_ncx` (NCX voltage-partition) and
+    # `PkNa` (the IKs permeability RATIO in the Nernst term) — which scale a shape/reversal,
+    # not a magnitude, and which a bare `hasattr`/first-letter check would silently corrupt.
+    _NON_CONDUCTANCE = {'gamma_ncx', 'pkna'}
+    conductances = {
+        a for a in vars(params)
+        if a[:1].lower() in ('g', 'p')
+        and not a.endswith('_scale')
+        and a.lower() not in _NON_CONDUCTANCE
+    }
     for name, factor in scalings.items():
         if name not in conductances:
             raise ValueError(
@@ -487,8 +496,16 @@ class CardiacSimulation:
             kw['sigma_i'] = _op_sigma(data.sigma_i)
             kw['sigma_e'] = _op_sigma(data.sigma_e)
 
+        # Transactional: commit the new mesh, then rebuild; if the rebuild raises (e.g. a
+        # dct sim whose new non-uniform D trips the spectral gate), restore the old mesh so
+        # _data and _engine stay consistent rather than describing a scar with a stale engine.
+        old_data = self._data
         self._data = replace(data, **kw)
-        self.reset()
+        try:
+            self.reset()
+        except Exception:
+            self._data = old_data
+            raise
 
     def stimulate(self, region, start_time: float = 0.0, duration: float = 1.0,
                   amplitude: float = -52.0):

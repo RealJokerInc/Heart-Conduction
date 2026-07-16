@@ -636,7 +636,14 @@ def dominant_frequency_map(
     spec[0] = 0.0                                    # ignore DC
     freqs = torch.fft.rfftfreq(n, d=dt_ms / 1000.0).to(V.device)  # Hz
     peak = spec.argmax(dim=0)                        # (Nx*Ny,)
-    return freqs[peak].reshape(Nx, Ny)
+    df = freqs[peak].reshape(Nx, Ny)
+    # Masked/out-of-domain nodes are NaN across time (B8); their rfft is NaN and argmax
+    # would return a phantom frequency — set them NaN, not a bogus low frequency.
+    non_finite = ~torch.isfinite(V).all(dim=0)      # (Nx, Ny)
+    if non_finite.any():
+        df = df.clone()
+        df[non_finite] = float('nan')
+    return df
 
 
 def cv_between(
@@ -688,6 +695,12 @@ def radial_cv(
     ci, cj = center
     lat = activation_time(V, times, threshold)        # (Nx, Ny), NaN where unactivated
     Nx, Ny = lat.shape
+    if not bool(torch.isfinite(lat[ci, cj])):
+        warnings.warn(
+            f"radial_cv: center {center} never activates (LAT is NaN there), so the whole "
+            f"map is NaN — pass the point-source node as center.",
+            stacklevel=2,
+        )
     ii = torch.arange(Nx, device=V.device).reshape(Nx, 1).to(lat.dtype)
     jj = torch.arange(Ny, device=V.device).reshape(1, Ny).to(lat.dtype)
     dist = torch.sqrt(((ii - ci) * dx) ** 2 + ((jj - cj) * dy) ** 2)   # cm
@@ -775,5 +788,7 @@ def restitution_slope(DI, APD) -> dict:
         if np.isfinite(s0) and np.isfinite(s1) and s0 >= 1.0 > s1:
             frac = (s0 - 1.0) / (s0 - s1)            # in [0, 1]
             DI_star = float(mid_DI[k] + frac * (mid_DI[k + 1] - mid_DI[k]))
-            break
+            # Keep scanning: the LAST (largest-DI) descending crossing is the alternans
+            # boundary above which the slope stays < 1. On a normal monotone-decreasing
+            # restitution curve there is exactly one crossing, so this is unchanged.
     return {"max_slope": max_slope, "DI_star": DI_star, "n": int(DI.size)}
