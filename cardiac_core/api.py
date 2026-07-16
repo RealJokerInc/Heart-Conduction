@@ -40,6 +40,30 @@ def _validate_record(record) -> None:
         )
 
 
+def _scale_ionic_conductances(model, scalings):
+    """Deep-copy ``model`` and multiply the named conductances on the copy.
+
+    Uniform across models (TTP06/ORd/PHAS13/…): all expose their maximal conductances/
+    permeabilities as attributes on ``self.params``. Operating on a deep copy of the LIVE
+    engine model (not a freshly-named build) keeps the cell type and any prior scalings
+    consistent across engines — the bidomain/LBM factories build ENDO by default, so
+    re-deriving from name+mesh-cell_type would silently flip cell type. Raises
+    ``ValueError`` on an unknown conductance name.
+    """
+    import copy as _copy
+    model = _copy.deepcopy(model)
+    params = model.params
+    for name, factor in scalings.items():
+        if not hasattr(params, name):
+            conductances = sorted(a for a in vars(params) if a[:1] in ('G', 'P'))
+            raise ValueError(
+                f"unknown conductance {name!r} for {type(model).__name__}; "
+                f"available conductances: {conductances}"
+            )
+        setattr(params, name, getattr(params, name) * float(factor))
+    return model
+
+
 @dataclass
 class Distribution:
     """Per-node stochastic parameter specification.
@@ -144,11 +168,14 @@ class SimulationSnapshot:
 class CardiacSimulation:
     """Uniform wrapper around all cardiac simulation engines.
 
-    NOTE: some convenience methods are PLANNED, not shipped — they raise NotImplementedError
-    (state probes get_state/set_state/set_voltage/state_names/ionic_states; conductance/parameter/
-    clamp/drug knobs; pacing helpers; on-object analysis compute_cv/apd/activation_time). For
-    analysis use ``cardiac_core.analysis`` on a recorded ``run()``; those docstrings show target
-    signatures, not shipped behaviour (Audit #7/#12).
+    Conductance/conductivity knobs ARE shipped: ``scale_conductance`` (ionic drug block /
+    upregulation), ``set_conductivity`` (scar / heterogeneous D), ``scale_conductivity``
+    (slow-conduction zone) — each rebuilds the sim from t=0. Other convenience methods are
+    still PLANNED and raise an INFORMATIVE NotImplementedError naming the real route (state
+    probes get_state/set_state/set_voltage/state_names/ionic_states; voltage clamp; pacing/
+    injection helpers; general set_parameter; probes; on-object analysis compute_cv/apd/
+    activation_time). For analysis use ``cardiac_core.analysis`` or the ``result`` hooks
+    (``result.cv()/apd()/lat()``) on a recorded ``run()`` (Audit #7/#12).
 
     Parameters
     ----------
@@ -307,8 +334,11 @@ class CardiacSimulation:
 
     @property
     def ionic_states(self) -> torch.Tensor:
-        """All ionic state variables as (Nx, Ny, n_states) grid."""
-        raise NotImplementedError
+        """All ionic state variables (not implemented as a live property)."""
+        raise NotImplementedError(
+            "ionic_states is not a live property; record the history with "
+            "run(record=('Vm', 'ionic_states')) and read result.ionic_states."
+        )
 
     def get_state(self, name: str) -> torch.Tensor:
         """Get a single ionic state variable by name as (Nx, Ny) grid.
@@ -318,12 +348,18 @@ class CardiacSimulation:
         name : str
             State variable name (e.g. 'Ca_i', 'Na_i', 'm', 'h', 'j').
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "get_state is not implemented; record ionic states with "
+            "run(record=('Vm', 'ionic_states')) and index result.ionic_states."
+        )
 
     @property
     def state_names(self) -> list[str]:
-        """Names of all ionic state variables."""
-        raise NotImplementedError
+        """Names of all ionic state variables (not implemented)."""
+        raise NotImplementedError(
+            "state_names is not implemented; the state ordering is defined by the "
+            "ionic model (see its gate_indices/concentration_indices)."
+        )
 
     # ========================================================================
     # State access — write
@@ -337,7 +373,10 @@ class CardiacSimulation:
         V : torch.Tensor
             (Nx, Ny) voltage field.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "set_voltage is not implemented (no mid-run voltage override API); set "
+            "initial excitation via a stimulus (stimulate()/add_stimulus())."
+        )
 
     def set_state(self, name: str, values: torch.Tensor):
         """Override a single ionic state variable.
@@ -349,7 +388,9 @@ class CardiacSimulation:
         values : torch.Tensor
             (Nx, Ny) field.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "set_state is not implemented (no per-state override API)."
+        )
 
     # ========================================================================
     # Stimulus / current injection
@@ -360,6 +401,85 @@ class CardiacSimulation:
         x1d = torch.linspace(0.0, self._data.dx * (self._Nx - 1), self._Nx, dtype=torch.float64)
         y1d = torch.linspace(0.0, self._data.dy * (self._Ny - 1), self._Ny, dtype=torch.float64)
         return torch.meshgrid(x1d, y1d, indexing='ij')
+
+    def _as_grid_mask(self, mask):
+        """Normalize a region (callable ``(x,y)->bool`` / array / tensor) to an
+        ``(Nx, Ny)`` bool ndarray, validating the shape."""
+        if callable(mask):
+            xx, yy = self._grid_coords()
+            mask = mask(xx, yy)
+        if isinstance(mask, torch.Tensor):
+            mask = mask.detach().cpu().numpy()
+        m = np.asarray(mask).astype(bool)
+        if m.shape != (self._Nx, self._Ny):
+            raise ValueError(f"mask shape {m.shape} != (Nx, Ny) = ({self._Nx}, {self._Ny})")
+        return m
+
+    def _live_ionic_model(self):
+        """The IonicModel instance the running engine actually uses (engine-agnostic).
+
+        Used so ``scale_conductance`` scales the model the sim is really running with —
+        preserving its cell type (bidomain/LBM default ENDO regardless of the mesh) and
+        any prior scalings, rather than re-deriving from a name + a possibly-mismatched
+        cell type.
+        """
+        eng = self._engine
+        if self._engine_type == 'lbm':
+            return eng.ionic_model
+        if self._engine_type == 'monodomain':
+            return eng._ionic_model
+        # bidomain: splitting -> ionic_solver -> ionic_model
+        return eng.splitting.ionic_solver.ionic_model
+
+    def _rebuild_with_conductivity(self, mask, *, set_value=None, scale=None):
+        """Apply an absolute ``set_value`` or a multiplicative ``scale`` to the tissue
+        conductivity on ``mask`` and rebuild the sim from t=0.
+
+        Covers BOTH representations: the ``D_xx/D_yy/D_xy`` diffusivity fields (monodomain,
+        LBM, and the legacy D-based bidomain path) AND the ``sigma_i/sigma_e`` conductivity
+        fields that a declaratively-built bidomain actually uses (its factory ignores
+        ``D_xx`` when sigma fields are present — mutating only ``D_xx`` would be a silent
+        no-op). An absolute nonzero ``set_value`` has no unambiguous sigma meaning, so it
+        raises for sigma-parameterized bidomain (a D=0 scar is fine: zero everything).
+        """
+        from dataclasses import replace
+        m = self._as_grid_mask(mask)
+        data = self._data
+
+        def _op(arr):
+            out = arr.copy()
+            if set_value is not None:
+                out[m] = float(set_value)
+            else:
+                out[m] *= float(scale)
+            return out
+
+        kw = dict(D_xx=_op(data.D_xx), D_yy=_op(data.D_yy))
+        # D_xy: scar/absolute-set zeroes the cross term; scaling multiplies it.
+        D_xy = data.D_xy.copy()
+        if set_value is not None:
+            D_xy[m] = 0.0
+        else:
+            D_xy[m] *= float(scale)
+        kw['D_xy'] = D_xy
+
+        if data.sigma_i is not None and data.sigma_e is not None:
+            if set_value is not None and float(set_value) != 0.0:
+                raise NotImplementedError(
+                    "set_conductivity with a nonzero absolute D is not supported on a "
+                    "bidomain built from ConductivityConfig (it stores conductivities, "
+                    "not a diffusivity). Use scale_conductivity(mask, factor), or build "
+                    "the mesh via create_cardiac_mesh (D-based)."
+                )
+
+            def _op_sigma(sig):  # sig = (xx, yy, xy) tuple of (Nx,Ny) arrays
+                return tuple(_op(c) for c in sig)
+
+            kw['sigma_i'] = _op_sigma(data.sigma_i)
+            kw['sigma_e'] = _op_sigma(data.sigma_e)
+
+        self._data = replace(data, **kw)
+        self.reset()
 
     def stimulate(self, region, start_time: float = 0.0, duration: float = 1.0,
                   amplitude: float = -52.0):
@@ -414,7 +534,10 @@ class CardiacSimulation:
         amplitude : float
             Stimulus current (µA/µF).
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "add_pacing is not implemented; issue repeated stimulate()/add_stimulus() "
+            "calls at start_time + k*bcl (k=0..n_beats-1) to build a pacing train."
+        )
 
     def inject_current(self, mask: 'np.ndarray | torch.Tensor', amplitude: float):
         """Inject current for one time step at the masked nodes.
@@ -428,7 +551,10 @@ class CardiacSimulation:
         amplitude : float
             Current (µA/µF).
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "inject_current is not implemented; use stimulate()/add_stimulus() with a "
+            "short duration for a timed current injection."
+        )
 
     # ========================================================================
     # Voltage clamp
@@ -457,7 +583,9 @@ class CardiacSimulation:
         duration : float, optional
             How long clamp lasts (ms). None = until release_clamp().
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "clamp_voltage is not implemented (no voltage-clamp API yet)."
+        )
 
     def add_clamp_protocol(
         self,
@@ -479,19 +607,16 @@ class CardiacSimulation:
             [(-80, 500), (-40, 200), (-80, 500)]  # hold → step → hold
         start_time : float
             When the first step begins (ms).
-
-        Example
-        -------
-        >>> # Classic INa activation protocol
-        >>> sim.add_clamp_protocol(
-        ...     mask, steps=[(-80, 500), (-20, 50), (-80, 500)], start_time=0
-        ... )
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "add_clamp_protocol is not implemented (no voltage-clamp API yet)."
+        )
 
     def release_clamp(self):
-        """Release all voltage clamps. Nodes resume normal dynamics."""
-        raise NotImplementedError
+        """Release all voltage clamps (not implemented — no voltage-clamp API yet)."""
+        raise NotImplementedError(
+            "release_clamp is not implemented (no voltage-clamp API yet)."
+        )
 
     # ========================================================================
     # Conductivity / drug block
@@ -503,73 +628,101 @@ class CardiacSimulation:
         factor: 'float | Distribution',
         mask: 'np.ndarray | torch.Tensor | None' = None,
     ):
-        """Scale an ionic current's maximal conductance.
+        """Scale an ionic model conductance (drug block / upregulation).
 
-        Simulates drug block (factor < 1.0) or upregulation (factor > 1.0).
-        Accepts a Distribution for per-node stochastic scaling (cell-to-cell
-        variability in ion channel expression).
+        Rebuilds the simulation from t=0 with the named maximal conductance on the
+        ionic model multiplied by ``factor`` (< 1 = block, > 1 = upregulation). Repeated
+        calls compound (each is relative to the current value).
+
+        ``current_name`` is the model PARAMETER name, not the current name — e.g. TTP06
+        'GNa'/'GKr'/'GKs'/'Gto'; ORd 'GNa'/'GKr'/'GKs'/'GK1'/'PCa' (ICaL). An unknown
+        name raises with the model's available conductances listed.
 
         Parameters
         ----------
         current_name : str
-            Ionic current name (e.g. 'IKr', 'INa', 'ICaL', 'IK1').
-        factor : float or Distribution
-            Multiplicative factor. float → uniform everywhere.
-            Distribution → per-node sampling (e.g. gaussian(1.0, 0.1)).
-        mask : (Nx, Ny) bool, optional
-            Apply only in region. None = everywhere.
+            Model conductance parameter (validated against the ionic model instance).
+        factor : float
+            Multiplicative factor applied uniformly.
+        mask : optional
+            NOT IMPLEMENTED — per-node conductance heterogeneity is future work.
 
-        Examples
-        --------
-        >>> sim.scale_conductance('IKr', 0.5)                         # 50% block everywhere
-        >>> sim.scale_conductance('INa', Distribution('gaussian', mean=1.0, sigma=0.1))  # ±10% per node
-        >>> sim.scale_conductance('ICaL', 0.0, mask=scar_mask)        # full block in scar only
+        Notes
+        -----
+        Global scalar only: a per-node ``mask`` or a ``Distribution`` ``factor`` raises
+        NotImplementedError (the ionic params are uniform scalars, applied by rebuild).
         """
-        raise NotImplementedError
+        if mask is not None or isinstance(factor, Distribution):
+            raise NotImplementedError(
+                "scale_conductance supports a single global scalar factor (rebuild "
+                "from t=0); per-node conductance heterogeneity (mask= / Distribution) "
+                "is not implemented — pass a uniform float factor."
+            )
+        # Scale a deep copy of the LIVE engine model — preserves cell type across
+        # engines (bidomain/LBM default ENDO) and any prior scalings; store it so the
+        # rebuild (and future reset()/with_()) use it.
+        model = _scale_ionic_conductances(self._live_ionic_model(), {current_name: factor})
+        self._build_kwargs['ionic_model'] = model
+        self.reset()
 
     def set_conductivity(
         self,
         mask: 'np.ndarray | torch.Tensor',
         D: 'float | Distribution',
     ):
-        """Set diffusion coefficient in a region.
+        """Set the (raw) diffusion coefficient in a region and rebuild from t=0.
 
-        Creates scar (D=0), slow conduction zones, or heterogeneous tissue.
+        ``D=0.0`` makes an inexcitable scar: the FDM uses a harmonic-mean interface
+        conductivity, so a D=0 cell has zero flux and the wave routes around it. ``D``
+        is RAW (like ``create_cardiac_mesh``'s ``D``); the membrane-effective diffusivity
+        is ``D/(chi*Cm)``. Making the mesh non-uniform switches the engine to its
+        per-node D_field path automatically.
 
         Parameters
         ----------
-        mask : (Nx, Ny) bool
+        mask : (Nx, Ny) bool, or callable ``(x, y) -> bool``
             Region to modify.
-        D : float or Distribution
-            New diffusion coefficient (cm²/ms). 0 = no conduction.
-            Distribution → per-node sampling.
+        D : float
+            New raw diffusion coefficient. 0 = no conduction (scar).
 
-        Examples
-        --------
-        >>> sim.set_conductivity(scar_mask, D=0.0)                          # scar
-        >>> sim.set_conductivity(border_mask, Distribution('uniform', lower=0.0003, upper=0.0008))
+        Notes
+        -----
+        A ``Distribution`` ``D`` (per-node stochastic conductivity) is not implemented.
         """
-        raise NotImplementedError
+        if isinstance(D, Distribution):
+            raise NotImplementedError(
+                "set_conductivity supports a scalar D (per-node Distribution not "
+                "implemented). Pass a float; D=0.0 makes an inexcitable scar."
+            )
+        self._rebuild_with_conductivity(mask, set_value=float(D))
 
     def scale_conductivity(
         self,
         mask: 'np.ndarray | torch.Tensor',
         factor: 'float | Distribution',
     ):
-        """Scale diffusion coefficient in a region.
+        """Multiply the diffusion coefficient in a region by ``factor`` (rebuild from t=0).
+
+        Slow-conduction zones (0 < factor < 1) or faster tracts (factor > 1). Shares the
+        machinery of :meth:`set_conductivity`; use that for an absolute value / scar.
 
         Parameters
         ----------
-        mask : (Nx, Ny) bool
+        mask : (Nx, Ny) bool, or callable ``(x, y) -> bool``
             Region to modify.
-        factor : float or Distribution
-            Multiplicative factor.
+        factor : float
+            Multiplicative factor on the current per-node D.
 
-        Examples
-        --------
-        >>> sim.scale_conductivity(fibrotic_mask, Distribution('lognormal', mean=0.0, sigma=0.5))
+        Notes
+        -----
+        A ``Distribution`` ``factor`` (per-node stochastic scaling) is not implemented.
         """
-        raise NotImplementedError
+        if isinstance(factor, Distribution):
+            raise NotImplementedError(
+                "scale_conductivity supports a scalar factor (per-node Distribution "
+                "not implemented)."
+            )
+        self._rebuild_with_conductivity(mask, scale=float(factor))
 
     # ========================================================================
     # Per-node stochastic parameters
@@ -599,16 +752,13 @@ class CardiacSimulation:
         mask : (Nx, Ny) bool, optional
             Apply only in region. None = everywhere.
 
-        Examples
-        --------
-        >>> # Heterogeneous GNa (±15% per cell)
-        >>> sim.set_parameter('GNa', Distribution('gaussian', mean=14.838, sigma=2.2))
-        >>> # Elevated extracellular potassium in ischemic zone
-        >>> sim.set_parameter('K_o', 8.0, mask=ischemia_mask)
-        >>> # Random Cm variation
-        >>> sim.set_parameter('Cm', Distribution('uniform', lower=0.8, upper=1.2))
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "set_parameter (general per-node parameter/heterogeneity) is not "
+            "implemented; for a uniform ionic conductance use "
+            "scale_conductance(name, factor), and for tissue diffusivity use "
+            "set_conductivity(mask, D) / scale_conductivity(mask, factor)."
+        )
 
     def get_parameter_field(self, name: str) -> torch.Tensor:
         """Get the current per-node values of a parameter as (Nx, Ny) grid.
@@ -626,7 +776,9 @@ class CardiacSimulation:
         torch.Tensor
             (Nx, Ny) current values.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "get_parameter_field is not implemented (no per-node parameter fields)."
+        )
 
     # ========================================================================
     # Probes / recording
@@ -644,7 +796,10 @@ class CardiacSimulation:
         x, y : float
             Physical coordinates (cm).
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "add_probe is not implemented; record the full field with run() and index "
+            "result.Vm[:, ix, iy] at the node(s) you want."
+        )
 
     def get_traces(self) -> dict:
         """Return recorded probe traces.
@@ -654,11 +809,14 @@ class CardiacSimulation:
         dict
             {name: {'t': np.ndarray, 'V': np.ndarray, 'phi_e': np.ndarray | None}}
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "get_traces is not implemented; use run() and slice result.Vm (and "
+            "result.phi_e for bidomain) at the node(s) you care about."
+        )
 
     def clear_traces(self):
-        """Clear all recorded probe data (keeps probe locations)."""
-        raise NotImplementedError
+        """Clear all recorded probe data (not implemented — no probe API)."""
+        raise NotImplementedError("clear_traces is not implemented (no probe API).")
 
     # ========================================================================
     # Analysis
@@ -677,7 +835,10 @@ class CardiacSimulation:
         torch.Tensor
             (Nx, Ny) activation times (ms). NaN where not activated.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "compute_activation_time is not a sim method; call result = sim.run(...) "
+            "then result.lat() (or cardiac_core.analysis.activation_time)."
+        )
 
     def compute_cv(
         self,
@@ -700,7 +861,10 @@ class CardiacSimulation:
         float
             Conduction velocity (cm/s). NaN if activation not detected.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "compute_cv is not a sim method; call result = sim.run(...) then "
+            "result.cv(x1, x2, y) (integer node indices)."
+        )
 
     def compute_apd(
         self,
@@ -721,7 +885,10 @@ class CardiacSimulation:
         float
             APD (ms). NaN if no complete AP detected.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "compute_apd is not a sim method; call result = sim.run(...) then "
+            "result.apd() (or cardiac_core.analysis.apd_at for a single node)."
+        )
 
     # ========================================================================
     # Metadata

@@ -227,3 +227,102 @@ def test_fft_solver_constructs_and_runs():
     cond = ConductivityConfig.isotropic(1.4)
     r = monodomain(g, 'ttp06', cond, _stim(width=0.06), linear_solver='fft').run(4.0, 1.0)
     assert r.Vm.shape[1:] == (32, 8)
+
+
+# ===========================================================================
+# Phase 3 — stub de-trap + scale_conductance / set_conductivity implementations
+# ===========================================================================
+def test_stubs_have_informative_errors():
+    """De-trapped stubs raise NotImplementedError with a message naming the route."""
+    sim = monodomain(create_cardiac_mesh(0.2, 0.12, 0.02, D=1e-3, chi=1.0), stimulus=_stim())
+    mask = np.ones((11, 7), dtype=bool)
+    for call in (lambda: sim.get_state('m'),
+                 lambda: sim.clamp_voltage(mask, -20.0),
+                 lambda: sim.compute_cv(0.0, 0.1, 0.05),
+                 lambda: sim.set_parameter('GNa', 1.0),
+                 lambda: sim.add_probe('apex', 0.05, 0.05)):
+        with pytest.raises(NotImplementedError) as ei:
+            call()
+        msg = str(ei.value).lower()
+        assert len(msg) > 20, "stub error must be informative, not bare"
+        assert ("not implemented" in msg) or ("not a sim method" in msg), msg
+
+
+def test_scale_conductance_changes_apd():
+    """Reducing GKr (IKr block) prolongs APD; an unknown conductance raises."""
+    g = Grid(12, 4, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    stim = _stim(width=0.06)
+    r0 = monodomain(g, 'ttp06', cond, stim, dt=0.1).run(600.0, 2.0)
+    sim = monodomain(g, 'ttp06', cond, stim, dt=0.1)
+    sim.scale_conductance('GKr', 0.4)
+    r1 = sim.run(600.0, 2.0)
+    apd0, apd1 = float(r0.apd()[2, 2]), float(r1.apd()[2, 2])
+    assert apd0 == apd0 and apd1 == apd1, "both APDs must be finite"
+    assert apd1 > apd0 + 5.0, f"reduced GKr should prolong APD: {apd0} -> {apd1}"
+    with pytest.raises(ValueError, match="unknown conductance"):
+        sim.scale_conductance('NotAConductance', 0.5)
+
+
+def test_set_conductivity_scar_blocks():
+    """set_conductivity(mask, D=0) makes an inexcitable scar; the wave routes around."""
+    g = Grid(24, 20, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    sim = monodomain(g, 'ttp06', cond, _stim(width=0.06), dt=0.1)
+    scar = np.zeros((24, 20), dtype=bool)
+    scar[11:14, 6:16] = True   # partial vertical barrier (open rows top+bottom)
+    sim.set_conductivity(scar, D=0.0)
+    r = sim.run(160.0, 2.0)
+    scar_t = torch.as_tensor(scar)
+    assert not (r.Vm[:, scar_t] >= -20.0).any(), "scar nodes must never activate"
+    assert (r.Vm[:, 21, 2] >= -20.0).any(), "wave should route around and reach the far side"
+
+
+# --- audit follow-ups: the conductivity/conductance methods must also work on the
+#     bidomain sigma path and must not flip cell type (found by the Phase-3 audit) ---
+def test_set_conductivity_scar_blocks_declarative_bidomain():
+    """A declarative bidomain stores conductivity as sigma fields (not D_xx); a scar
+    must zero those too (else it silently no-ops and the wave passes through)."""
+    g = Grid(24, 16, 0.02)
+    cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    sim = bidomain(g, 'ttp06', cond, _stim(width=0.06), dt=0.1)
+    scar = np.zeros((24, 16), dtype=bool)
+    scar[11:14, 5:12] = True
+    sim.set_conductivity(scar, D=0.0)
+    assert float(np.unique(sim._data.sigma_i[0][scar])[0]) == 0.0, "sigma must be zeroed"
+    r = sim.run(140.0, 4.0)
+    assert not (r.Vm[:, torch.as_tensor(scar)] >= -20.0).any(), "scar must block on bidomain"
+
+
+def test_set_conductivity_nonzero_D_on_sigma_bidomain_raises():
+    """An absolute nonzero D has no unambiguous sigma meaning — raise, don't silently
+    apply it to the ignored D_xx field."""
+    g = Grid(16, 12, 0.02)
+    cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    scar = np.zeros((16, 12), dtype=bool); scar[7:9, 4:8] = True
+    with pytest.raises(NotImplementedError, match="bidomain"):
+        sim.set_conductivity(scar, D=5e-4)
+
+
+def test_scale_conductance_preserves_celltype_on_bidomain():
+    """scale_conductance must scale only the target conductance, not flip cell type —
+    the bidomain factory builds ENDO, so a name-rebuild would jump Gto 0.073->0.294."""
+    g = Grid(16, 12, 0.02)
+    cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    gto0 = sim._live_ionic_model().params.Gto
+    gkr0 = sim._live_ionic_model().params.GKr
+    sim.scale_conductance('GKr', 0.5)
+    assert sim._live_ionic_model().params.Gto == gto0, "cell-type conductances must not change"
+    assert sim._live_ionic_model().params.GKr == pytest.approx(gkr0 * 0.5)
+
+
+def test_scale_conductivity_scales_sigma_on_bidomain():
+    g = Grid(16, 12, 0.02)
+    cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    zone = np.zeros((16, 12), dtype=bool); zone[6:10, 4:8] = True
+    si0 = float(sim._data.sigma_i[0][7, 6])
+    sim.scale_conductivity(zone, 0.25)
+    assert float(sim._data.sigma_i[0][7, 6]) == pytest.approx(si0 * 0.25)
