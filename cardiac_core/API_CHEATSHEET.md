@@ -38,8 +38,9 @@ mask = cc.annulus_mask(Nx, Ny, dx, center, inner_radius, outer_radius)
 cond = cc.ConductivityConfig.isotropic(sigma, chi=1400.0, Cm=1.0)         # single effective σ
 cond = cc.ConductivityConfig.bidomain(sigma_i, sigma_e, chi=1400.0, Cm=1.0)  # most physical
 cond = cc.ConductivityConfig.anisotropic(sigma_l, sigma_t, fiber_angle, chi=1400.0, Cm=1.0)
-cond.sigma_eff   # effective conductivity (mS/cm)
-cond.D_eff       # derived diffusivity = sigma_eff/(chi*Cm)  (cm^2/ms)
+cond.sigma_eff   # effective conductivity (mS/cm) — a scalar for isotropic/bidomain,
+                 #   but a 3-tuple (xx, yy, xy) for anisotropic (don't float() it blindly)
+cond.D_eff       # derived diffusivity = sigma_eff/(chi*Cm) (cm^2/ms) — same scalar-or-3-tuple shape
 ```
 > ⚠️ **Units trap.** `sigma*` are **raw conductivities in mS/cm**. The diffusivity `D_eff` is DERIVED —
 > do NOT pass a pre-divided `D` as `sigma`. Healthy human ventricle: `sigma_i=1.74, sigma_e=6.25`

@@ -125,7 +125,7 @@ def right_edge_mask(Nx: int, Ny: int, dx: float, width: float) -> np.ndarray:
 
 def point_distance(
     Nx: int, Ny: int, dx: float,
-    x0: float, y0: float,
+    center: tuple[float, float],
     dy: float = None,
 ) -> np.ndarray:
     """Euclidean distance from a point at every grid node.
@@ -136,8 +136,9 @@ def point_distance(
         Grid dimensions.
     dx : float
         Grid spacing (cm).
-    x0, y0 : float
-        Point coordinates (cm).
+    center : (float, float)
+        Point coordinates (x_cm, y_cm). Matches the ``center=`` convention of
+        ``circle_mask``/``annulus_mask``.
 
     Returns
     -------
@@ -145,7 +146,7 @@ def point_distance(
         (Nx, Ny) float64 distance in cm.
     """
     X, Y = _coordinate_grids(Nx, Ny, dx, dy)
-    return np.sqrt((X - x0)**2 + (Y - y0)**2)
+    return np.sqrt((X - center[0])**2 + (Y - center[1])**2)
 
 
 def boundary_distance(mask: np.ndarray, dx: float) -> np.ndarray:

@@ -61,12 +61,12 @@ class TestEdgeMasks:
 
 class TestPointDistance:
     def test_distance_at_origin(self):
-        dist = point_distance(21, 21, dx=0.05, x0=0.0, y0=0.0)
+        dist = point_distance(21, 21, dx=0.05, center=(0.0, 0.0))
         assert dist[0, 0] == pytest.approx(0.0)
         assert dist[20, 0] == pytest.approx(1.0)  # x=1.0, y=0
 
     def test_distance_symmetry(self):
-        dist = point_distance(21, 21, dx=0.05, x0=0.5, y0=0.5)
+        dist = point_distance(21, 21, dx=0.05, center=(0.5, 0.5))
         assert dist[10, 10] == pytest.approx(0.0)
         # Symmetric around center
         assert dist[0, 10] == pytest.approx(dist[20, 10], abs=1e-10)
