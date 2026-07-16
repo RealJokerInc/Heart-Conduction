@@ -6,9 +6,10 @@
 
 ## Current Direction
 **PLAN.md EXECUTED — P0/P1/P2 usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, NOT yet merged to main).**
-All 5 PLAN phases done, each test-gated + per-engine integrity goldens bit-identical (atol=0). Commits P1 `a37d325`
-→ P2 `d78a86d` → P3 `d94aa6d` → P4 `d6a3237` → P5 `99e1fa3`. Suite **252 passed / 2 xfailed** (218 baseline + 34
-new tests in `cardiac_core/tests/test_usability_fixes.py`).
+All 5 PLAN phases done + a 5-lane adversarial audit of the whole branch (see the 2026-07-16 final-audit Thread
+entry — 4 more real bugs found + fixed), each test-gated + per-engine integrity goldens bit-identical (atol=0).
+Commits P1 `a37d325` → P2 `d78a86d` → P3 `d94aa6d` → P4 `d6a3237` → P5 `99e1fa3` → audit-remediation `c0306d2`.
+Suite **254 passed / 2 xfailed** (218 baseline + 36 tests in `cardiac_core/tests/test_usability_fixes.py`).
 - **P1 six P0 bugs:** B1 GPU device-mismatch (`_result_from` builds `times` on Vm's device); B8 NaN-fill masked
   nodes (`StructuredGrid.flat_to_grid`, mono+bidomain; LBM has no flat_to_grid, untouched); B3/B4 `apd_at`
   beat-bounded peak + dome-aware LAST-crossing (spike-and-dome safe); B5 `Grid(N,1)` degenerate-axis guard;
@@ -133,9 +134,9 @@ monodomain convergence; oblique-LBM moment-space rotation (Audit #46) if ever wa
 **Consolidation (A2 vendoring) SHIPPED (2026-06-25).** `cardiac_core` is one self-contained package — 3 engines vendored `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, bit-identical goldens, originals frozen. Phases 0–5 `935160b`→`37dc381`. → KNOWLEDGE "cardiac_core unified ground-up package". *(Predecessors condensed — full detail in Thread: V5.5 Cm-correct fork + consolidation Phase-1 copy-only, 2026-05-30/31; the Goal-2 design reframe to wet-lab code-gen, 2026-06-25; the "ditch FEM → structured-grid only" pending constraint — RESOLVED by the 2026-07-01 FEM/TriangularMesh removal. The deferred code-dedup [engines import from cardiac_core + delete copies] stays per-consumer — big-bang breaks Surrogate/Optimizer.)*
 
 ## Next Step
-**▶ MERGE `usability-fixes-p0-p1` → `main`** (the 5 usability-fix commits `a37d325`→`99e1fa3`; PLAN EXECUTED, see
-Current Direction). Suite 252/2xfail, goldens bit-identical. The branch is review-ready; nothing else in the plan
-is outstanding. After the merge, the OPEN threads below are unchanged (none were touched this session). Two
+**▶ MERGE `usability-fixes-p0-p1` → `main`** (commits `a37d325`→`c0306d2`: 5 phases + `562a7a0` docs +
+`c0306d2` audit-remediation; PLAN EXECUTED + 5-lane final audit clean, see Current Direction). Suite 254/2xfail,
+goldens bit-identical. The branch is review-ready; nothing else in the plan is outstanding. After the merge, the OPEN threads below are unchanged (none were touched this session). Two
 usability items that were NOT in this PLAN and remain P3/future work: **B9** dead `stim_amplitudes_e` (no
 defibrillation) and the rotor-seeding / mid-run-state API (`set_voltage`/`get_state`/`clamp_voltage`/`add_pacing`
 are now HONEST stubs, not implemented) + a 0-D single-cell mode + `cc.sweep`/`fit_conductivity` (all documented in
@@ -161,7 +162,33 @@ The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 f
 
 ## Thread
 
-### 2026-07-16 (exec): PLAN.md usability fixes EXECUTED — 5 phases, 34 tests, audit-hardened
+### 2026-07-16 (final audit): 5-lane adversarial audit of the whole branch → 4 more real bugs fixed
+After executing all 5 phases, ran a **5-lane parallel adversarial audit** (general-purpose subagents; A=P1,
+B=P2, C=P3, D=P5, E=tests+docs) over the whole `main..HEAD` diff. Verdict: default paths sound, but **reachable
+non-default configs were silently wrong**. Fixed (commit `c0306d2`):
+- **B2 was the worst — my own regression.** Wiring dct/fft removed the TypeError but let users SELECT them in
+  configs where they're silently wrong: DCT/FFT ignore the assembled matrix and invert an idealized scalar-D
+  Neumann eigen-operator. Measured: anisotropic D → up to **68% CV error**; scar D=0 → **invisible**; bdf2 →
+  **CV=nan** (BDF2's BDF1-bootstrap step gets the BDF2 denom → DC/3); fft on any (Neumann) mono mesh → **CV=nan**.
+  Fix: `_check_spectral_preconditions` gates dct/fft to iso-uniform + full-rect + face_mirror + cardinal4 + CN/BDF1,
+  rejects fft entirely; FDM exposes `_is_iso_uniform`. GOTCHA: the mono factory ALWAYS builds `from_mask` (full-rect
+  gets an all-True mask), so the "masked" check must be `not domain_mask.all()`, not `is not None` (first gate cut
+  falsely rejected the valid uniform dct path). Default `pcg` untouched; dct on the valid path is exact (Vm≈CN 1e-3).
+- **restitution_slope.DI_star** returned the steep short-DI end, not the slope=1 crossing → now interpolates the
+  descending crossing. **apd_per_beat** emitted 0.0 for a beat in progress at t=0 → now only measures clean-upstroke
+  beats. **_scale_ionic_conductances** accepted any attr (F/T/Cm/concentrations/`*_scale`) → restricted to G*/P*
+  non-`*_scale`. **flat_to_grid** NaN-fill guarded for int/bool flats. **LBM** regional set/scale_conductivity now
+  raises a clear error (was a misleading "oblique fibers"). **Cheatsheet** `load_result` fixed to the real 4-tuple.
+- **Verified SOUND by the audit:** B1 device fix (empty-branch consistent, batch path covered), B3/B4 apd_at exact
+  reduction to old behavior on monotonic APs, B5 all four degenerate cases, B6 CFL formula/attrs/non-FDM-skip, B7
+  eager both entry points; the two Phase-3 cross-engine fixes (sigma no-op, cell-type flip); every cheatsheet claim
+  except load_result (ORd-LBM-only, PCa=ICaL, paci-on-mono, save_result arg order all TRUE).
+- **Accepted/left (minor):** B1 CPU test is tautological (real coverage = the GPU-gated test, runs on this box; the
+  bug is GPU-only anyway); df_map flat-node→0 Hz (consistent w/ per-node fn); radial_cv all-NaN on a bad center;
+  transposed square-mask silent-accept. Documented, not fixed.
+Suite after remediation: **254 passed / 2 xfailed**; goldens bit-identical.
+
+### 2026-07-16 (exec): PLAN.md usability fixes EXECUTED — 5 phases, audit-hardened
 Cold-started from PLAN.md and ran all 5 phases on branch `usability-fixes-p0-p1`, each implement → targeted test
 → goldens (bit-identical, atol=0) → commit. Details in Current Direction. **Execution catches beyond the plan:**
 - **Bidomain masked runs can't use the default spectral elliptic solver** (`SpectralSolver.solve` reshapes to the

@@ -4,8 +4,9 @@
 > When the question is complete, a copy is promoted to `Research/Knowledge/`.
 
 > **SHIPPED 2026-07-16 — P0/P1/P2 usability fixes** (branch `usability-fixes-p0-p1`, commits `a37d325`→`99e1fa3`,
-> NOT yet merged to main). Executed the audit-converged [PLAN.md](./PLAN.md) — all 5 phases, each test-gated +
-> per-engine integrity goldens bit-identical (atol=0). Suite **252 passed / 2 xfailed** (218 baseline + 34 tests
+> NOT yet merged to main). Executed the audit-converged [PLAN.md](./PLAN.md) — all 5 phases + a 5-lane adversarial
+> audit of the whole branch (4 more real bugs found + fixed, commit `c0306d2`), each test-gated + per-engine
+> integrity goldens bit-identical (atol=0). Suite **254 passed / 2 xfailed** (218 baseline + 36 tests
 > in `cardiac_core/tests/test_usability_fixes.py`). **P1** six P0 bugs (B1 GPU device-mismatch, B8 NaN-fill masked
 > nodes, B3/B4 apd_at beat-bounded+dome-aware, B5 Grid(N,1), B6 forward_euler CFL warn, B7 record= validation);
 > **P2** B2 DCT/FFT fast-solver wiring (was TypeError→silent slow-PCG); **P3** de-trapped ~18 stubs (honest errors)
