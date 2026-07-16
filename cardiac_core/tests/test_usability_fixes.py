@@ -5,7 +5,9 @@ B5 Grid(N,1), B6 forward_euler CFL guard, B7 record= validation, B8 NaN-fill mas
 These lock in the fix; test_integrity.py (full-rectangle) is the bit-identical golden guard.
 """
 
+import re
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -326,3 +328,19 @@ def test_scale_conductivity_scales_sigma_on_bidomain():
     si0 = float(sim._data.sigma_i[0][7, 6])
     sim.scale_conductivity(zone, 0.25)
     assert float(sim._data.sigma_i[0][7, 6]) == pytest.approx(si0 * 0.25)
+
+
+# ===========================================================================
+# Phase 4 — the cheatsheet's runnable example must actually execute (doc canary)
+# ===========================================================================
+def test_cheatsheet_examples_execute():
+    """Extract the tagged runnable block from API_CHEATSHEET.md and exec it, so the
+    documented calls (construct/run/record/dct/scale_conductance/set_conductivity/
+    dominant_frequency/save_result/load_result) can't silently drift from the code."""
+    cheatsheet = Path(__file__).resolve().parents[1] / "API_CHEATSHEET.md"
+    text = cheatsheet.read_text()
+    blocks = re.findall(r"```python\n(.*?)```", text, re.DOTALL)
+    runnable = [b for b in blocks if b.lstrip().startswith("# runnable-canary")]
+    assert runnable, "no runnable-canary block found in API_CHEATSHEET.md"
+    for block in runnable:
+        exec(compile(block, "<cheatsheet>", "exec"), {"__name__": "__cheatsheet__"})
