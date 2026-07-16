@@ -20,9 +20,10 @@ on d2q5 (UNCHANGED — tuner calls `run_lbm` with no lattice/boundary, and golde
 untouched), `hbb` on d2q9 (label-only; neumann≡hbb numerically on d2q9). Cheatsheet §4 documents the
 d2q9 requirement (the prior doc gap). **User decisions (2026-07-15):** keep the global d2q5/neumann
 default (do NOT flip to d2q9); merge only the 12 committed tuner commits to main. Two cosmetic nits
-recorded, not fixed: `point_distance(x0,y0)` scalar-coords vs `circle_mask(center=(x,y))` tuple;
-`ConductivityConfig.sigma_eff`/`D_eff` return a scalar (iso/bi) but a 3-tuple `(xx,yy,xy)` (aniso) —
-cheatsheet implies scalar. Also landed the `engine-tuner-v2-joint` branch (12 commits) onto main (merge
+ALSO FIXED (commit `e707fe1`): **F3** `point_distance` now takes `center=(x,y)` matching
+`circle_mask`/`annulus_mask` (was scalar `x0,y0`; only 2 internal test callers); **F4** cheatsheet §2
+now notes `ConductivityConfig.sigma_eff`/`D_eff` return a scalar (iso/bi) but a 3-tuple `(xx,yy,xy)`
+(aniso). Also landed the `engine-tuner-v2-joint` branch (12 commits) onto main (merge
 `9d82f56`; one MASTER_KNOWLEDGE_INDEX.md conflict resolved keeping both the β-dt-guide bullet and the
 SCS-gate-decontamination correction).
 
