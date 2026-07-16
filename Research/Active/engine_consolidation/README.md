@@ -11,6 +11,11 @@ How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `ca
 
 ## Status: Active
 
+> **Usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, pending merge to main)** — the two-round
+> task-based usability audit's P0/P1/P2 fix list executed as 5 test-gated phases (P0 crash/silent-wrong bugs → B2
+> fast-solver wiring → de-trap stubs + `scale_conductance`/`set_conductivity` → cheatsheet correctness → analysis
+> aggregates). 252 tests green; per-engine integrity goldens bit-identical. See KNOWLEDGE "SHIPPED 2026-07-16".
+>
 > **Goal-1 unified construction API SHIPPED (2026-06-24)** — `ConductivityConfig`, `Grid`, `Simulation` Protocol, declarative factories, eager/batch `run()` → `SimulationResult`. See KNOWLEDGE "Goal-1 Construction API — SHIPPED".
 >
 > **Consolidation SHIPPED (2026-06-25)** — `cardiac_core` is now a **single self-contained package**: the 3 engines are vendored under `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, the `_prepare_engine()` hack is deleted, no cross-folder imports. 137 tests green; bit-identical integrity goldens; engine originals untouched (frozen; `cardiac_core` is the centralized home). See KNOWLEDGE "cardiac_core unified ground-up package — SHIPPED" + `plans/2026-06-25_*`. This satisfies the spirit of the consolidation-track criteria below (single home, no duplicated-yet-referenced shared code) by **copy-vendoring** rather than rewire-and-delete.

@@ -3,6 +3,20 @@
 > This file is a running synthesis. Updated as findings accumulate.
 > When the question is complete, a copy is promoted to `Research/Knowledge/`.
 
+> **SHIPPED 2026-07-16 — P0/P1/P2 usability fixes** (branch `usability-fixes-p0-p1`, commits `a37d325`→`99e1fa3`,
+> NOT yet merged to main). Executed the audit-converged [PLAN.md](./PLAN.md) — all 5 phases, each test-gated +
+> per-engine integrity goldens bit-identical (atol=0). Suite **252 passed / 2 xfailed** (218 baseline + 34 tests
+> in `cardiac_core/tests/test_usability_fixes.py`). **P1** six P0 bugs (B1 GPU device-mismatch, B8 NaN-fill masked
+> nodes, B3/B4 apd_at beat-bounded+dome-aware, B5 Grid(N,1), B6 forward_euler CFL warn, B7 record= validation);
+> **P2** B2 DCT/FFT fast-solver wiring (was TypeError→silent slow-PCG); **P3** de-trapped ~18 stubs (honest errors)
+> + implemented `scale_conductance`/`set_conductivity`/`scale_conductivity`; **P4** cheatsheet correctness pass;
+> **P5** analysis aggregates (df_map, cv_between, radial_cv, apd_per_beat, restitution_slope) + zero-node-stim
+> warning. An adversarial audit of the P3 diff caught 2 cross-engine bugs — declarative-bidomain sigma-field scar
+> no-op, and a cell-type flip in scale_conductance — both fixed (apply mask to sigma_i/sigma_e; deep-copy the LIVE
+> engine model). Verified: `monodomain('ord')` raises (LBM-only); `paci`/`phas13`/`mhas13` run on mono; ICaL is
+> `PCa` (a permeability), not "GCaL", in BOTH TTP06 and ORd. See "Usability fixes — SHIPPED" below + the 2026-07-16
+> exec Thread entry in IDEALOG.
+>
 > **SHIPPED 2026-07-01 — foundation cleanup + boundary modes.** A cardiac_core+mcp adversarial audit
 > (46 findings → [CARDIAC_CORE_AUDIT.md](./CARDIAC_CORE_AUDIT.md)) drove a 3-phase cleanup ([PLAN.md](./PLAN.md)):
 > **P1** fixed the monodomain FDM anisotropic cross-derivative bug + unified the chi/D convention

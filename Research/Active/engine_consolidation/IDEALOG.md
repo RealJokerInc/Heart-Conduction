@@ -5,6 +5,35 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**PLAN.md EXECUTED — P0/P1/P2 usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, NOT yet merged to main).**
+All 5 PLAN phases done, each test-gated + per-engine integrity goldens bit-identical (atol=0). Commits P1 `a37d325`
+→ P2 `d78a86d` → P3 `d94aa6d` → P4 `d6a3237` → P5 `99e1fa3`. Suite **252 passed / 2 xfailed** (218 baseline + 34
+new tests in `cardiac_core/tests/test_usability_fixes.py`).
+- **P1 six P0 bugs:** B1 GPU device-mismatch (`_result_from` builds `times` on Vm's device); B8 NaN-fill masked
+  nodes (`StructuredGrid.flat_to_grid`, mono+bidomain; LBM has no flat_to_grid, untouched); B3/B4 `apd_at`
+  beat-bounded peak + dome-aware LAST-crossing (spike-and-dome safe); B5 `Grid(N,1)` degenerate-axis guard;
+  B6 `forward_euler` CFL warn (FDM retains `_D_max`); B7 `record=` key validation.
+- **P2 (B2):** DCT/FFT wired through `_build_linear_solver(spatial,dt,scheme)` + `_spectral_kwargs` — fast path
+  restored (was TypeError→silent PCG fallback = the runtime wall). DCT CV matches PCG; default pcg untouched;
+  full-rectangle only (masked → pcg).
+- **P3:** de-trapped ~18 `NotImplementedError` stubs (informative errors, removed misleading `>>>` examples);
+  IMPLEMENTED `scale_conductance` / `set_conductivity` / `scale_conductivity` (rebuild-from-t=0). Adversarial
+  audit of the diff caught 2 CROSS-ENGINE bugs (my mono-only tests missed them): (i) declarative bidomain uses
+  `sigma_i/sigma_e` fields not `D_xx` → scar was a SILENT no-op → fix applies the mask op to sigma too, and a
+  nonzero absolute D on sigma-bidomain now RAISES; (ii) `scale_conductance` re-derived the model from
+  name+mesh-cell_type but bidomain/LBM build ENDO by default → CELL-TYPE FLIP (Gto 0.073→0.294) → fix
+  deep-copies the LIVE engine model (`_live_ionic_model()`), preserving cell type + prior scalings.
+- **P4:** `API_CHEATSHEET.md` rewrite — Solver&dt section, drug/conductance map (**PCa = ICaL, NOT "GCaL"**;
+  ORd adds GNaL), **ORd LBM-only** (raises on mono/bidomain) + paci/phas13/mhas13 on mono, `record=`/
+  save_result arg-order/df/two-step phase_map, fiber_angle radians, bath cost, LBM CV ~+30–47%; +
+  `test_cheatsheet_examples_execute` canary (execs a tagged runnable block).
+- **P5 (optional):** analysis aggregates — `dominant_frequency_map`/`df_map`, `cv_between`, `radial_cv`,
+  `apd_per_beat`, `restitution_slope` (+ result hooks + top-level exports) + DF-resolution warning +
+  zero-node-stimulus warning.
+Key facts verified empirically this session: `monodomain('ord')` RAISES (SR-release/CaMKII concentration path
+unwired for classical splitting) but `lbm('ord')` runs; `paci`/`phas13`/`mhas13` run on monodomain; the FDM
+`_harm` guards 0/0 (`s>0 else 0.0`) so a D=0 scar BLOCK is NaN-safe.
+
 **API usability audit ROUND 2 (full-solve-and-run, +30 tasks) — 2026-07-16 → same report, "ROUND 2" section.**
 10 agents, 30 new tasks (25–54) + full-scale re-run of the prior 24; agents had to actually SOLVE+RUN each to
 completion. Running fully LOWERED the grade — it surfaced a class of defects a smoke test hides. **13 concrete
@@ -104,19 +133,13 @@ monodomain convergence; oblique-LBM moment-space rotation (Audit #46) if ever wa
 **Consolidation (A2 vendoring) SHIPPED (2026-06-25).** `cardiac_core` is one self-contained package — 3 engines vendored `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, bit-identical goldens, originals frozen. Phases 0–5 `935160b`→`37dc381`. → KNOWLEDGE "cardiac_core unified ground-up package". *(Predecessors condensed — full detail in Thread: V5.5 Cm-correct fork + consolidation Phase-1 copy-only, 2026-05-30/31; the Goal-2 design reframe to wet-lab code-gen, 2026-06-25; the "ditch FEM → structured-grid only" pending constraint — RESOLVED by the 2026-07-01 FEM/TriangularMesh removal. The deferred code-dedup [engines import from cardiac_core + delete copies] stays per-consumer — big-bang breaks Surrogate/Optimizer.)*
 
 ## Next Step
-**▶ HANDOVER — NEXT ROUND = EXECUTE [PLAN.md](./PLAN.md) Phase 1 (the P0 usability bug fixes).** The round-2
-usability audit + a machine-targeted, audit-converged PLAN.md are DONE and on `main` (report
-[API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md) "ROUND 2" §; commits `04611ed` report,
-`9e6a0e7` plan). The next agent should cold-start from PLAN.md and execute **Phase 1** (six P0 bugs, highest ROI /
-lowest risk, each test-gated + golden-guarded): **B1** GPU device-mismatch (`api.py:993`), **B8** NaN-fill masked
-nodes (`StructuredGrid.flat_to_grid`, `mesh/structured.py:178` — mono+bidomain only, LBM untouched), **B3/B4**
-`apd_at` peak/notch, **B5** `Grid(N,1)` guard, **B6** `forward_euler` CFL guard, **B7** `record=` validation.
-Then Phase 2 (B2 fast-solver wiring) → Phase 3 (de-trap stubs + implement `scale_conductance`/`set_conductivity`)
-→ Phase 4 (cheatsheet). Baseline suite = **218 passed / 2 xfailed**; keep `test_integrity.py` goldens bit-identical.
-⚠️ **Caveats:** (1) the audit-revise cycle was run **inline** (the independent Opus auditor died on the session
-rate limit, resets ~4:50am ET) — an optional belt-and-suspenders independent subagent audit of PLAN.md can run once
-the limit clears; (2) do NOT change the default solver/`dt`/lattice (goldens depend on them). The blueprint gate was
-respected — implementation was NOT started.
+**▶ MERGE `usability-fixes-p0-p1` → `main`** (the 5 usability-fix commits `a37d325`→`99e1fa3`; PLAN EXECUTED, see
+Current Direction). Suite 252/2xfail, goldens bit-identical. The branch is review-ready; nothing else in the plan
+is outstanding. After the merge, the OPEN threads below are unchanged (none were touched this session). Two
+usability items that were NOT in this PLAN and remain P3/future work: **B9** dead `stim_amplitudes_e` (no
+defibrillation) and the rotor-seeding / mid-run-state API (`set_voltage`/`get_state`/`clamp_voltage`/`add_pacing`
+are now HONEST stubs, not implemented) + a 0-D single-cell mode + `cc.sweep`/`fit_conductivity` (all documented in
+PLAN.md "Future work").
 
 The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 foundation cleanup + LBM boundary modes are all SHIPPED (see Current Direction). RESOLVED this session: `create_cardiac_mesh` chi firewall-bypass (P1 cluster #1 — D_xx RAW convention + default D=1.4 + band guard); boundary-mode API→engine gap for LBM (P3 — `lbm(boundary=, alpha=)`); FEM/TriangularMesh removal (P2). Remaining open threads:
 - **Code-audit fix backlog (2026-07-02, [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md), NOT yet actioned):** P1 = bidomain M4 (symmetrize the FDM cross-term + guard CG on non-SPD — silent ~13% phi_e error on per-node fiber fields); P2 = mono Chebyshev M1 (port bidomain's preconditioned-Gershgorin + fix `set_eigenvalue_bounds`) + mono FFT M2 (discrete 5-pt eigenvalue) + DCT/FFT precondition guard; P3 = bidomain `step()` M3, degenerate-input NaN guards (`activation_time`/`dominant_frequency`/`Grid` 1-D/empty-result shape), BGK stability gate, `dt or`→`is not None`, declarative ionic-instance-leak; P4 = docstrings + `add_stimulus` amplitude + hole-cell zeroing + LUT kink + conductivity guards + PCG-threshold unify + LBM `save_every` cadence.
@@ -137,6 +160,26 @@ The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 f
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-07-16 (exec): PLAN.md usability fixes EXECUTED — 5 phases, 34 tests, audit-hardened
+Cold-started from PLAN.md and ran all 5 phases on branch `usability-fixes-p0-p1`, each implement → targeted test
+→ goldens (bit-identical, atol=0) → commit. Details in Current Direction. **Execution catches beyond the plan:**
+- **Bidomain masked runs can't use the default spectral elliptic solver** (`SpectralSolver.solve` reshapes to the
+  full `nx*ny`; a hole makes `n_dof < nx*ny` → RuntimeError). The B8 bidomain masked test uses
+  `elliptic_solver='pcg'`. Documented in the cheatsheet.
+- **The Phase-3 adversarial audit was the load-bearing step.** My scale_conductance/set_conductivity tests were
+  monodomain-only and passed, but the audit (a general-purpose subagent, since the Opus `/audit` path was rate-
+  limited) found 2 REAL cross-engine bugs on the paths I hadn't tested: the declarative-bidomain sigma no-op and
+  the cell-type flip. Both fixed + regression-tested (declarative bidomain scar, cell-type-preservation, sigma
+  scaling). Lesson (again): a green mono test says nothing about the bidomain/LBM surface — test at the level a
+  USER reaches the feature (this is the SAME class as the 2026-07-01 Phase-3 boundary-gap post-mortem).
+- **B2 DCT is exact, not approximate:** the DCT solver's denom (`chi*Cm - 0.5*dt*D*λ`) matches the FDM CN operator
+  when `D=_D_max` (raw) — so CV matches PCG to tolerance, not just "close". Confirmed the FDM's raw-D convention
+  flows correctly into the spectral solve.
+- **apd_at B3/B4 fix is regression-safe:** existing `test_analysis.py` synthetic APs are monotonic/dome-free, so
+  beat-windowing + dome-aware last-crossing reduce to the old first-crossing there (verified: values unchanged).
+**Next:** merge to main (see Next Step). Optional: an independent Opus `/audit` of the whole branch once the rate
+limit clears (this session's Phase-3 audit used a general-purpose subagent).
 
 ### 2026-07-02 Session — deep code audit (math integrity + API)
 **Worked on:** after pushing the API-consistency work to `main` (fast-forward, `abc54db`→`94a2689`), the
