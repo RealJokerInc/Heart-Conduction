@@ -66,6 +66,33 @@ class SimulationResult:
         from . import analysis
         return analysis.restitution_curve(self.Vm, self.times, ix, iy, **kw)
 
+    # --- P2 aggregate / per-beat / axis hooks ---
+    def df_map(self) -> torch.Tensor:
+        """Dominant-frequency map ``(Nx, Ny)`` in Hz (fibrillation analysis)."""
+        from . import analysis
+        return analysis.dominant_frequency_map(self.Vm, self.times)
+
+    def cv_between(self, p1, p2, **kw) -> float:
+        """Conduction velocity (cm/s) along the line between nodes ``p1=(ix,iy)`` and ``p2``."""
+        from . import analysis
+        return analysis.cv_between(self.Vm, self.times, p1, p2, self.dx, self.dy, **kw)
+
+    def radial_cv(self, center, **kw) -> torch.Tensor:
+        """Outward CV map ``(Nx, Ny)`` from a point source ``center=(ix,iy)``."""
+        from . import analysis
+        return analysis.radial_cv(self.Vm, self.times, center, self.dx, self.dy, **kw)
+
+    def apd_per_beat(self, ix: int, iy: int, **kw) -> torch.Tensor:
+        """Per-beat APD ``(n_beats,)`` at node ``(ix, iy)`` from a multi-beat run."""
+        from . import analysis
+        return analysis.apd_per_beat(self.Vm, self.times, ix, iy, **kw)
+
+    def restitution_slope(self, ix: int, iy: int, **kw) -> dict:
+        """Max restitution slope + DI* (alternans onset) at node ``(ix, iy)``."""
+        from . import analysis
+        DI, APD = analysis.restitution_curve(self.Vm, self.times, ix, iy, **kw)
+        return analysis.restitution_slope(DI, APD)
+
 
 def _collect(sim, t_end, save_every, output_device):
     """Run sim, collect snapshots, return tensors on output_device."""

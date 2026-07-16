@@ -10,6 +10,8 @@ Works on whatever device the input tensors are on (CPU or GPU).
 """
 
 import math
+import warnings
+
 import numpy as np
 import torch
 
@@ -595,3 +597,176 @@ def fit_eikonal(cv_n, kappa, mask=None) -> dict:
     r_star = D_eik / CV0 if (np.isfinite(CV0) and abs(CV0) > 1e-12) else np.nan
     return {"CV0": float(CV0), "D_eik": float(D_eik), "r2": float(r2),
             "r_star": float(r_star), "n": int(cv.size)}
+
+
+# ============================================================================
+# Aggregate / per-beat / axis analysis (P2 usability helpers)
+# ============================================================================
+
+
+def dominant_frequency_map(
+    V: torch.Tensor,
+    times: torch.Tensor,
+) -> torch.Tensor:
+    """Dominant frequency at EVERY node (batched rfft), for fibrillation mapping.
+
+    Like :func:`dominant_frequency` but returns an ``(Nx, Ny)`` map in one FFT over the
+    flattened field. Warns when the frequency resolution ``1/(n*dt)`` is coarse (record
+    longer / smaller ``save_every`` to resolve DF differences — B10).
+
+    Returns ``(Nx, Ny)`` DF in Hz; NaN map for an empty run.
+    """
+    if V.shape[0] == 0:
+        return torch.full(V.shape[1:], float('nan'), device=V.device, dtype=V.dtype)
+    n, Nx, Ny = V.shape
+    if n < 4:
+        return torch.full((Nx, Ny), float('nan'), device=V.device, dtype=V.dtype)
+    dt_ms = (times[-1] - times[0]).item() / (n - 1)
+    df_res_hz = 1000.0 / (n * dt_ms)
+    if df_res_hz > 0.5:
+        warnings.warn(
+            f"dominant_frequency_map: frequency resolution is {df_res_hz:.2f} Hz "
+            f"({n} samples at dt={dt_ms:.3g} ms); DF differences below this are "
+            f"unresolved — record longer or use a smaller save_every.",
+            stacklevel=2,
+        )
+    traces = V.reshape(n, -1)                       # (n, Nx*Ny)
+    traces = traces - traces.mean(dim=0, keepdim=True)
+    spec = torch.fft.rfft(traces, dim=0).abs()      # (nf, Nx*Ny)
+    spec[0] = 0.0                                    # ignore DC
+    freqs = torch.fft.rfftfreq(n, d=dt_ms / 1000.0).to(V.device)  # Hz
+    peak = spec.argmax(dim=0)                        # (Nx*Ny,)
+    return freqs[peak].reshape(Nx, Ny)
+
+
+def cv_between(
+    V: torch.Tensor,
+    times: torch.Tensor,
+    p1: tuple,
+    p2: tuple,
+    dx: float,
+    dy: float = None,
+    threshold: float = -20.0,
+) -> float:
+    """Conduction velocity along the line between two nodes ``p1=(ix,iy)`` and ``p2=(ix,iy)``.
+
+    Generalizes :func:`conduction_velocity` (which is x-axis only) to any direction —
+    the CV is the Euclidean distance between the points over their activation-time
+    difference. NaN if either point never activates or they co-activate.
+    """
+    dy = dx if dy is None else dy
+    (i1, j1), (i2, j2) = p1, p2
+    t1_series = V[:, i1, j1] >= threshold
+    t2_series = V[:, i2, j2] >= threshold
+    if not t1_series.any() or not t2_series.any():
+        return float('nan')
+    t1 = times[t1_series.to(torch.int8).argmax()].item()
+    t2 = times[t2_series.to(torch.int8).argmax()].item()
+    dt = t2 - t1
+    if abs(dt) < 1e-12:
+        return float('nan')
+    dist = math.hypot((i2 - i1) * dx, (j2 - j1) * dy)  # cm
+    return (dist / abs(dt)) * 1000.0                    # cm/s
+
+
+def radial_cv(
+    V: torch.Tensor,
+    times: torch.Tensor,
+    center: tuple,
+    dx: float,
+    dy: float = None,
+    threshold: float = -20.0,
+) -> torch.Tensor:
+    """Outward conduction-velocity map from a point source at ``center=(ix,iy)``.
+
+    For a point-stimulated expanding wave, each activated node's radial CV is its
+    distance from ``center`` over ``(LAT[node] - LAT[center])``. Returns an ``(Nx, Ny)``
+    map in cm/s; NaN at the center, at nodes that never activate, and where the LAT
+    difference is non-positive (upstream of the source).
+    """
+    dy = dx if dy is None else dy
+    ci, cj = center
+    lat = activation_time(V, times, threshold)        # (Nx, Ny), NaN where unactivated
+    Nx, Ny = lat.shape
+    ii = torch.arange(Nx, device=V.device).reshape(Nx, 1).to(lat.dtype)
+    jj = torch.arange(Ny, device=V.device).reshape(1, Ny).to(lat.dtype)
+    dist = torch.sqrt(((ii - ci) * dx) ** 2 + ((jj - cj) * dy) ** 2)   # cm
+    dlat = lat - lat[ci, cj]                           # ms
+    cv = torch.full((Nx, Ny), float('nan'), device=V.device, dtype=lat.dtype)
+    ok = torch.isfinite(dlat) & (dlat > 1e-9)
+    cv[ok] = (dist[ok] / dlat[ok]) * 1000.0            # cm/s
+    return cv
+
+
+def apd_per_beat(
+    V: torch.Tensor,
+    times: torch.Tensor,
+    ix: int,
+    iy: int,
+    repol: float = 0.9,
+    threshold: float = -20.0,
+    dome_aware: bool = True,
+) -> torch.Tensor:
+    """APD of EACH beat at a node (multi-beat recording).
+
+    Each beat's peak/repolarization is bounded to that beat (so a later beat can't
+    corrupt an earlier one — same rule as :func:`apd_at`). Returns a ``(n_beats,)``
+    tensor; a beat that doesn't complete within the run is NaN.
+    """
+    trace = V[:, ix, iy]
+    above = trace >= threshold
+    if not above.any():
+        return torch.tensor([], dtype=torch.float64)
+    rising = (~above[:-1]) & above[1:]
+    starts = torch.where(rising)[0] + 1
+    if above[0]:  # already active at t=0 → first beat starts at index 0
+        starts = torch.cat([torch.zeros(1, dtype=starts.dtype, device=starts.device), starts])
+    V_rest = trace[0].item()
+    out = []
+    for k in range(len(starts)):
+        s = int(starts[k].item())
+        end = int(starts[k + 1].item()) if k + 1 < len(starts) else trace.shape[0]
+        beat = trace[s:end]
+        V_peak = beat.max().item()
+        V_repol = V_peak - repol * (V_peak - V_rest)
+        pk = s + int(beat.argmax().item())
+        post = trace[pk:end]
+        below = post <= V_repol
+        if not below.any():
+            out.append(float('nan'))
+            continue
+        if dome_aware:
+            crossings = (~below[:-1]) & below[1:]
+            ci = torch.where(crossings)[0]
+            local = (int(ci[-1].item()) + 1 if ci.numel() > 0
+                     else int(below.to(torch.int8).argmax().item()))
+        else:
+            local = int(below.to(torch.int8).argmax().item())
+        out.append(times[pk + local].item() - times[s].item())
+    return torch.tensor(out, dtype=torch.float64)
+
+
+def restitution_slope(DI, APD) -> dict:
+    """Max APD-restitution slope and DI* (the DI where slope crosses 1, alternans onset).
+
+    Takes the ``(DI, APD)`` arrays from :func:`restitution_curve`. Guards the divide by
+    a zero DI-spacing (B13). Returns dict(max_slope, DI_star [ms], n). ``DI_star`` is NaN
+    if the slope never reaches 1 (or < 2 points).
+    """
+    DI = np.asarray(DI.cpu() if isinstance(DI, torch.Tensor) else DI, dtype=float)
+    APD = np.asarray(APD.cpu() if isinstance(APD, torch.Tensor) else APD, dtype=float)
+    if DI.size < 2:
+        return {"max_slope": float('nan'), "DI_star": float('nan'), "n": int(DI.size)}
+    order = np.argsort(DI)
+    DI, APD = DI[order], APD[order]
+    dDI = np.diff(DI)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        slopes = np.where(np.abs(dDI) > 1e-9, np.diff(APD) / dDI, np.nan)  # B13 guard
+    mid_DI = 0.5 * (DI[1:] + DI[:-1])
+    max_slope = float(np.nanmax(slopes)) if np.isfinite(slopes).any() else float('nan')
+    DI_star = float('nan')
+    for s, d in zip(slopes, mid_DI):        # ascending DI; first crossing of slope>=1
+        if np.isfinite(s) and s >= 1.0:
+            DI_star = float(d)
+            break
+    return {"max_slope": max_slope, "DI_star": DI_star, "n": int(DI.size)}

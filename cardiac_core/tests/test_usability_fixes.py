@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh
+from cardiac_core import analysis
 from cardiac_core.analysis import apd_at
 from cardiac_core.mesh.structured import StructuredGrid
 
@@ -344,3 +345,100 @@ def test_cheatsheet_examples_execute():
     assert runnable, "no runnable-canary block found in API_CHEATSHEET.md"
     for block in runnable:
         exec(compile(block, "<cheatsheet>", "exec"), {"__name__": "__cheatsheet__"})
+
+
+# ===========================================================================
+# Phase 5 (P2) — aggregate / per-beat / axis analysis helpers + guards
+# ===========================================================================
+def _planar_wave_x(Nx=30, Ny=6, n=60, idx_per_save=2):
+    times = torch.arange(n, dtype=torch.float64)
+    V = torch.full((n, Nx, Ny), -85.0, dtype=torch.float64)
+    for t in range(n):
+        front = t * idx_per_save
+        if front > 0:
+            V[t, :min(front, Nx), :] = 20.0
+    return times, V
+
+
+def test_dominant_frequency_map():
+    n = 2000
+    times = torch.arange(n, dtype=torch.float64)          # 1 ms spacing
+    trace = torch.sin(2 * torch.pi * 5.0 * times / 1000.0)  # 5 Hz
+    V = trace.reshape(n, 1, 1).expand(n, 4, 3).clone()
+    dfm = analysis.dominant_frequency_map(V, times)         # 0.5 Hz resolution → no warn
+    assert dfm.shape == (4, 3)
+    assert dfm[0, 0].item() == pytest.approx(5.0, abs=0.6)
+
+
+def test_df_map_resolution_warns():
+    n = 100
+    times = torch.arange(n, dtype=torch.float64)
+    V = torch.sin(2 * torch.pi * 5.0 * times / 1000.0).reshape(n, 1, 1).expand(n, 3, 3).clone()
+    with pytest.warns(UserWarning, match="resolution"):
+        analysis.dominant_frequency_map(V, times)
+
+
+def test_cv_between_diagonal_axis():
+    times, V = _planar_wave_x(Nx=30, Ny=6, idx_per_save=2)
+    cv = analysis.cv_between(V, times, (5, 2), (15, 2), dx=0.02)
+    assert cv == pytest.approx(40.0, rel=0.2)   # 2 idx/ms * 0.02 cm = 0.04 cm/ms = 40 cm/s
+
+
+def test_radial_cv_point_source():
+    Nx, Ny, n = 31, 31, 45
+    cx, cy = 15, 15
+    times = torch.arange(n, dtype=torch.float64)
+    ii, jj = torch.meshgrid(torch.arange(Nx), torch.arange(Ny), indexing='ij')
+    frame = torch.round(torch.sqrt(((ii - cx) ** 2 + (jj - cy) ** 2).double())).long()
+    V = torch.full((n, Nx, Ny), -85.0, dtype=torch.float64)
+    for t in range(n):
+        V[t][frame <= t] = 20.0
+    rcv = analysis.radial_cv(V, times, (cx, cy), dx=0.02)
+    assert torch.isnan(rcv[cx, cy])                          # center is NaN
+    assert rcv[25, 15].item() == pytest.approx(20.0, rel=0.15)  # dx/1ms*1000 = 20 cm/s
+
+
+def test_apd_per_beat_multibeat():
+    rest = -85.0
+    trace = [rest] * 10 + [20.0] * 45 + list(np.linspace(20.0, rest, 6))
+    trace += [rest] * (160 - len(trace))
+    trace += [40.0] * 45 + list(np.linspace(40.0, rest, 6))
+    V = torch.tensor(trace, dtype=torch.float64).reshape(-1, 1, 1)
+    times = torch.arange(V.shape[0], dtype=torch.float64)
+    apds = analysis.apd_per_beat(V, times, 0, 0, repol=0.9)
+    assert apds.numel() == 2
+    assert torch.isfinite(apds).all()
+    assert 30.0 < apds[0].item() < 80.0     # beat 1 not corrupted by the taller beat 2
+
+
+def test_restitution_slope_alternans_threshold():
+    DI = torch.tensor([50.0, 100.0, 150.0, 200.0])
+    APD = torch.tensor([200.0, 250.0, 280.0, 300.0])  # slopes 1.0, 0.6, 0.4
+    res = analysis.restitution_slope(DI, APD)
+    assert res['max_slope'] == pytest.approx(1.0, abs=1e-9)
+    assert res['DI_star'] == pytest.approx(75.0)      # first midpoint DI where slope >= 1
+    assert analysis.restitution_slope(torch.tensor([1.0]), torch.tensor([2.0]))['n'] == 1
+
+
+def test_zero_node_stimulus_warns_stimulate():
+    sim = monodomain(create_cardiac_mesh(0.2, 0.1, 0.02, D=1e-3, chi=1.0))
+    with pytest.warns(UserWarning, match="0 tissue nodes"):
+        sim.stimulate(lambda x, y: x < -1.0)   # region selects nothing
+
+
+def test_zero_node_stimulus_warns_declarative():
+    g = Grid(10, 6, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    bad = {'region': (lambda x, y: x < -1.0), 'start_time': 1.0, 'duration': 2.0, 'amplitude': -52.0}
+    with pytest.warns(UserWarning, match="0 tissue nodes"):
+        monodomain(g, 'ttp06', cond, bad)
+
+
+def test_result_p2_hooks_wired():
+    """The SimulationResult P2 hooks delegate to analysis without error."""
+    times, V = _planar_wave_x(Nx=20, Ny=5, idx_per_save=2)
+    from cardiac_core.run import SimulationResult
+    r = SimulationResult(times=times, Vm=V, dx=0.02, dy=0.02)
+    assert r.df_map().shape == (20, 5)
+    assert r.cv_between((3, 2), (12, 2)) == pytest.approx(40.0, rel=0.25)
+    assert r.radial_cv((0, 2)).shape == (20, 5)

@@ -140,6 +140,14 @@ rst = r.restitution(ix, iy)    # (DI, APD) restitution at a node (multi-beat run
 # fibrillation: cc.dominant_frequency(Vm, times, ix, iy)   # Hz at one node
 # rotor tips (two steps): phase = cc.phase_map(Vm, times, t_idx); s = cc.phase_singularities(phase)
 ```
+Aggregate / per-beat / axis hooks (P2):
+```python
+dfm = r.df_map()               # (Nx,Ny) dominant-frequency map (Hz) — warns if freq res is coarse
+cv2 = r.cv_between((i1,j1), (i2,j2))   # CV along ANY direction (not just the x axis)
+rcv = r.radial_cv((ci,cj))     # (Nx,Ny) outward-CV map from a point source
+apb = r.apd_per_beat(ix, iy)   # (n_beats,) APD of each beat (each bounded to its own beat)
+rs  = r.restitution_slope(ix, iy)  # {max_slope, DI_star (alternans onset, ms), n}
+```
 - CV indices: choose `x1,x2` well inside the tissue and give the front time to reach `x2`
   (front ≈ 50 cm/s = 0.05 cm/ms; 1 cm ≈ 20 ms — set `t_end` accordingly). NaN CV = the front didn't
   reach a point (e.g. conduction block) within the run.

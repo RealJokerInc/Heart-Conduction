@@ -495,6 +495,12 @@ class CardiacSimulation:
             self._grid_coords(),
         )[0]
         entry['mask'] = entry['mask'] & self._data.mask
+        if not entry['mask'].any():
+            warnings.warn(
+                "stimulate: the stimulus region selects 0 tissue nodes — it will have "
+                "no effect (check the region shape / coordinate units in cm).",
+                stacklevel=2,
+            )
         self._data.stimuli.append(entry)
         self.reset()
 
@@ -1145,6 +1151,12 @@ def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: 
     stimuli = _normalize_stimulus(stimulus, geometry.coordinates)
     for s in stimuli:
         s['mask'] = s['mask'] & mask  # intersect with tissue
+        if not s['mask'].any():
+            warnings.warn(
+                "stimulus region selects 0 tissue nodes — it will have no effect "
+                "(check the region shape / coordinate units in cm).",
+                stacklevel=2,
+            )
 
     return CardiacMeshData(
         dx=dx, dy=dy, mask=mask,
