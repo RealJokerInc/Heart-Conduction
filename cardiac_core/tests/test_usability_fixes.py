@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import torch
 
-from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh
+from cardiac_core import monodomain, bidomain, lbm, Grid, ConductivityConfig, create_cardiac_mesh
 from cardiac_core import analysis
 from cardiac_core.analysis import apd_at
 from cardiac_core.mesh.structured import StructuredGrid
@@ -211,25 +211,39 @@ def test_forward_euler_stability_warns():
 # B2 — fast spectral solver path (DCT/FFT) works through the factory
 # ===========================================================================
 def test_dct_solver_runs_and_matches_pcg():
-    """linear_solver='dct' constructs (was TypeError on empty kwargs) and its CV
-    matches the default pcg solve — both invert the same CN operator."""
+    """linear_solver='dct' is EXACT vs CN on the isotropic-uniform full-rect Neumann
+    default — compare the Vm FIELD (CV is frame-quantized and would hide a wrong solve)."""
     g = Grid(60, 6, 0.02)
     cond = ConductivityConfig.isotropic(1.4)  # eff D = 1.4/1400 = 1e-3 cm^2/ms
     stim = _stim(width=0.06)
     r_pcg = monodomain(g, 'ttp06', cond, stim, linear_solver='pcg').run(40.0, 0.5)
     r_dct = monodomain(g, 'ttp06', cond, stim, linear_solver='dct').run(40.0, 0.5)
-    cv_pcg = r_pcg.cv(10, 45, 3)
-    cv_dct = r_dct.cv(10, 45, 3)
-    assert cv_pcg == cv_pcg and cv_dct == cv_dct, "both solvers must produce a finite CV"
-    assert cv_dct == pytest.approx(cv_pcg, rel=0.1)
+    assert torch.isfinite(r_dct.Vm).all()
+    assert torch.max(torch.abs(r_dct.Vm - r_pcg.Vm)).item() < 0.5   # mV; DCT≈CN to ~1e-3
+    assert r_dct.cv(10, 45, 3) == pytest.approx(r_pcg.cv(10, 45, 3), rel=0.05)
 
 
-def test_fft_solver_constructs_and_runs():
-    """linear_solver='fft' no longer raises TypeError via the factory (B2 wiring)."""
-    g = Grid(32, 8, 0.02)
+def test_spectral_solvers_reject_unsupported_configs():
+    """DCT/FFT invert an idealized eigen-operator; the factory must REJECT (not silently
+    mis-solve) masked / anisotropic / bdf2 configs, and reject fft (Neumann meshes)."""
     cond = ConductivityConfig.isotropic(1.4)
-    r = monodomain(g, 'ttp06', cond, _stim(width=0.06), linear_solver='fft').run(4.0, 1.0)
-    assert r.Vm.shape[1:] == (32, 8)
+    stim = _stim(width=0.06)
+    # fft is never valid via the mono factory (it builds Neumann meshes)
+    with pytest.raises(ValueError, match="fft"):
+        monodomain(Grid(32, 8, 0.02), 'ttp06', cond, stim, linear_solver='fft')
+    # dct on a masked domain
+    mask = np.ones((20, 12), dtype=bool); mask[8:11, 5:8] = False
+    with pytest.raises(ValueError, match="masked|silently wrong"):
+        monodomain(create_cardiac_mesh(0.38, 0.22, 0.02, D=1e-3, chi=1.0, mask=mask),
+                   linear_solver='dct')
+    # dct on anisotropic D
+    aniso = ConductivityConfig.anisotropic(2.0, 0.5, 0.0)
+    with pytest.raises(ValueError, match="anisotropic|silently wrong"):
+        monodomain(Grid(30, 20, 0.02), 'ttp06', aniso, stim, linear_solver='dct')
+    # dct with bdf2 (its bootstrap step switches operators)
+    with pytest.raises(ValueError, match="scheme|silently wrong"):
+        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+                   linear_solver='dct', diffusion_solver='bdf2')
 
 
 # ===========================================================================
@@ -263,8 +277,10 @@ def test_scale_conductance_changes_apd():
     apd0, apd1 = float(r0.apd()[2, 2]), float(r1.apd()[2, 2])
     assert apd0 == apd0 and apd1 == apd1, "both APDs must be finite"
     assert apd1 > apd0 + 5.0, f"reduced GKr should prolong APD: {apd0} -> {apd1}"
-    with pytest.raises(ValueError, match="unknown conductance"):
+    with pytest.raises(ValueError, match="not a scalable conductance"):
         sim.scale_conductance('NotAConductance', 0.5)
+    with pytest.raises(ValueError, match="not a scalable conductance"):
+        sim.scale_conductance('Nao', 0.5)   # a concentration, not a conductance — must reject
 
 
 def test_set_conductivity_scar_blocks():
@@ -273,12 +289,20 @@ def test_set_conductivity_scar_blocks():
     cond = ConductivityConfig.isotropic(1.4)
     sim = monodomain(g, 'ttp06', cond, _stim(width=0.06), dt=0.1)
     scar = np.zeros((24, 20), dtype=bool)
-    scar[11:14, 6:16] = True   # partial vertical barrier (open rows top+bottom)
+    scar[11:14, 6:16] = True   # vertical barrier (open lanes at rows 0-5 and 16-19)
     sim.set_conductivity(scar, D=0.0)
-    r = sim.run(160.0, 2.0)
+    r = sim.run(220.0, 4.0)
     scar_t = torch.as_tensor(scar)
     assert not (r.Vm[:, scar_t] >= -20.0).any(), "scar nodes must never activate"
-    assert (r.Vm[:, 21, 2] >= -20.0).any(), "wave should route around and reach the far side"
+    lat = r.lat()
+    # A node in the scar's SHADOW (just past it, mid-band) can only be reached by routing
+    # around the barrier — and must therefore activate LATER than the open-lane node at the
+    # same x. If set_conductivity no-op'd, the shadow node would activate straight-through.
+    lat_shadow = lat[15, 10].item()   # behind the scar (col 15 > scar col 13, row 10 in-band)
+    lat_open = lat[15, 2].item()      # same x, open lane (row 2)
+    assert lat_shadow == lat_shadow, "shadow node should eventually activate via routing"
+    assert lat_open == lat_open and lat_shadow > lat_open + 2.0, \
+        "shadow node must activate later than the open lane (detour around the scar)"
 
 
 # --- audit follow-ups: the conductivity/conductance methods must also work on the
@@ -329,6 +353,27 @@ def test_scale_conductivity_scales_sigma_on_bidomain():
     si0 = float(sim._data.sigma_i[0][7, 6])
     sim.scale_conductivity(zone, 0.25)
     assert float(sim._data.sigma_i[0][7, 6]) == pytest.approx(si0 * 0.25)
+
+
+def test_scale_conductance_on_lbm():
+    """scale_conductance works on LBM too (deep-copies the live model — ENDO-consistent)."""
+    g = Grid(16, 8, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    sim = lbm(g, 'ttp06', cond, _stim(width=0.06), dt=0.005)
+    gkr0 = sim._live_ionic_model().params.GKr
+    sim.scale_conductance('GKr', 0.5)
+    assert sim._live_ionic_model().params.GKr == pytest.approx(gkr0 * 0.5)
+
+
+def test_regional_conductivity_on_lbm_raises_clearly():
+    """A regional scar makes D non-uniform, which the LBM path can't represent — the
+    error must name LBM, not the misleading 'oblique fibers (D_xy != 0)' message."""
+    g = Grid(16, 12, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    sim = lbm(g, 'ttp06', cond, _stim(), dt=0.005)
+    scar = np.zeros((16, 12), dtype=bool); scar[7:9, 4:8] = True
+    with pytest.raises(NotImplementedError, match="LBM"):
+        sim.set_conductivity(scar, D=0.0)
 
 
 # ===========================================================================
@@ -382,6 +427,12 @@ def test_cv_between_diagonal_axis():
     times, V = _planar_wave_x(Nx=30, Ny=6, idx_per_save=2)
     cv = analysis.cv_between(V, times, (5, 2), (15, 2), dx=0.02)
     assert cv == pytest.approx(40.0, rel=0.2)   # 2 idx/ms * 0.02 cm = 0.04 cm/ms = 40 cm/s
+    # genuinely off-axis: (15,4) activates at the same frame as (15,2) (wave is planar in x),
+    # so the extra dy leg lengthens the path -> higher CV. If the dy term were dropped this
+    # would equal the on-axis value. dist=hypot(0.2,0.04)=0.2040 cm over the same 5 ms.
+    cv_diag = analysis.cv_between(V, times, (5, 2), (15, 4), dx=0.02, dy=0.02)
+    assert cv_diag == pytest.approx(40.79, rel=0.03)
+    assert cv_diag > cv + 0.3   # the dy component is actually used
 
 
 def test_radial_cv_point_source():
@@ -413,10 +464,15 @@ def test_apd_per_beat_multibeat():
 
 def test_restitution_slope_alternans_threshold():
     DI = torch.tensor([50.0, 100.0, 150.0, 200.0])
-    APD = torch.tensor([200.0, 250.0, 280.0, 300.0])  # slopes 1.0, 0.6, 0.4
+    APD = torch.tensor([200.0, 260.0, 290.0, 310.0])  # slopes 1.2, 0.6, 0.4 at mids 75/125/175
     res = analysis.restitution_slope(DI, APD)
-    assert res['max_slope'] == pytest.approx(1.0, abs=1e-9)
-    assert res['DI_star'] == pytest.approx(75.0)      # first midpoint DI where slope >= 1
+    assert res['max_slope'] == pytest.approx(1.2, abs=1e-9)
+    # DI* interpolates the descending slope=1 crossing between mids 75 (slope 1.2) and
+    # 125 (slope 0.6): 75 + (1.2-1)/(1.2-0.6)*50 = 91.67 — NOT the steep short-DI endpoint.
+    assert res['DI_star'] == pytest.approx(91.667, abs=0.1)
+    # no crossing (all slopes < 1) -> NaN
+    flat = analysis.restitution_slope(torch.tensor([50.0, 100.0]), torch.tensor([200.0, 210.0]))
+    assert flat['DI_star'] != flat['DI_star']  # NaN
     assert analysis.restitution_slope(torch.tensor([1.0]), torch.tensor([2.0]))['n'] == 1
 
 

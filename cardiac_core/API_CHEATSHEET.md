@@ -106,9 +106,12 @@ sim = cc.monodomain(g, "ttp06", cond, stim,
   is usually fine for CV/APD; accuracy, not stability, is the limit. Cost is ~linear in `t_end/dt`
   (~1.5–3 ms/step on CPU, ~13 ms/step on GPU, roughly grid-size-independent for the default solver — long
   protocols are step-bound, so a bigger `dt` is the win).
-- **`linear_solver="dct"`**: a direct O(N log N) spectral solve for Neumann (default) BC on a **full
-  rectangle** (no mask) — matches CN and is much faster than the default `"pcg"` on large grids. `"fft"` is
-  its periodic-BC sibling. (`"pcg"` is the robust default and required for masked domains.)
+- **`linear_solver="dct"`**: a direct O(N log N) spectral solve that matches CN exactly and is much faster
+  than the default `"pcg"` on large grids — but ONLY on an **isotropic-uniform, full-rectangle** mesh with the
+  default `boundary_mode="face_mirror"` / `stencil="cardinal4"` and `crank_nicolson`/`bdf1`. It inverts an
+  idealized eigen-operator, so anything else (a mask/scar, anisotropic fibers, non-default stencil/BC, or `bdf2`)
+  would be silently wrong — the factory now **raises** in those cases; use `"pcg"` there. `"fft"` (periodic BC)
+  is **not usable** via these factories (they build Neumann meshes) and raises. `"pcg"` is the robust default.
 - **`diffusion_solver="forward_euler"`** is explicit (no linear solve) but CFL-limited: it **warns** if
   `dt > chi*Cm*min(dx,dy)²/(4*D_max)` and then oscillates/blows up — keep `dt` under that or stay on CN.
 
@@ -179,7 +182,7 @@ generate against them. For state history use `record="ionic_states"`; for analys
 
 ```python
 cc.save_result(path, r.times, r.Vm)          # arg order: path, times, Vm  (+ phi_e=..., **metadata)
-r2 = cc.load_result(path)                    # -> SimulationResult (times, Vm, phi_e, dx, dy)
+times, Vm, phi_e, meta = cc.load_result(path) # returns a 4-TUPLE (not a SimulationResult); phi_e/meta may be None/{}
 # mesh I/O: cc.save_cardiac_mesh(path, data) / cc.load_cardiac_mesh(path) for a CardiacMeshData
 ```
 
@@ -221,19 +224,24 @@ g    = cc.Grid(30, 8, 0.03)
 cond = cc.ConductivityConfig.isotropic(1.4)
 stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
 
-sim = cc.monodomain(g, "ttp06", cond, stim, dt=0.05, linear_solver="dct")
+sim = cc.monodomain(g, "ttp06", cond, stim, dt=0.05)          # default pcg
 r   = sim.run(t_end=10.0, save_every=1.0, record=("Vm", "ionic_states"))
 cv  = r.cv(x1=5, x2=20, y=4)                       # NaN until the front reaches x2 — call still valid
 lat = r.lat()                                      # (Nx, Ny) activation map
 df  = cc.dominant_frequency(r.Vm, r.times, 5, 4)   # Hz at one node
 
-sim.scale_conductance("GKr", 0.5)                  # IKr block
+# fast direct solve — valid on this uniform full-rectangle Neumann mesh:
+fast = cc.monodomain(g, "ttp06", cond, stim, dt=0.05, linear_solver="dct").run(6.0, 2.0)
+
+# drug block + inexcitable scar (each rebuilds from t=0):
+sim.scale_conductance("GKr", 0.5)
 scar = cc.rectangle_mask(30, 8, 0.03, 0.3, 0.0, 0.4, 0.24)
-sim.set_conductivity(scar, D=0.0)                  # inexcitable scar
+sim.set_conductivity(scar, D=0.0)
 sim.run(6.0, 2.0)
 
+# save / load (.npz): load_result returns a (times, Vm, phi_e, metadata) tuple
 _p = os.path.join(tempfile.gettempdir(), "_cc_cheatsheet_demo.npz")
 cc.save_result(_p, r.times, r.Vm)
-r2 = cc.load_result(_p)
+t2, Vm2, phi2, meta2 = cc.load_result(_p)
 os.remove(_p)
 ```

@@ -160,6 +160,16 @@ class FDMDiscretization(SpatialDiscretization):
         # stability limit dt <= chi*Cm*min(dx,dy)^2/(4*D_max) (B6).
         self._D_max = float(torch.maximum(Dxx.max(), Dyy.max()).item())
 
+        # Whether D is isotropic AND spatially uniform (Dxx==Dyy==const, Dxy==0).
+        # The direct spectral (DCT/FFT) linear solvers invert an idealized scalar-D
+        # eigen-operator, so they are only valid when this holds (else silently wrong).
+        _d0 = Dxx.reshape(-1)[0]
+        self._is_iso_uniform = bool(
+            torch.allclose(Dxx, _d0)
+            and torch.allclose(Dyy, _d0)
+            and (Dxy.abs().max().item() == 0.0)
+        )
+
         # Build sparse Laplacian (contains D, but NOT chi*Cm)
         self.L = self._build_laplacian(Dxx, Dxy, Dyy, grid.domain_mask)
 

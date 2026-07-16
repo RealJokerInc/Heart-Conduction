@@ -196,7 +196,12 @@ class StructuredGrid(Mesh):
         silent CV error and 100% false activation on scar/fibrosis runs).
         """
         if self.domain_mask is not None:
-            grid = torch.full((self.Nx, self.Ny), fill_value,
+            fv = fill_value
+            # NaN only makes sense for float dtypes; an integer/bool flat (e.g. a
+            # state-index field) falls back to 0/False rather than crashing torch.full.
+            if not flat.dtype.is_floating_point and isinstance(fv, float) and fv != fv:
+                fv = 0
+            grid = torch.full((self.Nx, self.Ny), fv,
                               device=self._device, dtype=flat.dtype)
             grid[self.domain_mask] = flat
             return grid

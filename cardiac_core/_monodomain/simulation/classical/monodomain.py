@@ -104,6 +104,43 @@ def _build_ionic_solver(name: str, ionic_model: IonicModel):
         raise ValueError(f"Unknown ionic solver: {name}")
 
 
+def _check_spectral_preconditions(name, spatial, scheme):
+    """Reject DCT/FFT where their idealized eigen-operator would NOT match the assembled
+    FDM matrix — otherwise the direct solve is SILENTLY WRONG (they ignore the matrix and
+    invert a scalar-D Neumann/periodic model). Valid only for an isotropic-uniform,
+    full-rectangle, face_mirror + cardinal4, CN/BDF1 monodomain. FFT additionally needs
+    periodic BC, which the monodomain factory never builds, so it is always rejected here.
+    """
+    reasons = []
+    grid = getattr(spatial, 'grid', None)
+    # The mono factory always builds via from_mask (a full rectangle gets an all-True
+    # domain_mask), so "masked" means the mask actually removes nodes (has holes).
+    dm = getattr(grid, 'domain_mask', None) if grid is not None else None
+    if dm is not None and not bool(dm.all()):
+        reasons.append("a masked/irregular domain")
+    if not getattr(spatial, '_is_iso_uniform', False):
+        reasons.append("non-uniform or anisotropic D (scar/fibers)")
+    bm = getattr(spatial, '_boundary_mode', 'face_mirror')
+    if bm != 'face_mirror':
+        reasons.append(f"boundary_mode={bm!r} (only 'face_mirror')")
+    st = getattr(spatial, '_stencil', 'cardinal4')
+    if st != 'cardinal4':
+        reasons.append(f"stencil={st!r} (only 'cardinal4')")
+    if scheme not in ('CN', 'BDF1'):
+        reasons.append(f"diffusion scheme {scheme} (only crank_nicolson/bdf1 — bdf2's "
+                       "bootstrap step switches operators)")
+    if name == 'fft':
+        reasons.append("fft assumes PERIODIC BC + a continuum symbol; the monodomain "
+                       "factory only builds Neumann meshes, so fft never matches")
+    if reasons:
+        raise ValueError(
+            f"linear_solver={name!r} (direct spectral solve) inverts an idealized "
+            f"eigen-operator, not the assembled matrix, so it would be silently wrong "
+            f"here: {'; '.join(reasons)}. Use linear_solver='pcg' (or 'dct' only on an "
+            f"isotropic-uniform full-rectangle Neumann/cardinal4 CN/BDF1 mesh)."
+        )
+
+
 def _spectral_kwargs(spatial, dt, scheme):
     """Grid params a DCT/FFT solver needs, pulled from an FDM/FVM structured scheme.
 
@@ -161,6 +198,7 @@ def _build_linear_solver(name: str, tol: float = 1e-8, max_iters: int = 500,
                 f"linear_solver={name!r} needs the grid; call _build_linear_solver "
                 "with spatial= and dt="
             )
+        _check_spectral_preconditions(name_lower, spatial, scheme)
         kwargs = _spectral_kwargs(spatial, dt, scheme)
         return DCTSolver(**kwargs) if name_lower == 'dct' else FFTSolver(**kwargs)
     elif name_lower == 'none':

@@ -53,12 +53,15 @@ def _scale_ionic_conductances(model, scalings):
     import copy as _copy
     model = _copy.deepcopy(model)
     params = model.params
+    # Only true maximal conductances / permeabilities (G*, P*) are scalable — NOT the
+    # `*_scale` tuning factors, and NOT concentrations/constants (Nao, Cm, F, T, ...),
+    # which a bare `hasattr` check would silently accept and corrupt.
+    conductances = {a for a in vars(params) if a[:1] in ('G', 'P') and not a.endswith('_scale')}
     for name, factor in scalings.items():
-        if not hasattr(params, name):
-            conductances = sorted(a for a in vars(params) if a[:1] in ('G', 'P'))
+        if name not in conductances:
             raise ValueError(
-                f"unknown conductance {name!r} for {type(model).__name__}; "
-                f"available conductances: {conductances}"
+                f"{name!r} is not a scalable conductance of {type(model).__name__}; "
+                f"available conductances: {sorted(conductances)}"
             )
         setattr(params, name, getattr(params, name) * float(factor))
     return model
@@ -444,6 +447,12 @@ class CardiacSimulation:
         """
         from dataclasses import replace
         m = self._as_grid_mask(mask)
+        if self._engine_type == 'lbm' and not m.all():
+            raise NotImplementedError(
+                "regional set_conductivity/scale_conductivity is not supported on an LBM "
+                "sim — the LBM path requires spatially-uniform diagonal D. Apply a "
+                "full-domain change, or use monodomain/bidomain for a scar / heterogeneity."
+            )
         data = self._data
 
         def _op(arr):

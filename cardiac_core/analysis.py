@@ -715,12 +715,13 @@ def apd_per_beat(
     """
     trace = V[:, ix, iy]
     above = trace >= threshold
-    if not above.any():
-        return torch.tensor([], dtype=torch.float64)
+    # Beats are detected by their UPSTROKE (a below->above crossing). A beat already in
+    # progress at t=0 (trace starts depolarized) has no clean upstroke and no valid
+    # resting reference, so it is NOT measured (measuring it gave a bogus 0.0 ms).
     rising = (~above[:-1]) & above[1:]
     starts = torch.where(rising)[0] + 1
-    if above[0]:  # already active at t=0 → first beat starts at index 0
-        starts = torch.cat([torch.zeros(1, dtype=starts.dtype, device=starts.device), starts])
+    if starts.numel() == 0:
+        return torch.tensor([], dtype=torch.float64, device=V.device)
     V_rest = trace[0].item()
     out = []
     for k in range(len(starts)):
@@ -743,7 +744,7 @@ def apd_per_beat(
         else:
             local = int(below.to(torch.int8).argmax().item())
         out.append(times[pk + local].item() - times[s].item())
-    return torch.tensor(out, dtype=torch.float64)
+    return torch.tensor(out, dtype=torch.float64, device=V.device)
 
 
 def restitution_slope(DI, APD) -> dict:
@@ -764,9 +765,15 @@ def restitution_slope(DI, APD) -> dict:
         slopes = np.where(np.abs(dDI) > 1e-9, np.diff(APD) / dDI, np.nan)  # B13 guard
     mid_DI = 0.5 * (DI[1:] + DI[:-1])
     max_slope = float(np.nanmax(slopes)) if np.isfinite(slopes).any() else float('nan')
+    # DI* = the DI where the (normally decreasing) slope descends through 1 — the
+    # alternans-onset boundary. Interpolate between the two midpoints that bracket
+    # slope=1 (slope[k] >= 1 > slope[k+1]) going ascending in DI. NaN if the slope
+    # never crosses 1 within the sampled range.
     DI_star = float('nan')
-    for s, d in zip(slopes, mid_DI):        # ascending DI; first crossing of slope>=1
-        if np.isfinite(s) and s >= 1.0:
-            DI_star = float(d)
+    for k in range(len(slopes) - 1):
+        s0, s1 = slopes[k], slopes[k + 1]
+        if np.isfinite(s0) and np.isfinite(s1) and s0 >= 1.0 > s1:
+            frac = (s0 - 1.0) / (s0 - s1)            # in [0, 1]
+            DI_star = float(mid_DI[k] + frac * (mid_DI[k + 1] - mid_DI[k]))
             break
     return {"max_slope": max_slope, "DI_star": DI_star, "n": int(DI.size)}
