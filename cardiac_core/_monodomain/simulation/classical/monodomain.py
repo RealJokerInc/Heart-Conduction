@@ -104,7 +104,28 @@ def _build_ionic_solver(name: str, ionic_model: IonicModel):
         raise ValueError(f"Unknown ionic solver: {name}")
 
 
-def _build_linear_solver(name: str, tol: float = 1e-8, max_iters: int = 500, **kwargs):
+def _spectral_kwargs(spatial, dt, scheme):
+    """Grid params a DCT/FFT solver needs, pulled from an FDM/FVM structured scheme.
+
+    Raises if the discretization can't supply a scalar diffusivity (e.g. a non-FDM
+    scheme, or one without the ``_D_max`` retained for spectral/CFL use).
+    """
+    D = getattr(spatial, '_D_max', None)
+    if D is None or not all(hasattr(spatial, a) for a in ('_dx', '_dy', '_chi', '_Cm')):
+        raise ValueError(
+            "linear_solver='dct'/'fft' requires an FDM/FVM structured discretization "
+            f"exposing dx/dy/D/chi/Cm; got {type(spatial).__name__}"
+        )
+    return dict(
+        nx=spatial.nx, ny=spatial.ny,
+        dx=spatial._dx, dy=spatial._dy,
+        dt=dt, D=D, chi=spatial._chi, Cm=spatial._Cm,
+        scheme=scheme,
+    )
+
+
+def _build_linear_solver(name: str, tol: float = 1e-8, max_iters: int = 500,
+                         spatial=None, dt=None, scheme: str = 'CN'):
     """
     Build linear solver from string name.
 
@@ -129,12 +150,19 @@ def _build_linear_solver(name: str, tol: float = 1e-8, max_iters: int = 500, **k
         return PCGSolver(tol=tol, max_iters=max_iters)
     elif name_lower == 'chebyshev':
         return ChebyshevSolver(max_iters=max_iters, tol=tol)
-    elif name_lower == 'dct':
-        # DCT requires grid parameters: nx, ny, dx, dy, dt, D, chi, Cm, scheme
-        return DCTSolver(**kwargs)
-    elif name_lower == 'fft':
-        # FFT requires grid parameters
-        return FFTSolver(**kwargs)
+    elif name_lower in ('dct', 'fft'):
+        # DCT/FFT are direct spectral solves needing grid params (nx,ny,dx,dy,dt,D,
+        # chi,Cm,scheme). Before B2 these were never threaded through, so the factory
+        # called DCTSolver()/FFTSolver() with empty kwargs -> TypeError, and every
+        # run fell back to slow PCG. Full-rectangle grids only (the solve reshapes to
+        # nx*ny; a masked domain must use pcg).
+        if spatial is None or dt is None:
+            raise ValueError(
+                f"linear_solver={name!r} needs the grid; call _build_linear_solver "
+                "with spatial= and dt="
+            )
+        kwargs = _spectral_kwargs(spatial, dt, scheme)
+        return DCTSolver(**kwargs) if name_lower == 'dct' else FFTSolver(**kwargs)
     elif name_lower == 'none':
         return None
     else:
@@ -334,8 +362,12 @@ class MonodomainSimulation:
             buffer_idx=0,
         )
 
-        # Build solver chain
-        linear = _build_linear_solver(linear_solver, tol=pcg_tol, max_iters=pcg_max_iter)
+        # Build solver chain. DCT/FFT need the grid + the implicit scheme they invert
+        # (crank_nicolson -> CN etc.); pcg/chebyshev/none ignore the extra args.
+        _scheme = {'crank_nicolson': 'CN', 'cn': 'CN', 'bdf1': 'BDF1', 'bdf2': 'BDF2'}.get(
+            diffusion_solver.lower().replace('-', '_'), 'CN')
+        linear = _build_linear_solver(linear_solver, tol=pcg_tol, max_iters=pcg_max_iter,
+                                      spatial=spatial, dt=dt, scheme=_scheme)
         diffusion = _build_diffusion_solver(diffusion_solver, spatial, dt, linear)
         ionic = _build_ionic_solver(ionic_solver, self._ionic_model)
         self.splitting = _build_splitting(splitting, ionic, diffusion)

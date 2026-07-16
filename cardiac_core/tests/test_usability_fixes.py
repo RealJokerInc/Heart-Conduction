@@ -202,3 +202,28 @@ def test_forward_euler_stability_warns():
         warnings.simplefilter("always")
         sim_ok.run(1.0, 1.0)
     assert not any("stability limit" in str(w.message) for w in caught)
+
+
+# ===========================================================================
+# B2 — fast spectral solver path (DCT/FFT) works through the factory
+# ===========================================================================
+def test_dct_solver_runs_and_matches_pcg():
+    """linear_solver='dct' constructs (was TypeError on empty kwargs) and its CV
+    matches the default pcg solve — both invert the same CN operator."""
+    g = Grid(60, 6, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)  # eff D = 1.4/1400 = 1e-3 cm^2/ms
+    stim = _stim(width=0.06)
+    r_pcg = monodomain(g, 'ttp06', cond, stim, linear_solver='pcg').run(40.0, 0.5)
+    r_dct = monodomain(g, 'ttp06', cond, stim, linear_solver='dct').run(40.0, 0.5)
+    cv_pcg = r_pcg.cv(10, 45, 3)
+    cv_dct = r_dct.cv(10, 45, 3)
+    assert cv_pcg == cv_pcg and cv_dct == cv_dct, "both solvers must produce a finite CV"
+    assert cv_dct == pytest.approx(cv_pcg, rel=0.1)
+
+
+def test_fft_solver_constructs_and_runs():
+    """linear_solver='fft' no longer raises TypeError via the factory (B2 wiring)."""
+    g = Grid(32, 8, 0.02)
+    cond = ConductivityConfig.isotropic(1.4)
+    r = monodomain(g, 'ttp06', cond, _stim(width=0.06), linear_solver='fft').run(4.0, 1.0)
+    assert r.Vm.shape[1:] == (32, 8)
