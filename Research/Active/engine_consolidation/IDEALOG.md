@@ -8,8 +8,8 @@
 **PLAN.md EXECUTED — P0/P1/P2 usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, NOT yet merged to main).**
 All 5 PLAN phases done + a 5-lane adversarial audit of the whole branch (see the 2026-07-16 final-audit Thread
 entry — 4 more real bugs found + fixed), each test-gated + per-engine integrity goldens bit-identical (atol=0).
-Commits P1 `a37d325` → P2 `d78a86d` → P3 `d94aa6d` → P4 `d6a3237` → P5 `99e1fa3` → audit-remediation `c0306d2`.
-Suite **254 passed / 2 xfailed** (218 baseline + 36 tests in `cardiac_core/tests/test_usability_fixes.py`).
+Commits P1 `a37d325` → P2 `d78a86d` → P3 `d94aa6d` → P4 `d6a3237` → P5 `99e1fa3` → audit-remediation `c0306d2` → round-2 remediation `9f387ef`.
+Suite **260 passed / 2 xfailed** (218 baseline + 42 tests in `cardiac_core/tests/test_usability_fixes.py`).
 - **P1 six P0 bugs:** B1 GPU device-mismatch (`_result_from` builds `times` on Vm's device); B8 NaN-fill masked
   nodes (`StructuredGrid.flat_to_grid`, mono+bidomain; LBM has no flat_to_grid, untouched); B3/B4 `apd_at`
   beat-bounded peak + dome-aware LAST-crossing (spike-and-dome safe); B5 `Grid(N,1)` degenerate-axis guard;
@@ -134,8 +134,7 @@ monodomain convergence; oblique-LBM moment-space rotation (Audit #46) if ever wa
 **Consolidation (A2 vendoring) SHIPPED (2026-06-25).** `cardiac_core` is one self-contained package — 3 engines vendored `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, bit-identical goldens, originals frozen. Phases 0–5 `935160b`→`37dc381`. → KNOWLEDGE "cardiac_core unified ground-up package". *(Predecessors condensed — full detail in Thread: V5.5 Cm-correct fork + consolidation Phase-1 copy-only, 2026-05-30/31; the Goal-2 design reframe to wet-lab code-gen, 2026-06-25; the "ditch FEM → structured-grid only" pending constraint — RESOLVED by the 2026-07-01 FEM/TriangularMesh removal. The deferred code-dedup [engines import from cardiac_core + delete copies] stays per-consumer — big-bang breaks Surrogate/Optimizer.)*
 
 ## Next Step
-**▶ MERGE `usability-fixes-p0-p1` → `main`** (commits `a37d325`→`c0306d2`: 5 phases + `562a7a0` docs +
-`c0306d2` audit-remediation; PLAN EXECUTED + 5-lane final audit clean, see Current Direction). Suite 254/2xfail,
+**▶ MERGE `usability-fixes-p0-p1` → `main`** (commits `a37d325`→`c0306d2`: 5 phases + `562a7a0`/`257b2c1` docs + `c0306d2`/`9f387ef` audit-remediation; PLAN EXECUTED + 5-lane final audit clean, see Current Direction). Suite 260/2xfail,
 goldens bit-identical. The branch is review-ready; nothing else in the plan is outstanding. After the merge, the OPEN threads below are unchanged (none were touched this session). Two
 usability items that were NOT in this PLAN and remain P3/future work: **B9** dead `stim_amplitudes_e` (no
 defibrillation) and the rotor-seeding / mid-run-state API (`set_voltage`/`get_state`/`clamp_voltage`/`add_pacing`
@@ -161,6 +160,31 @@ The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 f
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
 ## Thread
+
+### 2026-07-16 (audit round 2): audit-the-fix + completeness critic → 2 more real bugs + 2 masked-data gaps
+Ran a SECOND round (4 lanes: gate-correctness, analysis-fixes, P3-validation, and a whole-branch completeness
+critic) — the discipline that a fix round which changed code must itself be audited. Fixed (commit `9f387ef`):
+- **hiPSC regression I introduced in round 1.** The round-1 conductance allow-list keyed on UPPERCASE `G*/P*`,
+  but paci/phas13/mhas13 name conductances LOWERCASE `g_*` → scale_conductance rejected ALL their conductances
+  (and regressed `g_Na` scaling that worked pre-fix). Now case-insensitive first-letter + explicit denylist for the
+  two dimensionless params that merely start with g/p (`gamma_ncx` NCX-partition, `PkNa` IKs Nernst ratio). Verified
+  by enumerating g/G/p/P params across ALL 5 models.
+- **Bidomain masked default crash** (completeness critic — the cross-engine symmetry both per-file lanes missed):
+  `elliptic_solver='auto'` picked spectral on a hole → cryptic `shape [15,15] invalid for size 216`. Monodomain got
+  the DCT gate in round 1; bidomain's parallel path didn't. Auto now falls back to `pcg` on a masked domain (golden-
+  safe — full-rect unaffected).
+- **P5 silent-wrong on masked/NaN data** (all P5 tests had used clean synthetic tensors): `dominant_frequency_map`
+  returned a phantom low freq at NaN holes → now NaN; `radial_cv` silently all-NaN on a dead center → now warns.
+- Lesser: `restitution_slope` → LAST descending crossing (alternans boundary on noisy curves); `_rebuild_with_
+  conductivity` transactional; cheatsheet count/LBM-record/masked notes.
+- **Round-2 VERIFIED SOUND:** the DCT gate is complete (no silent-wrong slips through; allowed set is an exact
+  subset of the match-set, residual 7e-15); both round-1 analysis fixes; flat_to_grid guard (all dtype branches);
+  LBM guard; the two Phase-3 cross-engine fixes. Accepted/left: B1 CPU-coverage (GPU-only bug, GPU test covers it);
+  apd_per_beat/apd_at shared `V_rest=trace[0]`; bidomain scar φ_e pcg_spectral-vs-pcg ~533 mV (PRE-EXISTING elliptic
+  accuracy = the deferred 2026-07-02 code-audit M4; Vm/cv/apd unaffected, only φ_e/ECG).
+**Convergence signal:** round 2's findings were 1 self-inflicted regression + cross-cutting completeness gaps (not
+a new bug class in the core logic); the completeness critic called the per-lane work "genuinely thorough." Suite
+**260 passed / 2 xfailed**; goldens bit-identical.
 
 ### 2026-07-16 (final audit): 5-lane adversarial audit of the whole branch → 4 more real bugs fixed
 After executing all 5 phases, ran a **5-lane parallel adversarial audit** (general-purpose subagents; A=P1,
