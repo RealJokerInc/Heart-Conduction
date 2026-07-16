@@ -5,6 +5,26 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**Task-based API USABILITY audit — 2026-07-15 → [API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md).**
+Agentic walkthrough: 24 realistic scientist tasks across 7 categories, 6 parallel agents, each WRITING +
+RUNNING the minimal cardiac_core script and rating Possible?/Ease(1–5) empirically. **Verdict: "possible
+but painful," mean ease ≈2.7/5**; strong at *expressing* a sim, weak at *parameterizing* + *measuring* it.
+**2 tasks IMPOSSIBLE** via the public API (transmural cell-type gradient; clean single-cell automaticity);
+the motivating category (ionic tuning/pharmacology) is the worst-served (1.5/5). Ranked themes: **(CRIT)**
+the parameter/heterogeneity layer (`scale_conductance`/`set_parameter`/`set_conductivity`/`scale_conductivity`/
+`clamp_voltage`) is `NotImplementedError` stubs WITH inviting worked-example docstrings → #1 hallucination
+trap, blocks 7 tasks; **(HIGH)** no documented conductance knob (only working route = inject a model
+instance, undocumented + inconsistent TTP06-vs-ORd); **(HIGH)** cheatsheet ERRORS (lists `ord` as a
+monodomain model but ORd runs LBM-only; omits paci/hiPSC; save/load + dominant_frequency + phase_map absent;
+`phase_singularities` mis-primed); **(HIGH)** analysis is single-point/x-axis-only (no cv-map/radial/
+restitution, no DF map, no tip tracking); **(MED)** silent failures (nan CV on block, masked nodes returned
+at 0.0 mV → counted "activated", zero-node stim = silent no-op); **(MED)** no 0-D single-cell mode; no
+sweep/fitting helper; uniform-only conductivity + global-only cell type (MID crashes). Bright spots: viz
+(5/5), the LBM d2q9 boundary errors (validates the same-day F2 change), stimulus expression, masks. Fix
+priority: kill the stub trap → cheatsheet correctness pass → NaN-fill masked Vm → analysis aggregates →
+0-D + sweep → per-node fields. NOTE: connects to the CODE_AUDIT #7/#12 "planned-not-shipped methods" note —
+usability audit shows that's an active runtime trap, not a benign doc gap.
+
 **API failure-mode sweep + F1/F2 hardening — 2026-07-15.** Ran a full public-API failure-mode check
 (all ~40 `_LAZY` exports; both construction paths — declarative factory + file-format mesh; all 3
 engines; analysis/io/geometry/viz; + degenerate-input and expected-raise probes; 103 checks). **Verdict:
