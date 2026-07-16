@@ -178,3 +178,157 @@ scar/fibrosis (T6, T8, T17) needs the unimplemented `set_conductivity`.
 
 *Backlinks:* research question [engine_consolidation](./README.md) · project [MASTER](../../../MASTER.md). Method
 scripts in the session scratchpad (`usab_{A..F}_*.py`), not committed. No repo source was modified by the audit.
+
+---
+---
+
+# ROUND 2 — full-solve-and-run, +30 tasks (2026-07-16)
+
+**Method.** Same premise, harder bar: agents had to **actually solve and RUN each task to completion**
+(produce the real number / detection / figure at a scale that achieves the goal), not smoke-test. 30 NEW
+tasks (25–54: pharmacology & dose-response, reentry, alternans, fiber architecture, fibrosis, electrograms
+/defibrillation, cell-level state, calibration) + a full-scale RE-RUN of the prior 24. 10 parallel agents.
+**Caveat:** the box was heavily oversubscribed during the run (load ~34 on 8 cores + a GPU job), so absolute
+wall-times below are inflated ~2–4×; the *per-step* cost, the bugs, and the verdicts are real, the exact
+seconds are not.
+
+**Headline.** Running to completion **lowered the grade** — it exposed a class of defects that only appear at
+real scale: **a shipped GPU bug that crashes all analysis, a fast-solver path that is broken (forcing slow
+PCG), a fixed per-step runtime wall, and several silent-wrong analysis bugs.** Two "impossible" verdicts
+also *improved* (automaticity, non-hole scar — both via undocumented routes). Net: the API can *express* far
+more than round 1 implied (reentry, figure-8, alternans, Wenckebach, electrograms all achieved), but the
+**path to a correct, timely result is booby-trapped** — wrong defaults, broken fast paths, and silent
+corruption dominate.
+
+## New concrete BUGS (the round-2 core — each is a blueprint target)
+
+| # | Bug | Where | Impact | Found by |
+|---|-----|-------|--------|----------|
+| B1 | **GPU `device="cuda"` crashes all analysis/viz** — `_result_from` builds `times` on CPU, `Vm` on CUDA; every `analysis.*` dies at `times[first_idx]` (`RuntimeError: indices ... on cpu`) | `api.py:993` (`_result_from`); mirror-check `run.py::_collect` | `.lat/.apd/.cv/isochrones/apd_map_figure/dominant_frequency/phase_map` all crash on the documented GPU path | R3 (root-caused), N4 |
+| B2 | **Fast spectral solvers broken via factory** — `linear_solver='fft'`/`'dct'` → `TypeError: FFTSolver.__init__() missing 6 required positional args` | `api.py` monodomain factory ↔ `FFTSolver.__init__` | The fast path is unusable → **everything is stuck on slow PCG** (root cause of the runtime wall) | N3 |
+| B3 | **`apd_at`/`restitution_curve` peak-over-remaining bug** — AP peak = `trace[beat_start:].max()` (max over the ENTIRE rest of the trace), so a later taller beat corrupts earlier beats' APD (got APD90=1341 ms) | `analysis.py` (`apd_at`) | Silently wrong multi-beat APD → corrupts every restitution/alternans measurement | N3 |
+| B4 | **`apd_at` notch artifact** — first-crossing-after-peak catches the TTP06 spike-and-dome NOTCH for low repol fractions → APD30=7.4 ms | `analysis.py` (`apd_at`) | Silently wrong low-repol APD (APD30/APD50) | N5 |
+| B5 | **`cc.Grid(N, 1, dx)` crashes** — `StructuredGrid.__post_init__` does `dy = Ly/(Ny-1)` → `ZeroDivisionError` at Ny=1 | `mesh/structured.py` `__post_init__` (+ `from_mask`) | A true 1-D cable can't be built the documented way (Ny=2 workaround) | N6 |
+| B6 | **`forward_euler` silently blows up** when `dt > dx²/4D` — produces oscillating garbage (threshold crossed 3693×), not an error | `_monodomain` explicit stepper | Silent numerical garbage; no stability guard/warning | N3 |
+| B7 | **`record=` silently ignores unknown keys** — `record=("Vm","I_Kr")` runs, produces no attribute, no error (`want_ionic = "ionic_states" in record`) | `api.py` run record handling | Scientist thinks they recorded a current and got nothing | N6 |
+| B8 | **Masked-out nodes returned at 0.0 mV** (> −20 mV threshold) → `lat()`/`apd()`/`cv()` count dead tissue as "activated at t=0" | `_monodomain` `flat_to_grid` fill + `analysis.*` | **Quantified silent-wrong: 23% CV error; 100% of masked nodes falsely activated.** Corrupts every scar/fibrosis/irregular-geometry study | N4, R1, R2, N2 (universal) |
+| B9 | **Dead `stim_amplitudes_e`** — bidomain extracellular-stim amplitude is hardcoded 0.0 and never read (elliptic RHS has no `I_e` term); forcing it → bit-identical output | `bidomain.py:263`, `decoupled_jacobi.py:95` | No defibrillation / applied-field / virtual-electrode studies possible | N5 |
+| B10 | **`dominant_frequency` silent FFT-bin quantization** — DF snaps to `1/T`-spaced bins with no warning about frequency resolution | `analysis.py` (`dominant_frequency`) | Silently coarse DF unless the recording is long | R3 |
+| B11 | **`save_every` quantizes derived metrics** — coarse save → identical CV for nearby params → **secant div-by-zero** in a fit loop; also collapses dLAT/crescent metrics | `analysis` CV/LAT + `run` cadence | Closed-loop fitting and fine front-shape metrics silently break | N6, R4, R1 |
+| B12 | **`TTP06Model()` defaults to CUDA** → device mismatch against the CPU engine unless `device='cpu'` passed | `ionic/ttp06/model.py` ctor default | Undocumented device trap on the model-instance route | N1 |
+| B13 | **`restitution` raw slope → spurious `inf`** — near-duplicate DIs give a divide-by-zero max-slope; a fit is required | `analysis` restitution | Instability metric unreliable without smoothing | N3 |
+
+## Performance findings (the runtime wall)
+- **Fixed per-step overhead, ~grid-independent:** ~1.5–3 ms/step CPU and **~13 ms/step GPU (kernel-launch-bound
+  by TTP06's 18-state kernels)** — so **wall-clock ∝ simulated time, not grid size**. Long-horizon protocols
+  (restitution, reentry, alternans, ATP) run **5–11 min each**; the default `crank_nicolson`+`pcg` makes even
+  trivial runs time out. GPU gives **no speedup** on small grids (often slower) and is broken for analysis anyway (B1).
+- **Root cause = B2** (the fast spectral path is broken) plus **no LUT/fused ionic kernel**. The only escape is
+  undocumented: `diffusion_solver='forward_euler', linear_solver='none'` on GPU, and raising `dt` to 0.04–0.15
+  (CN is unconditionally stable; APD90 converged within ~1–3 ms). **Nothing in the cheatsheet says any of this.**
+- **Bidomain `bath` perf cliff:** ~35 s/ms vs ~6.7 s/ms insulated (bath isn't spectral-eligible → PCG). The
+  cheatsheet's own 201-node strip example would take **hours** in bidomain+bath, yet it only quotes monodomain timing.
+
+## Verdict flips from full running
+- **T3 single-cell automaticity: No → Yes** — the undocumented `paci` (hiPSC, funny current I_f) beats spontaneously
+  with `stimulus=None` (spontaneous AP ~600 ms, DD slope +0.0136 mV/ms); runs on both monodomain and LBM.
+- **T6 non-hole scar: No → Possible** — zeroing per-node `D` in a scar disc (`mesh=CardiacMeshData`) gives a true
+  inexcitable scar (nodes hold −85 mV, wave routes around) and is *cleaner* than a mask hole (no 0.0-mV pollution).
+- **T8 isthmus block: Yes → No via geometry** — every isthmus width down to 2 nodes conducts; a real block needs
+  finer dx or the unimplemented `set_conductivity`.
+- **T10 BCL restitution / T15 isochrones-video** degrade at scale — T10 to a runtime-wall/`dt`-workaround task, T15
+  from 5/5 to broken-on-GPU (B1).
+- **Reentry (30–32,34) ACHIEVED** with the solver workarounds: anchored rotor CL=296 ms (~2.4 rotations), figure-8
+  CL≈344 ms, ring min-circumference ≈ wavelength 2.82 cm. **T35 spiral breakup = No** (no rotor-seeding/initial-state
+  API + wavelength > domain). **T33 ATP = Partial** (open-loop only — no mid-run stimulus / no rotor-phase readout;
+  ~11 min/run).
+
+## Capability gaps confirmed by full running
+- **No mid-run state control** — `set_voltage`/`set_state`/`get_state`/`state_names`/`scale_conductance`/
+  `set_parameter`/`set_conductivity`/`scale_conductivity`/`clamp_voltage`/`add_clamp_protocol`/`add_pacing`/
+  `inject_current` **all `raise NotImplementedError`** with polished docstrings. Blocks: drug/conductance knobs,
+  voltage clamp, scar, rotor phase-IC seeding, closed-loop ATP. **The dominant hazard: the object advertises a
+  large capability surface in `dir()` that is pure stubs.**
+- **No per-beat analysis** — `r.cv/apd/lat` are first-beat/first-activation only → every multi-beat task
+  (restitution, alternans, Wenckebach, use-dependence, CV-restitution) is manual upstroke detection.
+- **`phase_singularities`** returns a per-frame topological-charge field (not tip coords), with **no boundary/obstacle
+  rejection** (spurious edge/obstacle tips) and **no tip tracking**; `phase_map` recomputes the full-trace Hilbert
+  on every per-frame call (**O(T²·N²)**). No rotor-seeding helper.
+- **`anisotropic()` is scalar-only** (no per-node fiber-angle field; the exported `fiber_field_transmural` is
+  orphaned — nothing consumes it); **cell type is global-only** and `MID` is the enum `M_CELL` (crashes on `'MID'`);
+  **`ConductivityConfig` is uniform-only** (spatial D only via undocumented `CardiacMeshData.D_xx`).
+- **No electrogram/pseudo-ECG helper; no applied field; no sweep/fit helper; no disk checkpoint/resume** (in-process
+  continue works bitwise; state-serialize impossible). `record=("Vm","ionic_states")` works but is undocumented and
+  returns an **unlabeled** `(T,18,Nx,Ny)` tensor (`state_names` is a stub → source-dive for channel names).
+
+## New-tasks appendix (25–54)
+
+| # | Task | Possible | Ease | Headline (achieved result / blocker) |
+|---|------|----------|------|--------------------------------------|
+| 25 | I_Kr dose-response | Yes | 2 | APD90 224→274 ms across 0–90% block; drug knob = undocumented `.params.GKr` on a model instance (stub `scale_conductance`); slow default solver timed out at 180 s |
+| 26 | Multi-channel drug | Yes | 2 | APD 224→201, CV −12.5%; `PCa` not "GCaL" |
+| 27 | Use-dependence | Partial | 2 | Static block only; rate-dependent CV/failure observable; no beat-k CV helper |
+| 28 | Rheobase | Yes | 4 | ≈ −26.5 µA/µF; capture all-or-none (~110 mV gap) — cleanest task |
+| 29 | Voltage clamp | **No** | 1 | `clamp_voltage`/`add_clamp_protocol` are stubs; no I–V path |
+| 30 | Cross-field spiral (period+tip) | Yes (anchored) | 2 | Rotor T=296 ms, ~2.4 rotations; free spiral drifts out; no phase-IC seeding |
+| 31 | Anchored spiral CL | Yes | 3 | CL=296 ms, sustained; masked-node trap |
+| 32 | Figure-of-8 | Yes | 3 | Dual-loop CL≈344 ms; `phase_singularities` under-counts anchored tips |
+| 33 | ATP termination | Partial | 2 | Open-loop only (no mid-run stim / no rotor phase); ~11 min/run |
+| 34 | Ring min circumference | Partial | 2 | min circ ≈ λ = 2.82 cm; period=path/CV verified |
+| 35 | Spiral breakup | **No** | 2 | 6 seeding attempts → 0 sustained tips; no rotor-induction API; λ>domain (compute NOT blocker) |
+| 36 | Alternans onset | Yes (weak) | 2 | Long-short ~8.6 ms at BCL≈275; `apd_at` peak bug (B3) forced manual APD |
+| 37 | Discordant alternans | Partial | 2 | Got concordant ~10 ms; discordant needs steep restitution (slope 0.59) |
+| 38 | Restitution slope | Yes | 3 | max slope 0.59 <1; raw slope → spurious `inf` (B13) |
+| 39 | Wenckebach / conduction failure | Yes | 3 | Clean 2:1 block, dropped beat, delay 57→77.5 ms; no per-beat capture helper |
+| 40 | Transmural fiber-angle field | Yes (undoc.) | 2 | LAT range 4 ms; `anisotropic()` scalar-only; per-node D hand-rolled; 51×51 full-tensor times out |
+| 41 | Along vs cross APD | Yes | 4 | 228 vs 226 ms (APD dir-independent; anisotropy is in LAT) |
+| 42 | CV ellipse | Yes | 3 | CV 48.4→16.8, ratio 2.88; `r.cv` x-row only → hand-roll + ×1000 |
+| 43 | Diffuse random fibrosis | Yes | 2 | CV 50→28.2 (44% slow, not blocked); **B8 quantified: naive CV 34.6 vs 28.2 (23% error)** |
+| 44 | Percolation threshold | Yes | 3 | Critical density ≈0.35; many slow serial runs; GPU broken |
+| 45 | Pseudo-ECG / electrogram | Yes (manual) | 3 | Biphasic ptp=17.8 mV; no helper; bath grounds boundary node (trap) |
+| 46 | Defibrillation / applied field | **No** | 1 | Transmembrane-only; `stim_amplitudes_e` dead (B9) |
+| 47 | phi_e map at wavefront | Yes | 4 | −7.7…+11.3 mV source-sink dipole |
+| 48 | Bath vs insulated phi_e | Yes | 4 | Insulated ptp 21.3 vs bath ≈0 (~17×); must demean insulated (floating ref) |
+| 49 | AP morphology | Yes | 3 | dV/dt_max=358.7 V/s, APD30/50/90=7.4/155/214 (APD30 = notch artifact B4) |
+| 50 | Ca transient / ionic state | Yes | 2 | Cai 125.8→165.7 nM; `record=` undocumented; state channels unlabeled (`state_names` stub) |
+| 51 | Checkpoint & resume | Partial | 2 | In-process continue bitwise-exact; no disk state save (stubs) |
+| 52 | Single ionic current trace | **No** | 1 | No per-current output; `record=` silently ignores unknown keys (B7) |
+| 53 | Fit D to target CV | Yes | 3 | σ=0.816→D=5.83e-4, 3 iters; save_every→secant div-by-zero (B11); no fitter |
+| 54 | 1-D cable | Partial | 2 | Ny=2 CV=59.26; `Grid(N,1)` crashes (B5) |
+
+## Re-run deltas (1–24): what changed at full scale
+Verdicts mostly held; the **new content is runtime + silent-wrong**, not new features. Flips: **T3 No→Yes**,
+**T6 No→Possible**, **T8 Yes→No-via-geometry**, **T15 5/5→broken-on-GPU**, **T10 → runtime wall**. Deepened:
+single-cell APD is clean (not "garbage") once the stim is hand-lowered (T2); the LBM CV offset is **+47%**
+(bigger, grid-dependent) not +12 (T24); `GCaL` is a phantom in **both** ionic models (T4); masked-node pollution
+is **total** (T6/T7). New universal difficulty: the per-step runtime wall + the CN-`dt` escape hatch.
+
+---
+
+# MERGED prioritized fix list (rounds 1+2) — authoritative for the blueprint
+
+Ordered by (silent-wrong or crash) × (breadth) ÷ effort. **P0 = correctness/crash, mostly cheap; P4 = larger.**
+
+**P0 — bugs that crash or silently corrupt (do first):**
+1. **B1 GPU device-mismatch** — set `times` device from `Vm` in `_result_from` (`api.py:993`) and audit `_collect`. One-liner; unbreaks the whole GPU analysis/viz surface.
+2. **B8 masked-node pollution** — NaN-fill out-of-domain nodes in the returned `Vm` (or expose `r.mask` and auto-apply in `lat/apd/cv`). Fixes every scar/fibrosis/irregular study (23% silent error today).
+3. **B3+B4 `apd_at` peak/notch bug** — window the peak to the current beat and offer a last-crossing / dome-aware repol option. Fixes all multi-beat APD/restitution.
+4. **B5 `Grid(N,1)`** — guard `__post_init__`: `dy = Ly/(Ny-1) if Ny>1 else dx`.
+5. **B7 `record=` validation** — raise on unknown keys.
+6. **B6 explicit-solver stability guard** — warn/raise when `dt > dx²/4D` for `forward_euler`.
+7. **B2 fast spectral solver wiring** — fix the `fft`/`dct` factory construction (missing ctor args) so the fast path works (also the biggest perf lever).
+
+**P1 — kill the stub trap + the cheatsheet/`dt` documentation gap (highest ergonomics ROI):**
+8. Implement the highest-value stubs (`scale_conductance`, `set_conductivity`, `set_voltage`/`get_state`) — the engine already supports scaled instances + a `D_field`; OR remove the misleading docstrings and mark them unavailable. Wire or delete dead `stim_amplitudes_e` (B9) and the phantom `state_names`.
+9. Cheatsheet correctness + **solver/`dt` guidance** pass: document `diffusion_solver`/`linear_solver`/`dt` choices and the CN-stability escape (the #1 usability lever); the drug-block model-instance route + `PCa`/`GKr` name map; `paci`/hiPSC models; ORd-is-LBM-only; `record=`, `save_result`/`load_result` (+ tuple order), `dominant_frequency`, `phase_map` (+ two-step call); per-node-D recipe; `fiber_angle`=radians; bidomain-bath cost; LBM CV offset; `TTP06Model` CPU device (B12).
+
+**P2 — analysis aggregates / per-beat / axes:**
+10. `dominant_frequency_map`; `cv(along=)`/`radial_cv`/`cv_between`; per-beat family (`cv_beat`/`apd_per_beat`/`capture`/`cv_restitution`); `restitution_slope` (fit + DI\*); distinguish block/no-activation from `nan`; warn on out-of-band `.isotropic` D and on zero-node stimulus; DF resolution warning (B10); save_every→CV quantization guard (B11).
+
+**P3 — capability the tasks needed:**
+11. Per-node conductivity field + per-node cell-type field + per-node fiber-angle (wire `fiber_field_transmural`); register `MID`. Single-cell 0-D path (`cc.single_cell`). `cc.sweep`/`cc.fit_conductivity`. Rotor tooling: batched `phase_map`, obstacle/boundary-aware `track_singularities`, mid-run `add_stimulus`/phase-IC seeding. `cc.electrogram`/`pseudo_ecg`. Disk checkpoint (`sim.save`/`cc.load`).
+
+**P4 — performance (larger):**
+12. LUT/fused ionic kernel to cut the ~13 ms/step launch overhead (the root reentry blocker); make bidomain-bath elliptic solve faster or warn. (B2 in P0 already removes the biggest single perf wall.)
+
+*Round-2 method scripts: scratchpad `usab2_{N1..N6,R1..R4}_*.py` (not committed); figures under `media/_unmapped/images/2026-07-16/`. No repo source modified by the audit.*

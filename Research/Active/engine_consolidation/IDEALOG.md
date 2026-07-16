@@ -5,6 +5,23 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**API usability audit ROUND 2 (full-solve-and-run, +30 tasks) — 2026-07-16 → same report, "ROUND 2" section.**
+10 agents, 30 new tasks (25–54) + full-scale re-run of the prior 24; agents had to actually SOLVE+RUN each to
+completion. Running fully LOWERED the grade — it surfaced a class of defects a smoke test hides. **13 concrete
+bugs (B1–B13)**, the load-bearing ones: **B1** GPU `device="cuda"` crashes ALL analysis/viz (`_result_from`
+puts `times` on CPU, `Vm` on CUDA — one-line fix, mine); **B2** `linear_solver='fft'/'dct'` broken via factory
+(`FFTSolver.__init__` missing args) → everything stuck on slow PCG = root of the runtime wall; **B3/B4**
+`apd_at` peak-over-remaining + notch bugs → silently wrong multi-beat/low-repol APD; **B5** `Grid(N,1)` crash;
+**B6** `forward_euler` silent blowup past dt-stability; **B7** `record=` silently ignores unknown keys; **B8**
+masked nodes returned at 0.0 mV → 23% silent CV error on every scar/fibrosis study; **B9** dead `stim_amplitudes_e`
+(no defibrillation). PERF: fixed per-step wall (~1.5–3 ms/step CPU, ~13 ms/step GPU, grid-independent) → long
+protocols 5–11 min; escape = `forward_euler`+`none`+`dt`≈0.04 (undocumented). Verdict flips: T3 automaticity
+No→Yes (undoc `paci`), T6 non-hole scar No→Possible (per-node D=0), T8 isthmus block Yes→No-via-geometry,
+T15 5/5→broken-on-GPU. Reentry ACHIEVED (anchored CL=296 ms, figure-8 CL≈344 ms, ring min-circ≈λ=2.82 cm) with
+the solver workarounds; blockers = runtime wall + no rotor-seeding/mid-run-state API (all `set_*`/`get_state`/
+`scale_conductance`/`clamp_voltage`/`add_pacing` are NotImplementedError stubs). Report ends with a **MERGED
+P0–P4 fix list** = the blueprint target. Contention caveat: box oversubscribed, absolute wall-times inflated ~2–4×.
+
 **Task-based API USABILITY audit — 2026-07-15 → [API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md).**
 Agentic walkthrough: 24 realistic scientist tasks across 7 categories, 6 parallel agents, each WRITING +
 RUNNING the minimal cardiac_core script and rating Possible?/Ease(1–5) empirically. **Verdict: "possible
