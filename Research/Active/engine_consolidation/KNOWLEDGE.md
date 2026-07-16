@@ -31,6 +31,15 @@
 > pre-existing untested method (bidomain `step()`), and 1 silent-wrong-result (bidomain per-node-fiber
 > anisotropy breaks elliptic symmetry → ~13% phi_e error; uniform-angle API safe). See "Code audit" below.
 
+> **SHIPPED 2026-07-15 — API failure-mode sweep + F1/F2 hardening** (commit `2938cf9`, main). A full
+> public-API failure-mode check (all ~40 exports, both construction paths, all 3 engines, analysis/io/
+> geometry/viz, degenerate + expected-raise probes) found the surface **complete and working**. Two real
+> gaps fixed: **F1** empty run (`t_end<save_every`) now returns a rank-3 `(0,Nx,Ny)` result (was rank-1
+> `(0,)`) with `activation_time`/`apd_map` T=0 guards, so `.apd()`/`.lat()`/`.cv()` degrade to NaN instead
+> of crashing. **F2** `hbb` is now **D2Q9-only** (joins ncs/scs/combined); the LBM boundary default is
+> lattice-aware (`neumann` on d2q5 — unchanged, tuner/goldens safe; `hbb` on d2q9). Global d2q5/neumann
+> default kept (user decision; no numerical default change — neumann≡hbb on d2q9). 218 passed / 2 xfailed.
+
 ## Current Understanding
 
 The question has TWO layers (see "North-Star" below): the **foundation** is code-consolidation (unify the engines' shared code in `cardiac_core/`); the **goal on top** is a conversational simulation builder for non-coders (unified API + LLM wrapper). Build order is now vocabulary-first → unified API.

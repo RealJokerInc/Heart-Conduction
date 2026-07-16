@@ -5,6 +5,27 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**API failure-mode sweep + F1/F2 hardening — 2026-07-15.** Ran a full public-API failure-mode check
+(all ~40 `_LAZY` exports; both construction paths — declarative factory + file-format mesh; all 3
+engines; analysis/io/geometry/viz; + degenerate-input and expected-raise probes; 103 checks). **Verdict:
+the whole public surface is complete and working** — every documented call completes or raises its
+documented error; all 4 contract guards and 6/7 degenerate inputs already degrade gracefully. Two real
+gaps found and FIXED (commit `2938cf9`, main; 218 passed / 2 xfailed): **F1** — an empty run
+(`t_end < save_every`) crashed the analysis hooks (`.apd()`/`.lat()`/`.cv()`) because `_collect`/
+`_result_from` returned a rank-1 `(0,)` Vm; now they return rank-3 `(0,Nx,Ny)` and `activation_time`/
+`apd_map` guard the zero-length time axis → NaN maps / NaN, no crash. **F2** — `hbb` reclassified as
+**D2Q9-only** (joins ncs/scs/combined in `wall_modes.D2Q9_ONLY`; `hbb`+d2q5 now raises instead of
+silently acting as a neumann no-op), and the LBM boundary **default is now lattice-aware**: `neumann`
+on d2q5 (UNCHANGED — tuner calls `run_lbm` with no lattice/boundary, and goldens pin d2q5, so both are
+untouched), `hbb` on d2q9 (label-only; neumann≡hbb numerically on d2q9). Cheatsheet §4 documents the
+d2q9 requirement (the prior doc gap). **User decisions (2026-07-15):** keep the global d2q5/neumann
+default (do NOT flip to d2q9); merge only the 12 committed tuner commits to main. Two cosmetic nits
+recorded, not fixed: `point_distance(x0,y0)` scalar-coords vs `circle_mask(center=(x,y))` tuple;
+`ConductivityConfig.sigma_eff`/`D_eff` return a scalar (iso/bi) but a 3-tuple `(xx,yy,xy)` (aniso) —
+cheatsheet implies scalar. Also landed the `engine-tuner-v2-joint` branch (12 commits) onto main (merge
+`9d82f56`; one MASTER_KNOWLEDGE_INDEX.md conflict resolved keeping both the β-dt-guide bullet and the
+SCS-gate-decontamination correction).
+
 **Deep code audit — math integrity + API — 2026-07-02.** After pushing the API-consistency work to
 `main`, ran a 6-lane agentic walkthrough of ALL of cardiac_core with per-lane NUMERICAL verification →
 [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md). **0 blockers / 4 majors / ~22 minors.** Default
