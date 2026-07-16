@@ -103,8 +103,16 @@ def test_lbm_boundary_unknown_rejected():
         lbm(_mesh(), boundary='bogus', lattice='d2q9')
 
 
-def test_lbm_default_boundary_is_neumann():
-    assert lbm(_mesh(), lattice='d2q9')._engine.boundary == 'neumann'
+def test_lbm_default_boundary_is_lattice_aware():
+    # d2q9 defaults to the HBB flat-wall baseline; d2q5 to generic neumann (user 2026-07-15)
+    assert lbm(_mesh(), lattice='d2q9')._engine.boundary == 'hbb'
+    assert lbm(_mesh(), lattice='d2q5')._engine.boundary == 'neumann'
+
+
+def test_lbm_hbb_requires_d2q9():
+    # hbb joined the D2Q9-only flat-wall family; explicit hbb on d2q5 must raise
+    with pytest.raises(ValueError, match="d2q9"):
+        lbm(_mesh(), boundary='hbb', lattice='d2q5')
 
 
 def test_lbm_combined_selectable_and_replayed():

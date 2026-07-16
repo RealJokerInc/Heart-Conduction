@@ -79,9 +79,10 @@ class LBMSimulation:
         self.device = ionic_model.device
         self.dtype = ionic_model.dtype
 
-        # Boundary wall mode (boundary_conduction_speedup). Default 'neumann' (== HBB) is
-        # bit-identical to the historical behaviour on every lattice; the specular/combined
-        # modes are D2Q9-only flat-wall overlays on the BGK path.
+        # Boundary wall mode (boundary_conduction_speedup). Default 'neumann' is the generic
+        # halfway bounce-back, valid on every lattice (bit-identical to the historical behaviour).
+        # The D2Q9 flat-wall family — 'hbb' (the specular baseline; numerically == neumann) plus
+        # the specular/combined overlays — is D2Q9-only (guarded below).
         boundary = normalize_mode(boundary)   # accept 'ncs'/'scs' abbreviations
         if boundary not in WALL_MODES:
             raise ValueError(f"boundary must be one of {WALL_MODES} (or 'ncs'/'scs'), got {boundary!r}")

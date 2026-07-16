@@ -83,10 +83,16 @@ def _collect(sim, t_end, save_every, output_device):
 
     if not V_list:
         # Zero save-points (e.g. t_end < save_every) — degrade like the eager run()
-        # path instead of an IndexError on V_list[0] (Audit #5).
+        # path instead of an IndexError on V_list[0] (Audit #5). Preserve the spatial
+        # dims as a rank-3 (0, Nx, Ny) empty so the analysis hooks (.apd()/.lat()/.cv())
+        # return NaN maps rather than crashing on a rank-1 (0,) tensor (F1, 2026-07-15).
         dev = torch.device(output_device) if output_device else torch.device('cpu')
-        empty = torch.empty(0, dtype=torch.float64, device=dev)
-        return empty, empty, None
+        nx, ny = getattr(sim, '_Nx', None), getattr(sim, '_Ny', None)
+        empty_t = torch.empty(0, dtype=torch.float64, device=dev)
+        empty_v = (torch.empty(0, nx, ny, dtype=torch.float64, device=dev)
+                   if nx is not None and ny is not None
+                   else torch.empty(0, dtype=torch.float64, device=dev))
+        return empty_t, empty_v, None
 
     dev = torch.device(output_device) if output_device else V_list[0].device
 
@@ -200,12 +206,15 @@ def run_lbm(
     ionic_model: Optional[str] = None,
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
-    boundary: str = 'neumann',
+    boundary: Optional[str] = None,
     alpha: float = 1.0,
     device: str = 'cpu',
     output_device: Optional[str] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Run LBM simulation, return (times, V) as plain tensors.
+
+    ``boundary`` defaults (``None``) lattice-aware: 'neumann' on d2q5, 'hbb' on d2q9. The
+    D2Q9-only flat-wall modes ('hbb'/'ncs'/'scs'/'combined') require ``lattice='d2q9'``.
 
     Parameters
     ----------

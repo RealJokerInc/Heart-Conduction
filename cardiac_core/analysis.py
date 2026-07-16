@@ -37,6 +37,8 @@ def activation_time(
     torch.Tensor
         (Nx, Ny) activation time in ms. NaN where not activated.
     """
+    if V.shape[0] == 0:   # empty run (0 save-points) — return NaN map, don't argmax an empty axis (F1)
+        return torch.full(V.shape[1:], float('nan'), dtype=torch.float64, device=V.device)
     # (n_saves, Nx, Ny) bool: True where V >= threshold
     above = V >= threshold
     # First time index where above is True along time axis
@@ -185,6 +187,8 @@ def apd_map(
     """
     _, Nx, Ny = V.shape
     result = torch.full((Nx, Ny), float('nan'), device=V.device, dtype=V.dtype)
+    if V.shape[0] == 0:   # empty run — all-NaN map (skip the per-node loop over an empty axis) (F1)
+        return result
     for ix in range(Nx):
         for iy in range(Ny):
             result[ix, iy] = apd_at(V, times, ix, iy, repol, threshold)

@@ -70,6 +70,10 @@ sim = cc.lbm(g, "ttp06", cond, stim, dt=0.005)  # lattice-Boltzmann (smaller dt)
 - Engine rule for generation: **monodomain** unless the experiment is about the surrounding bath / tissue
   edge / boundary loading → then **bidomain**.
 - Optional kwargs: `dt=0.02`, `splitting="strang"`, `device="cpu"` (mono); `boundary="bath"|"insulated"` (bidomain).
+- **LBM wall modes** (`cc.lbm(..., lattice="d2q9", boundary=...)`): the flat top/bottom boundary-speedup
+  family `"hbb"` / `"ncs"` / `"scs"` / `"combined"` (+`alpha` for `combined`) **requires `lattice="d2q9"`** —
+  requesting them on the default `lattice="d2q5"` raises. The default `boundary` is lattice-aware
+  (`neumann` on d2q5, `hbb` on d2q9); only `neumann` is valid on d2q5.
 
 ## 5. Run — eager `SimulationResult`
 

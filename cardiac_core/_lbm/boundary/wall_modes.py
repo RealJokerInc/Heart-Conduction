@@ -6,11 +6,13 @@ Kernels ported verbatim from Research/Active/boundary_conduction_speedup/diag_lb
 (slot maps verified against the lattice in BC_IMPLEMENTATION_AUDIT.md §1).
 
 Modes:
-  neumann / hbb        — halfway bounce-back (default; no overlay; forward crescent)
-  specular_nextcell    — next-cell specular: flip y, displace 1 cell east/west → ZERO bias
-  specular_samecell    — flip y, keep x, same cell → INVERSE crescent (== combined, alpha=0)
+  neumann              — generic halfway bounce-back (default; ANY lattice; no overlay; forward crescent)
+  hbb                  — the D2Q9 flat-wall HBB baseline; numerically == neumann (no overlay), but it is
+                         the specular family's control and is therefore D2Q9-ONLY (see D2Q9_ONLY below)
+  specular_nextcell    — next-cell specular: flip y, displace 1 cell east/west → ZERO bias (D2Q9-only)
+  specular_samecell    — flip y, keep x, same cell → INVERSE crescent (== combined, alpha=0) (D2Q9-only)
   combined(alpha)      — HBB (alpha=1) ↔ same-cell specular (alpha=0) blend; the β-controlled
-                         curvature knob (see KNOWLEDGE "Curvature control: the α-blend")
+                         curvature knob (see KNOWLEDGE "Curvature control: the α-blend") (D2Q9-only)
 
 All are diagonal→diagonal weight-matched → rest-neutral (no wall pre-charge) and mass-conserving.
 Restricted to flat, axis-aligned top/bottom walls; corners + east/west stay HBB. NOTE (physics):
@@ -19,8 +21,11 @@ the same-cell-specular inverse branch is β = D·dt/dx² (τ) controlled — car
 from torch import Tensor
 
 WALL_MODES = ('neumann', 'hbb', 'specular_nextcell', 'specular_samecell', 'combined')
-# modes that require D2Q9 (they act on diagonal populations)
-D2Q9_ONLY = ('specular_nextcell', 'specular_samecell', 'combined')
+# The D2Q9 flat-wall boundary family, restricted to lattice='d2q9'. The specular/combined
+# modes act on diagonal populations (which d2q5 lacks); 'hbb' is the D2Q9 HBB baseline they
+# are measured against — grouped here so it is not silently usable on d2q5 where only the
+# generic 'neumann' bounce-back applies (user 2026-07-15).
+D2Q9_ONLY = ('hbb', 'specular_nextcell', 'specular_samecell', 'combined')
 
 # Standard abbreviations accepted as aliases: NCS = next-cell specular, SCS = same-cell specular.
 _ALIASES = {'ncs': 'specular_nextcell', 'scs': 'specular_samecell'}

@@ -192,18 +192,19 @@ class CardiacSimulation:
         SimulationResult | Iterator[SimulationResult]
         """
         it = self._iter_snapshots(t_end, save_every, record=record, callback=callback)
+        _shape = (self._Nx, self._Ny)
         if batch is None:
-            return _result_from(list(it), record, self.dx, self.dy)
+            return _result_from(list(it), record, self.dx, self.dy, shape=_shape)
 
         def _gen():
             buf = []
             for snap in it:
                 buf.append(snap)
                 if len(buf) == batch:
-                    yield _result_from(buf, record, self.dx, self.dy)
+                    yield _result_from(buf, record, self.dx, self.dy, shape=_shape)
                     buf = []
             if buf:
-                yield _result_from(buf, record, self.dx, self.dy)
+                yield _result_from(buf, record, self.dx, self.dy, shape=_shape)
         return _gen()
 
     def snapshots(self, t_end: float, save_every: float = 1.0, *, record=("Vm",),
@@ -976,12 +977,19 @@ def _factory_for(engine_type: str):
     return {'monodomain': monodomain, 'bidomain': bidomain, 'lbm': lbm}[engine_type]
 
 
-def _result_from(snaps, record, dx, dy):
-    """Stack a list of SimulationSnapshot into a single SimulationResult."""
+def _result_from(snaps, record, dx, dy, shape=None):
+    """Stack a list of SimulationSnapshot into a single SimulationResult.
+
+    ``shape`` = ``(Nx, Ny)`` lets the zero-snapshot case return a rank-3 ``(0, Nx, Ny)``
+    empty ``Vm`` so the analysis hooks degrade to NaN maps instead of crashing on a
+    rank-1 ``(0,)`` tensor (F1, 2026-07-15).
+    """
     from .run import SimulationResult  # local import avoids api<->run circular import
     if not snaps:
-        empty = torch.empty(0)
-        return SimulationResult(times=empty, Vm=empty, phi_e=None, dx=dx, dy=dy)
+        empty_t = torch.empty(0, dtype=torch.float64)
+        empty_v = (torch.empty(0, *shape, dtype=torch.float64)
+                   if shape is not None else torch.empty(0))
+        return SimulationResult(times=empty_t, Vm=empty_v, phi_e=None, dx=dx, dy=dy)
     times = torch.tensor([s.t for s in snaps], dtype=torch.float64)
     Vm = torch.stack([s.Vm for s in snaps])
     phi_e = torch.stack([s.phi_e for s in snaps]) if snaps[0].phi_e is not None else None
@@ -1389,17 +1397,19 @@ def lbm(
     dt: Optional[float] = None,
     lattice: str = 'd2q5',
     weights_mode: str = 'canonical',
-    boundary: str = 'neumann',
+    boundary: Optional[str] = None,
     alpha: float = 1.0,
     device: str = 'cpu',
 ) -> CardiacSimulation:
     """Create an LBM simulation.
 
-    ``boundary`` selects the flat top/bottom wall mode (boundary_conduction_speedup):
-    'neumann'/'hbb' (default; any lattice), or the D2Q9-only 'specular_nextcell' (a.k.a. 'ncs' —
-    next-cell specular, zero bias), 'specular_samecell' (a.k.a. 'scs' — same-cell specular, inverse
-    crescent), 'combined' (HBB↔same-cell blend via ``alpha``: 1=HBB … 0=same-cell specular — the
-    β-controlled curvature knob). Corners + east/west stay HBB.
+    ``boundary`` selects the flat top/bottom wall mode (boundary_conduction_speedup). The
+    default (``None``) is lattice-aware: generic 'neumann' bounce-back on d2q5, and the 'hbb'
+    flat-wall baseline on d2q9. The D2Q9-ONLY flat-wall family is 'hbb' (the specular baseline),
+    'specular_nextcell' (a.k.a. 'ncs' — next-cell specular, zero bias), 'specular_samecell'
+    (a.k.a. 'scs' — same-cell specular, inverse crescent), and 'combined' (HBB↔same-cell blend
+    via ``alpha``: 1=HBB … 0=same-cell specular — the β-controlled curvature knob). Requesting
+    any of these on lattice='d2q5' raises. Corners + east/west stay HBB.
 
     Declarative: ``lbm(Grid(...), 'ttp06', ConductivityConfig.isotropic(σ), stimulus)``.
     Legacy: ``lbm(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
@@ -1438,6 +1448,11 @@ def lbm(
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'lbm')
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
+    # Lattice-aware default boundary: d2q9 defaults to the HBB flat-wall baseline; every
+    # other lattice defaults to generic neumann bounce-back (user 2026-07-15). hbb is now
+    # D2Q9-only (wall_modes.D2Q9_ONLY), so an explicit hbb on d2q5 is rejected downstream.
+    if boundary is None:
+        boundary = 'hbb' if lattice == 'd2q9' else 'neumann'
     if alpha != 1.0 and boundary in ('neumann', 'hbb'):
         warnings.warn(
             f"alpha={alpha} is inert for boundary={boundary!r} "
