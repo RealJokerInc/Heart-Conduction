@@ -104,6 +104,20 @@ monodomain convergence; oblique-LBM moment-space rotation (Audit #46) if ever wa
 **Consolidation (A2 vendoring) SHIPPED (2026-06-25).** `cardiac_core` is one self-contained package — 3 engines vendored `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, bit-identical goldens, originals frozen. Phases 0–5 `935160b`→`37dc381`. → KNOWLEDGE "cardiac_core unified ground-up package". *(Predecessors condensed — full detail in Thread: V5.5 Cm-correct fork + consolidation Phase-1 copy-only, 2026-05-30/31; the Goal-2 design reframe to wet-lab code-gen, 2026-06-25; the "ditch FEM → structured-grid only" pending constraint — RESOLVED by the 2026-07-01 FEM/TriangularMesh removal. The deferred code-dedup [engines import from cardiac_core + delete copies] stays per-consumer — big-bang breaks Surrogate/Optimizer.)*
 
 ## Next Step
+**▶ HANDOVER — NEXT ROUND = EXECUTE [PLAN.md](./PLAN.md) Phase 1 (the P0 usability bug fixes).** The round-2
+usability audit + a machine-targeted, audit-converged PLAN.md are DONE and on `main` (report
+[API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md) "ROUND 2" §; commits `04611ed` report,
+`9e6a0e7` plan). The next agent should cold-start from PLAN.md and execute **Phase 1** (six P0 bugs, highest ROI /
+lowest risk, each test-gated + golden-guarded): **B1** GPU device-mismatch (`api.py:993`), **B8** NaN-fill masked
+nodes (`StructuredGrid.flat_to_grid`, `mesh/structured.py:178` — mono+bidomain only, LBM untouched), **B3/B4**
+`apd_at` peak/notch, **B5** `Grid(N,1)` guard, **B6** `forward_euler` CFL guard, **B7** `record=` validation.
+Then Phase 2 (B2 fast-solver wiring) → Phase 3 (de-trap stubs + implement `scale_conductance`/`set_conductivity`)
+→ Phase 4 (cheatsheet). Baseline suite = **218 passed / 2 xfailed**; keep `test_integrity.py` goldens bit-identical.
+⚠️ **Caveats:** (1) the audit-revise cycle was run **inline** (the independent Opus auditor died on the session
+rate limit, resets ~4:50am ET) — an optional belt-and-suspenders independent subagent audit of PLAN.md can run once
+the limit clears; (2) do NOT change the default solver/`dt`/lattice (goldens depend on them). The blueprint gate was
+respected — implementation was NOT started.
+
 The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 foundation cleanup + LBM boundary modes are all SHIPPED (see Current Direction). RESOLVED this session: `create_cardiac_mesh` chi firewall-bypass (P1 cluster #1 — D_xx RAW convention + default D=1.4 + band guard); boundary-mode API→engine gap for LBM (P3 — `lbm(boundary=, alpha=)`); FEM/TriangularMesh removal (P2). Remaining open threads:
 - **Code-audit fix backlog (2026-07-02, [CODE_AUDIT_2026-07-02.md](./CODE_AUDIT_2026-07-02.md), NOT yet actioned):** P1 = bidomain M4 (symmetrize the FDM cross-term + guard CG on non-SPD — silent ~13% phi_e error on per-node fiber fields); P2 = mono Chebyshev M1 (port bidomain's preconditioned-Gershgorin + fix `set_eigenvalue_bounds`) + mono FFT M2 (discrete 5-pt eigenvalue) + DCT/FFT precondition guard; P3 = bidomain `step()` M3, degenerate-input NaN guards (`activation_time`/`dominant_frequency`/`Grid` 1-D/empty-result shape), BGK stability gate, `dt or`→`is not None`, declarative ionic-instance-leak; P4 = docstrings + `add_stimulus` amplitude + hole-cell zeroing + LUT kink + conductivity guards + PCG-threshold unify + LBM `save_every` cadence.
 - **Form-A→B convergence** (convert monodomain diffusion in `_monodomain`, delete `ConductivityConfig.for_monodomain()`) — confirmed-but-deferred.
@@ -471,3 +485,12 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 - Suite **148/1 → 196 passed / 0 failed**. 5 commits, pushed to `origin/engine-tuner-cardiac-core`.
 - 2 own-test bugs surfaced real LBM subtleties (precompute_bounce_masks → all-False on a full periodic domain; modes only differ off-equilibrium).
 **Next**: deferred backlog only (see Next Step). Nothing blocking. Candidate next real work: Form-A→B convergence, or surface mono `boundary_mode`/`stencil` through `cardiac_core.monodomain()` to match the LBM productization.
+
+### 2026-07-15→16 Session — API failure-mode + two-round usability audit + fix blueprint
+**Worked on**: (1) an API failure-mode check → F1/F2 fixes; (2) merged the `engine-tuner-v2-joint` branch (12 commits) to `main`; (3) F3/F4 cosmetic nits; (4) a **task-based usability audit** — round 1 (24 tasks, light) then round 2 (30 new tasks + full-scale re-run of the 24, **actually solved & run to completion** via 10 parallel agents); (5) a machine-targeted **PLAN.md** for the fixes, audit-revised to convergence.
+**Accomplished**:
+- **F1** empty-run analysis hooks no longer crash (rank-3 `(0,Nx,Ny)` + T=0 guards); **F2** `hbb`→D2Q9-only + lattice-aware LBM boundary default (d2q5/neumann kept — tuner/goldens safe); **F3** `point_distance(center=)`; **F4** cheatsheet scalar/3-tuple note. Commits `2938cf9`/`e707fe1`/`2d241af`. A clean adversarial correctness audit (0 crit/high/med) + inline hardening of 2 LOWs.
+- **Tuner→main**: merge `9d82f56` (resolved 1 MASTER_KNOWLEDGE_INDEX conflict); working tree left untouched.
+- **Usability audit** (report [API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md), commits `09ee644` R1, `04611ed` R2): verdict "possible but painful," mean ease ≈2.7/5; 2 tasks impossible; **13 concrete bugs (B1–B13)** — B1 GPU crash-all-analysis, B2 broken fft/dct fast path, B3/B4 apd_at, B8 masked-node 23% CV error, + a fixed per-step runtime wall. Full running FLIPPED 2 verdicts up (paci automaticity; per-node-D scar) and several down.
+- **PLAN.md** (`9e6a0e7`) audit-converged (inline — see caveat): 5 phases, test-gated, golden-guarded; P3/P4 as future work.
+**Next**: **EXECUTE PLAN.md Phase 1** (see the ▶ HANDOVER at the top of Next Step). Optional: independent-subagent audit of PLAN.md after the session rate limit resets (~4:50am ET).

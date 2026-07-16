@@ -40,6 +40,18 @@
 > lattice-aware (`neumann` on d2q5 — unchanged, tuner/goldens safe; `hbb` on d2q9). Global d2q5/neumann
 > default kept (user decision; no numerical default change — neumann≡hbb on d2q9). 218 passed / 2 xfailed.
 
+> **AUDITED + PLANNED 2026-07-15→16 — task-based API USABILITY audit → fix PLAN.md.** Two rounds (24 light +
+> 30 new tasks fully solved-and-run, 10 agents) → [API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md).
+> Verdict: the API can *express* far more than it looked (reentry, alternans, electrograms all achieved) but the
+> path to a correct, timely result is booby-trapped — **13 concrete bugs (B1–B13)**: B1 GPU `device="cuda"` crashes
+> all analysis (`_result_from` device), B2 `fft/dct` fast solver broken via factory (→ stuck on slow PCG = the runtime
+> wall), B3/B4 `apd_at` peak/notch (silent-wrong multi-beat/low-repol APD), B8 masked nodes at 0.0 mV (23% silent CV
+> error), + a fixed per-step runtime wall (~13 ms/step GPU). ~14 `CardiacSimulation` methods are `NotImplementedError`
+> stubs shipping working-looking docstrings = the #1 hallucination trap. Full running flipped 2 "impossible" verdicts
+> up (automaticity via undoc `paci`; non-hole scar via per-node `D`). **Fix plan: [PLAN.md](./PLAN.md)** (audit-converged,
+> inline) — P0 bugs → B2 wiring → de-trap stubs + implement `scale_conductance`/`set_conductivity` → cheatsheet; P3/P4
+> (per-node fields, 0-D mode, rotor tooling, LUT kernel) documented as future work. **NEXT ROUND: execute PLAN.md Phase 1.**
+
 ## Current Understanding
 
 The question has TWO layers (see "North-Star" below): the **foundation** is code-consolidation (unify the engines' shared code in `cardiac_core/`); the **goal on top** is a conversational simulation builder for non-coders (unified API + LLM wrapper). Build order is now vocabulary-first → unified API.
