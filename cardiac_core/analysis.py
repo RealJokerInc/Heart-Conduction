@@ -38,7 +38,7 @@ def activation_time(
         (Nx, Ny) activation time in ms. NaN where not activated.
     """
     if V.shape[0] == 0:   # empty run (0 save-points) — return NaN map, don't argmax an empty axis (F1)
-        return torch.full(V.shape[1:], float('nan'), dtype=torch.float64, device=V.device)
+        return torch.full(V.shape[1:], float('nan'), dtype=times.dtype, device=V.device)
     # (n_saves, Nx, Ny) bool: True where V >= threshold
     above = V >= threshold
     # First time index where above is True along time axis
@@ -219,6 +219,8 @@ def dominant_frequency(
     float
         Dominant frequency in Hz.
     """
+    if V.shape[0] == 0:   # empty run — no spectrum to take (F1 empty-run hardening)
+        return float('nan')
     trace = V[:, ix, iy]
     n = trace.shape[0]
     dt_ms = (times[-1] - times[0]).item() / (n - 1)  # ms
@@ -302,6 +304,8 @@ def phase_map(
         (Nx, Ny) phase in radians [-pi, pi].
     """
     _, Nx, Ny = V.shape
+    if V.shape[0] == 0:   # empty run — no trace to Hilbert-transform (F1 empty-run hardening)
+        return torch.full((Nx, Ny), float('nan'), device=V.device, dtype=V.dtype)
     # Reshape to (Nx*Ny, n_saves) for batch Hilbert
     traces = V.permute(1, 2, 0).reshape(-1, V.shape[0])  # (Nx*Ny, n_saves)
 
