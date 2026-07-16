@@ -64,8 +64,17 @@ class StructuredGrid(Mesh):
             self._device = torch.device('cpu')
         if self.boundary_spec is None:
             self.boundary_spec = BoundarySpec.insulated()
-        self.dx = self.Lx / (self.Nx - 1)
-        self.dy = self.Ly / (self.Ny - 1)
+        # B5: guard the single-row/single-column degenerate cases (Nx==1 or Ny==1)
+        # so a 1-D cable such as Grid(101, 1, dx) builds instead of ZeroDivisionError.
+        # A degenerate axis inherits the other axis' spacing (both → 1.0 for a 0-D cell).
+        dx = self.Lx / (self.Nx - 1) if self.Nx > 1 else None
+        dy = self.Ly / (self.Ny - 1) if self.Ny > 1 else None
+        if dx is None:
+            dx = dy if dy is not None else 1.0
+        if dy is None:
+            dy = dx
+        self.dx = dx
+        self.dy = dy
 
         # Build coordinate tensors
         x_1d = torch.linspace(0, self.Lx, self.Nx, device=self._device, dtype=self._dtype)
@@ -175,14 +184,20 @@ class StructuredGrid(Mesh):
 
     # === Grid-specific helpers ===
 
-    def flat_to_grid(self, flat: torch.Tensor) -> torch.Tensor:
+    def flat_to_grid(self, flat: torch.Tensor,
+                     fill_value: float = float('nan')) -> torch.Tensor:
         """
         Reshape flat DOF array to (Nx, Ny) grid.
 
-        If domain_mask is set, fills masked-out locations with fill_value.
+        If domain_mask is set, masked-out (out-of-domain) locations are filled
+        with ``fill_value`` (NaN by default, B8). NaN makes downstream analysis
+        auto-correct: ``V >= threshold`` is False at NaN, so masked tissue is
+        never counted as "activated at t=0" (the old 0.0-mV fill caused a ~23%
+        silent CV error and 100% false activation on scar/fibrosis runs).
         """
         if self.domain_mask is not None:
-            grid = torch.zeros(self.Nx, self.Ny, device=self._device, dtype=flat.dtype)
+            grid = torch.full((self.Nx, self.Ny), fill_value,
+                              device=self._device, dtype=flat.dtype)
             grid[self.domain_mask] = flat
             return grid
         return flat.reshape(self.Nx, self.Ny)

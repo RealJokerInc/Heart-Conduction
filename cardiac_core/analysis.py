@@ -112,6 +112,7 @@ def apd_at(
     iy: int,
     repol: float = 0.9,
     threshold: float = -20.0,
+    dome_aware: bool = True,
 ) -> float:
     """Compute action potential duration at a single grid point.
 
@@ -130,6 +131,11 @@ def apd_at(
         Repolarization fraction (0.9 = APD90, 0.5 = APD50).
     threshold : float
         Activation threshold (mV).
+    dome_aware : bool
+        If True (default), the repolarization endpoint is the LAST crossing of
+        V_repol within the beat, so a spike-and-dome morphology's early notch
+        does not truncate low-repol APDs (B4). Set False for a plain
+        first-crossing endpoint.
 
     Returns
     -------
@@ -143,21 +149,42 @@ def apd_at(
         return float('nan')
 
     act_idx = above.to(torch.int8).argmax().item()
-    V_peak = trace[act_idx:].max().item()
+
+    # B3: bound the peak/repolarization search to THIS beat — the window ends at
+    # the next upstroke (or the trace end), so a later, taller beat cannot inflate
+    # this beat's V_peak (which previously maxed over the entire remaining trace).
+    rising = (~above[:-1]) & above[1:]
+    rising_idx = torch.where(rising)[0] + 1  # all upstroke indices
+    future = rising_idx[rising_idx > act_idx]
+    end = int(future[0].item()) if future.numel() > 0 else trace.shape[0]
+
+    beat = trace[act_idx:end]
+    V_peak = beat.max().item()
     V_rest = trace[0].item()  # assume resting at t=0
 
     # Repolarization voltage
     V_repol = V_peak - repol * (V_peak - V_rest)
 
-    # Find first time after peak where V drops below V_repol
-    peak_idx = act_idx + trace[act_idx:].argmax().item()
-    post_peak = trace[peak_idx:]
+    peak_idx = act_idx + int(beat.argmax().item())
+    post_peak = trace[peak_idx:end]
 
     below = post_peak <= V_repol
     if not below.any():
-        return float('nan')  # AP didn't complete
+        return float('nan')  # AP didn't complete within this beat
 
-    repol_idx = peak_idx + below.to(torch.int8).argmax().item()
+    if dome_aware:
+        # B4: the LAST above->below crossing of V_repol is the final repolarization;
+        # the first crossing can land on an early spike-and-dome notch for low repol%.
+        # For a monotonic (dome-free) repolarization there is one crossing, so this
+        # is identical to the first-crossing result.
+        crossings = (~below[:-1]) & below[1:]
+        cross_idx = torch.where(crossings)[0]
+        local = (int(cross_idx[-1].item()) + 1 if cross_idx.numel() > 0
+                 else int(below.to(torch.int8).argmax().item()))
+    else:
+        local = int(below.to(torch.int8).argmax().item())
+
+    repol_idx = peak_idx + local
     return times[repol_idx].item() - times[act_idx].item()
 
 

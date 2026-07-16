@@ -9,6 +9,7 @@ V^{n+1} = V^n + dt * L * V^n
 Ref: Research/01_FDM:L67 (CFL constraint)
 """
 
+import warnings
 from typing import TYPE_CHECKING
 
 from ..base import DiffusionSolver
@@ -46,6 +47,33 @@ class ForwardEulerDiffusionSolver(DiffusionSolver):
         self._spatial = spatial
         self._dt = dt
         self.ops = None  # Not needed for explicit
+        self._cfl_checked = False
+
+    def _check_cfl(self, dt: float) -> None:
+        """Warn (once) if dt exceeds the explicit CFL stability limit (B6).
+
+        Limit: dt <= chi*Cm*min(dx,dy)^2/(4*D_max). The spatial operator applies
+        L*V/(chi*Cm), so the raw D_max and chi*Cm both enter. Skips silently if the
+        discretization doesn't expose the needed attributes (e.g. a non-FDM scheme).
+        """
+        sp = self._spatial
+        dx = getattr(sp, '_dx', None)
+        dy = getattr(sp, '_dy', None)
+        D_max = getattr(sp, '_D_max', None)
+        chi = getattr(sp, '_chi', 1.0)
+        Cm = getattr(sp, '_Cm', 1.0)
+        if dx is None or dy is None or not D_max or D_max <= 0:
+            return
+        h2 = min(dx, dy) ** 2
+        dt_max = chi * Cm * h2 / (4.0 * D_max)
+        if dt > dt_max:
+            warnings.warn(
+                f"forward_euler dt={dt:g} ms exceeds the CFL stability limit "
+                f"dt_max={dt_max:g} ms (= chi*Cm*min(dx,dy)^2/(4*D_max)); the explicit "
+                f"diffusion update will oscillate/blow up. Reduce dt, refine the grid, "
+                f"or use an implicit solver (diffusion_solver='crank_nicolson').",
+                stacklevel=3,
+            )
 
     def _build_operators(
         self,
@@ -70,6 +98,10 @@ class ForwardEulerDiffusionSolver(DiffusionSolver):
         dt : float
             Time step (ms)
         """
+        if not self._cfl_checked:
+            self._check_cfl(dt)
+            self._cfl_checked = True
+
         V = state.V
 
         # Compute diffusion term: L * V

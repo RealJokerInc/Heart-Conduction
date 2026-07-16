@@ -23,6 +23,22 @@ from .conductivity import ConductivityConfig
 # _bidomain, _lbm — no sys.modules engine-path hack, no cross-folder imports. (The original engine
 # folders remain on disk, frozen; cardiac_core is the centralized home going forward.)
 
+# Fields ``run()``/``snapshots()`` know how to collect. "Vm" is always saved; "ionic_states" is opt-in.
+_SUPPORTED_RECORD = frozenset({"Vm", "ionic_states"})
+
+
+def _validate_record(record) -> None:
+    """Reject unknown ``record=`` keys so a typo/unsupported field raises instead of
+    silently recording nothing (B7). e.g. ``record=("Vm", "I_Kr")`` -> ValueError."""
+    if isinstance(record, str):
+        record = (record,)
+    unknown = [k for k in record if k not in _SUPPORTED_RECORD]
+    if unknown:
+        raise ValueError(
+            f"unknown record key(s): {unknown}; "
+            f"supported: {sorted(_SUPPORTED_RECORD)}"
+        )
+
 
 @dataclass
 class Distribution:
@@ -191,6 +207,7 @@ class CardiacSimulation:
         -------
         SimulationResult | Iterator[SimulationResult]
         """
+        _validate_record(record)
         it = self._iter_snapshots(t_end, save_every, record=record, callback=callback)
         _shape = (self._Nx, self._Ny)
         if batch is None:
@@ -214,6 +231,7 @@ class CardiacSimulation:
         Use this where you want to iterate snapshots lazily; ``run()`` is now eager and returns a
         ``SimulationResult``.
         """
+        _validate_record(record)
         return self._iter_snapshots(t_end, save_every, record=record, callback=callback)
 
     def _iter_snapshots(self, t_end, save_every, *, record=("Vm",), callback=None):
@@ -990,7 +1008,11 @@ def _result_from(snaps, record, dx, dy, shape=None):
         empty_v = (torch.empty(0, *shape, dtype=torch.float64)
                    if shape is not None else torch.empty(0))
         return SimulationResult(times=empty_t, Vm=empty_v, phi_e=None, dx=dx, dy=dy)
-    times = torch.tensor([s.t for s in snaps], dtype=torch.float64)
+    # B1: build ``times`` on the same device as the snapshots' Vm — on cuda the
+    # snapshots carry Vm on GPU, so a CPU ``times`` would make every downstream
+    # analysis/viz call (which indexes times by a GPU index) raise a device mismatch.
+    times = torch.tensor([s.t for s in snaps], dtype=torch.float64,
+                         device=snaps[0].Vm.device)
     Vm = torch.stack([s.Vm for s in snaps])
     phi_e = torch.stack([s.phi_e for s in snaps]) if snaps[0].phi_e is not None else None
     ionic = None

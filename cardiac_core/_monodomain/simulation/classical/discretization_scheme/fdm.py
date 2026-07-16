@@ -156,6 +156,10 @@ class FDMDiscretization(SpatialDiscretization):
             Dxy = torch.zeros(self._nx, self._ny, device=self._device, dtype=self._dtype)
             Dyy = torch.full((self._nx, self._ny), D, device=self._device, dtype=self._dtype)
 
+        # Max RAW diagonal diffusivity — used by explicit solvers for the CFL
+        # stability limit dt <= chi*Cm*min(dx,dy)^2/(4*D_max) (B6).
+        self._D_max = float(torch.maximum(Dxx.max(), Dyy.max()).item())
+
         # Build sparse Laplacian (contains D, but NOT chi*Cm)
         self.L = self._build_laplacian(Dxx, Dxy, Dyy, grid.domain_mask)
 
