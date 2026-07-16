@@ -38,6 +38,11 @@ class TuningTargets:
 class TuningConfig:
     """Configuration for an optimization run."""
     ionic_model: str = 'mhas13'     # 'mhas13' | 'phas13'
+    # Backend for single-cell AP evaluation (P-1 backend unification):
+    #   'cardiac_core' (default) — AP on the cardiac_core hook path, one model with
+    #                              the tissue-CV path (kinetics axis identifiable).
+    #   'cardiac_sim'  — legacy V5.4 batched path (cell_runner), kept for parity tests.
+    ionic_backend: str = 'cardiac_core'
     tier: int = 2                   # Parameter tier (1=6, 2=10, 3=14 params)
     seed: int = 42                  # Reproducibility seed
     device: str = 'cuda'
@@ -112,6 +117,21 @@ PHAS13_REGISTRY: Dict[str, ParamSpec] = {
 TISSUE_PARAMS = {
     'D_long': (0.00005, 0.001),     # cm^2/ms
     'D_trans': (0.000025, 0.0005),   # cm^2/ms
+}
+
+
+# Na-kinetic axes (P1.5) — per-INSTANCE MHAS13 attributes (identity 1.0 / 0.0),
+# applied in the gate hooks (compute_gate_*), NOT step(). These reshape I_Na in TIME
+# so the joint fit can decouple dV/dt (peak I_Na) from CV (charge-to-sink), which
+# conductance scaling alone cannot (architecture §5). Registered here so
+# decision_space imports FROM config (never the reverse). PHAS13 is unaffected.
+# Bounds are on the multiplier (tau_*_scale) / mV shift (v_half_shift). τ_m is the
+# primary decoupling knob; the rest are the "if needed" set (architecture §9-P1.5).
+KINETIC_REGISTRY = {
+    'tau_m_scale':  (0.5, 3.0),
+    'tau_h_scale':  (0.5, 3.0),
+    'tau_j_scale':  (0.5, 3.0),
+    'v_half_shift': (-10.0, 10.0),   # mV
 }
 
 

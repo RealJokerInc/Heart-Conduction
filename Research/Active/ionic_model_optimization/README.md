@@ -21,11 +21,23 @@ Ionic model parameters are not universal — they must be tuned to match specifi
 - [x] 10x speedup via batching, subcycling, analytical CV
 - [x] Optimizer V1 Cell + Tissue fit implemented (tier 2, constrained, both engines)
 - [x] Bidomain pipeline support (tissue_runner_bidomain.py, D_eff decomposition)
-- [ ] Optimizer V1 Joint refinement (GP emulator + NSGA-II)
-- [ ] Optimizer V1 Validation suite (novel CL, stimulus robustness, stability)
+- [x] Optimizer V2 **Joint refinement IMPLEMENTED** — constrained scalarization on a GP
+      emulator (`tuner/joint_fit.py`), NOT sequential; NaN-masked block, D-solved
+      candidates, normalized GP inputs, surfaces infeasibility. (Production fit = gated
+      multi-hour run; machinery validated on a synthetic oracle.)
+- [x] P-1 backend unification — dV/dt/APD and CV on ONE cardiac_core model (parity ≤1%)
+- [x] P0 secant bracket-down fix + diagnostics (the r*/dx "resolution shell" is SCS-specific
+      — NOT a general fit gate; see KNOWLEDGE → THE MISTAKE)
+- [~] P1a feasibility map — BUILT, but its "conductance-only infeasible" verdict is **WITHDRAWN**
+      (it was defined by the wrongly-applied r*/dx≥3 constraint; artifact, not a finding)
+- [x] P1.5 Na-kinetics axes on MHAS13 (τ_m/h/j, V_half; in the hooks; identity-safe) — a working
+      decoupling knob (NOT a claim that kinetics is *required*)
+- [x] Chip mesh dx knob + joint-fit record schema (kinetics + per-axis D) + preset export fix
+- [ ] Optimizer Validation suite (novel CL, stimulus robustness, stability)
 - [ ] Cross-engine validation (V5.4 vs Bidomain vs LBM)
 - [ ] Multi-rate pacing (break IKr/IKs degeneracy)
-- [ ] Revise dVdt target for MHAS13 (~100 V/s, not 25)
+- [~] Revise dVdt target for MHAS13 — DATA in hand (dV/dt by g_Na = 60/83/109/159); the
+      joint fit treats dV/dt as a *band* constraint, not a point target
 
 ## Sub-Questions
 

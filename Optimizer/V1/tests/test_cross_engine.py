@@ -28,6 +28,7 @@ def _record():
         tissue={"monodomain": {"D_long": 0.001, "D_trans": 0.0004, "dt_ms": 0.02}},
         targets={"cv_longitudinal": 40.0, "cv_transverse": 25.0,
                  "apd_90": 300.0, "dvdt_max": 110.0},
+        dx_mm=0.1,                            # coarse smoke grid (not the resolved default)
     )
 
 

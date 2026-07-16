@@ -1,0 +1,59 @@
+{
+  "name": "chip_hipsc",
+  "baseline": "hipsc",
+  "ionic_model": "mhas13",
+  "theta_ionic": {
+    "g_Na": 0.5,
+    "g_CaL": 0.9379136758341594,
+    "g_Kr": 1.7234887823485339,
+    "g_Ks": 0.3,
+    "g_K1": 2.0,
+    "g_to": 0.3,
+    "kNaCa": 1.857910581894767,
+    "PNaK": 1.6017423960078667,
+    "g_pCa": 2.5,
+    "VmaxUp": 0.3
+  },
+  "mesh": {
+    "domain_mm": 16.0,
+    "dx_mm": 0.1
+  },
+  "tissue": {
+    "monodomain": {
+      "D_long": 0.004,
+      "D_trans": 0.004,
+      "dt_ms": 0.02
+    }
+  },
+  "targets": {
+    "cv_longitudinal": 5.2,
+    "cv_transverse": 2.6,
+    "apd_90": 350.0,
+    "dvdt_max": 110.0
+  },
+  "validation": {
+    "cv_long": NaN,
+    "cv_trans": NaN
+  },
+  "provenance": {
+    "tuner_version": "V1",
+    "engine": "monodomain",
+    "smoke": false
+  },
+  "boundary": {
+    "dt_ms": 0.02,
+    "dx_mm": 0.1,
+    "long": {
+      "beta": 0.8,
+      "tau": 2.9000000000000004,
+      "bc": "hbb",
+      "regime": "forward (wall slow-down; |C|\u221d\u03c4, no speed-up under HBB)"
+    },
+    "trans": {
+      "beta": 0.8,
+      "tau": 2.9000000000000004,
+      "bc": "hbb",
+      "regime": "forward (wall slow-down; |C|\u221d\u03c4, no speed-up under HBB)"
+    }
+  }
+}
