@@ -214,8 +214,10 @@ class CardiacSimulation:
         self._Nx = data.mask.shape[0]
         self._Ny = data.mask.shape[1]
         self._probes: dict[str, dict] = {}   # name → {x, y, ix, iy, t[], V[]}
-        self._clamp_mask: Optional[torch.Tensor] = None  # (Nx, Ny) bool
-        self._clamp_voltage: Optional[float] = None
+        self._clamp_mask: Optional[torch.Tensor] = None   # flat (n_dof,) bool
+        self._clamp_value = None                           # scalar | (Nx,Ny) field | callable(t)
+        self._clamp_start: Optional[float] = None
+        self._clamp_end: Optional[float] = None
 
     # ========================================================================
     # Core simulation control
@@ -274,7 +276,10 @@ class CardiacSimulation:
         return self._iter_snapshots(t_end, save_every, record=record, callback=callback)
 
     def _iter_snapshots(self, t_end, save_every, *, record=("Vm",), callback=None):
-        if self._engine_type == 'monodomain':
+        if self._clamp_mask is not None and self._engine_type != 'lbm':
+            # A mid-run clamp needs per-step enforcement -> wrapper-driven stepping.
+            gen = self._stepping_run(t_end, save_every, record)
+        elif self._engine_type == 'monodomain':
             gen = self._run_monodomain(t_end, save_every, record)
         elif self._engine_type == 'bidomain':
             gen = self._run_bidomain(t_end, save_every, record)
@@ -353,56 +358,44 @@ class CardiacSimulation:
         )
 
     def get_state(self, name: str) -> torch.Tensor:
-        """Get a single ionic state variable by name as (Nx, Ny) grid.
+        """Get a single ionic state variable by name as an ``(Nx, Ny)`` grid.
 
-        Parameters
-        ----------
-        name : str
-            State variable name (e.g. 'Ca_i', 'Na_i', 'm', 'h', 'j').
+        ``name`` is one of :attr:`state_names` (e.g. ``'Cai'``, ``'Nai'``, ``'m'``, ``'h'``).
+        Masked-out nodes read back as NaN (see ``flat_to_grid``).
         """
-        raise NotImplementedError(
-            "get_state is not implemented; record ionic states with "
-            "run(record=('Vm', 'ionic_states')) and index result.ionic_states."
-        )
+        col = self._state_col(name)
+        return self._grid.flat_to_grid(self._ionic_states_ref()[:, col])
 
     @property
     def state_names(self) -> list[str]:
-        """Names of all ionic state variables (not implemented)."""
-        raise NotImplementedError(
-            "state_names is not implemented; the state ordering is defined by the "
-            "ionic model (see its gate_indices/concentration_indices)."
-        )
+        """Names of the ionic state variables, in ``ionic_states`` column order.
+
+        These name the columns of the per-node ionic state (V is separate — use
+        :attr:`Vm` / :meth:`set_voltage`). Valid keys for :meth:`get_state`/:meth:`set_state`.
+        """
+        return list(self._live_ionic_model().state_names)
 
     # ========================================================================
     # State access — write
     # ========================================================================
 
     def set_voltage(self, V: torch.Tensor):
-        """Override membrane potential everywhere.
+        """Overwrite the membrane potential mid-run with an ``(Nx, Ny)`` field.
 
-        Parameters
-        ----------
-        V : torch.Tensor
-            (Nx, Ny) voltage field.
+        Writes directly into the live engine state (on its device/dtype). Use it to inject
+        a rotor-seeding phase distribution, a plateau/resting field, or a checkpoint restart.
+        LBM is unsupported (V is a moment of the lattice populations, not a stored field).
         """
-        raise NotImplementedError(
-            "set_voltage is not implemented (no mid-run voltage override API); set "
-            "initial excitation via a stimulus (stimulate()/add_stimulus())."
-        )
+        v_flat = self._field_to_flat(V)
+        self._voltage_ref().copy_(v_flat)
 
     def set_state(self, name: str, values: torch.Tensor):
-        """Override a single ionic state variable.
+        """Overwrite one ionic state variable mid-run with an ``(Nx, Ny)`` field.
 
-        Parameters
-        ----------
-        name : str
-            State variable name.
-        values : torch.Tensor
-            (Nx, Ny) field.
+        ``name`` is one of :attr:`state_names`. Writes into the live per-node ionic state.
         """
-        raise NotImplementedError(
-            "set_state is not implemented (no per-state override API)."
-        )
+        col = self._state_col(name)
+        self._ionic_states_ref()[:, col] = self._field_to_flat(values)
 
     # ========================================================================
     # Stimulus / current injection
@@ -442,6 +435,47 @@ class CardiacSimulation:
             return eng._ionic_model
         # bidomain: splitting -> ionic_solver -> ionic_model
         return eng.splitting.ionic_solver.ionic_model
+
+    # --- Live-state access helpers (mid-run clamp / injection) ---
+
+    def _require_stateful(self, what: str):
+        if self._engine_type == 'lbm':
+            raise NotImplementedError(
+                f"{what} is not supported for the LBM engine: V and gates are moments of the "
+                f"lattice populations, not a stored per-node state. Use a monodomain/bidomain sim."
+            )
+
+    def _voltage_ref(self) -> torch.Tensor:
+        """The live flat ``(n_dof,)`` membrane-potential tensor (in-place writable)."""
+        self._require_stateful("mid-run voltage access")
+        st = self._engine.state
+        return st.V if self._engine_type == 'monodomain' else st.Vm
+
+    def _ionic_states_ref(self) -> torch.Tensor:
+        """The live ``(n_dof, n_states)`` ionic-state tensor (in-place writable)."""
+        self._require_stateful("ionic-state access")
+        return self._engine.state.ionic_states
+
+    def _state_col(self, name: str) -> int:
+        names = list(self._live_ionic_model().state_names)
+        if name not in names:
+            raise ValueError(f"unknown ionic state {name!r}; valid names: {names}")
+        return names.index(name)
+
+    def _field_to_flat(self, field) -> torch.Tensor:
+        """Normalize an ``(Nx, Ny)`` field (tensor/array/scalar) to a flat ``(n_dof,)`` tensor
+        on the engine device/dtype."""
+        ref = self._voltage_ref()
+        if not torch.is_tensor(field):
+            field = torch.as_tensor(np.asarray(field))
+        field = field.to(device=ref.device, dtype=ref.dtype)
+        if field.shape == (self._Nx, self._Ny):
+            return self._grid.grid_to_flat(field)
+        flat = field.reshape(-1)
+        if flat.shape == ref.shape:
+            return flat
+        raise ValueError(f"field shape {tuple(field.shape)} != (Nx, Ny)=({self._Nx}, {self._Ny}) "
+                         f"or flat (n_dof,)=({ref.shape[0]},)")
 
     def _rebuild_with_conductivity(self, mask, *, set_value=None, scale=None):
         """Apply an absolute ``set_value`` or a multiplicative ``scale`` to the tissue
@@ -599,25 +633,66 @@ class CardiacSimulation:
         start_time: Optional[float] = None,
         duration: Optional[float] = None,
     ):
-        """Hold nodes at fixed voltage. Ionic currents still computed.
+        """Hold ``mask`` nodes at a fixed voltage during ``run()``; gates keep integrating.
 
-        Clamped nodes have their V reset to `voltage` after every step.
-        Use for patch-clamp-like experiments (study ionic currents in isolation).
+        Clamped nodes have their V re-imposed after every internal step (not just each
+        save point), so the gates evolve at the clamped potential — the electrophysiology
+        voltage-clamp protocol. Also usable as a fixed-potential pacing/boundary region.
 
         Parameters
         ----------
         mask : (Nx, Ny) bool
-            Nodes to clamp.
-        voltage : float
-            Clamp voltage (mV).
+            Nodes to clamp (callable ``(x,y)->bool`` / array / tensor also accepted).
+        voltage : float or (Nx, Ny) field or callable(t)
+            Clamp value (mV). A callable ``value(t)`` gives a time-varying VC step protocol.
         start_time : float, optional
-            When clamp activates (ms). None = immediately.
+            When the clamp activates (ms). None = from t=0.
         duration : float, optional
-            How long clamp lasts (ms). None = until release_clamp().
+            How long it lasts (ms). None = until :meth:`release_clamp`.
+
+        Notes
+        -----
+        Activating a clamp switches ``run()`` to wrapper-driven stepping so the clamp can be
+        enforced every step; the unclamped path stays on the fast engine loop. LBM is
+        unsupported (V is a lattice-population moment, not a stored field).
         """
-        raise NotImplementedError(
-            "clamp_voltage is not implemented (no voltage-clamp API yet)."
-        )
+        self._require_stateful("voltage clamp")
+        m = self._as_grid_mask(mask)   # (Nx, Ny) bool ndarray
+        mask_t = torch.as_tensor(m, dtype=torch.bool, device=self._voltage_ref().device)
+        self._clamp_mask = self._grid.grid_to_flat(mask_t)   # flat (n_dof,) bool
+        self._clamp_value = voltage
+        self._clamp_start = start_time
+        self._clamp_end = None if duration is None else ((start_time or 0.0) + duration)
+
+    def release_clamp(self):
+        """Remove any active voltage clamp (``run()`` returns to the fast engine loop)."""
+        self._clamp_mask = None
+        self._clamp_value = None
+        self._clamp_start = None
+        self._clamp_end = None
+
+    def _clamp_active_at(self, t: float) -> bool:
+        if self._clamp_mask is None:
+            return False
+        if self._clamp_start is not None and t < self._clamp_start - 1e-9:
+            return False
+        if self._clamp_end is not None and t >= self._clamp_end - 1e-9:
+            return False
+        return True
+
+    def _apply_clamp(self):
+        """Re-impose the clamp on the live voltage (called after every step)."""
+        if not self._clamp_active_at(self.t):
+            return
+        val = self._clamp_value
+        if callable(val):
+            val = val(self.t)
+        v = self._voltage_ref()
+        fm = self._clamp_mask
+        if isinstance(val, (int, float)):
+            v[fm] = float(val)
+        else:
+            v[fm] = self._field_to_flat(val)[fm]
 
     def add_clamp_protocol(
         self,
@@ -640,15 +715,23 @@ class CardiacSimulation:
         start_time : float
             When the first step begins (ms).
         """
-        raise NotImplementedError(
-            "add_clamp_protocol is not implemented (no voltage-clamp API yet)."
-        )
+        self._require_stateful("voltage clamp")
+        bounds = []
+        t0 = start_time
+        for v, d in steps:
+            bounds.append((t0, t0 + d, float(v)))
+            t0 += d
+        if not bounds:
+            raise ValueError("add_clamp_protocol: `steps` is empty")
 
-    def release_clamp(self):
-        """Release all voltage clamps (not implemented — no voltage-clamp API yet)."""
-        raise NotImplementedError(
-            "release_clamp is not implemented (no voltage-clamp API yet)."
-        )
+        def protocol(t):
+            for lo, hi, v in bounds:
+                if lo - 1e-9 <= t < hi - 1e-9:
+                    return v
+            return bounds[-1][2]  # hold the last level past the end
+
+        self.clamp_voltage(mask, protocol, start_time=start_time,
+                           duration=t0 - start_time)
 
     # ========================================================================
     # Conductivity / drug block
@@ -977,6 +1060,39 @@ class CardiacSimulation:
         """Grid the engine's flat ionic_states (n_dof, n_states) → (n_states, Nx, Ny)."""
         S = state.ionic_states
         return torch.stack([self._grid.flat_to_grid(S[:, k]) for k in range(S.shape[1])])
+
+    def _snapshot_current(self, record=("Vm",)):
+        """Build a SimulationSnapshot from the CURRENT (mono/bidomain) engine state."""
+        want_ionic = "ionic_states" in record
+        st = self._engine.state
+        if self._engine_type == 'monodomain':
+            Vm = self._grid.flat_to_grid(st.V)
+            phi = None
+        else:  # bidomain
+            Vm = self._grid.flat_to_grid(st.Vm)
+            phi = self._grid.flat_to_grid(st.phi_e)
+        return SimulationSnapshot(
+            t=st.t, Vm=Vm, phi_e=phi, Nx=self._Nx, Ny=self._Ny,
+            dx=self._data.dx, dy=self._data.dy,
+            ionic_states=self._grid_ionic(st) if want_ionic else None,
+        )
+
+    def _stepping_run(self, t_end, save_every, record=("Vm",)):
+        """Wrapper-driven stepping that re-imposes the voltage clamp after every step.
+
+        Mirrors the engine's own run() save cadence (step, t+=dt, save when t crosses the
+        next save point) but injects _apply_clamp() each step. Used only when a clamp is
+        active; the unclamped path stays on the fast engine.run() loop (goldens untouched).
+        """
+        eps = 1e-9
+        next_save = save_every
+        self._apply_clamp()   # enforce at t=0 as well
+        while self.t < t_end:
+            self._engine.step()
+            self._apply_clamp()
+            if self.t >= next_save - eps:
+                next_save += save_every
+                yield self._snapshot_current(record)
 
     def _run_monodomain(self, t_end, save_every, record=("Vm",)):
         want_ionic = "ionic_states" in record

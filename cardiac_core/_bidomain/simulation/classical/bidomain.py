@@ -96,6 +96,17 @@ class BidomainSimulation:
         else:
             return 'pcg_gmg'
 
+    def step(self, dt=None):
+        """Advance the simulation by one time step (dt defaults to ``self.dt``).
+
+        Mirrors the monodomain engine's ``step()`` so the unified wrapper can drive
+        stepping (e.g. for a mid-run voltage clamp). Same per-step primitive ``run`` uses.
+        """
+        if dt is None:
+            dt = self.dt
+        self.splitting.step(self.state, dt)
+        self.state.t += dt
+
     def run(self, t_end, save_every=1.0, callback=None):
         """
         Run simulation, yielding state at save points.
