@@ -5,6 +5,40 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**NEW DIRECTION (2026-07-16, user) — solver + GPU audit, then advanced features, then consolidation Phase 2-5.**
+Kicked off but PAUSED for a context compaction (checkpoint below). Task list drives resumption: tasks #6 (empirical
+GPU tests), #7 (audit every solver), #8 (audit GPU implementation), #9 (record advanced-features + Phase 2-5 plan).
+The usability branch is done + audited-to-convergence (see the SHIPPED block below); this is the NEXT campaign, not
+yet started in code. Nothing here is committed yet beyond this checkpoint.
+
+**User's framing (verbatim intent):** (1) audit EACH solver individually + a dedicated GPU-implementation audit;
+(2) empirically test whether `device='cuda'` actually uses the GPU and whether it's optimized. Key nuance: the user
+expects **explicit** solvers to run on GPU, **implicit** solvers (which do a linear solve) to involve CPU → a
+CPU/GPU "crossover weirdness" to characterize. (3) Advanced features are the next build: **masked voltage-clamp**
+appliable mid-simulation at any point (for APD/APD-restitution measurement) + **mid-run state injection**. (4) Start
+planning original consolidation **Phase 2-5** (mesh/stimulus/ConductivityConfig unify → engine rewire → dedup).
+
+**Discovery already done (pre-compact — DON'T redo):**
+- CUDA available: NVIDIA RTX PRO 4500 Blackwell. `device='cuda'` is plumbed through `StructuredGrid.create_rectangle`/
+  the factories.
+- **Solver inventory (mono):** diffusion explicit = ForwardEuler/RK2/RK4; implicit = CrankNicolson/BDF1/BDF2 →
+  linear_solver = PCG/Chebyshev/DCT/FFT; ionic = RushLarsen/ForwardEuler; splitting = Godunov/Strang. Bidomain:
+  parabolic + elliptic (spectral/pcg_spectral/pcg/pcg_gmg). LBM: BGK/MRT collision + streaming + boundary.
+- **CROSSOVER CULPRIT FOUND (the key lead):** the PCG loop (`_monodomain/.../linear_solver/pcg.py`) does an IMPLICIT
+  GPU→CPU sync EVERY iteration — line ~198 `if pAp.abs() < 1e-30:` and line ~210 `if r_norm / b_norm < self.tol:`
+  are Python `if`s on 0-dim CUDA tensors, which force `.item()`/host sync per iteration. Bidomain PCG + Chebyshev
+  have the same `.item()` pattern (`pcg.py:167/172/233`, `chebyshev.py:62/63/68/69`). So the IMPLICIT path stalls the
+  GPU with per-iteration host syncs while the EXPLICIT path (pure elementwise, no convergence check) stays on-device
+  — this is very likely the "crossover weirdness." The FDM operator `self.L` is a torch SPARSE COO tensor; `sparse_mv`
+  = `torch.sparse.mm` (GPU-capable but often slow). NO scipy/numpy.linalg in the solver hot paths (pure torch, so it
+  CAN run on GPU — the issue is per-iter sync + sparse-matvec efficiency, not a CPU fallback).
+- **Next step after compaction:** (a) write + run a GPU benchmark (`scratchpad/`): tensor-device checks + explicit vs
+  implicit GPU-vs-CPU timing across grid sizes + per-step sync detection (`torch.cuda.synchronize` timing, nvidia-smi
+  util) → quantify the crossover; (b) launch per-solver-group adversarial audit agents + a GPU-impl audit agent;
+  (c) synthesize a report; (d) write the advanced-features + Phase 2-5 plan to IDEALOG/README (task #9). Do NOT change
+  solver code yet — audit + measure first (the user asked to understand behavior).
+
+---
 **PLAN.md EXECUTED — P0/P1/P2 usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, NOT yet merged to main).**
 All 5 PLAN phases done + a 5-lane adversarial audit of the whole branch (see the 2026-07-16 final-audit Thread
 entry — 4 more real bugs found + fixed), each test-gated + per-engine integrity goldens bit-identical (atol=0).
