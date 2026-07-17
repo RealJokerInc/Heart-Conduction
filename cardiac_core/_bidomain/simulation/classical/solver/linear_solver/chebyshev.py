@@ -21,7 +21,7 @@ Ref: Research/03_GPU_Linear:L77-106 (Gershgorin bounds)
 import torch
 from typing import Optional, Tuple
 
-from .base import LinearSolver
+from .base import LinearSolver, warn_nonconvergence
 
 
 def _gershgorin_bounds(A: torch.Tensor, safety_margin: float = 0.1) -> Tuple[float, float]:
@@ -288,6 +288,17 @@ class ChebyshevSolver(LinearSolver):
             d.mul_(rho_new * rho).add_(z, alpha=2.0 * rho_new / delta)
             x.add_(d)
             rho = rho_new
+
+        # Fixed-count iteration has no in-loop convergence test; one end-of-solve residual
+        # check (a single sync) makes a too-loose count / near-singular operator loud.
+        if self.tol is not None:
+            Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
+            b_norm = torch.norm(b)
+            r_norm = torch.norm(b - Ax)
+            if b_norm > 0 and (r_norm / b_norm) > self.tol:
+                warn_nonconvergence('Chebyshev', self.max_iters,
+                                    r_norm.item(), b_norm.item(), self.tol,
+                                    reason="fixed iteration count")
 
         return x.clone()
 

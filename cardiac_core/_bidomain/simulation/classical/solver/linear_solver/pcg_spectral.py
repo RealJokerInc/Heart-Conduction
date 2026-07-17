@@ -11,7 +11,7 @@ Ref: improvement.md L1055-1242
 """
 
 import torch
-from .base import LinearSolver
+from .base import LinearSolver, warn_nonconvergence
 from .spectral import SpectralSolver
 from .pcg import sparse_mv
 
@@ -134,6 +134,12 @@ class PCGSpectralSolver(LinearSolver):
             iters = self.max_iters
 
         self.last_iters = iters
+        self.last_converged = converged
+        # Surface a silently under-solved elliptic solve (this feeds phi_e -> the Vm RHS).
+        if not converged:
+            r_final = torch.norm(r)
+            warn_nonconvergence('PCGSpectral', iters, r_final.item(),
+                                b_norm.item(), self.tol)
         self._last_solution = x.clone()
         self._has_warm_start = True
         return x.clone()

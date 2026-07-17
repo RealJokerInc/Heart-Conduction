@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 import torch
 
-from .base import LinearSolver
+from .base import LinearSolver, warn_nonconvergence
 
 
 @dataclass
@@ -238,6 +238,11 @@ class PCGSolver(LinearSolver):
             residual_norm=r_norm.item(),
             initial_residual_norm=r0_norm
         )
+
+        # Make a silently under-solved step loud (converging steps never reach here).
+        if not converged:
+            warn_nonconvergence('PCG', k + 1, self.last_stats.residual_norm,
+                                b_norm.item(), self.tol)
 
         if return_stats:
             return x.clone(), self.last_stats

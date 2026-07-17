@@ -15,7 +15,7 @@ Ref: Research/03_GPU_Linear:L77-106 (Gershgorin bounds)
 import torch
 from typing import Optional, Tuple
 
-from .base import LinearSolver
+from .base import LinearSolver, warn_nonconvergence
 
 
 def _gershgorin_bounds(A: torch.Tensor, safety_margin: float = 0.1) -> Tuple[float, float]:
@@ -69,6 +69,43 @@ def _gershgorin_bounds(A: torch.Tensor, safety_margin: float = 0.1) -> Tuple[flo
     lam_max_raw = (centers + radii).max().item()
 
     # Apply safety margin
+    lam_min = max(lam_min_raw * (1 - safety_margin), 1e-10)
+    lam_max = lam_max_raw * (1 + safety_margin)
+
+    return lam_min, lam_max
+
+
+def _gershgorin_bounds_preconditioned(
+    A: torch.Tensor, diag_inv: torch.Tensor, safety_margin: float = 0.1
+) -> Tuple[float, float]:
+    """Gershgorin bounds for the PRECONDITIONED operator ``D^{-1}A`` (``D = diag(A)``).
+
+    The Chebyshev iteration actually acts on ``D^{-1}A`` when Jacobi preconditioning is on,
+    so its eigenvalue interval must be measured there — not on the raw ``A`` (whose spectrum
+    is ~``chi*Cm`` times wider, producing a polynomial tuned for the wrong interval that barely
+    damps the error, i.e. up to ~46% silent error at large diffusion number). Each row of
+    ``D^{-1}A`` is centered at 1 with radius ``sum_j!=i |a_ij| / a_ii``.
+
+    Ported from the bidomain ChebyshevSolver ("CH-1 fix"); closes CODE_AUDIT 2026-07-02 M1.
+    """
+    A = A.coalesce()
+    indices = A.indices()
+    values = A.values()
+    n = A.size(0)
+
+    rows = indices[0]
+    cols = indices[1]
+
+    off_diag = rows != cols
+    scaled_abs = values[off_diag].abs() * diag_inv[rows[off_diag]]
+
+    radii = torch.zeros(n, device=A.device, dtype=A.dtype)
+    radii.scatter_add_(0, rows[off_diag], scaled_abs)
+
+    # Centers are all 1.0 for D^{-1}A
+    lam_min_raw = (1.0 - radii).min().item()
+    lam_max_raw = (1.0 + radii).max().item()
+
     lam_min = max(lam_min_raw * (1 - safety_margin), 1e-10)
     lam_max = lam_max_raw * (1 + safety_margin)
 
@@ -141,23 +178,37 @@ class ChebyshevSolver(LinearSolver):
         diag_mask = indices[0] == indices[1]
         diag.scatter_add_(0, indices[0][diag_mask], values[diag_mask])
 
+        # Guard against a zero diagonal
+        diag = diag.clamp(min=1e-15)
         return 1.0 / diag
+
+    # Sentinel: if _A_id is this object, manual bounds are set — skip estimation
+    _MANUAL_BOUNDS = object()
 
     def _estimate_eigenvalues(self, A: torch.Tensor) -> None:
         """Estimate eigenvalue bounds if not cached for this matrix."""
+        if self._A_id is self._MANUAL_BOUNDS:
+            # Manual bounds set via set_eigenvalue_bounds(); skip auto-estimation
+            # but still build the preconditioner so Jacobi stays active.
+            if self.use_jacobi_precond and self._diag_inv is None:
+                self._diag_inv = self._extract_diag_inv(A)
+            return
+
         # Use data_ptr for cache invalidation (works for both sparse and dense)
         A_id = A.values().data_ptr() if A.is_sparse else A.data_ptr()
 
         if self._A_id != A_id:
+            self._diag_inv = self._extract_diag_inv(A) if self.use_jacobi_precond else None
+
+            # CH-1 FIX (CODE_AUDIT 2026-07-02 M1): bound the PRECONDITIONED operator D^{-1}A
+            # that the iteration actually acts on, not the raw A.
             if self.use_jacobi_precond:
-                # Estimate bounds for D^{-1}A (preconditioned system)
-                # For Jacobi-preconditioned SPD, eigenvalues cluster around 1
-                self._lam_min, self._lam_max = _gershgorin_bounds(A, self.safety_margin)
+                self._lam_min, self._lam_max = _gershgorin_bounds_preconditioned(
+                    A, self._diag_inv, self.safety_margin)
             else:
                 self._lam_min, self._lam_max = _gershgorin_bounds(A, self.safety_margin)
 
             self._A_id = A_id
-            self._diag_inv = self._extract_diag_inv(A) if self.use_jacobi_precond else None
 
     def solve(self, A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         """
@@ -229,6 +280,19 @@ class ChebyshevSolver(LinearSolver):
             x.add_(d)
             rho = rho_new
 
+        # Chebyshev runs a FIXED iteration count with no in-loop convergence test, so a
+        # too-loose count / bad bounds silently returns a wrong answer. One end-of-solve
+        # residual check (a single sync, like the DCT path) makes that loud without
+        # touching the returned x.
+        if self.tol is not None:
+            Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
+            b_norm = torch.norm(b)
+            r_norm = torch.norm(b - Ax)
+            if b_norm > 0 and (r_norm / b_norm) > self.tol:
+                warn_nonconvergence('Chebyshev', self.max_iters,
+                                    r_norm.item(), b_norm.item(), self.tol,
+                                    reason="fixed iteration count")
+
         return x.clone()
 
     def set_eigenvalue_bounds(self, lam_min: float, lam_max: float) -> None:
@@ -245,4 +309,7 @@ class ChebyshevSolver(LinearSolver):
         """
         self._lam_min = lam_min
         self._lam_max = lam_max
-        self._A_id = None  # Don't auto-estimate anymore
+        # Mark manual so the next solve keeps these bounds AND still builds the Jacobi
+        # preconditioner (a plain None would let the next solve clobber the bounds and
+        # silently disable preconditioning).
+        self._A_id = self._MANUAL_BOUNDS
