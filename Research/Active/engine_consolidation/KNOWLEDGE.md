@@ -575,6 +575,19 @@ to pcg on mixed-BC; SBDF2 extrapolation + φe^{n-1} history; RKC constant-preser
 snapshot before conc rates). All gated behind opt-in solvers except #3/#6/#7 — the **default mono (pcg+CN) and
 default bidomain (pcg auto) paths are correctness-solid; the risk is opt-in solvers failing silently.**
 
+**Relation to the 2026-07-02 CODE_AUDIT (important — some of this is KNOWN-BUT-UNFIXED):** finding #1 (mono
+Chebyshev raw-vs-preconditioned bounds) IS the 07-02 **M1** — flagged as a major 2 weeks earlier, still unfixed;
+07-02 even noted the **bidomain Chebyshev already has the `_gershgorin_bounds_preconditioned` fix the mono copy
+never got** (another duplication-drift instance). Finding #9's FFT bits overlap 07-02 **M2** (FFT inverts continuum
+−k² not the discrete stencil) and the DCT-node_mirror 34% minor. The bidomain silent-wrong-phi_e family relates to
+07-02 **M4** (per-node D_xy → non-symmetric elliptic operator → ~13% wrong phi_e via CG-on-nonSPD) — my #2 is a
+DIFFERENT facet (pcg_spectral singular Neumann precond on mixed-BC), same "silent wrong phi_e in a reachable
+regime" class. **Genuinely NEW this session (not in 07-02, which was math-only + didn't cover the bidomain opt-in
+diffusion solvers):** the systemic non-convergence framing, IMEX-SBDF2 1st-order (#4), RKC coupling (#5), the mono
+ionic conc-ordering vs V5.3 (#6), and the entire GPU characterization. Takeaway: the audit keeps re-surfacing the
+same opt-in-solver silent-failure class — argues for landing the shared non-convergence signal + M1 port rather
+than re-auditing.
+
 ### Next direction (task #9) — advanced features + Phase 2-5
 **Advanced features (user-requested, land in api.py/CardiacSimulation; orthogonal to the dedup phases):**
 - **Masked mid-run voltage clamp** `clamp_voltage(mask, value, start, end)` — hold V on mask nodes (gates keep

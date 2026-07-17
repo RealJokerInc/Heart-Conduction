@@ -539,6 +539,35 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 
 ## Session Log
 
+### 2026-07-16→17 Session (solver + GPU audit → roadmap deliverable; NO code changed)
+**Worked on**: New user direction — audit EVERY solver + a dedicated GPU-implementation audit, empirically test
+whether `device='cuda'` uses the GPU and is optimized (user's "explicit→GPU, implicit→CPU crossover weirdness"),
+then set the forward path (advanced features + Phase 2-5). Audit-only per user ("measure first, don't change
+solver code").
+**Accomplished**:
+- **GPU benchmark** (`scratchpad/gpu_bench.py`): device='cuda' IS on GPU (21/21 mono + bidomain + LBM tensors
+  cuda:0/float64; results on cuda). The "crossover" = **per-iteration host syncs** (mono CN+pcg 24/step, explicit
+  0, dct 1; bidomain heaviest; LBM 0), NOT a CPU-compute fallback. GPU per-step latency-bound (~6-10 ms flat), CPU
+  scales with dof, crossover ~10k dof. float64 on a 1:64-FP64 card.
+- **6-lane adversarial solver audit** (mono diffusion/linear, mono ionic/splitting, bidomain diffusion/splitting,
+  bidomain elliptic, LBM, GPU-impl). **Every HIGH/MED finding independently reproduced by me** (ran the agents'
+  repros + my own regime sweeps). 2 HIGH silent-wrong (mono Chebyshev-Jacobi 46% err at high diffusion-number;
+  bidomain pcg_spectral singular precond on anisotropic mixed-BC), a systemic silent-non-convergence across ALL
+  iterative solvers, IMEX-SBDF2 silently 1st-order, RKC refinement-immune ~0.8% err, mono ionic conc-currents use
+  post-RL gates (diverges from V5.3, V5.4-lineage; bidomain copy is correct). **LBM clean. Default mono/bidomain
+  paths solid.** Full table in KNOWLEDGE "Solver + GPU audit — 2026-07-16".
+- **Cross-ref win:** finding #1 (mono Chebyshev) = the 07-02 CODE_AUDIT **M1** — KNOWN + UNFIXED 2 weeks; #9 FFT
+  overlaps **M2**; bidomain silent-phi_e relates to **M4**. New this session: systemic framing, IMEX/RKC/mono-ionic,
+  all GPU. Argues for landing the shared non-convergence signal, not re-auditing.
+- **Decisions:** dedup (Phase 2-5) DEPRIORITIZED to backlog with the user's universal-vs-engine-specific framing +
+  the internal-vs-repo-wide split. RK: mono has correct `rk2`/`rk4` (diffusion sub-step only, the GPU-clean 0-sync
+  path); bidomain RK-family = the buggy `explicit_rkc`; **LBM has no RK4 and it's a category mismatch** (collide-
+  stream, not an ODE march; its upgrade axis is BGK→MRT). Commits 91b52a7 (audit results) + the dedup-backlog note.
+**Next**: build the roadmap deliverable (audit state + advanced-features + build path). Then, when the user greenlights
+CODE changes: land the shared non-convergence signal (closes the systemic finding + M1 port) as the cheap first fix,
+then the advanced features (masked per-step voltage clamp + mid-run state injection via one `_stepping_run` hook).
+Still unmerged: `usability-fixes-p0-p1` branch → main (user's call).
+
 ### 2026-06-28 Session (cardiac_mcp standardization — audited → blueprinted → executed Tiers 1–3 → merged)
 **Worked on**: Took the just-built `cardiac_mcp` server from "working" to "standardized" against the official MCP spec — the user flagged that a working server ≠ a standardized one and wanted its supporting materials audited against proper guidelines, then iterated audit↔revise to convergence, then executed.
 **Accomplished**:
