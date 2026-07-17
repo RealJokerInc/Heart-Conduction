@@ -598,6 +598,19 @@ P3 ConductivityConfig sigma→D in one place (firewall prototype exists, land it
 copies — **KNOWN BLOCKER: deletion breaks repo-wide consumers (Surrogate/Optimizer)** → migrate consumers first;
 P5 remove `_prepare_engine()` hack. Advanced features are independent and can ship first.
 
+**Dedup — user's sharper framing (2026-07-17, BACKLOG not queue).** User's rule: *universal* code (ionic models,
+ionic stepper, linear solvers, splitting, mesh/stimulus) → ONE copy; *engine-specific* code → stays separate
+("unless the solver function is not universal"). This partitions cleanly against the tree: the diffusion
+time-steppers ARE genuinely engine-specific (mono single-PDE `fwd_euler/rk2/rk4/cn/bdf1/bdf2` vs bidomain coupled
+`decoupled_gs/jacobi/rkc/imex_sbdf2/semi_implicit`) and all of LBM — those correctly stay apart. Evidence the
+universal layers already DRIFTED: `_monodomain/.../rush_larsen.py` (120L) vs `_bidomain/.../rush_larsen.py` (118L)
+DIFFER (source of the mono conc-bug), and mono vs bidomain `pcg.py` DIFFER (bidomain dropped the warm-start guard).
+**Two-sized job:** (1) *internal to cardiac_core* — make `_monodomain`+`_bidomain` share ONE ionic stepper + ONE
+linear-solver core; NO external blocker, integrity goldens guard it, directly kills the drift-bug class = the real
+target of the user's preference, cheap+safe. (2) *repo-wide* — engines + Surrogate/Optimizer import the shared copy;
+carries the consumer-migration blocker = the "someday clean foundation" push. Decision: **documented, deprioritized**
+(user: "not on the highest priority, let's just document it"). Not scheduled.
+
 ## Connections
 - **Engines**: All three + cardiac_core (target)
 - **Related research**: All active questions depend on stable engines
