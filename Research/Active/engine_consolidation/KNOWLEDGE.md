@@ -226,6 +226,44 @@ copy-vendoring (Chebyshev fix in bidomain-not-mono; `step()` in mono/lbm-not-bid
 accumulator vs quantized; PCG breakdown thresholds). The ~22 minors (docstrings, guards, footguns) are
 catalogued in the report.
 
+## Usability fixes — SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, pending merge)
+
+The two-round task-based usability audit (agents actually solving+running realistic scientist tasks) found
+that the API could *express* far more than it looked, but the path to a **correct, timely first result** was
+booby-trapped. The audit-converged [PLAN.md](./PLAN.md) was executed as 5 test-gated phases, then hardened
+through **three adversarial audit passes** (1 Phase-3 diff audit + a 5-lane whole-branch audit + a 4-lane
+audit-the-fix/completeness round). 10 commits, `a37d325`→`9f387ef`. Suite **260 passed / 2 xfailed**; per-engine
+integrity goldens **bit-identical (atol=0)** at every step. NOT yet merged to `main` (review-ready).
+
+**What shipped (the scientist-facing wins):**
+- **Correctness on the first run:** GPU analysis no longer crashes (B1); masked/scar nodes return NaN not 0 mV,
+  so CV/APD/LAT stop counting dead tissue as activated — a ~23% silent CV error on every scar study, gone (B8);
+  multi-beat & spike-and-dome APD are correct (B3/B4); `record=` typos, `Grid(N,1)` cables, and over-`dt`
+  explicit runs now fail loud instead of silently wrong (B5/B6/B7).
+- **Capabilities productized:** `scale_conductance` (drug block, all 5 ionic models incl. hiPSC lowercase `g_*`),
+  `set_conductivity`/`scale_conductivity` (scar/heterogeneity, mono+bidomain incl. the sigma path); ~18
+  hallucination-trap stub methods now raise **informative** errors instead of shipping worked-example docstrings.
+- **Performance path unblocked + fenced:** the fast DCT solver was dead (TypeError→silent slow-PCG); now wired
+  AND gated to the exact config where it's numerically exact (iso-uniform, full-rect, Neumann/cardinal4, CN/BDF1),
+  raising elsewhere rather than silently mis-solving. `fft` rejected (Neumann meshes). Bidomain masked default
+  now auto-falls-back to `pcg` instead of a cryptic reshape crash.
+- **Analysis aggregates (P2):** `df_map`, `cv_between`, `radial_cv`, `apd_per_beat`, `restitution_slope`
+  (NaN-safe on masked data). **Cheatsheet** rewritten to the truth (solver/`dt`, conductance map with
+  `PCa`=ICaL≠GCaL, ORd-LBM-only, `load_result` 4-tuple, `save_result` arg order) + an executable canary test.
+
+**Audit-found bugs fixed beyond the PLAN's own B-list (the value of auditing):** 8 total — Phase-3 diff audit (2:
+declarative-bidomain sigma no-op, cell-type flip); 5-lane round (4: DCT/FFT silent-wrong across anisotropic/scar/
+bdf2/fft, restitution DI\*, apd_per_beat, conductance-name validation); audit-the-fix round (2: my own hiPSC
+`g_*` regression, bidomain masked crash) + 2 masked-data P5 gaps. The recurring lesson (3rd time in this question):
+**a green monodomain test says nothing about the bidomain/LBM surface — test at the level a USER reaches the
+feature.** Convergence reached: the final round's findings were a self-inflicted regression + cross-cutting
+completeness gaps, not a new core-logic bug class.
+
+**Consciously deferred (NOT blocking, logged):** bidomain scar φ_e disagrees ~533 mV between `pcg_spectral` and
+`pcg` — a PRE-EXISTING elliptic-solver accuracy issue (the 2026-07-02 code-audit "M4" family) that `set_conductivity`
+merely makes reachable; affects only φ_e / pseudo-ECG, NOT Vm/CV/APD. Also still open from prior audits: the M1–M4
+opt-in-solver majors, and the original consolidation dedup (engines still copy-vendored, not rewired).
+
 ## North-Star: lab-facing simulation platform (BOTH goals SHIPPED — see the two "SHIPPED" sections above)
 
 > **Status (2026-06-25): both north-star goals delivered.** Goal 1 = the unified construction API (shipped + the engines consolidated into one self-contained `cardiac_core`). Goal 2 = the LLM layer, **REFRAMED** from "non-coder conversational builder" to a **script-generating skill suite for wet-lab scientists** (cell-culture / tissue-chip) — it GENERATES runnable `cardiac_core` scripts behind a manifest + double-check gate, not a teaching wizard. The original two-layer vision below is retained for the design rationale it still informs (the deferred Layer-A `SimulationSpec`).
