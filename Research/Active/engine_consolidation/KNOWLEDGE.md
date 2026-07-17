@@ -18,6 +18,17 @@
 > `PCa` (a permeability), not "GCaL", in BOTH TTP06 and ORd. See "Usability fixes — SHIPPED" below + the 2026-07-16
 > exec Thread entry in IDEALOG.
 >
+> **AUDITED (not yet fixed) 2026-07-16 — every solver + the GPU implementation.** 6-lane adversarial audit
+> (mono diffusion/linear · mono ionic/splitting · bidomain diffusion/splitting · bidomain elliptic · LBM · GPU-impl)
+> + an empirical GPU benchmark. **All HIGH/MED findings independently reproduced.** Headline: **device='cuda' IS
+> using the GPU** (full residency cuda:0/float64, all 3 engines) but the iterative-solver "crossover" = **per-iteration
+> host syncs** (mono PCG ~24/step; bidomain PCG+PCGSpectral worse; LBM = 0). **2 HIGH silent-wrong-result bugs**
+> (mono Chebyshev-Jacobi 46% err at high diffusion-number; bidomain pcg_spectral singular precond on anisotropic
+> mixed-BC), a **systemic silent-non-convergence** across ALL iterative solvers, IMEX-SBDF2 silently 1st-order, RKC
+> refinement-immune ~0.8% err, and the mono ionic solver diverging from V5.3 on concentrations. **No solver code
+> changed this session** (user: audit + measure first). Full ranked table + GPU characterization below ("Solver +
+> GPU audit — 2026-07-16"); next-direction plan (advanced features + Phase 2-5) in the same section.
+>
 > **SHIPPED 2026-07-01 — foundation cleanup + boundary modes.** A cardiac_core+mcp adversarial audit
 > (46 findings → [CARDIAC_CORE_AUDIT.md](./CARDIAC_CORE_AUDIT.md)) drove a 3-phase cleanup ([PLAN.md](./PLAN.md)):
 > **P1** fixed the monodomain FDM anisotropic cross-derivative bug + unified the chi/D convention
@@ -517,6 +528,75 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 - When consolidating, build `cardiac_core` against **V5.5** (Cm-correct), not V5.4.
 - ~~Stimulus overlap: `=` vs `+=`?~~ **RESOLVED (2026-06-01 census):** ALL THREE engines accumulate (`+=`) — V5.5 (`_evaluate_Istim`, `Istim = Istim + …`), Bidomain (`Istim[mask] += …`), LBM (overlapping stimuli accumulate). Canonical = accumulate. (The earlier "V5.4 uses `=`" note was wrong or pre-fix.)
 - **API-debt — `create_cardiac_mesh(D=…)` bypasses the Form-A/B firewall (2026-06-30, from `ionic_model_optimization` chip-fit):** passing an *effective* diffusivity `D≈1e-3` with the **default `chi=1400`** silently mis-scales — the FDM operator (`_monodomain/.../fdm.py:37,159`) builds the Laplacian from `D` alone with `χ·Cm` only in the mass term, so membrane-effective diffusivity = `D/(χ·Cm)` ≈ 1400× too low → CV ∝ √D collapses ~37× → discrete source–sink conduction block (Vmax pools ~80–123 mV, CV=NaN). `(D=1e-3, χ=1400)` is exactly degenerate with `(D=7.14e-7, χ=1)` — faithful physics of the wrong number, not a solver bug. **Workaround:** pass `chi=1.0` when feeding an effective D. **Fix (open):** route `create_cardiac_mesh` through `ConductivityConfig`, or warn when an effective-D is supplied with `chi≠1`. See IDEALOG 2026-06-30 thread + Next Step.
+
+## Solver + GPU audit — 2026-07-16 (AUDITED, no code changed yet)
+
+6-lane adversarial audit + an empirical GPU benchmark on the RTX PRO 4500 Blackwell. Method: one read-only
+adversarial agent per solver group, each given the chi/Cm + float64 + DCT-gate conventions so intentional design
+isn't flagged; I independently reproduced every HIGH/MED CONFIRMED finding. Scratchpad: `gpu_bench.py`,
+`cheby_repro.py`, `AUDIT_collation.md` + agent repros (`test_repro.py`, `imex_order.py`, `rkc_consistency.py`).
+
+### GPU empirics (task #6) — "is it using the GPU / is it optimized?"
+- **Using the GPU: YES.** All monodomain + bidomain + LBM state and operators (V/Vm, phi_e, ionic_states, sparse L,
+  A_para/B_para/A_ellip, coords, stim masks) live on `cuda:0` at float64; result hooks (lat/cv/apd/df_map/radial_cv)
+  return cuda:0. Process default dtype is float32 but cardiac_core explicitly forces float64 everywhere. ~80% util.
+- **The "crossover" = per-iteration host syncs, NOT a CPU compute fallback.** Sync-ops/step on CUDA: explicit
+  forward_euler **0**, implicit CN+pcg **24** (one GPU→CPU round-trip per PCG iteration from Python `if` on 0-dim
+  cuda scalars), CN+dct **1**. Per-step wall time is ~FLAT on GPU (~6–10 ms across 2.6k→90k dof = launch-latency
+  bound); CPU scales with dof. Crossover: explicit CPU-wins <~3k dof / GPU-wins from ~10k dof; implicit GPU-wins at
+  all sizes but the syncs mute the win. LBM is the only 0-sync engine. Bidomain default (PCG parabolic +
+  PCGSpectral elliptic) syncs the HEAVIEST (2/iter + 3/iter).
+- **float64 on a 1:64-FP64 card** = a real ceiling, but goldens require float64.
+
+### Ranked findings (all CONFIRMED unless noted; none fixed — audit-only session)
+| # | Sev | Where | Defect (one line) | Scope / trigger |
+|---|-----|-------|-------------------|-----------------|
+| 1 | HIGH | mono `linear_solver/chebyshev.py:152-157` | Jacobi-precond Chebyshev tunes its polynomial to RAW A's spectrum, not the D⁻¹A it iterates | opt-in `linear_solver='chebyshev'` + high diffusion-number (large dt/fine dx) → **up to 46% silent err**; machine-precision at typical cardiac dt (default is pcg) |
+| 2 | HIGH | bidomain `bidomain.py:189` + `pcg_spectral.py:43` | Auto-selected pcg_spectral uses a singular **Neumann** preconditioner for mixed per-axis BCs → PCG stalls, wrong phi_e (feeds Vm RHS) | **anisotropic + mixed-BC** (e.g. bath TOP/BOTTOM + fiber) → err 1.8e-2 vs pcg 4e-8; isotropic/insulated OK |
+| 3 | MED | ALL iterative solvers (mono pcg/cheby, bidomain pcg/pcg_spectral/cheby) | **Silent non-convergence** — return unconverged iterate as converged, no warning, callers discard stats | any config that needs >max_iters; makes every other solver bug fail silently |
+| 4 | MED | bidomain `imex_sbdf2.py:128-130` | IMEX-SBDF2 silently **1st-order** (lags coupling `L_i·φe^n`, no `2φ^n−φ^{n-1}`; φe^{n-1} not even stored) | opt-in `diffusion_solver='imex_sbdf2'`; repro ratio 2.0 vs 4.0 |
+| 5 | MED | bidomain `explicit_rkc.py:180-192` | RKC mis-weights the frozen-coupling inhomogeneous term → converges to a slightly WRONG PDE (refinement-immune) | opt-in RKC; ~0.8% CV err at default eps, ~7.5% at eps=0.5; flat across 100× dt refine |
+| 6 | MED | mono `ionic_time_stepping/rush_larsen.py:96`, `forward_euler.py:81` | Concentration currents computed from POST-RL gates (old V, new gates) → diverges from V5.3 ground truth | long-run Nai/Cai/APD-restitution (not CV); **inherited from V5.4**; the BIDOMAIN copy does it correctly |
+| 7 | MED | api.py:1535,1579 (bidomain factory) | Declarative isotropic bidomain always builds D_i_field → is_isotropic=False → never reaches zero-sync Tier-1 'spectral'; runs iterative pcg_spectral | perf/silent host-sync tax on the primary bidomain API |
+| 8 | MED-S | bidomain `semi_implicit.py:56`, `explicit_rkc.py:142` | Explicit-stability CFL guard uses scalar `D_i`, ignores anisotropy/field D → can pass while step is unstable | fiber/field D >~2× scalar D_i → undetected blowup |
+| 9 | LOW | mono `fft.py:368` (DC-mode zeroed); bidomain `diffusion_stepping/base.py:43` (Dirichlet bath value ignored → phi_e pinned 0); LBM `masks.py:29` (periodic-roll → periodic BC on edge-touching mask); LBM `mrt/d2q9.py:66` (docstring D formula wrong, code OK); mono/bidomain `fft.py:310` (fftfreq no dtype→float32); analysis.py np.asarray-on-cuda + restitution_curve CPU tensor | assorted | mostly unreachable via the public factory / benign defaults / cosmetic |
+
+**Verified-CLEAN (reassuring):** RK2/RK4/CN/BDF1/BDF2 coefficients + assembly; PCG core (Jacobi, breakdown guard,
+best-iterate); the mono **DCT eigen-operator exactly matches the assembled L** and its precondition gate is correct
+& complete; bidomain GS/Jacobi ordering, parabolic coupling sign/scale (+L_i·φe full), pure-Neumann nullspace
+pin+mean-subtract, DST-I normalization, spectral nullspace projection; **LBM is solid** (f_eq, tau's +0.5, MRT
+M/inverse/meq/S, anisotropic axis map, streaming sign, all boundaries — numerically traced). pcg_gmg/multigrid are
+NotImplementedError stubs (never silently used). Full detail: scratchpad `AUDIT_collation.md`.
+
+**Systemic takeaway:** the single highest-value fix is a shared **non-convergence signal** (warn/raise + surface
+residual when max_iters hit without tol) — it closes finding #3 across 4 lanes and turns findings #1/#2/#7 from
+silent-wrong into loud-wrong. Then per-bug fixes (Chebyshev preconditioned bounds; pcg_spectral per-axis BC or fall
+to pcg on mixed-BC; SBDF2 extrapolation + φe^{n-1} history; RKC constant-preservation terms; mono ionic gate
+snapshot before conc rates). All gated behind opt-in solvers except #3/#6/#7 — the **default mono (pcg+CN) and
+default bidomain (pcg auto) paths are correctness-solid; the risk is opt-in solvers failing silently.**
+
+### Next direction (task #9) — advanced features + Phase 2-5
+**Advanced features (user-requested, land in api.py/CardiacSimulation; orthogonal to the dedup phases):**
+- **Masked mid-run voltage clamp** `clamp_voltage(mask, value, start, end)` — hold V on mask nodes (gates keep
+  integrating at clamped V = the true VC protocol). MUST be enforced PER-STEP (the run loop currently delegates to
+  the engine's internal per-step generator which only surfaces at save points). Route: wrapper-driven stepping when
+  a clamp/probe is active (write `state.V[mask]=value(t)` after each `engine.step()`), delegate to fast
+  `engine.run()` otherwise (keeps goldens + speed). Dormant scaffolding exists (`_clamp_mask`/`_clamp_voltage`,
+  `_as_grid_mask`).
+- **Mid-run state injection** — wire the de-trapped `set_voltage`/`set_state`/`get_state` stubs (write into
+  `state.V` / `state.ionic_states[:, col]` by name). Unblocks rotor-seeding (the ROUND-2 usability blocker). LBM
+  caveat: V is a moment of f_i → set_voltage must re-equilibrate populations.
+- Both share one internal `_stepping_run` per-step control hook.
+
+**GPU optimization follow-ups (from task #6/Lane E; do AFTER audit fixes):** PCG sync-free convergence check (kills
+24 syncs/step); auto-route eligible meshes to dct on GPU; declarative isotropic bidomain → reach Tier-1 spectral;
+COO→CSR for repeated SpMV; torch.compile the LBM step + vectorize the 18-gate RL loop; optional float32 knob (needs
+CV/APD drift validation).
+
+**Consolidation Phase 2-5 (resume the original dedup; README.md:38-42):** P2 unify mesh+stimulus into cardiac_core;
+P3 ConductivityConfig sigma→D in one place (firewall prototype exists, land its test); P4 rewire engines + delete
+copies — **KNOWN BLOCKER: deletion breaks repo-wide consumers (Surrogate/Optimizer)** → migrate consumers first;
+P5 remove `_prepare_engine()` hack. Advanced features are independent and can ship first.
 
 ## Connections
 - **Engines**: All three + cardiac_core (target)

@@ -5,38 +5,41 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**NEW DIRECTION (2026-07-16, user) — solver + GPU audit, then advanced features, then consolidation Phase 2-5.**
-Kicked off but PAUSED for a context compaction (checkpoint below). Task list drives resumption: tasks #6 (empirical
-GPU tests), #7 (audit every solver), #8 (audit GPU implementation), #9 (record advanced-features + Phase 2-5 plan).
-The usability branch is done + audited-to-convergence (see the SHIPPED block below); this is the NEXT campaign, not
-yet started in code. Nothing here is committed yet beyond this checkpoint.
+**SOLVER + GPU AUDIT — DONE (2026-07-16). No solver code changed (audit + measure only, per user).**
+Tasks #6-#9 complete. 6-lane adversarial audit + empirical GPU benchmark; every HIGH/MED finding independently
+reproduced. Full ranked table + GPU characterization + the next-direction plan are in **KNOWLEDGE.md → "Solver +
+GPU audit — 2026-07-16"** (the reference; scan there). Scratchpad artifacts: `gpu_bench.py`/`gpu_bench_results.json`,
+`FINDINGS_task6_gpu.md`, `AUDIT_collation.md`, `cheby_repro.py` + agent repros.
 
-**User's framing (verbatim intent):** (1) audit EACH solver individually + a dedicated GPU-implementation audit;
-(2) empirically test whether `device='cuda'` actually uses the GPU and whether it's optimized. Key nuance: the user
-expects **explicit** solvers to run on GPU, **implicit** solvers (which do a linear solve) to involve CPU → a
-CPU/GPU "crossover weirdness" to characterize. (3) Advanced features are the next build: **masked voltage-clamp**
-appliable mid-simulation at any point (for APD/APD-restitution measurement) + **mid-run state injection**. (4) Start
-planning original consolidation **Phase 2-5** (mesh/stimulus/ConductivityConfig unify → engine rewire → dedup).
+**Verdicts (30-sec scan):**
+- **device='cuda' IS using the GPU** — full residency cuda:0/float64 across all 3 engines; result hooks on cuda.
+- **The "crossover weirdness" = per-iteration GPU→CPU host syncs in the iterative solvers, NOT a CPU-compute
+  fallback** (the user's mental model was close but the mechanism is a pipeline stall, not offload). Syncs/step:
+  explicit 0, mono CN+pcg 24, CN+dct 1; bidomain default (pcg+pcg_spectral) syncs the heaviest; LBM = 0. GPU
+  per-step is launch-latency bound (~6-10 ms flat) → wins over CPU only above ~10k dof. float64 on a 1:64-FP64 card.
+- **2 HIGH silent-wrong bugs** — (1) mono Chebyshev-Jacobi tunes to raw A not D⁻¹A → 46% err at high diffusion-number
+  (opt-in, machine-precision at default dt); (2) bidomain pcg_spectral singular Neumann precond on anisotropic
+  mixed-BC → stalls, wrong phi_e. **Systemic MED:** ALL iterative solvers silently return unconverged as converged.
+  IMEX-SBDF2 silently 1st-order; RKC refinement-immune ~0.8% err; mono ionic conc-currents use post-RL gates
+  (diverges from V5.3, inherited from V5.4 — bidomain copy is correct). **The DEFAULT mono (pcg+CN) and bidomain
+  (pcg auto) paths are correctness-solid; risk is opt-in solvers failing silently.** LBM audit = clean.
+- **Highest-value single fix (future):** a shared non-convergence signal (warn/raise + surface residual) — closes
+  the systemic finding across 4 lanes and makes the HIGH bugs fail LOUD instead of silent.
 
-**Discovery already done (pre-compact — DON'T redo):**
-- CUDA available: NVIDIA RTX PRO 4500 Blackwell. `device='cuda'` is plumbed through `StructuredGrid.create_rectangle`/
-  the factories.
-- **Solver inventory (mono):** diffusion explicit = ForwardEuler/RK2/RK4; implicit = CrankNicolson/BDF1/BDF2 →
-  linear_solver = PCG/Chebyshev/DCT/FFT; ionic = RushLarsen/ForwardEuler; splitting = Godunov/Strang. Bidomain:
-  parabolic + elliptic (spectral/pcg_spectral/pcg/pcg_gmg). LBM: BGK/MRT collision + streaming + boundary.
-- **CROSSOVER CULPRIT FOUND (the key lead):** the PCG loop (`_monodomain/.../linear_solver/pcg.py`) does an IMPLICIT
-  GPU→CPU sync EVERY iteration — line ~198 `if pAp.abs() < 1e-30:` and line ~210 `if r_norm / b_norm < self.tol:`
-  are Python `if`s on 0-dim CUDA tensors, which force `.item()`/host sync per iteration. Bidomain PCG + Chebyshev
-  have the same `.item()` pattern (`pcg.py:167/172/233`, `chebyshev.py:62/63/68/69`). So the IMPLICIT path stalls the
-  GPU with per-iteration host syncs while the EXPLICIT path (pure elementwise, no convergence check) stays on-device
-  — this is very likely the "crossover weirdness." The FDM operator `self.L` is a torch SPARSE COO tensor; `sparse_mv`
-  = `torch.sparse.mm` (GPU-capable but often slow). NO scipy/numpy.linalg in the solver hot paths (pure torch, so it
-  CAN run on GPU — the issue is per-iter sync + sparse-matvec efficiency, not a CPU fallback).
-- **Next step after compaction:** (a) write + run a GPU benchmark (`scratchpad/`): tensor-device checks + explicit vs
-  implicit GPU-vs-CPU timing across grid sizes + per-step sync detection (`torch.cuda.synchronize` timing, nvidia-smi
-  util) → quantify the crossover; (b) launch per-solver-group adversarial audit agents + a GPU-impl audit agent;
-  (c) synthesize a report; (d) write the advanced-features + Phase 2-5 plan to IDEALOG/README (task #9). Do NOT change
-  solver code yet — audit + measure first (the user asked to understand behavior).
+**Next-direction plan recorded (task #9, detail in KNOWLEDGE):** advanced features (masked per-step voltage clamp +
+mid-run state injection, both via one `_stepping_run` per-step hook in CardiacSimulation) → GPU opt follow-ups (PCG
+sync-free convergence, auto-dct-on-GPU, isotropic-bidomain→Tier-1 spectral, COO→CSR, torch.compile LBM) →
+consolidation Phase 2-5 (mesh/stimulus/ConductivityConfig unify → engine rewire+delete [blocker: Surrogate/Optimizer
+consumers] → clean namespace). Advanced features are independent of the dedup phases and can land first.
+
+**What NOT to retry / gotchas learned this session:**
+- A quick end-to-end pcg-vs-chebyshev compare at the DEFAULT config shows them AGREEING (both ~machine precision) —
+  do NOT conclude Chebyshev is fine from that. The Jacobi-bounds bug only bites at high diffusion-number (off/diag
+  ≳0.24); you must sweep dt/dx to see it. Goldens don't catch it (they froze the safe regime).
+- cardiac_core faithfully copied V5.4; the mono-ionic conc-ordering deviation from V5.3 is a V5.4-lineage defect, NOT
+  a copy bug. Self-goldens can't catch V5.3 divergence (they're self-referential).
+- Bidomain declarative path ALWAYS builds D_i_field (even isotropic) → is_isotropic=False → never auto-selects the
+  fast Tier-1 direct 'spectral' solver.
 
 ---
 **PLAN.md EXECUTED — P0/P1/P2 usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, NOT yet merged to main).**
