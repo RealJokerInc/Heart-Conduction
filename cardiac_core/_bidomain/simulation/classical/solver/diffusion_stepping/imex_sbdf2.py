@@ -10,8 +10,16 @@ BDF1 (step 0):
 
 BDF2 (steps 1+):
     (3/(2dt) * I - L_i) * Vm^{n+1}
-        = (2/dt) * Vm^n - (1/(2dt)) * Vm^{n-1} + L_i * phi_e^n
+        = (2/dt) * Vm^n - (1/(2dt)) * Vm^{n-1} + L_i * (2*phi_e^n - phi_e^{n-1})
     -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
+
+The explicit coupling term uses the SBDF2 2nd-order extrapolation (2*phi_e^n - phi_e^{n-1});
+lagging it at just phi_e^n adds an O(dt) error to the explicit term (audit 2026-07-16, Lane C1).
+NOTE (verified on the real solver): fixing the extrapolation ~halves the temporal error but does
+NOT by itself restore full 2nd order — the decoupled parabolic->elliptic *staggering* (phi_e is
+slaved to Vm within the step and lagged across steps) imposes its own O(dt) splitting floor.
+True 2nd order would require a monolithic Vm/phi_e solve. This fix removes the extrapolation
+error term; the staggering floor is a separate, deeper limitation left documented.
 
 Properties:
   - 2nd order in time (vs 1st order for GS/semi-implicit)
@@ -63,7 +71,8 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
         self._pin_node = pin_node
 
         # Workspace for BDF2 history
-        self._Vm_prev = None  # Vm^{n-1}, None until first step completes
+        self._Vm_prev = None      # Vm^{n-1}, None until first step completes
+        self._phi_e_prev = None   # phi_e^{n-1}, for the 2nd-order coupling extrapolation
         self._step_count = 0
 
         self._build_operators(spatial, dt)
@@ -107,8 +116,9 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
 
     def _step_bdf1(self, state, dt):
         """First step: backward Euler (BDF1)."""
-        # Save current Vm for BDF2 history
+        # Save current Vm, phi_e for BDF2 history (phi_e^0 seeds the first extrapolation)
         self._Vm_prev = state.Vm.clone()
+        self._phi_e_prev = state.phi_e.clone()
 
         # RHS: (1/dt) * Vm^0 + L_i * phi_e^0
         rhs_para = (1.0 / dt) * state.Vm + self._spatial.apply_L_i(state.phi_e)
@@ -121,13 +131,18 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
         """Subsequent steps: BDF2 (2nd order)."""
         Vm_prev = self._Vm_prev
 
-        # Save current Vm as Vm^{n-1} for next step
-        self._Vm_prev = state.Vm.clone()
+        # 2nd-order extrapolation of the explicit coupling term: 2*phi_e^n - phi_e^{n-1}.
+        # Capture BEFORE _solve_elliptic overwrites state.phi_e.
+        phi_e_extrap = 2.0 * state.phi_e - self._phi_e_prev
 
-        # RHS: (2/dt) * Vm^n - (1/(2dt)) * Vm^{n-1} + L_i * phi_e^n
+        # Save current Vm, phi_e as the ^{n-1} history for the next step
+        self._Vm_prev = state.Vm.clone()
+        self._phi_e_prev = state.phi_e.clone()
+
+        # RHS: (2/dt) * Vm^n - (1/(2dt)) * Vm^{n-1} + L_i * (2*phi_e^n - phi_e^{n-1})
         rhs_para = (2.0 / dt) * state.Vm \
                    - (1.0 / (2.0 * dt)) * Vm_prev \
-                   + self._spatial.apply_L_i(state.phi_e)
+                   + self._spatial.apply_L_i(phi_e_extrap)
         Vm_new = self.parabolic_solver.solve(self.A_bdf2, rhs_para)
 
         # Elliptic solve
@@ -154,4 +169,5 @@ class IMEXSBDF2Solver(BidomainDiffusionSolver):
         self._build_operators(spatial, dt)
         # Reset history since dt changed
         self._Vm_prev = None
+        self._phi_e_prev = None
         self._step_count = 0

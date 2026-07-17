@@ -197,11 +197,23 @@ def _build_linear_solver(name, spatial):
         dy = grid.Ly / (ny - 1)
         D = spatial.conductivity.D_i + spatial.conductivity.D_e
         bc = grid.boundary_spec
-        # PCGSpectral uses spectral as preconditioner; pick uniform BC
-        # for the preconditioner (falls back to neumann if mixed)
+        # PCGSpectral uses a single-BC spectral operator as preconditioner. That is only
+        # valid when the BC is UNIFORM across all four edges. For a MIXED per-axis BC
+        # (e.g. Neumann-x + Dirichlet-y) `spectral_transform` is None, and the old code
+        # silently fell back to a Neumann (DCT×DCT) preconditioner — which is SINGULAR for
+        # the Dirichlet axis and stalls PCG at a large residual, returning a wrong phi_e
+        # that feeds the Vm RHS (audit 2026-07-16, Lane C2). Route mixed BCs to plain PCG,
+        # which converges on the identical operator.
         uniform = bc.spectral_transform
-        bc_type = {'dct': 'neumann', 'dst': 'dirichlet',
-                   'fft': 'periodic'}.get(uniform, 'neumann')
+        if uniform is None:
+            import warnings
+            warnings.warn(
+                "elliptic_solver='pcg_spectral' with a MIXED per-axis boundary condition: its "
+                "single-BC spectral preconditioner is invalid (would stall on a singular "
+                "operator); falling back to plain PCG.", stacklevel=2)
+            from .solver.linear_solver.pcg import PCGSolver
+            return PCGSolver(max_iters=500, tol=1e-8)
+        bc_type = {'dct': 'neumann', 'dst': 'dirichlet', 'fft': 'periodic'}[uniform]
         stencil = getattr(spatial, 'stencil', '5pt')
         return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type,
                                  stencil=stencil)

@@ -22,6 +22,23 @@ Algorithm (direct Chebyshev 3-term recurrence):
 The stability polynomial is P_s(z) = T_s(w0 + w1*z) / T_s(w0),
 which maps the stability region to [-2*s^2, 0] along the real axis.
 
+KNOWN LIMITATION (audit 2026-07-16, Lane C1 — CONFIRMED, documented-not-yet-fixed):
+    The direct unnormalized 3-term recurrence above is correct for the HOMOGENEOUS operator
+    (F(Vm) = L_i*Vm), but F here is INHOMOGENEOUS — it carries the frozen constant
+    b = L_i*phi_e^n at every stage. The unnormalized form mis-weights that constant (it is
+    scaled by an effective factor c_s/T_s(w0) != 1 after the final division), so the scheme
+    converges to a slightly WRONG steady state: for dY/dt = a*Y + b it lands on -c*b/a with
+    c ~= 0.992 instead of -b/a, a ~0.8% error at the default damping eps=0.05 that does NOT
+    shrink under dt refinement (a consistency error, not an order reduction). It grows with eps.
+    Proper fix = the NORMALIZED Verwer/Sommeijer RKC recurrence (their Eq. 2.7) with the
+    constant-preservation terms this form drops:
+        Y_j = (1-mu_j-nu_j)*Y_0 + mu_j*Y_{j-1} + nu_j*Y_{j-2}
+              + mu~_j*dt*F(Y_{j-1}) + gamma~_j*dt*F(Y_0)
+    using a_j = 1 - b_j*T_j(w0), gamma~_j = -a_{j-1}*mu~_j, etc. DEFERRED: RKC is opt-in AND
+    not reachable through the public bidomain() API (only via a direct BidomainSimulation with
+    diffusion_solver='explicit_rkc'); a subtly-wrong coefficient rewrite would be worse than
+    this bounded, documented error. Use decoupled_gs / semi_implicit for correctness-critical runs.
+
 Properties:
     - No parabolic linear solve (only SpMV per stage)
     - 1 elliptic solve per step (same as semi-implicit)
