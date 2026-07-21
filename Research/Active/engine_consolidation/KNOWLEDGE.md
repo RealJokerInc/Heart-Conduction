@@ -29,6 +29,18 @@
 > changed this session** (user: audit + measure first). Full ranked table + GPU characterization below ("Solver +
 > GPU audit — 2026-07-16"); next-direction plan (advanced features + Phase 2-5) in the same section.
 >
+> **SOLVER HARDENING — SHIPPED 2026-07-21** (branch `solver-hardening`, 4 commits `60acfbe`→`68b5847`, NOT merged;
+> integrity goldens bit-identical every step; full suite 260/2). Executed the audit fix-roadmap: **(1)** a shared
+> `SolverConvergenceWarning` makes every iterative solver's non-convergence LOUD (was the systemic silent finding);
+> **(2)** ported the Chebyshev preconditioned-bounds fix to mono → **07-02 M1 CLOSED** (46% err → 3e-15);
+> **(3)** advanced features — mid-run **voltage clamp** (`clamp_voltage`/`add_clamp_protocol`) + **state injection**
+> (`set_voltage`/`set_state`/`get_state`) via a per-step `_stepping_run` hook (+ gave bidomain a `step()`);
+> **(4)** pcg_spectral mixed-BC → PCG fallback (stall → 4.2e-8); IMEX-SBDF2 2nd-order extrapolation; RKC doc-deferred.
+> **HONEST FINDING:** the IMEX fix only HALVES the error — the decoupled parabolic→elliptic staggering imposes its own
+> O(dt) floor (verified on the real solver; toy repro missed it). **DEFERRED awaiting user call:** #13 GPU sync-free
+> PCG, #14 mono-ionic V5.3 alignment (both change the default path → need a regolden). Detail in the 2026-07-21
+> IDEALOG Session-Log entry; per-finding status noted in the ranked table below.
+>
 > **SHIPPED 2026-07-01 — foundation cleanup + boundary modes.** A cardiac_core+mcp adversarial audit
 > (46 findings → [CARDIAC_CORE_AUDIT.md](./CARDIAC_CORE_AUDIT.md)) drove a 3-phase cleanup ([PLAN.md](./PLAN.md)):
 > **P1** fixed the monodomain FDM anisotropic cross-derivative bug + unified the chi/D convention
@@ -560,6 +572,12 @@ isn't flagged; I independently reproduced every HIGH/MED CONFIRMED finding. Scra
 | 7 | MED | api.py:1535,1579 (bidomain factory) | Declarative isotropic bidomain always builds D_i_field → is_isotropic=False → never reaches zero-sync Tier-1 'spectral'; runs iterative pcg_spectral | perf/silent host-sync tax on the primary bidomain API |
 | 8 | MED-S | bidomain `semi_implicit.py:56`, `explicit_rkc.py:142` | Explicit-stability CFL guard uses scalar `D_i`, ignores anisotropy/field D → can pass while step is unstable | fiber/field D >~2× scalar D_i → undetected blowup |
 | 9 | LOW | mono `fft.py:368` (DC-mode zeroed); bidomain `diffusion_stepping/base.py:43` (Dirichlet bath value ignored → phi_e pinned 0); LBM `masks.py:29` (periodic-roll → periodic BC on edge-touching mask); LBM `mrt/d2q9.py:66` (docstring D formula wrong, code OK); mono/bidomain `fft.py:310` (fftfreq no dtype→float32); analysis.py np.asarray-on-cuda + restitution_curve CPU tensor | assorted | mostly unreachable via the public factory / benign defaults / cosmetic |
+
+**Fix status (shipped 2026-07-21, branch `solver-hardening`):** #1 Chebyshev-mono FIXED (preconditioned bounds);
+#2 pcg_spectral FIXED (mixed-BC → PCG fallback); #3 systemic non-convergence FIXED (shared `SolverConvergenceWarning`);
+#4 IMEX-SBDF2 PARTIAL (extrapolation added, halves error, but decoupling O(dt) floor remains — documented); #5 RKC
+DOCUMENTED-DEFERRED (needs full Verwer coefficients; doubly-gated solver); #6 mono-ionic DEFERRED (regolden + user's
+V5.3-vs-V5.4 call); #7 isotropic-bidomain→spectral DEFERRED (part of #13 GPU); #8/#9 LOW cluster untouched.
 
 **Verified-CLEAN (reassuring):** RK2/RK4/CN/BDF1/BDF2 coefficients + assembly; PCG core (Jacobi, breakdown guard,
 best-iterate); the mono **DCT eigen-operator exactly matches the assembled L** and its precondition gate is correct

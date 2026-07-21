@@ -5,9 +5,19 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**SOLVER + GPU AUDIT — DONE (2026-07-16). No solver code changed (audit + measure only, per user).**
-Tasks #6-#9 complete. 6-lane adversarial audit + empirical GPU benchmark; every HIGH/MED finding independently
-reproduced. Full ranked table + GPU characterization + the next-direction plan are in **KNOWLEDGE.md → "Solver +
+**SOLVER HARDENING — SHIPPED (2026-07-21, branch `solver-hardening`, 4 commits, NOT merged).** The audit findings
+below drove a fix campaign ("work through all"): Step 1 (non-convergence signal + Chebyshev M1 fix), Step 2 (mid-run
+voltage clamp + state injection), opt-in solver fixes (pcg_spectral mixed-BC, IMEX-SBDF2, RKC doc-defer). All
+test-gated, integrity goldens bit-identical, full suite 260/2. **DEFERRED awaiting user decision:** #13 GPU sync-free
+PCG (regolden or GPU-only) + #14 mono-ionic V5.3 alignment (regolden default — user flagged doubt it's a bug). See
+the 2026-07-21 Session-Log entry + the "Solver hardening — SHIPPED" callout in KNOWLEDGE. **NEW SIDEQUEST:** an
+"Intro to Cardiac Core" 8-lesson Jupyter tutorial series — plan at `cardiac_core/tutorials/PLAN.md` (prep-first;
+L1 single-cell → L8 bidomain infarct + mixed BC). Also assessed library packaging: importable (cardiac-core 0.1.0)
+but deps under-declared (only mcp; torch/numpy/scipy/torch_dct missing) + no README/LICENSE/__version__.
+
+**Audit provenance (2026-07-16). No solver code changed at audit time (audit + measure only).**
+6-lane adversarial audit + empirical GPU benchmark; every HIGH/MED finding independently
+reproduced. Full ranked table + GPU characterization are in **KNOWLEDGE.md → "Solver +
 GPU audit — 2026-07-16"** (the reference; scan there). Scratchpad artifacts: `gpu_bench.py`/`gpu_bench_results.json`,
 `FINDINGS_task6_gpu.md`, `AUDIT_collation.md`, `cheby_repro.py` + agent repros.
 
@@ -538,6 +548,36 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 - **sys.modules hack as permanent solution** (2026-03-17) — recognized as temporary: `_prepare_engine()` flushes modules because both engines use `cardiac_sim` namespace. Acceptable for Phase 0 wrapper but must be eliminated when shared code moves into `cardiac_core/`.
 
 ## Session Log
+
+### 2026-07-21 Session (solver hardening SHIPPED "work through all" + tutorial-plan sidequest)
+**Worked on**: Executed the audit-driven fix roadmap on branch `solver-hardening`; discussed cardiac_core as a
+proper importable+documented library; started a Jupyter tutorial-series sidequest (plan only).
+**Accomplished**:
+- **Step 1 — make failure loud + Chebyshev M1** (`60acfbe`): shared `SolverConvergenceWarning` (warn by default;
+  `filterwarnings('error', ...)` to escalate) at every non-convergence exit across mono pcg, bidomain pcg,
+  pcg_spectral, and both Chebyshev solvers. Ported `_gershgorin_bounds_preconditioned` (CH-1) to the mono Chebyshev
+  → the 07-02 **M1** bug fixed (regime sweep: 46% err → 3e-15). Immediately surfaced a real under-solved elliptic
+  solve in scar-bidomain (M4-family), previously silent. Integrity bit-identical.
+- **Step 2 — advanced features** (`91ac993`): `clamp_voltage`/`add_clamp_protocol`/`release_clamp` (per-step
+  wrapper-driven `_stepping_run`; scalar/field/callable value; verified holds a strip at exactly 10 mV every frame
+  while the rest evolves), `set_voltage`/`set_state`/`get_state`/`state_names` wired to live state. Gave the bidomain
+  engine a `step()` (was missing → wrapper `step()` had been broken for bidomain). LBM raises (V is a lattice moment).
+  17 tests. Integrity bit-identical.
+- **Opt-in solver fixes** (`68b5847`): pcg_spectral mixed-BC → falls back to plain PCG (1.8e-2 stall → 4.2e-8);
+  IMEX-SBDF2 2nd-order coupling extrapolation; RKC documented-and-deferred. 6 tests.
+- **HONEST correction (verified on the REAL solver, not the toy repro):** the IMEX "fix to 2nd order" only HALVES
+  the error — the decoupled parabolic→elliptic *staggering* imposes its own O(dt) floor that extrapolation can't
+  lift (self-convergence order stayed ~1.0 before AND after; error 6.5e-3 → 2.2e-3). Documented, not overclaimed.
+- **Full suite 260 passed / 2 xfailed** after each step; branch `solver-hardening` (4 code commits) NOT merged.
+- **Library-as-product assessment**: `cardiac-core` 0.1.0 IS pip-installed + importable with a clean lazy `__init__`;
+  BLOCKER = deps under-declared (only `mcp`; torch/numpy/scipy/torch_dct missing → clean install can't import);
+  gaps = no README/LICENSE/`__version__`, API_REFERENCE stranded in Research/ not shipped. ~65% to "importable+documented".
+- **Tutorial sidequest**: `cardiac_core/tutorials/PLAN.md` — 8 standalone lessons (L1 import+single-cell → L8 bidomain
+  infarct+mixed BC), prep-first (P0.1-P0.6). Recon: single-cell = small uniform grid + whole-domain stim (`Grid(1,1)`
+  fails, `Grid(2,2)`+ works); `ipykernel` present, must confirm `nbformat`/`nbconvert`; execute-all gate in Phase W.
+**Next**: (1) get the user's call on #13 (GPU sync-free — GPU-only vs regolden vs skip) and #14 (mono-ionic V5.3
+align + regolden vs document-only); (2) OR start tutorial Phase P0; (3) merge `solver-hardening` → main (user's call);
+(4) optional library packaging pass (declare deps, README/LICENSE/__version__, ship docs).
 
 ### 2026-07-16→17 Session (solver + GPU audit → roadmap deliverable; NO code changed)
 **Worked on**: New user direction — audit EVERY solver + a dedicated GPU-implementation audit, empirically test
