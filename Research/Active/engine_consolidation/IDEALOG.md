@@ -575,6 +575,18 @@ proper importable+documented library; started a Jupyter tutorial-series sideques
 - **Tutorial sidequest**: `cardiac_core/tutorials/PLAN.md` — 8 standalone lessons (L1 import+single-cell → L8 bidomain
   infarct+mixed BC), prep-first (P0.1-P0.6). Recon: single-cell = small uniform grid + whole-domain stim (`Grid(1,1)`
   fails, `Grid(2,2)`+ works); `ipykernel` present, must confirm `nbformat`/`nbconvert`; execute-all gate in Phase W.
+- **ADVERSARIAL AUDIT of the solver-hardening branch → CONVERGED (4 rounds).** R1 (3 lanes) found HIGH (the new
+  non-convergence warning FLOODED the default bidomain path — declarative-isotropic stores conductivity as a field →
+  is_isotropic=False → pcg_spectral breaks down at ~1e-4, warns every step, 437 in the suite; fixed via warn-ONCE-
+  per-instance), MED (clamp `_stepping_run` hardcoded mono save-cadence → extra bidomain frame when save_every==dt),
+  LOW (reason mislabel). R2 (audit-the-fix + completeness) found MED (warn-once was per-LIFETIME not per-run → reused
+  sim silent on run 2+ → added `_reset_solver_diagnostics` per-run re-arm) + 2 LOW (chebyshev check perf, clamp
+  docstring overclaim); completeness sweep found NO CRIT/HIGH/MED (GPU clamp/injection, batch/callback run-modes,
+  degenerate inputs all verified clean). R3 (audit-the-fix) found MED (my R2 "chebyshev check once per run" was
+  UNSOUND — residual is b-dependent + A not fixed across a run for bdf2/IMEX → reverted to check-every-solve, warn-
+  once-per-run). R4 CONVERGED — 1 LOW only (two vendored `SolverConvergenceWarning` classes, pre-existing/dedup).
+  Severity decayed HIGH→MED→MED→∅. Remediation commits `4003ab5`→`1b66939` + stale-stub-test fix; integrity
+  bit-identical throughout; full suite green. Total solver-hardening branch = 10 commits (4 hardening + 6 audit).
 **Next**: (1) get the user's call on #13 (GPU sync-free — GPU-only vs regolden vs skip) and #14 (mono-ionic V5.3
 align + regolden vs document-only); (2) OR start tutorial Phase P0; (3) merge `solver-hardening` → main (user's call);
 (4) optional library packaging pass (declare deps, README/LICENSE/__version__, ship docs).
