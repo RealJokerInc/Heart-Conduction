@@ -50,6 +50,16 @@ on-device, per-snapshot; accept `(Nx,Ny)` or `(T,Nx,Ny)`:
 - `curl(vector) -> scalar`  (2-D curl = ∂vy/∂x − ∂vx/∂y, the z-component)
 - `laplacian(scalar) -> scalar`  (= `div(grad(·))`)
 
+### Vector-field representation (DECISION)
+A vector field is stored as **components on the LAST axis, `(..., 2)`** — `grad(Vm (T,Nx,Ny))` →
+`(T,Nx,Ny,2)`; a LAT-based `velocity` → `(Nx,Ny,2)` (no time axis). Same rule whether or not a time
+axis is present (the leading `...` absorbs it). Rationale: it's what `grad` naturally returns,
+`[...,0]/[...,1]` are x/y, `norm(v, dim=-1)` is the magnitude, and the integral dot-products
+(`(v*n).sum(-1)` for flux/circulation) are clean. Wrap it in a light `VectorField` so users never
+index a raw axis: `.x`, `.y`, `.magnitude`, `.angle`, `.components` (the raw `(...,2)` tensor).
+On disk / cache: store the `(...,2)` tensor (npz-friendly). NOT chosen: separate `vx,vy` tensors or
+`(2,...)` first-axis (both fight the scalar shape and broadcasting).
+
 ## Named fields — `r.fields.<name>` (pre-saved, cached)
 The canonical fields worth naming — the ones you visualize AND feed to `integrals`. Names say WHAT
 they act on; each **commits to its base field + operator** (so the identity-zero trap can't happen):
@@ -73,6 +83,23 @@ compute its `circulation` from the same array; take `voltage_flux` and its `net-
 one flux array. Cache is invalidated if the underlying `Vm`/`LAT`/`boundary_mode` changes (a
 `scale_conductance`/`reset` clears it). Optional eager mode: record chosen named fields alongside
 `Vm` during the run (heavier; connects to the deferred probe).
+
+## GATE: scrutinize LAT *before* trusting the LAT-based fields (TODO, later)
+Half the named fields (`velocity`, `direction`, `speed`, `curvature`, `vorticity`) are built on the
+activation-time map `LAT`, so they INHERIT every definitional choice in `LAT`. Pin + document these
+first, or the fields are precise numbers on a shaky base:
+- **Activation criterion** — threshold crossing (V > θ) vs max-`dV/dt` (upstroke) vs interpolated
+  crossing. Changes `LAT`, hence CV and (especially) curvature. Confirm what `activation_time` uses.
+- **Sub-frame interpolation** — `LAT` resolution is capped by `save_every` unless the crossing time
+  is interpolated between frames; coarse `LAT` → noisy gradient → noisy curvature. (`activation_time_interp`
+  exists — is it the default?)
+- **Non-activating nodes** — scar/block never crosses → NaN; how do grad/div behave with NaN
+  neighbors at a block edge? (ties to the domain_mask boundary rule.)
+- **Multi-beat / re-activation** — with pacing or REENTRY a node activates many times; `LAT` = first
+  crossing is ill-defined. For reentry, `LAT` breaks down → use **phase** (`phase_map` /
+  `phase_singularities`), not `LAT`-based velocity/curvature. Document this limit loudly.
+- **Threshold sensitivity** — CV and curvature are sensitive to θ; expose it, don't hardcode.
+This is a review GATE, not a blocker for the Vm/φ_e fields (which don't touch `LAT`).
 
 ## Boundary handling — SAME as the tissue edge boundary (DECISION)
 The derivative stencils MUST use the **same edge treatment as the simulation** (its `boundary_mode`,
@@ -141,6 +168,20 @@ test per theorem validates BOTH tiers and the boundary handling at once.
   (one boundary-aware gradient implementation, not a numpy one and a torch one drifting apart); keep
   `fit_eikonal` as a thin consumer of `r.fields.speed` + `r.fields.curvature`. Do this once the
   primitive layer is proven — then front_metrics becomes a compatibility shim, not a 2nd impl.
+
+## Adjacent analysis additions (SEPARATE TRACK — scalar EP metrics, not fields)
+High-level clinical/EP metrics that COMPOSE field + point measurements into one number. Different
+category from the field operators; live under top-level `analysis`, not `analysis.fields`. Wishlist:
+- **`analysis.wavelength`** — the big one. **λ = CV · ERP** (the reentry master variable; `CV · APD`
+  is a common proxy). Computing it by hand today is a pain: get CV, get ERP/APD, reconcile units,
+  handle NaN/block. Make it one call with the choices EXPOSED: `λ = CV·ERP` vs `CV·APD`; CV local
+  (at a site) vs global; which APD% / ERP definition. (ERP ≈ APD but rate-dependent — `CV·ERP` is
+  the physiologically-correct reentry form; note in the ionic-optimization work λ is the master var.)
+- **`analysis.apd`** — consolidate + complete: APD at % (APD90/50/30), APD restitution, per-beat.
+  Partly exists (`apd_at`/`apd_map`/`apd_per_beat`) — unify + fill gaps.
+- **`erp`, `di`, safety factor** — effective refractory period, diastolic interval, source–sink
+  safety factor ("... or stuff").
+Separate build track from the `fields` branch; captured here so it isn't lost.
 
 ## Out of scope here (separate items)
 - **Probe** (point + dt-resolution recorder that these operators evaluate on for local-property
