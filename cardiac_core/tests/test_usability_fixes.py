@@ -250,12 +250,15 @@ def test_spectral_solvers_reject_unsupported_configs():
 # Phase 3 — stub de-trap + scale_conductance / set_conductivity implementations
 # ===========================================================================
 def test_stubs_have_informative_errors():
-    """De-trapped stubs raise NotImplementedError with a message naming the route."""
+    """Still-unimplemented stubs raise NotImplementedError with a message naming the route.
+
+    NOTE: get_state / set_state / set_voltage / clamp_voltage / add_clamp_protocol /
+    release_clamp were IMPLEMENTED on the solver-hardening branch (mid-run voltage clamp +
+    state injection) — they are tested in test_advanced_features.py and no longer stubs.
+    The methods below remain unimplemented.
+    """
     sim = monodomain(create_cardiac_mesh(0.2, 0.12, 0.02, D=1e-3, chi=1.0), stimulus=_stim())
-    mask = np.ones((11, 7), dtype=bool)
-    for call in (lambda: sim.get_state('m'),
-                 lambda: sim.clamp_voltage(mask, -20.0),
-                 lambda: sim.compute_cv(0.0, 0.1, 0.05),
+    for call in (lambda: sim.compute_cv(0.0, 0.1, 0.05),
                  lambda: sim.set_parameter('GNa', 1.0),
                  lambda: sim.add_probe('apex', 0.05, 0.05)):
         with pytest.raises(NotImplementedError) as ei:
