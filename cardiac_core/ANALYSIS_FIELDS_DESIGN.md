@@ -99,6 +99,16 @@ and the eikonal path yield DIFFERENT CV/curvature from the same run. Neither use
 the LAT fields, pick ONE canonical LAT (recommend: interpolated crossing, single agreed threshold,
 torch/on-device) and route `r.lat()` + eikonal + the named fields all through it.
 
+**BLAST RADIUS — the two conventions are split across the DEFAULT hooks vs the RESEARCH path:**
+- `−20 mV, nearest-frame`: `r.lat()` (`activation_time`), `r.cv()` (`conduction_velocity` computes its
+  OWN nearest-frame crossing at −20), and `apd_map` (uses `activation_time` as reference). = what a
+  casual user gets.
+- `−40 mV, interpolated`: `activation_time_interp` → `test_eikonal_metrics`, `front_metrics`, the
+  **`source_sink_mismatch_investigation`** research + the **`fig4c_sourcesink`** experiments. = what
+  the source–sink / curvature figures were actually made with.
+So `r.cv()` (−20 nearest) ≠ the eikonal CV (−40 interp) on the SAME run — a silent, undocumented
+discrepancy. Documented as a real finding in engine_consolidation KNOWLEDGE + IDEALOG.
+
 Full scrutiny checklist:
 - **Activation criterion** — threshold crossing (V > θ) vs max-`dV/dt` (upstroke) vs interpolated
   crossing. Changes `LAT`, hence CV and (especially) curvature. Confirm what `activation_time` uses.

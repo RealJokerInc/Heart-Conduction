@@ -41,6 +41,21 @@
 > PCG, #14 mono-ionic V5.3 alignment (both change the default path → need a regolden). Detail in the 2026-07-21
 > IDEALOG Session-Log entry; per-finding status noted in the ranked table below.
 >
+> **⚑ OPEN BIG ISSUE — LAT is defined THREE inconsistent ways (found 2026-07-21, analysis layer).**
+> Activation time (LAT) — the base of CV, activation maps, curvature, and the whole wavefront/eikonal
+> analysis — has NO single definition. `activation_time` / `r.lat()` = first frame `V ≥ −20 mV`,
+> **nearest save-point (no interpolation)**, torch; `conduction_velocity` / `r.cv()` computes its OWN
+> **nearest-frame** crossing at −20; `apd_map` uses `activation_time`. BUT `activation_time_interp` =
+> **linearly-interpolated** crossing at **−40 mV** (numpy) — and THAT is what `front_metrics`/eikonal,
+> the **source_sink_mismatch_investigation** research, and the **fig4c_sourcesink** experiments use.
+> So the DEFAULT hooks (−20, nearest, frame-quantized) and the RESEARCH path (−40, interpolated,
+> sub-frame) give **different CV/curvature on the same run, silently**. Neither uses max-`dV/dt`; both
+> are first-crossing (ill-defined for reentry → should use phase). **Fix (not yet done): unify to ONE
+> canonical LAT** — interpolated crossing, one agreed threshold, torch/on-device — and route `r.lat()`
+> + `r.cv()` + eikonal + the planned `fields` velocity/curvature all through it; document the reentry
+> limit. Cross-refs source_sink_mismatch (uses the −40 interp path). Detail:
+> [ANALYSIS_FIELDS_DESIGN.md](../../../cardiac_core/ANALYSIS_FIELDS_DESIGN.md) § LAT gate.
+>
 > **SHIPPED 2026-07-01 — foundation cleanup + boundary modes.** A cardiac_core+mcp adversarial audit
 > (46 findings → [CARDIAC_CORE_AUDIT.md](./CARDIAC_CORE_AUDIT.md)) drove a 3-phase cleanup ([PLAN.md](./PLAN.md)):
 > **P1** fixed the monodomain FDM anisotropic cross-derivative bug + unified the chi/D convention
