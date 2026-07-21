@@ -1,19 +1,22 @@
-# Design: `cardiac_core.analysis` field branch — differential + integral tiers
+# Design: `cardiac_core.analysis.fields` — derivatives + integrals
 
 > Status: DESIGNED (2026-07-21, design conversation). NOT yet implemented. Separate from the
 > probe feature (deferred) and from the `r.grid()`/`r.coord()` ergonomics (small, separate).
 
-## Purpose
-A dedicated analysis branch with **two tiers**, sharing one gradient implementation and one set of
-boundary rules:
-1. **Differential tier** (`analysis.fields`) — LOCAL operators on time-resolved fields: gradient,
-   divergence, curl, Laplacian, computed on `Vm`, `phi_e`, or `LAT`, per-snapshot
-   (e.g. `grad Vm` at every frame → `(T, Nx, Ny, 2)`).
-2. **Integral tier** (`analysis.integrals`) — GLOBAL line/region integrals, each the Stokes/
-   divergence-theorem PARTNER of a local operator (which gives a built-in consistency check).
+## Purpose & structure
+The whole branch **operates on fields** — scalar fields (`Vm`, `phi_e`, `LAT`) or vector fields
+derived from them. Because that is the shared input, `fields` is the PARENT namespace, with two
+symmetric sub-tiers under it (one gradient implementation + one set of boundary rules shared):
+
+- **`analysis.fields.derivatives`** — LOCAL operators, field → field: gradient, divergence, curl,
+  Laplacian, computed per-snapshot (e.g. `grad Vm` at every frame → `(T, Nx, Ny, 2)`).
+- **`analysis.fields.integrals`** — GLOBAL reductions, field → number over a region/contour: line
+  and region integrals, each the Stokes/divergence-theorem PARTNER of a `derivatives` operator
+  (which gives a built-in consistency check).
 
 Both torch-native and on-device (fixes the GPU gap: `front_metrics` is numpy/CPU and crashes on a
-cuda tensor).
+cuda tensor). Naming rule: `fields.derivatives.*` returns fields; `fields.integrals.*` returns
+numbers (or per-frame number series). Everything, both tiers, takes a field as its first argument.
 
 ## The precision principle (load-bearing)
 Operators are **typed by the field they consume**, and the branch is explicit about *which* field
@@ -31,7 +34,7 @@ each named quantity differentiates — because the math is NOT interchangeable:
 gradient must be a distinct, guarded call (or refused), while curl-of-velocity is the meaningful one.
 "curl of the velocity field" and "curl of ∇V" are DIFFERENT calls with different return semantics.
 
-## API shape
+## `fields.derivatives` — API (local operators, field → field)
 1. **Primitive operators** (torch, on-device, per-snapshot; accept `(Nx,Ny)` or `(T,Nx,Ny)`):
    - `grad(scalar) -> vector`  (returns `(...,2)`; components ∂/∂x, ∂/∂y)
    - `div(vector) -> scalar`
@@ -52,9 +55,9 @@ source the solver actually saw — not a numpy-default one-sided edge. Consequen
   the mask (mirror / one-side at hole borders, NaN masked-out nodes) or divergence/curvature blows
   up at hole edges. Reuse the engine's `boundary_mode`/`stencil` convention, not a generic edge rule.
 
-## Integral tier — `cardiac_core.analysis.integrals`
-Global line/region integrals. Each is a Stokes/divergence-theorem partner of a local operator, so
-the two tiers cross-check (see Consistency test).
+## `fields.integrals` — API (global reductions, field → number)
+Global line/region integrals. Each is a Stokes/divergence-theorem partner of a `fields.derivatives`
+operator, so the two tiers cross-check (see Consistency test).
 
 ### Line / contour integrals ("global curvature" family)
 | quantity | integral | = (theorem) | meaning |
@@ -113,8 +116,9 @@ test per theorem validates BOTH tiers and the boundary handling at once.
 - **`r.grid(x,y)` / `r.coord(ix,iy)`** coord↔index ergonomics — small, separate, can land anytime.
 
 ## Open decisions
-- Exact home/name: `cardiac_core/analysis/{fields,integrals}.py` (submodules) vs a `FieldAnalysis`/
-  `Integrals` class pair.
+- Exact home/name: a `fields` SUBPACKAGE — `cardiac_core/analysis/fields/{derivatives,integrals}.py`
+  (`from cardiac_core.analysis.fields import derivatives, integrals`) vs a `Fields` facade exposing
+  `.derivatives`/`.integrals`. Either way the two tiers live under one `fields` parent.
 - Whether operators default to `face_mirror` when no boundary is supplied, or require it explicitly.
 - Second-order-interior vs matching the engine's exact `stencil` (`cardinal4` vs `moore8`) so
   curvature at edges is bit-consistent with the solved physics.
