@@ -89,6 +89,9 @@ class PCGSolver(LinearSolver):
         # Stats from last solve
         self.last_stats: Optional[SolverStats] = None
 
+        # Non-convergence is warned at most once per instance (avoid per-step flooding)
+        self._nonconv_warned: bool = False
+
     def _allocate_workspace(
         self,
         n: int,
@@ -186,6 +189,7 @@ class PCGSolver(LinearSolver):
         rz = torch.dot(r, z)
 
         converged = False
+        broke_down = False
         k = 0
 
         for k in range(self.max_iters):
@@ -196,6 +200,7 @@ class PCGSolver(LinearSolver):
             # alpha = rz / (p^T * Ap)
             pAp = torch.dot(p, Ap)
             if pAp.abs() < 1e-30:
+                broke_down = True
                 break
             alpha = rz / pAp
 
@@ -234,10 +239,14 @@ class PCGSolver(LinearSolver):
             initial_residual_norm=r0_norm
         )
 
-        # Make a silently under-solved step loud (converging steps never reach here).
-        if not converged:
+        # Make a silently under-solved step loud. Warn ONCE per solver instance: a solver
+        # that chronically can't reach tol (e.g. a poorly-preconditioned elliptic tier) would
+        # otherwise emit one warning PER STEP and flood the log, training users to ignore it.
+        if not converged and not self._nonconv_warned:
             warn_nonconvergence('PCG', k + 1, self.last_stats.residual_norm,
-                                b_norm.item(), self.tol)
+                                b_norm.item(), self.tol,
+                                reason="breakdown" if broke_down else "max_iters")
+            self._nonconv_warned = True
 
         if return_stats:
             return x.clone(), self.last_stats

@@ -49,6 +49,25 @@ def test_pcg_silent_when_converged():
     assert not any(issubclass(x.category, SolverConvergenceWarning) for x in w)
 
 
+def test_nonconvergence_warns_at_most_once_per_run():
+    # Regression (audit R1, Lane A): a chronically under-converging elliptic tier (default
+    # declarative bidomain hits pcg_spectral breakdown at ~1e-4) must warn ONCE per run, not
+    # once per step (437-warning flood otherwise). Also checks the 'breakdown' reason label.
+    import cardiac_core as cc
+    g = cc.Grid(41, 41, 0.02)
+    cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        cc.bidomain(g, "ttp06", cond, stim, dt=0.05).run(t_end=2.0, save_every=0.5)  # ~40 steps
+    # NOTE: match by category NAME — the mono and bidomain trees each define their own
+    # SolverConvergenceWarning class (copy-vendoring), so a bidomain run emits the bidomain
+    # class; both subclass UserWarning. (A single shared class awaits the Phase-4 dedup.)
+    hits = [x for x in w if x.category.__name__ == "SolverConvergenceWarning"]
+    assert len(hits) == 1, f"expected 1 non-convergence warning per run, got {len(hits)}"
+    assert "breakdown" in str(hits[0].message)   # correct reason, not the old 'max_iters' mislabel
+
+
 def test_convergence_warning_escalates_to_error():
     A, b = _spd(60), torch.randn(60)
     with warnings.catch_warnings():

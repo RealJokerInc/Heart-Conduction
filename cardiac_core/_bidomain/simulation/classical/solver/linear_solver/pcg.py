@@ -188,6 +188,7 @@ class PCGSolver(LinearSolver):
         rz = torch.dot(r, z)
 
         converged = False
+        broke_down = False
         k = 0
 
         for k in range(self.max_iters):
@@ -201,6 +202,7 @@ class PCGSolver(LinearSolver):
             # naturally as CG converges — do NOT threshold on magnitude.
             pAp = torch.dot(p, Ap)
             if pAp <= 0.0:
+                broke_down = True
                 break
             alpha = rz / pAp
 
@@ -239,10 +241,13 @@ class PCGSolver(LinearSolver):
             initial_residual_norm=r0_norm
         )
 
-        # Make a silently under-solved step loud (converging steps never reach here).
-        if not converged:
+        # Make a silently under-solved step loud — but warn ONCE per instance so a
+        # chronically under-converging elliptic tier can't flood the log every step.
+        if not converged and not getattr(self, '_nonconv_warned', False):
             warn_nonconvergence('PCG', k + 1, self.last_stats.residual_norm,
-                                b_norm.item(), self.tol)
+                                b_norm.item(), self.tol,
+                                reason="breakdown" if broke_down else "max_iters")
+            self._nonconv_warned = True
 
         if return_stats:
             return x.clone(), self.last_stats

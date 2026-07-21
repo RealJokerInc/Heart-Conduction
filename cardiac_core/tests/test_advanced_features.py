@@ -148,6 +148,23 @@ def test_lbm_clamp_and_injection_raise():
 
 # --- bidomain parity --------------------------------------------------------
 
+def test_clamp_frame_cadence_matches_unclamped_bidomain():
+    # Regression (audit R1, Lane B): _stepping_run must use the engine's OWN save-cadence
+    # tolerances. Bidomain.run uses t_end-1e-12; the trigger is save_every == dt, where a
+    # wrong tolerance emits one extra trailing frame past t_end (101 vs 100).
+    g = Grid(24, 16, 0.02)
+    cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    ctrl = bidomain(g, "ttp06", cond, stim, dt=0.05).run(t_end=5.0, save_every=0.05)  # save_every == dt
+    cl_sim = bidomain(g, "ttp06", cond, stim, dt=0.05)
+    m = np.zeros((24, 16), bool); m[:6, :] = True
+    cl_sim.clamp_voltage(m, 10.0)
+    cl = cl_sim.run(t_end=5.0, save_every=0.05)
+    assert cl.Vm.shape[0] == ctrl.Vm.shape[0]          # same frame count
+    assert torch.allclose(cl.times, ctrl.times)         # same frame times
+    assert float(cl.times[-1]) <= 5.0 + 1e-9            # no overshoot past t_end
+
+
 def test_clamp_works_on_bidomain():
     g = Grid(40, 16, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)

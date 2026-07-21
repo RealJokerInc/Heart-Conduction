@@ -100,6 +100,7 @@ class PCGSpectralSolver(LinearSolver):
         rz = torch.dot(r, z)
 
         converged = False
+        broke_down = False
         iters = 0
 
         for k in range(self.max_iters):
@@ -110,6 +111,7 @@ class PCGSpectralSolver(LinearSolver):
             # Scale-relative pAp threshold (matches PCG fix PCG-1)
             if pAp.abs() < 1e-14 * b_norm * b_norm:
                 iters = k + 1
+                broke_down = True
                 break
             alpha = rz / pAp
 
@@ -126,6 +128,7 @@ class PCGSpectralSolver(LinearSolver):
             rz_new = torch.dot(r, z)
             if rz.abs() < 1e-30:
                 iters = k + 1
+                broke_down = True
                 break
             beta = rz_new / rz
             p.mul_(beta).add_(z)
@@ -136,10 +139,15 @@ class PCGSpectralSolver(LinearSolver):
         self.last_iters = iters
         self.last_converged = converged
         # Surface a silently under-solved elliptic solve (this feeds phi_e -> the Vm RHS).
-        if not converged:
+        # Warn ONCE per instance: the default declarative-bidomain elliptic tier chronically
+        # breaks down below tol (pre-existing; the isotropic spectral preconditioner on a
+        # field-stored sigma_i!=sigma_e operator) — warning per step would flood every run.
+        if not converged and not getattr(self, '_nonconv_warned', False):
             r_final = torch.norm(r)
             warn_nonconvergence('PCGSpectral', iters, r_final.item(),
-                                b_norm.item(), self.tol)
+                                b_norm.item(), self.tol,
+                                reason="breakdown" if broke_down else "max_iters")
+            self._nonconv_warned = True
         self._last_solution = x.clone()
         self._has_warm_start = True
         return x.clone()

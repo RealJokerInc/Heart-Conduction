@@ -1083,14 +1083,22 @@ class CardiacSimulation:
         Mirrors the engine's own run() save cadence (step, t+=dt, save when t crosses the
         next save point) but injects _apply_clamp() each step. Used only when a clamp is
         active; the unclamped path stays on the fast engine.run() loop (goldens untouched).
+
+        The loop/save tolerances MUST match the underlying engine's run() exactly, or a
+        clamped run drifts from its unclamped control by a trailing frame. Monodomain.run
+        uses `t < t_end` / `t >= next_save - 1e-9`; bidomain.run uses the stricter
+        `t < t_end - 1e-12` / `t >= next_save - 1e-12`.
         """
-        eps = 1e-9
+        if self._engine_type == 'bidomain':
+            end_eps, save_eps = 1e-12, 1e-12
+        else:  # monodomain
+            end_eps, save_eps = 0.0, 1e-9
         next_save = save_every
         self._apply_clamp()   # enforce at t=0 as well
-        while self.t < t_end:
+        while self.t < t_end - end_eps:
             self._engine.step()
             self._apply_clamp()
-            if self.t >= next_save - eps:
+            if self.t >= next_save - save_eps:
                 next_save += save_every
                 yield self._snapshot_current(record)
 

@@ -284,7 +284,7 @@ class ChebyshevSolver(LinearSolver):
         # too-loose count / bad bounds silently returns a wrong answer. One end-of-solve
         # residual check (a single sync, like the DCT path) makes that loud without
         # touching the returned x.
-        if self.tol is not None:
+        if self.tol is not None and not getattr(self, '_nonconv_warned', False):
             Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
             b_norm = torch.norm(b)
             r_norm = torch.norm(b - Ax)
@@ -292,6 +292,7 @@ class ChebyshevSolver(LinearSolver):
                 warn_nonconvergence('Chebyshev', self.max_iters,
                                     r_norm.item(), b_norm.item(), self.tol,
                                     reason="fixed iteration count")
+                self._nonconv_warned = True
 
         return x.clone()
 

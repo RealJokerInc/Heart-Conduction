@@ -291,7 +291,7 @@ class ChebyshevSolver(LinearSolver):
 
         # Fixed-count iteration has no in-loop convergence test; one end-of-solve residual
         # check (a single sync) makes a too-loose count / near-singular operator loud.
-        if self.tol is not None:
+        if self.tol is not None and not getattr(self, '_nonconv_warned', False):
             Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
             b_norm = torch.norm(b)
             r_norm = torch.norm(b - Ax)
@@ -299,6 +299,7 @@ class ChebyshevSolver(LinearSolver):
                 warn_nonconvergence('Chebyshev', self.max_iters,
                                     r_norm.item(), b_norm.item(), self.tol,
                                     reason="fixed iteration count")
+                self._nonconv_warned = True
 
         return x.clone()
 
