@@ -49,16 +49,32 @@
       source-of-truth per lesson (recommended — keeps cells reviewable/diffable), OR author
       JSON directly. Pick nbformat; write a tiny `_build_notebook.py` scaffold.
 
-### P0.2 — Single-cell approach (LOAD-BEARING for Lesson 1) — RESOLVED, verify
-- [ ] Teaching path = **small uniform grid + whole-domain stimulus** (verified: `Grid(1,1)`
-      raises `IndexError`; `Grid(2,2)`/`(3,3)` work). Uniform field ⇒ zero Laplacian ⇒ pure
-      0-D cell dynamics. Read the center node (or `.mean()`). Confirm it yields a clean single
-      AP (rest → upstroke → plateau → repol) with no propagation artifact.
-- [ ] OPTIONAL enhancement (decide, don't assume): add a documented `single_cell()` helper to
-      `tutorial_helpers.py` (wraps the small-uniform-grid trick) so Lesson 1 is ONE clean call.
-      Under-the-hood aside can show `cardiac_core.ionic.TTP06Model.step` as the "true 0-D" path
-      (has `step`/`compute_Iion`/`state_names`; note: no public `initial_states` → source resting
-      state from `V_rest` + the model's default state build).
+### P0.2 — Single-cell: a DEDICATED `cardiac_core.single_cell()` feature (DECIDED — build it)
+This is a real library feature, not a tutorial crutch. **Decision (2026-07-21, user): tap the
+ionic engine directly (true 0-D), consistent API.** Rationale: single-cell was ALWAYS done by
+integrating the ionic model directly — no grid, no diffusion (see `Surrogate/surrogate/data/
+single_cell_generator.py` + the Optimizer). cardiac_core's ionic layer already exposes everything
+needed — `TTP06Model.get_initial_state(n_cells=1)` + `model.step(V, states, dt, I_stim)` — it just
+isn't wrapped. The "small uniform grid" trick is REJECTED (dishonest: it's secretly 3×3 tissue).
+- [ ] **Implement `cardiac_core.single_cell(...)`** wrapping the ionic-direct loop: build resting
+      state via `get_initial_state`, run the monolithic `model.step(V, states, dt, I_stim)` loop
+      under a stimulus schedule, package `(times, V(t), states)` into a result. Closes the
+      usability-audit gap ("no 0-D single-cell mode / clean single-cell automaticity IMPOSSIBLE via
+      the public API"). Export at top level (`cc.single_cell`).
+- [ ] **CONSISTENT API (user requirement):** reuse the SAME stimulus vocabulary as the tissue
+      factories — the `{start_time, duration, amplitude}` dict / `Stimulus` (the spatial `region`
+      is simply omitted → the whole cell). So Lesson 1 teaches the exact stimulus keys used in
+      Lessons 2-8; the only thing that drops away is geometry. Signature target:
+      `single_cell(model="ttp06", stim=..., t_end=..., dt=..., cell_type=...) -> result` with
+      `result.times`, `result.V`, `result.states` (+ `apd_at`/analysis reusable on `result.V`).
+- [ ] **Two properties to VERIFY (expected to hold):** (a) it sidesteps the #14 mono-ionic
+      ordering bug — `model.step` is the monolithic V5.3 path (currents from OLD gates), so
+      single-cell is correct by construction; (b) `single_cell("ord")` likely WORKS even though
+      `monodomain("ord")` raises (the ORd single-cell generator already uses the monolithic step) —
+      confirm, and if so it makes ORd reachable for single-cell.
+- [ ] Tests: resting cell stays at rest (no drift); a supra-threshold stim fires one clean AP
+      (rest→upstroke→plateau→repol); sub-threshold does not; APD90 in the physiological band;
+      determinism (fixed dt → bit-reproducible). Land in `cardiac_core/tests/`.
 
 ### P0.3 — API-surface audit (lock the exact calls each lesson uses)
 - [ ] Run the `API_CHEATSHEET.md` `# runnable-canary` block; confirm it passes on this branch.
@@ -84,9 +100,11 @@
       annotations are correct.
 
 ### P0.5 — Notebook template + helper module
-- [ ] `tutorial_helpers.py`: `plot_ap(times, V)`, `plot_field(grid2d, title)`,
-      `plot_isochrones(lat)`, `plot_two(a, b, labels)`, `single_cell(model='ttp06', ...)`,
-      `measure_cv(result, ...)` thin wrappers. Fully docstring'd; import-light (matplotlib only).
+- [ ] `tutorial_helpers.py`: PLOTTING/util only — `plot_ap(times, V)`, `plot_field(grid2d, title)`,
+      `plot_isochrones(lat)`, `plot_two(a, b, labels)`, `measure_cv(result, ...)`. Fully
+      docstring'd; import-light (matplotlib only). NOTE: `single_cell()` is NOT here — it's a
+      first-class `cardiac_core` API (P0.2), so Lesson 1 imports it from `cc`, same as every other
+      simulation call. The helpers are strictly for figures, never for simulation.
 - [ ] A `TEMPLATE.ipynb` (or the nbformat scaffold) encoding the Rhythm above, so lessons are
       structurally uniform.
 
@@ -94,8 +112,10 @@
 - [ ] Finalize the 8-lesson arc + one-line objective each (below). Note bonus/future lessons
       (voltage-clamp APD protocol using the new `clamp_voltage`; reentry/rotor) as **not** in v1.
 
-**P0 exit criteria**: helper module runs; template executes clean; single-cell approach yields a
-correct AP; every lesson's API calls verified; parameter numbers recorded. THEN author lessons.
+**P0 exit criteria**: `cc.single_cell()` implemented + tested (correct AP, ORd checked); helper
+module runs; template executes clean; every lesson's API calls verified; parameter numbers
+recorded. THEN author lessons. (P0.2 `single_cell` is the one code change to the library — commit
+it independently, goldens bit-identical since it's additive.)
 
 ---
 
@@ -105,10 +125,13 @@ Each lesson section, when authored, must produce: (1) the `.ipynb`, (2) a `--exe
 no errors, (3) inline figures, (4) 1–2 exercises with expected outcomes, (5) a README row.
 
 ### L1 — `01_hello_action_potential.ipynb` — Import & your first single-cell recording
-- **Learn**: install-check + `import cardiac_core as cc`; run ONE cell; plot V(t); name the 4 AP
-  phases; read APD90. **API**: `single_cell()` helper (small uniform grid), `plot_ap`, `apd_at`.
+- **Learn**: install-check + `import cardiac_core as cc`; run ONE cell with `cc.single_cell("ttp06",
+  stim=...)` — TRUE 0-D, one cell, no tissue; plot V(t); name the 4 AP phases; read APD90. The
+  `stim` uses the SAME `{start_time, duration, amplitude}` keys the tissue lessons use (just no
+  spatial region) — so the stimulus vocabulary carries straight into Lesson 3+. **API**:
+  `cc.single_cell`, `plot_ap`, `apd_at`.
 - **Exercise**: change stimulus amplitude; find the threshold below which nothing fires.
-- **Recap**: what an AP is, how to run one, how to read APD.
+- **Recap**: what an AP is, how to run one cell, how to read APD; a cell has no CV (that's Lesson 3).
 
 ### L2 — `02_sodium_and_excitability.ipynb` — GNa: the sodium channel & the upstroke
 - **Learn**: `scale_conductance('GNa', f)`; overlay APs at 0.5×/1×/1.5×; measure max dV/dt;
@@ -172,8 +195,11 @@ no errors, (3) inline figures, (4) 1–2 exercises with expected outcomes, (5) a
 - [ ] Cross-link from `API_CHEATSHEET.md` ("new here? start with tutorials/").
 
 ## Risks / open decisions (resolve during P0)
-1. **Single-cell helper vs inline trick** — recommend the helper (cleaner L1) but keep an
-   under-the-hood cell showing the mechanism.
+1. **Single-cell** — DECIDED (2026-07-21, user): a dedicated `cc.single_cell()` cardiac_core
+   feature (ionic-direct, true 0-D), NOT the uniform-grid trick, with a stimulus API consistent
+   with the tissue factories. This is a real library addition that closes the audit's "no 0-D
+   mode" gap. Build + test in P0.2 before any lesson. Open sub-question: exact result object /
+   whether to also expose a bare pacing shortcut (defer — start with the consistent-stim signature).
 2. **`nbformat`/`nbconvert` install** — confirm early; the whole authoring/testing loop needs them.
 3. **Runtime creep** — L5 (two engines) and L8 (bidomain) are the slowest; keep grids small and
    `t_end` short; pre-verify each < ~90 s.
