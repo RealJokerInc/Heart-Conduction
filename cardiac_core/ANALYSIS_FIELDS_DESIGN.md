@@ -5,18 +5,23 @@
 
 ## Purpose & structure
 The whole branch **operates on fields** — scalar fields (`Vm`, `phi_e`, `LAT`) or vector fields
-derived from them. Because that is the shared input, `fields` is the PARENT namespace, with two
-symmetric sub-tiers under it (one gradient implementation + one set of boundary rules shared):
+derived from them. Because that is the shared input, `fields` is the PARENT namespace, with three
+layers under it (one gradient implementation + one set of boundary rules shared across all):
 
-- **`analysis.fields.derivatives`** — LOCAL operators, field → field: gradient, divergence, curl,
-  Laplacian, computed per-snapshot (e.g. `grad Vm` at every frame → `(T, Nx, Ny, 2)`).
-- **`analysis.fields.integrals`** — GLOBAL reductions, field → number over a region/contour: line
-  and region integrals, each the Stokes/divergence-theorem PARTNER of a `derivatives` operator
-  (which gives a built-in consistency check).
+- **`fields.derivatives`** — LOCAL operators, field → field: gradient, divergence, curl, Laplacian,
+  computed per-snapshot (e.g. `grad Vm` at every frame → `(T, Nx, Ny, 2)`). The *verbs* / machinery.
+- **`fields.derived`** — NAMED physical fields built from the operators and **cached/pre-saved**:
+  flux, velocity, source–sink, E-field, curvature, vorticity. The *nouns* — what you actually
+  visualize AND feed to the integrals. (Full catalog below.)
+- **`fields.integrals`** — GLOBAL reductions, field → number over a region/contour: line and region
+  integrals, each the Stokes/divergence-theorem PARTNER of a `derivatives` operator (built-in
+  consistency check). Consume `derived` fields.
 
-Both torch-native and on-device (fixes the GPU gap: `front_metrics` is numpy/CPU and crashes on a
-cuda tensor). Naming rule: `fields.derivatives.*` returns fields; `fields.integrals.*` returns
-numbers (or per-frame number series). Everything, both tiers, takes a field as its first argument.
+Both computed layers are torch-native and on-device (fixes the GPU gap: `front_metrics` is numpy/CPU
+and crashes on a cuda tensor). Naming rule: `derivatives.*` returns fields, `derived.*` returns
+(cached) fields, `integrals.*` returns numbers; **all three take a field as their first argument.**
+(Naming nit to settle: `derivatives` vs `derived` read alike — candidate rename `fields.physical` or
+`fields.maps` for the middle layer; see Open decisions.)
 
 ## The precision principle (load-bearing)
 Operators are **typed by the field they consume**, and the branch is explicit about *which* field
@@ -35,15 +40,36 @@ gradient must be a distinct, guarded call (or refused), while curl-of-velocity i
 "curl of the velocity field" and "curl of ∇V" are DIFFERENT calls with different return semantics.
 
 ## `fields.derivatives` — API (local operators, field → field)
-1. **Primitive operators** (torch, on-device, per-snapshot; accept `(Nx,Ny)` or `(T,Nx,Ny)`):
-   - `grad(scalar) -> vector`  (returns `(...,2)`; components ∂/∂x, ∂/∂y)
-   - `div(vector) -> scalar`
-   - `curl(vector) -> scalar`  (2-D curl = ∂vy/∂x − ∂vx/∂y, the z-component)
-   - `laplacian(scalar) -> scalar`  (= `div(grad(·))`)
-2. **Named physical quantities** (each commits to its source field, so the identity-zero trap can't
-   happen): `voltage_gradient(Vm)`, `electrotonic_source(Vm)` = ∇²Vm, `efield(phi_e)`,
-   `velocity_field(lat)`, `wavefront_curvature(lat)` = div(n̂), `vorticity(velocity_field)` =
-   curl(v).
+**Primitive operators only** (the machinery; named physical fields live in `fields.derived`). Torch,
+on-device, per-snapshot; accept `(Nx,Ny)` or `(T,Nx,Ny)`:
+- `grad(scalar) -> vector`  (returns `(...,2)`; components ∂/∂x, ∂/∂y)
+- `div(vector) -> scalar`
+- `curl(vector) -> scalar`  (2-D curl = ∂vy/∂x − ∂vx/∂y, the z-component)
+- `laplacian(scalar) -> scalar`  (= `div(grad(·))`)
+
+## `fields.derived` — named physical fields (cached / pre-saved)
+The canonical derived fields worth naming and caching — the ones you visualize AND feed to
+`integrals`. Each **commits to its base field + operator** (so the identity-zero trap can't happen)
+and each is the physically-loaded map, not a raw operator:
+
+| field | definition | base | meaning |
+|-------|-----------|------|---------|
+| `voltage_gradient` | ∇Vm | Vm | steepest-ascent of V (large at the front) |
+| `source_sink` | ∇·(D∇Vm) = D∇²Vm | Vm | **electrotonic source–sink map** (the source–sink research field) |
+| `flux` | D∇Vm (diffusion) / −σ∇φ_e (current) | Vm / φ_e | flux/current field; `div(flux)` = source–sink |
+| `efield` | −∇φ_e | φ_e | extracellular E-field (bidomain) |
+| `velocity` | ∇LAT / \|∇LAT\|² (= CV·n̂) | LAT | conduction-velocity vector field |
+| `direction` | ∇LAT / \|∇LAT\| = n̂ | LAT | unit propagation direction |
+| `cv_magnitude` | 1/\|∇LAT\| | LAT | front-normal speed (`front_metrics.cv_n`) |
+| `curvature` | ∇·n̂ | LAT | **wavefront curvature** (`front_metrics.kappa`) |
+| `vorticity` | curl(velocity) | LAT | rotation → **rotor cores** |
+
+**Caching / pre-save (the point):** a derived field is computed ONCE and cached (lazily on first
+access), because it's expensive-ish (gradients over all frames) and reused — plot `velocity` and
+compute its `circulation` from the same array; take `div(flux)` for the source–sink map and its
+`net-flux` integral from the same flux. Home: a lazy cache on the result, e.g. `r.fields.velocity`
+memoized (invalidated if the underlying `Vm`/`LAT` changes). Optional eager mode: record chosen
+derived fields alongside `Vm` during the run (heavier; connects to the deferred probe).
 
 ## Boundary handling — SAME as the tissue edge boundary (DECISION)
 The derivative stencils MUST use the **same edge treatment as the simulation** (its `boundary_mode`,
@@ -105,10 +131,14 @@ test per theorem validates BOTH tiers and the boundary handling at once.
 
 ## Relationship to existing code
 - `analysis.front_metrics(lat, dx)` already computes cv_n, propagation direction (n_x,n_y), and
-  κ = div(n̂). `fit_eikonal` fits CV_n = CV0 − D·κ. These STAY as-is for now.
-- **Migrate later (documented intent, NOT now):** refactor `front_metrics` / `fit_eikonal` to sit ON
-  TOP of the new primitive layer, so there is ONE gradient implementation (torch, boundary-aware),
-  not a numpy one and a torch one drifting apart. Do this when the primitive layer is proven.
+  κ = div(n̂) — i.e. it IS the LAT subset of `fields.derived` (`cv_magnitude`, `direction`,
+  `curvature`), just numpy/CPU and standalone. `fit_eikonal` fits CV_n = CV0 − D·κ. Both STAY as-is
+  for now.
+- **Migrate later (documented intent, NOT now):** re-express `front_metrics`'s outputs as the LAT
+  `fields.derived` fields on top of the torch `fields.derivatives` primitives (one boundary-aware
+  gradient implementation, not a numpy one and a torch one drifting apart); keep `fit_eikonal` as a
+  thin consumer of `derived.cv_magnitude` + `derived.curvature`. Do this once the primitive layer is
+  proven — then front_metrics becomes a compatibility shim, not a second implementation.
 
 ## Out of scope here (separate items)
 - **Probe** (point + dt-resolution recorder that these operators evaluate on for local-property
@@ -116,9 +146,14 @@ test per theorem validates BOTH tiers and the boundary handling at once.
 - **`r.grid(x,y)` / `r.coord(ix,iy)`** coord↔index ergonomics — small, separate, can land anytime.
 
 ## Open decisions
-- Exact home/name: a `fields` SUBPACKAGE — `cardiac_core/analysis/fields/{derivatives,integrals}.py`
-  (`from cardiac_core.analysis.fields import derivatives, integrals`) vs a `Fields` facade exposing
-  `.derivatives`/`.integrals`. Either way the two tiers live under one `fields` parent.
+- Exact home/name: a `fields` SUBPACKAGE — `cardiac_core/analysis/fields/{derivatives,derived,
+  integrals}.py` (`from cardiac_core.analysis.fields import ...`) vs a `Fields` facade exposing
+  `.derivatives`/`.derived`/`.integrals`. Either way all three layers live under one `fields` parent.
+- **Middle-layer name**: `fields.derived` reads too close to `fields.derivatives` — candidates:
+  `fields.physical`, `fields.maps`, `fields.quantities`. Pick before implementing.
+- **Derived-field cache**: lazy memoize on the result (`r.fields.velocity`) — decide the cache key /
+  invalidation (recompute if `Vm`/`LAT`/`boundary_mode` changed; a `scale_conductance`/reset must
+  clear it). Plus whether to offer an EAGER record-during-run mode (heavier; overlaps the probe).
 - Whether operators default to `face_mirror` when no boundary is supplied, or require it explicitly.
 - Second-order-interior vs matching the engine's exact `stencil` (`cardinal4` vs `moore8`) so
   curvature at edges is bit-consistent with the solved physics.
