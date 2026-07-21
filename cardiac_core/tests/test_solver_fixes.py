@@ -68,6 +68,25 @@ def test_nonconvergence_warns_at_most_once_per_run():
     assert "breakdown" in str(hits[0].message)   # correct reason, not the old 'max_iters' mislabel
 
 
+def test_nonconvergence_warning_rearms_each_run():
+    # Regression (audit R2): warn-once must be per-RUN, not per-solver-lifetime. A reused sim
+    # (restitution / S1-S2 pattern) must re-warn on every run; the flag is reset at run start
+    # (_reset_solver_diagnostics). Without the reset, run 2+ would silently under-solve.
+    import cardiac_core as cc
+    g = cc.Grid(41, 41, 0.02)
+    cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    sim = cc.bidomain(g, "ttp06", cond, stim, dt=0.05)
+    counts = []
+    for _ in range(3):
+        sim.reset()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            sim.run(t_end=2.0, save_every=0.5)
+        counts.append(sum(1 for x in w if x.category.__name__ == "SolverConvergenceWarning"))
+    assert counts == [1, 1, 1], f"warn-once must re-arm per run, got {counts}"
+
+
 def test_convergence_warning_escalates_to_error():
     A, b = _spd(60), torch.randn(60)
     with warnings.catch_warnings():

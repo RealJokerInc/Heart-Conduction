@@ -275,7 +275,26 @@ class CardiacSimulation:
         _validate_record(record)
         return self._iter_snapshots(t_end, save_every, record=record, callback=callback)
 
+    def _reset_solver_diagnostics(self):
+        """Reset per-run solver diagnostics at the start of each run().
+
+        The non-convergence warning is throttled to once per solver instance (anti-flood).
+        Without a per-run reset, a solver REUSED across runs (restitution / S1-S2 / sigma
+        sweeps) would warn on run 1 then stay silent forever — re-silencing a later, worse
+        under-solve and defeating `filterwarnings('error', SolverConvergenceWarning)` on
+        subsequent runs. Resetting here keeps flood-control WITHIN a run while restoring the
+        honest signal (and escalation) on every new run.
+        """
+        ds = getattr(getattr(self._engine, 'splitting', None), 'diffusion_solver', None)
+        if ds is None:
+            return
+        for attr in ('linear_solver', 'parabolic_solver', 'elliptic_solver'):
+            s = getattr(ds, attr, None)
+            if s is not None:
+                s._nonconv_warned = False
+
     def _iter_snapshots(self, t_end, save_every, *, record=("Vm",), callback=None):
+        self._reset_solver_diagnostics()
         if self._clamp_mask is not None and self._engine_type != 'lbm':
             # A mid-run clamp needs per-step enforcement -> wrapper-driven stepping.
             gen = self._stepping_run(t_end, save_every, record)
@@ -633,11 +652,13 @@ class CardiacSimulation:
         start_time: Optional[float] = None,
         duration: Optional[float] = None,
     ):
-        """Hold ``mask`` nodes at a fixed voltage during ``run()``; gates keep integrating.
+        """Hold ``mask`` nodes near a fixed voltage during ``run()``; gates keep integrating.
 
-        Clamped nodes have their V re-imposed after every internal step (not just each
-        save point), so the gates evolve at the clamped potential — the electrophysiology
-        voltage-clamp protocol. Also usable as a fixed-potential pacing/boundary region.
+        Clamped nodes have their V re-imposed after every internal step (not just each save
+        point), so the gates track the clamped potential to O(dt): within a step V drifts from
+        the reaction+diffusion update before being re-snapped, so this is a per-step-reimposed
+        clamp (dt-accurate), not an exact within-step voltage clamp. Use a small ``dt`` for a
+        tight clamp. Also usable as a fixed-potential pacing/boundary region.
 
         Parameters
         ----------

@@ -281,9 +281,11 @@ class ChebyshevSolver(LinearSolver):
             rho = rho_new
 
         # Chebyshev runs a FIXED iteration count with no in-loop convergence test, so a
-        # too-loose count / bad bounds silently returns a wrong answer. One end-of-solve
-        # residual check (a single sync, like the DCT path) makes that loud without
-        # touching the returned x.
+        # too-loose count / bad bounds silently returns a wrong answer. Do ONE end-of-solve
+        # residual check per run (an extra SpMV + sync): the operator A is fixed across a
+        # run and Chebyshev's relative residual bound is b-independent, so if the first solve
+        # converges every solve does — skip the check (and its sync) for the rest of the run.
+        # The per-run reset (CardiacSimulation._reset_solver_diagnostics) re-arms it each run.
         if self.tol is not None and not getattr(self, '_nonconv_warned', False):
             Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
             b_norm = torch.norm(b)
@@ -292,7 +294,7 @@ class ChebyshevSolver(LinearSolver):
                 warn_nonconvergence('Chebyshev', self.max_iters,
                                     r_norm.item(), b_norm.item(), self.tol,
                                     reason="fixed iteration count")
-                self._nonconv_warned = True
+            self._nonconv_warned = True   # checked once this run (converged or not)
 
         return x.clone()
 
