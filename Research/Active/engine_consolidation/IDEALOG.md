@@ -549,6 +549,50 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 
 ## Session Log
 
+### 2026-07-21 Session (cont.): audit-to-convergence + analysis `fields` design + LAT big issue
+**Worked on**: /save-session → adversarial audit of the solver-hardening branch to convergence; then a
+long design conversation on next features (single_cell, an analysis `fields` branch, adjacent EP metrics).
+**Accomplished**:
+- **Adversarial audit CONVERGED (4 rounds)** on `solver-hardening`; remediation commits `4003ab5`→`1b66939`
+  + stale-stub-test fix `134626f`. R1: HIGH (warning FLOODED the default bidomain path — declarative
+  isotropic stores conductivity as a field → is_isotropic=False → pcg_spectral breaks down ~1e-4, warns
+  every step / 437 in the suite → fixed via warn-ONCE-per-instance) + MED (clamp `_stepping_run` copied
+  mono save-cadence → extra bidomain frame at save_every==dt) + LOW (reason mislabel). R2: MED (warn-once
+  was per-LIFETIME not per-run → `_reset_solver_diagnostics` re-arms each run) + 2 LOW; completeness sweep
+  found NO CRIT/HIGH/MED (GPU clamp/injection, batch/callback, degenerate inputs all clean). R3: MED (my
+  R2 "chebyshev check once per run" was UNSOUND — residual is b-dependent + A not fixed across a run for
+  bdf2/IMEX → reverted to check-every-solve, warn-once-per-run). R4 CONVERGED (1 LOW: two vendored
+  `SolverConvergenceWarning` classes, pre-existing). Severity HIGH→MED→MED→∅; integrity bit-identical
+  throughout; **full suite 283/2**. Branch `solver-hardening` = 16 commits (4 hardening + 6 audit + docs).
+- **Design decisions (spec only, NOTHING built) → `cardiac_core/ANALYSIS_FIELDS_DESIGN.md` + tutorial PLAN:**
+  - **`cc.single_cell()`** — a dedicated 0-D feature that taps the ionic model directly (get_initial_state +
+    monolithic model.step loop, the way Surrogate/Optimizer always did), NOT the small-uniform-grid trick.
+    Consistent stim API (same {start_time,duration,amplitude}, no region). Closes the audit "no 0-D mode"
+    gap; sidesteps the #14 mono-ionic bug (monolithic V5.3 step); may unlock ORd single-cell. In tutorial PLAN P0.2.
+  - **`analysis.fields` branch** — parent namespace; everything operates on a field. Three layers: user-facing
+    NAMED cached fields (`r.fields.voltage_flux`/`voltage_gradient`/`source_sink`/`current_flux`/`electric_field`
+    /`velocity`/`direction`/`speed`/`curvature`/`vorticity`) over two toolkits `fields.derivatives`
+    (grad/div/curl/laplacian) + `fields.integrals` (line/region, = Stokes/divergence-theorem partners →
+    built-in consistency test). RIGOR: operators typed by input field; `curl(∇V)≡0` guarded (the meaningful
+    curl is on the velocity field = vorticity = rotor). Vector fields stored `(...,2)` last-axis, wrapped
+    `VectorField.x/.y/.magnitude`. Boundary = SAME as the tissue edge (`boundary_mode`, default face_mirror)
+    → result must carry boundary_mode + domain_mask. Ergonomics: mesh/mask AS the region (`over=mask`, flux
+    derives ∂mask + outward normals). front_metrics = the LAT subset, migrate-later. Probe deferred; r.grid/
+    r.coord small+separate.
+  - **Adjacent EP-metrics wishlist (separate track):** `analysis.wavelength` (λ=CV·ERP, the reentry master
+    var; CV·APD proxy), consolidated `analysis.apd`, erp/di/safety-factor.
+- **⚑ BIG ISSUE found + documented (not fixed): LAT is defined THREE inconsistent ways.** `r.lat()`/
+  `activation_time` = first frame V≥−20mV NEAREST-frame; `r.cv()`/`conduction_velocity` = its own −20 nearest
+  crossing; `apd_map` uses activation_time; BUT `activation_time_interp` = INTERPOLATED −40mV (numpy) — used
+  by front_metrics/eikonal + the **source_sink_mismatch** research + fig4c_sourcesink. → default hooks (−20
+  nearest, frame-quantized) vs research path (−40 interpolated, sub-frame) give DIFFERENT CV/curvature on the
+  same run, silently. Neither uses max-dV/dt; first-crossing (ill-defined for reentry → phase). Fix (open):
+  unify to ONE canonical LAT. Recorded: KNOWLEDGE ⚑ callout + ANALYSIS_FIELDS_DESIGN § LAT gate + source_sink
+  IDEALOG cross-ref. **This is the natural prerequisite before any LAT-based `fields` gets built.**
+**Next**: user's call on — (a) #13/#14 deferred default-path fixes; (b) LAT unification (prereq for LAT fields);
+(c) build `single_cell()` / the `fields` branch / `wavelength`; (d) tutorial Phase P0; (e) merge `solver-hardening`.
+Rejected this session: rotor seeding, dynamic pacing. Deferred: probe, r.grid ergonomics.
+
 ### 2026-07-21 Session (solver hardening SHIPPED "work through all" + tutorial-plan sidequest)
 **Worked on**: Executed the audit-driven fix roadmap on branch `solver-hardening`; discussed cardiac_core as a
 proper importable+documented library; started a Jupyter tutorial-series sidequest (plan only).

@@ -39,7 +39,21 @@
 > **HONEST FINDING:** the IMEX fix only HALVES the error — the decoupled parabolic→elliptic staggering imposes its own
 > O(dt) floor (verified on the real solver; toy repro missed it). **DEFERRED awaiting user call:** #13 GPU sync-free
 > PCG, #14 mono-ionic V5.3 alignment (both change the default path → need a regolden). Detail in the 2026-07-21
-> IDEALOG Session-Log entry; per-finding status noted in the ranked table below.
+> IDEALOG Session-Log entry; per-finding status noted in the ranked table below. **Then audited-to-CONVERGENCE
+> (4 rounds, HIGH→MED→MED→∅; remediation `4003ab5`→`1b66939` + stale-stub fix; integrity bit-identical; full suite
+> 283/2)** — R1 fixed a warning-flood on the DEFAULT bidomain path (declarative-isotropic stores conductivity as a
+> field → is_isotropic=False → pcg_spectral under-converges ~1e-4; warn-once-per-run) + a clamp save-cadence bug;
+> R2/R3 fixed the warn-once lifetime scope + reverted an unsound chebyshev once-per-run opt. Branch = 16 commits.
+>
+> **DESIGN — cardiac_core feature specs (2026-07-21, SPEC ONLY, nothing built).** Design conversation captured to
+> [ANALYSIS_FIELDS_DESIGN.md](../../../cardiac_core/ANALYSIS_FIELDS_DESIGN.md) + tutorial [PLAN.md](../../../cardiac_core/tutorials/PLAN.md):
+> (1) **`cc.single_cell()`** — dedicated 0-D via the ionic model directly (get_initial_state + monolithic
+> model.step), consistent stim API; closes the "no 0-D" gap, sidesteps #14. (2) **`analysis.fields` branch** —
+> user-facing NAMED cached fields (`r.fields.voltage_flux`/`source_sink`/`velocity`/`curvature`/`vorticity`/…) over
+> `fields.derivatives` (grad/div/curl/laplacian) + `fields.integrals` (line/region = Stokes/divergence-theorem
+> partners); operators typed by input field (`curl(∇V)≡0` guarded; real curl = vorticity = rotor); vectors stored
+> `(...,2)`; boundary = tissue edge (`boundary_mode`); mesh/mask AS the integration region. (3) **`analysis.wavelength`**
+> (λ=CV·ERP) + consolidated APD. Rejected: rotor seeding, dynamic pacing. Deferred: probe, r.grid ergonomics.
 >
 > **⚑ OPEN BIG ISSUE — LAT is defined THREE inconsistent ways (found 2026-07-21, analysis layer).**
 > Activation time (LAT) — the base of CV, activation maps, curvature, and the whole wavefront/eikonal
