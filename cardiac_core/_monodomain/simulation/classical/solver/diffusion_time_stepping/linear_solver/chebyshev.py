@@ -281,20 +281,21 @@ class ChebyshevSolver(LinearSolver):
             rho = rho_new
 
         # Chebyshev runs a FIXED iteration count with no in-loop convergence test, so a
-        # too-loose count / bad bounds silently returns a wrong answer. Do ONE end-of-solve
-        # residual check per run (an extra SpMV + sync): the operator A is fixed across a
-        # run and Chebyshev's relative residual bound is b-independent, so if the first solve
-        # converges every solve does — skip the check (and its sync) for the rest of the run.
-        # The per-run reset (CardiacSimulation._reset_solver_diagnostics) re-arms it each run.
-        if self.tol is not None and not getattr(self, '_nonconv_warned', False):
+        # too-loose count / bad bounds silently returns a wrong answer. Check EVERY solve —
+        # the actual relative residual ||p_N(A)b||/||b|| is b-dependent (only the worst-case
+        # bound is not) and A is NOT fixed across a run for bdf2/IMEX (bootstrap step differs),
+        # so a later step can diverge even if the first converged. The WARN (not the check)
+        # is throttled to once per run to avoid flooding; the per-run reset re-arms it.
+        if self.tol is not None:
             Ax = torch.sparse.mm(A, x.unsqueeze(1)).squeeze(1)
             b_norm = torch.norm(b)
             r_norm = torch.norm(b - Ax)
-            if b_norm > 0 and (r_norm / b_norm) > self.tol:
+            if (b_norm > 0 and (r_norm / b_norm) > self.tol
+                    and not getattr(self, '_nonconv_warned', False)):
                 warn_nonconvergence('Chebyshev', self.max_iters,
                                     r_norm.item(), b_norm.item(), self.tol,
                                     reason="fixed iteration count")
-            self._nonconv_warned = True   # checked once this run (converged or not)
+                self._nonconv_warned = True
 
         return x.clone()
 

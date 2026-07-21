@@ -87,6 +87,28 @@ def test_nonconvergence_warning_rearms_each_run():
     assert counts == [1, 1, 1], f"warn-once must re-arm per run, got {counts}"
 
 
+def test_chebyshev_checks_every_solve_not_just_first():
+    # Regression (audit R3): the Chebyshev end-of-solve residual check must run on EVERY solve.
+    # A converged first solve must NOT latch the check off — the actual residual is b-dependent
+    # and A is not fixed across a run (bdf2/IMEX bootstrap), so a later solve can diverge even
+    # after the first converged. Reused solver over two operators (bootstrap analogue).
+    torch.manual_seed(0)
+    n = 60
+    A_easy = torch.diag(0.9 + 0.2 * torch.rand(n)).to_sparse()          # converges in few iters
+    M = torch.randn(n, n)
+    A_hard = (M @ M.T + 0.01 * n * torch.eye(n)).to_sparse()            # won't in 3 iters
+    b = torch.randn(n)
+    ch = ChebyshevSolver(max_iters=3, tol=1e-8)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ch.solve(A_easy, b)
+        after_easy = sum(1 for x in w if x.category.__name__ == "SolverConvergenceWarning")
+        ch.solve(A_hard, b)
+        after_hard = sum(1 for x in w if x.category.__name__ == "SolverConvergenceWarning")
+    assert after_easy == 0                     # a converged solve does not warn
+    assert after_hard >= 1                     # a later diverging solve is still caught
+
+
 def test_convergence_warning_escalates_to_error():
     A, b = _spd(60), torch.randn(60)
     with warnings.catch_warnings():
