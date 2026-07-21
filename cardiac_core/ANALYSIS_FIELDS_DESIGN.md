@@ -1,27 +1,30 @@
-# Design: `cardiac_core.analysis.fields` — derivatives + integrals
+# Design: `cardiac_core.analysis.fields` — named fields (+ derivatives/integrals toolkits)
 
 > Status: DESIGNED (2026-07-21, design conversation). NOT yet implemented. Separate from the
 > probe feature (deferred) and from the `r.grid()`/`r.coord()` ergonomics (small, separate).
 
 ## Purpose & structure
-The whole branch **operates on fields** — scalar fields (`Vm`, `phi_e`, `LAT`) or vector fields
-derived from them. Because that is the shared input, `fields` is the PARENT namespace, with three
-layers under it (one gradient implementation + one set of boundary rules shared across all):
+The whole branch **operates on fields**. `fields` is the PARENT namespace, and the user-facing thing
+it does is **hold the named, pre-saved physical fields you reach for** — one dot, plain-language,
+explicit about the quantity:
 
-- **`fields.derivatives`** — LOCAL operators, field → field: gradient, divergence, curl, Laplacian,
-  computed per-snapshot (e.g. `grad Vm` at every frame → `(T, Nx, Ny, 2)`). The *verbs* / machinery.
-- **`fields.derived`** — NAMED physical fields built from the operators and **cached/pre-saved**:
-  flux, velocity, source–sink, E-field, curvature, vorticity. The *nouns* — what you actually
-  visualize AND feed to the integrals. (Full catalog below.)
+    r.fields.voltage_flux      r.fields.velocity      r.fields.source_sink
+    r.fields.electric_field    r.fields.curvature     r.fields.vorticity        (full catalog below)
+
+Under that convenience surface sit two toolkits (one gradient implementation + one set of boundary
+rules, shared):
+
+- **`fields.derivatives`** — LOCAL operators, field → field: `grad`/`div`/`curl`/`laplacian`, the
+  machinery the named fields are built from. Tucked away; most users never call it directly.
 - **`fields.integrals`** — GLOBAL reductions, field → number over a region/contour: line and region
   integrals, each the Stokes/divergence-theorem PARTNER of a `derivatives` operator (built-in
-  consistency check). Consume `derived` fields.
+  consistency check). Consume the named fields.
 
-Both computed layers are torch-native and on-device (fixes the GPU gap: `front_metrics` is numpy/CPU
-and crashes on a cuda tensor). Naming rule: `derivatives.*` returns fields, `derived.*` returns
-(cached) fields, `integrals.*` returns numbers; **all three take a field as their first argument.**
-(Naming nit to settle: `derivatives` vs `derived` read alike — candidate rename `fields.physical` or
-`fields.maps` for the middle layer; see Open decisions.)
+Both toolkits are torch-native and on-device (fixes the GPU gap: `front_metrics` is numpy/CPU and
+crashes on a cuda tensor). **Naming rule: names say WHAT they act on** — `voltage_flux`/`voltage_
+gradient` (not bare `flux`/`grad`), `current_flux` for the bidomain current, `electric_field` (not
+`efield`). The common case is `r.fields.<name>` (one dot, cached); raw operators are under
+`.derivatives` for power users.
 
 ## The precision principle (load-bearing)
 Operators are **typed by the field they consume**, and the branch is explicit about *which* field
@@ -47,29 +50,29 @@ on-device, per-snapshot; accept `(Nx,Ny)` or `(T,Nx,Ny)`:
 - `curl(vector) -> scalar`  (2-D curl = ∂vy/∂x − ∂vx/∂y, the z-component)
 - `laplacian(scalar) -> scalar`  (= `div(grad(·))`)
 
-## `fields.derived` — named physical fields (cached / pre-saved)
-The canonical derived fields worth naming and caching — the ones you visualize AND feed to
-`integrals`. Each **commits to its base field + operator** (so the identity-zero trap can't happen)
-and each is the physically-loaded map, not a raw operator:
+## Named fields — `r.fields.<name>` (pre-saved, cached)
+The canonical fields worth naming — the ones you visualize AND feed to `integrals`. Names say WHAT
+they act on; each **commits to its base field + operator** (so the identity-zero trap can't happen):
 
-| field | definition | base | meaning |
-|-------|-----------|------|---------|
+| `r.fields.…` | definition | base | meaning |
+|--------------|-----------|------|---------|
 | `voltage_gradient` | ∇Vm | Vm | steepest-ascent of V (large at the front) |
+| `voltage_flux` | D∇Vm | Vm | diffusion flux of voltage; `div(voltage_flux)` = `source_sink` |
 | `source_sink` | ∇·(D∇Vm) = D∇²Vm | Vm | **electrotonic source–sink map** (the source–sink research field) |
-| `flux` | D∇Vm (diffusion) / −σ∇φ_e (current) | Vm / φ_e | flux/current field; `div(flux)` = source–sink |
-| `efield` | −∇φ_e | φ_e | extracellular E-field (bidomain) |
+| `current_flux` | −σ∇φ_e | φ_e | current field (bidomain); `div` = current source density |
+| `electric_field` | −∇φ_e | φ_e | extracellular E-field (bidomain) |
 | `velocity` | ∇LAT / \|∇LAT\|² (= CV·n̂) | LAT | conduction-velocity vector field |
 | `direction` | ∇LAT / \|∇LAT\| = n̂ | LAT | unit propagation direction |
-| `cv_magnitude` | 1/\|∇LAT\| | LAT | front-normal speed (`front_metrics.cv_n`) |
+| `speed` | 1/\|∇LAT\| | LAT | front-normal conduction speed (`front_metrics.cv_n`) |
 | `curvature` | ∇·n̂ | LAT | **wavefront curvature** (`front_metrics.kappa`) |
 | `vorticity` | curl(velocity) | LAT | rotation → **rotor cores** |
 
-**Caching / pre-save (the point):** a derived field is computed ONCE and cached (lazily on first
+**Cached / pre-saved (the point):** each is computed ONCE and cached (lazily on first `r.fields.<name>`
 access), because it's expensive-ish (gradients over all frames) and reused — plot `velocity` and
-compute its `circulation` from the same array; take `div(flux)` for the source–sink map and its
-`net-flux` integral from the same flux. Home: a lazy cache on the result, e.g. `r.fields.velocity`
-memoized (invalidated if the underlying `Vm`/`LAT` changes). Optional eager mode: record chosen
-derived fields alongside `Vm` during the run (heavier; connects to the deferred probe).
+compute its `circulation` from the same array; take `voltage_flux` and its `net-flux` integral from
+one flux array. Cache is invalidated if the underlying `Vm`/`LAT`/`boundary_mode` changes (a
+`scale_conductance`/`reset` clears it). Optional eager mode: record chosen named fields alongside
+`Vm` during the run (heavier; connects to the deferred probe).
 
 ## Boundary handling — SAME as the tissue edge boundary (DECISION)
 The derivative stencils MUST use the **same edge treatment as the simulation** (its `boundary_mode`,
@@ -131,14 +134,13 @@ test per theorem validates BOTH tiers and the boundary handling at once.
 
 ## Relationship to existing code
 - `analysis.front_metrics(lat, dx)` already computes cv_n, propagation direction (n_x,n_y), and
-  κ = div(n̂) — i.e. it IS the LAT subset of `fields.derived` (`cv_magnitude`, `direction`,
-  `curvature`), just numpy/CPU and standalone. `fit_eikonal` fits CV_n = CV0 − D·κ. Both STAY as-is
-  for now.
-- **Migrate later (documented intent, NOT now):** re-express `front_metrics`'s outputs as the LAT
-  `fields.derived` fields on top of the torch `fields.derivatives` primitives (one boundary-aware
-  gradient implementation, not a numpy one and a torch one drifting apart); keep `fit_eikonal` as a
-  thin consumer of `derived.cv_magnitude` + `derived.curvature`. Do this once the primitive layer is
-  proven — then front_metrics becomes a compatibility shim, not a second implementation.
+  κ = div(n̂) — i.e. it IS the LAT-based named fields (`speed`, `direction`, `curvature`), just
+  numpy/CPU and standalone. `fit_eikonal` fits CV_n = CV0 − D·κ. Both STAY as-is for now.
+- **Migrate later (documented intent, NOT now):** re-express `front_metrics`'s outputs as the
+  `r.fields.{speed,direction,curvature}` named fields over the torch `fields.derivatives` primitives
+  (one boundary-aware gradient implementation, not a numpy one and a torch one drifting apart); keep
+  `fit_eikonal` as a thin consumer of `r.fields.speed` + `r.fields.curvature`. Do this once the
+  primitive layer is proven — then front_metrics becomes a compatibility shim, not a 2nd impl.
 
 ## Out of scope here (separate items)
 - **Probe** (point + dt-resolution recorder that these operators evaluate on for local-property
@@ -146,14 +148,15 @@ test per theorem validates BOTH tiers and the boundary handling at once.
 - **`r.grid(x,y)` / `r.coord(ix,iy)`** coord↔index ergonomics — small, separate, can land anytime.
 
 ## Open decisions
-- Exact home/name: a `fields` SUBPACKAGE — `cardiac_core/analysis/fields/{derivatives,derived,
-  integrals}.py` (`from cardiac_core.analysis.fields import ...`) vs a `Fields` facade exposing
-  `.derivatives`/`.derived`/`.integrals`. Either way all three layers live under one `fields` parent.
-- **Middle-layer name**: `fields.derived` reads too close to `fields.derivatives` — candidates:
-  `fields.physical`, `fields.maps`, `fields.quantities`. Pick before implementing.
-- **Derived-field cache**: lazy memoize on the result (`r.fields.velocity`) — decide the cache key /
-  invalidation (recompute if `Vm`/`LAT`/`boundary_mode` changed; a `scale_conductance`/reset must
-  clear it). Plus whether to offer an EAGER record-during-run mode (heavier; overlaps the probe).
+- Exact home/name: a `Fields` accessor on the result exposing the named fields directly
+  (`r.fields.voltage_flux`) plus the `.derivatives`/`.integrals` toolkits — vs plain
+  `cardiac_core/analysis/fields/` submodules. The user-facing target is `r.fields.<name>`.
+- **Final field names** (adjustable): the catalog uses explicit names (`voltage_flux`, `voltage_
+  gradient`, `current_flux`, `electric_field`, `speed`, …); confirm the exact set before building —
+  esp. `velocity` vs `conduction_velocity`, `vorticity` vs `rotation`, `speed` vs `cv`.
+- **Named-field cache**: lazy memoize on the result (`r.fields.velocity`) — decide the cache key /
+  invalidation (recompute if `Vm`/`LAT`/`boundary_mode` changed; `scale_conductance`/`reset` clears
+  it). Plus whether to offer an EAGER record-during-run mode (heavier; overlaps the probe).
 - Whether operators default to `face_mirror` when no boundary is supplied, or require it explicitly.
 - Second-order-interior vs matching the engine's exact `stencil` (`cardinal4` vs `moore8`) so
   curvature at edges is bit-consistent with the solved physics.
