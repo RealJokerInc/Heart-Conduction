@@ -87,7 +87,19 @@ one flux array. Cache is invalidated if the underlying `Vm`/`LAT`/`boundary_mode
 ## GATE: scrutinize LAT *before* trusting the LAT-based fields (TODO, later)
 Half the named fields (`velocity`, `direction`, `speed`, `curvature`, `vorticity`) are built on the
 activation-time map `LAT`, so they INHERIT every definitional choice in `LAT`. Pin + document these
-first, or the fields are precise numbers on a shaky base:
+first, or the fields are precise numbers on a shaky base.
+
+**CONCRETE FINDING (2026-07-21): there are already TWO disagreeing LAT definitions.**
+- `activation_time` (default; `r.lat()`): first frame where `V ≥ −20 mV`, `times[first_idx]` —
+  **nearest save-point, NO interpolation** (LAT resolution = `save_every`). torch.
+- `activation_time_interp`: **linearly-interpolated** crossing at `V = −40 mV`, sub-frame accurate,
+  numpy/CPU — exists because eikonal `CV = 1/|∇LAT|` needs sub-frame accuracy.
+They differ on **threshold (−20 vs −40)** and **accuracy (nearest-frame vs interpolated)**, so `r.lat()`
+and the eikonal path yield DIFFERENT CV/curvature from the same run. Neither uses max-`dV/dt`. Before
+the LAT fields, pick ONE canonical LAT (recommend: interpolated crossing, single agreed threshold,
+torch/on-device) and route `r.lat()` + eikonal + the named fields all through it.
+
+Full scrutiny checklist:
 - **Activation criterion** — threshold crossing (V > θ) vs max-`dV/dt` (upstroke) vs interpolated
   crossing. Changes `LAT`, hence CV and (especially) curvature. Confirm what `activation_time` uses.
 - **Sub-frame interpolation** — `LAT` resolution is capped by `save_every` unless the crossing time
