@@ -202,7 +202,7 @@ class CardiacSimulation:
     """
 
     def __init__(self, engine, engine_type: str, grid, data: CardiacMeshData,
-                 build_kwargs: Optional[dict] = None):
+                 build_kwargs: Optional[dict] = None, *, boundary_mode: str = 'face_mirror'):
         self._engine = engine
         self._engine_type = engine_type
         self._grid = grid
@@ -211,6 +211,12 @@ class CardiacSimulation:
         # factory with `mesh=self._data` for reset()/with_()/stimulate(). The geometry,
         # conductivity, and stimulus are already baked into `data`.
         self._build_kwargs = dict(build_kwargs or {})
+        # The ghost/mirror edge rule the analysis field ops should apply (Phase-1 fields).
+        # Persisted here because the monodomain factory takes `boundary_mode` but otherwise
+        # only forwards it to the discretization; bidomain/LBM pass 'face_mirror' (the
+        # no-flux tissue-Vm edge rule) since their edge concepts (BoundarySpec bath/insulated,
+        # LBM wall modes) are not the analysis-stencil ghost rule.
+        self._boundary_mode = boundary_mode
         self._Nx = data.mask.shape[0]
         self._Ny = data.mask.shape[1]
         self._probes: dict[str, dict] = {}   # name → {x, y, ix, iy, t[], V[]}
@@ -252,17 +258,17 @@ class CardiacSimulation:
         it = self._iter_snapshots(t_end, save_every, record=record, callback=callback)
         _shape = (self._Nx, self._Ny)
         if batch is None:
-            return _result_from(list(it), record, self.dx, self.dy, shape=_shape)
+            return _result_from(list(it), record, self.dx, self.dy, shape=_shape, sim=self)
 
         def _gen():
             buf = []
             for snap in it:
                 buf.append(snap)
                 if len(buf) == batch:
-                    yield _result_from(buf, record, self.dx, self.dy, shape=_shape)
+                    yield _result_from(buf, record, self.dx, self.dy, shape=_shape, sim=self)
                     buf = []
             if buf:
-                yield _result_from(buf, record, self.dx, self.dy, shape=_shape)
+                yield _result_from(buf, record, self.dx, self.dy, shape=_shape, sim=self)
         return _gen()
 
     def snapshots(self, t_end: float, save_every: float = 1.0, *, record=("Vm",),
@@ -1075,6 +1081,11 @@ class CardiacSimulation:
         """Ionic model name (e.g. 'ttp06')."""
         return self._data.ionic_model
 
+    @property
+    def boundary_mode(self) -> str:
+        """Ghost/mirror edge rule the analysis field ops apply (``'face_mirror'`` = no-flux)."""
+        return self._boundary_mode
+
     # --- Private generators ---
 
     def _grid_ionic(self, state):
@@ -1345,19 +1356,27 @@ def _factory_for(engine_type: str):
     return {'monodomain': monodomain, 'bidomain': bidomain, 'lbm': lbm}[engine_type]
 
 
-def _result_from(snaps, record, dx, dy, shape=None):
+def _result_from(snaps, record, dx, dy, shape=None, sim=None):
     """Stack a list of SimulationSnapshot into a single SimulationResult.
 
     ``shape`` = ``(Nx, Ny)`` lets the zero-snapshot case return a rank-3 ``(0, Nx, Ny)``
     empty ``Vm`` so the analysis hooks degrade to NaN maps instead of crashing on a
     rank-1 ``(0,)`` tensor (F1, 2026-07-15).
+
+    ``sim`` is the live ``CardiacSimulation`` — passed so this ``.run()`` path populates the
+    Phase-1 analysis context (mask/boundary_mode/Cm/chi/conductivity/model identity)
+    IDENTICALLY to the ``simulate()`` path (``run._collect``). Without it, ``.run()``-path
+    results are silently mask/conductivity-unaware (a silent-wrong on scar domains, not a
+    crash, since the fields default to ``None``).
     """
     from .run import SimulationResult  # local import avoids api<->run circular import
+    from ._result_context import build_result_context
     if not snaps:
         empty_t = torch.empty(0, dtype=torch.float64)
         empty_v = (torch.empty(0, *shape, dtype=torch.float64)
                    if shape is not None else torch.empty(0))
-        return SimulationResult(times=empty_t, Vm=empty_v, phi_e=None, dx=dx, dy=dy)
+        ctx = build_result_context(sim, empty_v.device)
+        return SimulationResult(times=empty_t, Vm=empty_v, phi_e=None, dx=dx, dy=dy, **ctx)
     # B1: build ``times`` on the same device as the snapshots' Vm — on cuda the
     # snapshots carry Vm on GPU, so a CPU ``times`` would make every downstream
     # analysis/viz call (which indexes times by a GPU index) raise a device mismatch.
@@ -1368,7 +1387,9 @@ def _result_from(snaps, record, dx, dy, shape=None):
     ionic = None
     if "ionic_states" in record and snaps[0].ionic_states is not None:
         ionic = torch.stack([s.ionic_states for s in snaps])
-    return SimulationResult(times=times, Vm=Vm, phi_e=phi_e, dx=dx, dy=dy, ionic_states=ionic)
+    ctx = build_result_context(sim, Vm.device)
+    return SimulationResult(times=times, Vm=Vm, phi_e=phi_e, dx=dx, dy=dy,
+                            ionic_states=ionic, **ctx)
 
 
 def _build_stimulus_protocol_v54(data: CardiacMeshData, grid, device, dtype):
@@ -1576,7 +1597,8 @@ def monodomain(
     build_kwargs = dict(dt=timestep, splitting=splitting, diffusion_solver=diffusion_solver,
                         linear_solver=linear_solver, stencil=stencil, boundary_mode=boundary_mode,
                         device=device, ionic_model=ionic)
-    return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs)
+    return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs,
+                             boundary_mode=boundary_mode)
 
 
 def bidomain(

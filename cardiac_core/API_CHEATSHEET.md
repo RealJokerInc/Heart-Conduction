@@ -138,8 +138,13 @@ cv  = r.cv(x1, x2, y)          # conduction velocity (cm/s) between x-indices x1
 apd = r.apd()                  # (Nx,Ny) APD90 map (ms); apd(repol=0.5) = APD50
 lat = r.lat()                  # (Nx,Ny) local activation-time map (ms)
 rst = r.restitution(ix, iy)    # (DI, APD) restitution at a node (multi-beat run)
+# CANONICAL LAT: r.lat()/r.cv()/cv_between/radial_cv all use ONE activation map —
+#   interpolated sub-frame crossing at -40 mV (method="interp"). Pass method="nearest",
+#   threshold=-20 to reproduce the pre-2026-07-22 frame-quantized value. A first-crossing
+#   LAT is invalid under reentry (a rotor re-activates nodes) — use phase_map there.
 # direct analysis (same functions): cc.conduction_velocity(Vm,times,dx,x1,x2,y), cc.apd_map(Vm,times),
-# cc.activation_time(Vm,times), cc.restitution_curve(Vm,times,ix,iy), cc.apd_at(Vm,times,ix,iy)
+# cc.activation_time(Vm,times), cc.max_dvdt_time(Vm,times), cc.restitution_curve(Vm,times,ix,iy),
+# cc.apd_at(Vm,times,ix,iy)
 # fibrillation: cc.dominant_frequency(Vm, times, ix, iy)   # Hz at one node
 # rotor tips (two steps): phase = cc.phase_map(Vm, times, t_idx); s = cc.phase_singularities(phase)
 ```
@@ -155,6 +160,39 @@ rs  = r.restitution_slope(ix, iy)  # {max_slope, DI_star (alternans onset, ms), 
   (front ≈ 50 cm/s = 0.05 cm/ms; 1 cm ≈ 20 ms — set `t_end` accordingly). NaN CV = the front didn't
   reach a point (e.g. conduction block) within the run.
 - `phase_singularities(phase)` returns a `(Nx-1, Ny-1)` topological-charge map; |charge| ≈ 1 marks a tip.
+
+### Named field maps — `r.fields.*` (lazy, cached; torch, on-device)
+```python
+# Vm-based (per-frame (T,Nx,Ny[,2])). Vectors are VectorField: .x .y .magnitude .angle .components
+r.fields.voltage_gradient      # ∇Vm                         (VectorField)
+r.fields.voltage_flux          # D_eff·∇Vm                   (VectorField)
+r.fields.source_sink           # ∇·(D_eff∇Vm) = the electrotonic source–sink map (monodomain, iso)
+r.fields.electric_field        # −∇φ_e   (bidomain only)     (VectorField)
+r.fields.current_flux          # −σ_e·∇φ_e (bidomain only)   (VectorField)
+# LAT-based ((Nx,Ny), no time axis) — all from the canonical interp/−40 LAT, divergence-gated:
+r.fields.velocity  .direction  .speed   # ∇T/|∇T|² , n̂ , 1/|∇T| (cm/s); NaN at collisions
+r.fields.curvature .vorticity  .quality .mask   # ∇·n̂ , curl(v) , fit residual , gate (True=low-confidence)
+# operator toolkit (grid/boundary/mask-bound) and reductions:
+r.fields.derivatives.grad(f) / .div(F) / .curl(F) / .laplacian(f)
+r.fields.integrals.region_integral(f, over=mask)   # ∬f dA
+r.fields.integrals.net_flux(F, region=mask)        # ∮F·n = ∬div F  (divergence theorem)
+r.fields.integrals.circulation(v, region=mask)     # ∮v·dl = ∬curl v (Stokes)
+r.fields.integrals.winding_number(phase)           # enclosed rotor count
+r.fields.integrals.conduction_time((ix,iy),(jx,jy))# ΔT (integrate slowness ∇T, NOT velocity)
+r.fields.integrals.activated_area()                # (T,) depolarized area per frame
+r.fields.integrals.wavefront_length(at_time=t) / .global_curvature(at_time=t)   # isochrone ∮ds / ∮κds
+```
+`source_sink`/`voltage_flux` are monodomain + isotropic (raise otherwise); `electric_field`/
+`current_flux` are bidomain-only.
+
+### Scalar EP + protocols + single-cell
+```python
+cc.wavelength(cv_cms, refractory_ms, kind="erp")   # λ = CV·ERP /1000 (cm); kind="apd" warns
+cc.di(bcl, apd)                                     # diastolic interval BCL−APD
+cc.erp(grid, 'ttp06', cond, bcl=1000, n_s1=4)      # ERP via S1S2 capture bisection (RUNS sims)
+sc = cc.single_cell('ttp06', celltype='EPI', pre_pace=5)   # 0-D AP; sc.V, sc.apd(0.9), sc.final_state
+cc.safety_factor(r, q_thr=...)                     # (Nx,Ny) Boyle–Vigmond SF (∫source_sink/Q_thr); <1 = block
+```
 
 ## 8. Heterogeneity — drug block, scar, conductivity (each rebuilds from t=0)
 

@@ -7,8 +7,9 @@ No generators, no loops. Call once, get (times, V) back.
     # times: (n_saves,)  V: (n_saves, Nx, Ny)
 """
 
+import functools
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -32,6 +33,24 @@ class SimulationResult:
         Grid spacing (cm) — set by the run helpers so analysis hooks have it.
     ionic_states : torch.Tensor | None
         Recorded ionic-state history (opt-in via ``record=``). None unless requested.
+
+    Analysis context (Phase-1 ``analysis.fields``) — the edge/mask/conductivity/model the
+    solver used, so the field ops honour them instead of guessing:
+
+    domain_mask : torch.Tensor | None
+        ``(Nx, Ny)`` bool active-tissue mask; ``None`` when the domain is full-rectangle.
+    boundary_mode : str
+        Ghost/mirror edge rule the field ops apply at the domain boundary (``"face_mirror"``
+        ≙ scipy ``reflect`` no-flux). Matches the solver's boundary treatment.
+    Cm, chi : float | None
+        Membrane capacitance (µF/cm²) and surface-to-volume ratio (cm⁻¹) — the solver's
+        ``chi*Cm`` mass factor, needed for ``D_eff`` and the safety-factor numerator.
+    conductivity : cardiac_core._result_context.Conductivity | None
+        Resolved effective diffusivity ``D_eff = D_raw/(chi*Cm)`` (+ raw tensor + σ tuples
+        for bidomain) the ``voltage_flux``/``source_sink``/``current_flux`` fields need.
+    ionic_model, cell_type : str | None
+        Resolved model identity (name actually run + cell type), so Phase 3/7 can rebuild
+        the model and re-evaluate ``I_ion`` for the reaction-identity / safety-factor.
     """
     times: torch.Tensor
     Vm: torch.Tensor
@@ -39,11 +58,29 @@ class SimulationResult:
     dx: Optional[float] = None
     dy: Optional[float] = None
     ionic_states: Optional[torch.Tensor] = None
+    # --- analysis context (Phase 1) ---
+    domain_mask: Optional[torch.Tensor] = None
+    boundary_mode: str = "face_mirror"
+    Cm: Optional[float] = None
+    chi: Optional[float] = None
+    conductivity: Optional[Any] = None
+    ionic_model: Optional[str] = None
+    cell_type: Optional[str] = None
 
     @property
     def V(self) -> torch.Tensor:
         """Read-only deprecated alias for :attr:`Vm`."""
         return self.Vm
+
+    @functools.cached_property
+    def fields(self):
+        """Named physical fields + operator toolkit (``r.fields.source_sink``,
+        ``r.fields.voltage_gradient``, ``r.fields.derivatives.grad(...)``, …).
+
+        Lazily computed and cached for the result's lifetime (the result is an immutable post-run
+        snapshot). See :class:`cardiac_core.fields.Fields`."""
+        from .fields import Fields
+        return Fields(self)
 
     # --- analysis hooks (thin delegators to cardiac_core.analysis) ---
     def cv(self, x1: int, x2: int, y: int, **kw) -> float:
@@ -318,4 +355,6 @@ def simulate(
 
     sim = ctor(mesh, device=device, **kwargs)
     times, V, phi_e = _collect(sim, t_end, save_every, output_device)
-    return SimulationResult(times=times, Vm=V, phi_e=phi_e, dx=sim.dx, dy=sim.dy)
+    from ._result_context import build_result_context
+    ctx = build_result_context(sim, V.device)
+    return SimulationResult(times=times, Vm=V, phi_e=phi_e, dx=sim.dx, dy=sim.dy, **ctx)

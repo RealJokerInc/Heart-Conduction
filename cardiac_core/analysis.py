@@ -16,14 +16,49 @@ import numpy as np
 import torch
 
 
+def _upstroke_foot_V(trace: torch.Tensor, act_idx: int) -> float:
+    """The diastolic (resting) potential of the beat whose upstroke crosses at ``act_idx``.
+
+    Walk back from the upstroke to its FOOT — the last node before the trace stops rising — and
+    return the local minimum there. This is the per-beat pre-upstroke diastole, NOT ``trace[0]``:
+    with a drifting multi-beat baseline each beat repolarizes toward its OWN rest, and a plain
+    min-over-interval would wrongly catch the previous beat's lower repolarization undershoot. For a
+    clean single beat from rest this reduces to ``trace[0]`` (regression-safe)."""
+    i = int(act_idx)
+    if i <= 0:
+        return float(trace[0])
+    while i - 1 >= 0 and trace[i - 1] < trace[i]:     # descend the upstroke to its foot
+        i -= 1
+    lo = max(0, i - 2)
+    return float(trace[lo:i + 1].min())
+
+
 def activation_time(
     V: torch.Tensor,
     times: torch.Tensor,
-    threshold: float = -20.0,
+    threshold: float = -40.0,
+    *,
+    method: str = "interp",
 ) -> torch.Tensor:
-    """Compute activation time at each node.
+    """Compute the local activation time (LAT) at each node — first upstroke crossing.
 
-    Finds the first time V crosses threshold (upstroke) at each grid point.
+    This is the CANONICAL LAT: ``r.lat()``, ``r.cv()``/``conduction_velocity``,
+    ``cv_between``, ``radial_cv``, and every eikonal / LAT-based field route through it, so
+    they all agree on ONE activation map. Default = ``method="interp", threshold=-40`` (the
+    2026-07-22 canonicalization; ``method="nearest", threshold=-20`` reproduces the historical
+    frame-quantized value as an OVERRIDE).
+
+    Two crossing estimators:
+
+    - ``method="interp"`` (default): the linearly-INTERPOLATED sub-frame crossing between the
+      last below-threshold frame and the first at/above frame. Torch/on-device, NaN-safe,
+      denom-guarded. The eikonal CV field ``1/|∇T|`` needs this smooth sub-frame LAT, since
+      nearest-frame staircases make ``|∇T|→0`` at flat neighbours and blow the velocity up.
+    - ``method="nearest"``: the save time of the first frame at/above ``threshold`` —
+      frame-quantized, bit-identical to the pre-2026-07-22 behaviour.
+
+    Reentry note: a first-crossing LAT is undefined once a node re-activates (a rotor /
+    repeated waves) — use a phase-based map (:func:`phase_map`) there instead.
 
     Parameters
     ----------
@@ -33,27 +68,89 @@ def activation_time(
         (n_saves,) time points in ms.
     threshold : float
         Activation threshold (mV).
+    method : {"nearest", "interp"}
+        Crossing estimator (see above). ``"interp"`` degrades to ``"nearest"`` when fewer
+        than 2 frames are present (interpolation needs a bracket).
 
     Returns
     -------
     torch.Tensor
         (Nx, Ny) activation time in ms. NaN where not activated.
     """
+    if method not in ("nearest", "interp"):
+        raise ValueError(f"activation_time: method must be 'nearest' or 'interp', got {method!r}")
     if V.shape[0] == 0:   # empty run (0 save-points) — return NaN map, don't argmax an empty axis (F1)
         return torch.full(V.shape[1:], float('nan'), dtype=times.dtype, device=V.device)
-    # (n_saves, Nx, Ny) bool: True where V >= threshold
-    above = V >= threshold
-    # First time index where above is True along time axis
-    # any() along time to find which nodes ever activated
-    ever_activated = above.any(dim=0)  # (Nx, Ny)
 
-    # argmax on bool gives first True index
-    first_idx = above.to(torch.int8).argmax(dim=0)  # (Nx, Ny)
+    above = V >= threshold                       # (n_saves, Nx, Ny) bool
+    ever_activated = above.any(dim=0)            # (Nx, Ny)
+    first_idx = above.to(torch.int8).argmax(dim=0)  # (Nx, Ny) first True (0 if never)
 
-    # Map index to time
-    lat = times[first_idx]  # (Nx, Ny)
-    lat[~ever_activated] = float('nan')
+    if method == "nearest" or V.shape[0] < 2:
+        # Frame-quantized (bit-identical to the historical path).
+        lat = times[first_idx]                   # (Nx, Ny)
+        lat[~ever_activated] = float('nan')
+        return lat
+
+    # --- interpolated sub-frame crossing (canonical) ---
+    # Crossing is between frame (idxc-1) [below] and idxc [at/above]. Clamp idxc>=1 so the
+    # (idxc-1) gather is in range; the first_idx==0 (activated at t0) nodes are set to t0
+    # explicitly afterwards. Mirrors activation_time_interp (numpy) but stays torch.
+    idxc = first_idx.clamp(min=1)                # (Nx, Ny) in [1, T-1]
+    v1 = V.gather(0, idxc.unsqueeze(0)).squeeze(0)          # V[idxc]
+    v0 = V.gather(0, (idxc - 1).unsqueeze(0)).squeeze(0)    # V[idxc-1]
+    t1 = times[idxc]
+    t0 = times[idxc - 1]
+    denom = v1 - v0
+    frac = torch.where(denom.abs() > 1e-12,
+                       (threshold - v0) / denom,
+                       torch.zeros_like(denom))            # denom guard (analysis.py:528)
+    lat = t0 + frac * (t1 - t0)
+    lat = torch.where(first_idx == 0, times[0].to(lat.dtype), lat)   # activated at t0
+    lat = torch.where(ever_activated, lat, torch.full_like(lat, float('nan')))
     return lat
+
+
+def max_dvdt_time(V: torch.Tensor, times: torch.Tensor) -> torch.Tensor:
+    """Sub-frame time of peak upstroke velocity (max dV/dt) per node.
+
+    A parabolic (3-point) refinement of the ``argmax`` of the central-difference dV/dt —
+    the classic optical-mapping activation marker, kept as a probe reference alongside the
+    threshold-crossing LAT. Assumes a roughly uniform save cadence for the sub-frame offset.
+
+    Parameters
+    ----------
+    V : torch.Tensor
+        (n_saves, Nx, Ny) voltage history.
+    times : torch.Tensor
+        (n_saves,) time points in ms.
+
+    Returns
+    -------
+    torch.Tensor
+        (Nx, Ny) peak-dV/dt time in ms. NaN when fewer than 3 frames.
+    """
+    T = V.shape[0]
+    spatial = V.shape[1:]
+    if T < 3:
+        return torch.full(spatial, float('nan'), dtype=times.dtype, device=V.device)
+    t = times.to(V.dtype)
+    bcast = (-1,) + (1,) * len(spatial)
+    dVdt = torch.empty_like(V)
+    dVdt[1:-1] = (V[2:] - V[:-2]) / (t[2:] - t[:-2]).reshape(*bcast)   # central diff
+    dVdt[0] = dVdt[1]
+    dVdt[-1] = dVdt[-2]
+    k = dVdt.argmax(dim=0)                        # (Nx, Ny)
+    kc = k.clamp(1, T - 2)                        # need k-1, k+1 in range
+    ym1 = dVdt.gather(0, (kc - 1).unsqueeze(0)).squeeze(0)
+    y0 = dVdt.gather(0, kc.unsqueeze(0)).squeeze(0)
+    yp1 = dVdt.gather(0, (kc + 1).unsqueeze(0)).squeeze(0)
+    curv = ym1 - 2.0 * y0 + yp1                   # parabola curvature (negative at a peak)
+    offset = torch.where(curv.abs() > 1e-12,
+                         0.5 * (ym1 - yp1) / curv,
+                         torch.zeros_like(curv)).clamp(-1.0, 1.0)
+    dt_local = t[kc + 1] - t[kc]
+    return t[kc] + offset * dt_local
 
 
 def conduction_velocity(
@@ -63,9 +160,16 @@ def conduction_velocity(
     x1: int,
     x2: int,
     y: int,
-    threshold: float = -20.0,
+    threshold: float = -40.0,
+    *,
+    method: str = "interp",
 ) -> float:
     """Measure conduction velocity between two x-indices at row y.
+
+    Routes through the CANONICAL LAT (:func:`activation_time`, interp/−40 by default), so
+    ``r.cv()`` agrees with ``r.lat()`` and the eikonal ``1/|∇T|`` field. Pass
+    ``method="nearest", threshold=-20`` to reproduce the pre-2026-07-22 frame-quantized value.
+    A first-crossing LAT is invalid under reentry — use a phase-based map there.
 
     Parameters
     ----------
@@ -80,26 +184,22 @@ def conduction_velocity(
     y : int
         y-index (row).
     threshold : float
-        Activation threshold (mV).
+        Activation threshold (mV). Default −40 (canonical).
+    method : {"interp", "nearest"}
+        LAT estimator (see :func:`activation_time`).
 
     Returns
     -------
     float
         Conduction velocity in cm/s. NaN if activation not detected at either point.
     """
-    trace1 = V[:, x1, y]  # (n_saves,)
-    trace2 = V[:, x2, y]
-
-    above1 = trace1 >= threshold
-    above2 = trace2 >= threshold
-
-    if not above1.any() or not above2.any():
+    lat = activation_time(V, times, threshold, method=method)  # (Nx, Ny)
+    t1 = lat[x1, y]
+    t2 = lat[x2, y]
+    if not (torch.isfinite(t1) and torch.isfinite(t2)):
         return float('nan')
 
-    t1 = times[above1.to(torch.int8).argmax()].item()
-    t2 = times[above2.to(torch.int8).argmax()].item()
-
-    dt = t2 - t1
+    dt = (t2 - t1).item()
     if abs(dt) < 1e-12:
         return float('nan')
 
@@ -162,7 +262,7 @@ def apd_at(
 
     beat = trace[act_idx:end]
     V_peak = beat.max().item()
-    V_rest = trace[0].item()  # assume resting at t=0
+    V_rest = _upstroke_foot_V(trace, act_idx)         # this beat's own diastole, not trace[0]
 
     # Repolarization voltage
     V_repol = V_peak - repol * (V_peak - V_rest)
@@ -373,20 +473,12 @@ def phase_singularities(
         (Nx-1, Ny-1) float — topological charge at each plaquette center.
         Values near +1 or -1 indicate singularities. 0 = no singularity.
     """
-    # Phase differences along edges of each 2x2 plaquette
-    def _wrap(d):
-        """Wrap phase difference to [-pi, pi]."""
-        return (d + torch.pi) % (2 * torch.pi) - torch.pi
-
-    # Four edges of each plaquette (counterclockwise)
-    d1 = _wrap(phase[1:, :-1] - phase[:-1, :-1])  # bottom edge
-    d2 = _wrap(phase[1:, 1:] - phase[1:, :-1])     # right edge
-    d3 = _wrap(phase[:-1, 1:] - phase[1:, 1:])     # top edge
-    d4 = _wrap(phase[:-1, :-1] - phase[:-1, 1:])   # left edge
-
-    # Topological charge = sum / (2*pi), should be 0 or ±1
-    charge = (d1 + d2 + d3 + d4) / (2 * torch.pi)
-    return charge
+    # Topological charge via the ONE shared 2×2 plaquette loop-sum primitive (Phase-4 consolidation:
+    # the same wrapped-loop-sum backs circulation / winding_number / Gauss–Bonnet). Its atan2 wrap
+    # re-associates vs the old modulo wrap, so values match the historical output to a tight atol
+    # (not bitwise) — see test_fields_lat.
+    from .fields.derivatives import winding_loop_sum   # lazy: avoids any analysis↔fields import cycle
+    return winding_loop_sum(phase) / (2 * torch.pi)
 
 
 # ============================================================================
@@ -443,7 +535,7 @@ def restitution_curve(
     repol_time_list = []
     act_time_list = []
 
-    for beat_start in rising_indices:
+    for k, beat_start in enumerate(rising_indices):
         act_t = times[beat_start].item()
         act_time_list.append(act_t)
 
@@ -455,7 +547,7 @@ def restitution_curve(
             continue
 
         V_peak = remaining.max().item()
-        V_rest = trace[0].item()
+        V_rest = _upstroke_foot_V(trace, int(beat_start))     # this beat's own diastole, not trace[0]
         V_repol = V_peak - repol * (V_peak - V_rest)
 
         peak_idx = beat_start + remaining.argmax().item()
@@ -653,23 +745,25 @@ def cv_between(
     p2: tuple,
     dx: float,
     dy: float = None,
-    threshold: float = -20.0,
+    threshold: float = -40.0,
+    *,
+    method: str = "interp",
 ) -> float:
     """Conduction velocity along the line between two nodes ``p1=(ix,iy)`` and ``p2=(ix,iy)``.
 
     Generalizes :func:`conduction_velocity` (which is x-axis only) to any direction —
     the CV is the Euclidean distance between the points over their activation-time
-    difference. NaN if either point never activates or they co-activate.
+    difference. NaN if either point never activates or they co-activate. Routes through the
+    CANONICAL LAT (interp/−40); pass ``method="nearest", threshold=-20`` for the historical value.
     """
     dy = dx if dy is None else dy
     (i1, j1), (i2, j2) = p1, p2
-    t1_series = V[:, i1, j1] >= threshold
-    t2_series = V[:, i2, j2] >= threshold
-    if not t1_series.any() or not t2_series.any():
+    lat = activation_time(V, times, threshold, method=method)  # (Nx, Ny)
+    t1 = lat[i1, j1]
+    t2 = lat[i2, j2]
+    if not (torch.isfinite(t1) and torch.isfinite(t2)):
         return float('nan')
-    t1 = times[t1_series.to(torch.int8).argmax()].item()
-    t2 = times[t2_series.to(torch.int8).argmax()].item()
-    dt = t2 - t1
+    dt = (t2 - t1).item()
     if abs(dt) < 1e-12:
         return float('nan')
     dist = math.hypot((i2 - i1) * dx, (j2 - j1) * dy)  # cm
@@ -682,18 +776,21 @@ def radial_cv(
     center: tuple,
     dx: float,
     dy: float = None,
-    threshold: float = -20.0,
+    threshold: float = -40.0,
+    *,
+    method: str = "interp",
 ) -> torch.Tensor:
     """Outward conduction-velocity map from a point source at ``center=(ix,iy)``.
 
     For a point-stimulated expanding wave, each activated node's radial CV is its
     distance from ``center`` over ``(LAT[node] - LAT[center])``. Returns an ``(Nx, Ny)``
     map in cm/s; NaN at the center, at nodes that never activate, and where the LAT
-    difference is non-positive (upstream of the source).
+    difference is non-positive (upstream of the source). Uses the CANONICAL LAT (interp/−40);
+    pass ``method="nearest", threshold=-20`` for the historical value.
     """
     dy = dx if dy is None else dy
     ci, cj = center
-    lat = activation_time(V, times, threshold)        # (Nx, Ny), NaN where unactivated
+    lat = activation_time(V, times, threshold, method=method)  # (Nx, Ny), NaN where unactivated
     Nx, Ny = lat.shape
     if not bool(torch.isfinite(lat[ci, cj])):
         warnings.warn(
@@ -735,13 +832,13 @@ def apd_per_beat(
     starts = torch.where(rising)[0] + 1
     if starts.numel() == 0:
         return torch.tensor([], dtype=torch.float64, device=V.device)
-    V_rest = trace[0].item()
     out = []
     for k in range(len(starts)):
         s = int(starts[k].item())
         end = int(starts[k + 1].item()) if k + 1 < len(starts) else trace.shape[0]
         beat = trace[s:end]
         V_peak = beat.max().item()
+        V_rest = _upstroke_foot_V(trace, s)               # this beat's own diastole, not trace[0]
         V_repol = V_peak - repol * (V_peak - V_rest)
         pk = s + int(beat.argmax().item())
         post = trace[pk:end]
@@ -758,6 +855,29 @@ def apd_per_beat(
             local = int(below.to(torch.int8).argmax().item())
         out.append(times[pk + local].item() - times[s].item())
     return torch.tensor(out, dtype=torch.float64, device=V.device)
+
+
+def wavelength(cv: float, refractory: float, kind: str = "erp") -> float:
+    """Reentry wavelength ``λ = CV · refractory`` (cm) — the minimum viable circuit length.
+
+    ``cv`` in cm/s, ``refractory`` in ms → λ in cm (the ``/1000`` converts ms→s). ``kind="erp"``
+    (the master variable) uses the effective refractory period; ``kind="apd"`` uses APD90 as a
+    proxy that UNDERESTIMATES λ under post-repolarization refractoriness (ERP > APD90) — a warning
+    is raised. See :func:`cardiac_core.protocols.erp` for measuring ERP (it runs simulations).
+    """
+    if kind == "apd":
+        warnings.warn(
+            "wavelength(kind='apd') uses APD90 as an ERP proxy; it underestimates the wavelength "
+            "when ERP > APD90 (post-repolarization refractoriness). Use kind='erp' with a measured "
+            "ERP (protocols.erp) when refractoriness matters.", stacklevel=2)
+    elif kind != "erp":
+        raise ValueError(f"wavelength: kind must be 'erp' or 'apd', got {kind!r}")
+    return cv * refractory / 1000.0
+
+
+def di(bcl: float, apd: float) -> float:
+    """Diastolic interval ``DI = BCL − APD`` (ms) — the recovery time before the next beat."""
+    return bcl - apd
 
 
 def restitution_slope(DI, APD) -> dict:

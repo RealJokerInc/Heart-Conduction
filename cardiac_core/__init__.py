@@ -32,11 +32,17 @@ _LAZY = {
     'run_monodomain': 'run', 'run_bidomain': 'run', 'run_lbm': 'run',
     'simulate': 'run', 'SimulationResult': 'run',
     # analysis
-    'activation_time': 'analysis', 'conduction_velocity': 'analysis', 'apd_at': 'analysis',
+    'activation_time': 'analysis', 'max_dvdt_time': 'analysis',
+    'conduction_velocity': 'analysis', 'apd_at': 'analysis',
     'apd_map': 'analysis', 'dominant_frequency': 'analysis', 'wavefront_mask': 'analysis',
     'phase_map': 'analysis', 'phase_singularities': 'analysis', 'restitution_curve': 'analysis',
     'dominant_frequency_map': 'analysis', 'cv_between': 'analysis', 'radial_cv': 'analysis',
     'apd_per_beat': 'analysis', 'restitution_slope': 'analysis',
+    'wavelength': 'analysis', 'di': 'analysis',
+    # protocols (run simulations)
+    'erp': 'protocols', 'erp_proxy': 'protocols', 'post_repol_refractoriness': 'protocols',
+    # single-cell (0-D) + safety factor
+    'single_cell': 'single_cell', 'safety_factor': 'single_cell', 'threshold_charge': 'single_cell',
     # geometry
     'circle_mask': 'geometry', 'rectangle_mask': 'geometry', 'annulus_mask': 'geometry',
     'left_edge_mask': 'geometry', 'right_edge_mask': 'geometry', 'point_distance': 'geometry',

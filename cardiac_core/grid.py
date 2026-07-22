@@ -30,16 +30,21 @@ class Grid:
         Grid spacing along y (cm). Defaults to ``dx``.
     mask : array-like of bool, optional
         ``(Nx, Ny)`` active-node mask. ``None`` = full domain.
+    boundary_mode : str, optional
+        Ghost/mirror edge rule for the diffusion stencil + analysis field ops
+        (``"face_mirror"`` ≙ scipy ``reflect`` no-flux). Default ``"face_mirror"``.
     device, dtype :
         Tensor device / float dtype (float64 by default).
     """
 
     def __init__(self, Nx: int, Ny: int, dx: float, dy: Optional[float] = None, *,
-                 mask=None, device: str = "cpu", dtype: torch.dtype = torch.float64):
+                 mask=None, boundary_mode: str = "face_mirror",
+                 device: str = "cpu", dtype: torch.dtype = torch.float64):
         self.Nx = int(Nx)
         self.Ny = int(Ny)
         self.dx = float(dx)
         self.dy = float(dy) if dy is not None else float(dx)
+        self.boundary_mode = boundary_mode
         self.device = device
         self.dtype = dtype
 
@@ -95,4 +100,4 @@ class Grid:
 
     def __repr__(self) -> str:
         return (f"Grid(Nx={self.Nx}, Ny={self.Ny}, dx={self.dx}, dy={self.dy}, "
-                f"n_dof={self.n_dof})")
+                f"boundary_mode={self.boundary_mode!r}, n_dof={self.n_dof})")
