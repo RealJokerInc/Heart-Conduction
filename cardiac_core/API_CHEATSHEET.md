@@ -2,12 +2,14 @@
 
 > **Canonical, maintained reference.** This is the ONLY API source the `/sim-*` skills may generate
 > against — never invent signatures. Co-located with the code so it can't drift.
-> **After any `cardiac_core` API change, re-run `Lab/_validate/smoke.py`** and
-> `cardiac_core/tests/test_usability_fixes.py::test_cheatsheet_examples_execute` — the canaries; if
-> they break, fix this file.
+> **After any `cardiac_core` API change, re-run `Lab/_validate/smoke.py`** and the two canaries that
+> execute code straight out of this file — if they break, fix this file:
+> `tests/test_usability_fixes.py::test_cheatsheet_examples_execute` (the `# runnable-canary` block, §12)
+> and `tests/test_video.py::test_cheatsheet_video_section_executes` (the `# runnable-video-section`
+> block, §10).
 
-Verified against the shipped `cardiac_core` (254 tests green, 2026-07-16). CPU + `float64` by default;
-deterministic.
+Verified against the shipped `cardiac_core` (481 passed / 2 xfailed, 2026-07-23). CPU + `float64` by
+default; deterministic.
 
 ```python
 import cardiac_core as cc

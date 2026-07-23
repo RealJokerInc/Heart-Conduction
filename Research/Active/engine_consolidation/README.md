@@ -11,7 +11,14 @@ How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `ca
 
 ## Status: Active
 
-> **Usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, pending merge to main)** — the two-round
+> **Video object SHIPPED (2026-07-23, commit `2a4b0e3` on `main`)** — `cardiac_core/video/`: a `Video` spec +
+> reusable `Gradient` + `render()`, `r.video("slug")` as the one-liner (full-frame, unlabelled, 1080p), native
+> multi-panel with a shared colorbar, front/isochrone overlays. `viz.propagation_video` delegates (600x300
+> framing preserved) and its silent mp4→gif downgrade is fixed. Plan audited to convergence over **6 Opus
+> rounds** before implementation. 481 passed / 2 xfailed (baseline 395/2, +86 tests, no regressions).
+> See KNOWLEDGE "VIDEO OBJECT — SHIPPED 2026-07-23" + [VIDEO_OBJECT_PLAN.md](../../../cardiac_core/VIDEO_OBJECT_PLAN.md).
+>
+> **Usability fixes SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`; NOW ON `main` — verified 2026-07-22, carried in by the analysis-fields fast-forward)** — the two-round
 > task-based usability audit's P0/P1/P2 fix list executed as 5 test-gated phases (P0 crash/silent-wrong bugs → B2
 > fast-solver wiring → de-trap stubs + `scale_conductance`/`set_conductivity` → cheatsheet correctness → analysis
 > aggregates). 252 tests green; per-engine integrity goldens bit-identical. See KNOWLEDGE "SHIPPED 2026-07-16".
@@ -65,6 +72,9 @@ Files to read when resuming work on this question:
 | `cardiac_core/api.py` | Simplified API: monodomain(), bidomain(), lbm() + CardiacSimulation wrapper |
 | `cardiac_core/run.py` | One-shot `run_monodomain/run_bidomain/run_lbm`, `simulate`, `SimulationResult` (added post-Phase-0) |
 | `cardiac_core/analysis.py` | Pure tensor analysis: activation_time, conduction_velocity, apd_map, phase_singularities, restitution_curve |
+| `cardiac_core/video/` | **Video rendering** (2026-07-23): `clip.py` (`Video` spec + masking seam), `gradient.py` (`Gradient` + 5 presets), `render.py` (`render()`, both producers, overlays, multi-panel), `encoders.py` (backend chain, canvas fit, `VideoInfo`) |
+| `cardiac_core/viz.py` | Legacy one-liners (`propagation_video` → delegates to `video`, `apd_map_figure`, `activation_isochrones`) |
+| `cardiac_core/media.py` | `media_path()` — the `media/{question}/{kind}/{date}/{slug}_NN.ext` convention |
 | `cardiac_core/geometry.py` | Mask/region/distance/fiber helpers |
 | `cardiac_core/io.py` | Result .npz save/load |
 | `cardiac_core/tests/` | 77 tests: file format, per-engine, integration, run/analysis/geometry/io, direct-match verification |
