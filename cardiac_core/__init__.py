@@ -55,6 +55,9 @@ _LAZY = {
     'save_result': 'io', 'load_result': 'io',
     # viz (standardized result figures/videos)
     'propagation_video': 'viz', 'apd_map_figure': 'viz', 'activation_isochrones': 'viz',
+    # video (spec-first rendering: Video + Gradient + render)
+    'Video': 'video', 'Gradient': 'video', 'render': 'video',
+    'render_video': 'video', 'VideoInfo': 'video',
 }
 
 

@@ -13,7 +13,6 @@ import matplotlib
 matplotlib.use("Agg")  # headless — viz is for scripts/CI, never a GUI
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import animation
 
 from .media import media_path
 
@@ -25,32 +24,39 @@ def _vm_numpy(result):
 
 def propagation_video(result, slug, *, question="lab", fps=20, vmin=-90.0, vmax=40.0,
                       cmap="inferno", bulk=False) -> str:
-    """Animate the voltage propagation. Saves mp4 (ffmpeg); falls back to gif. Returns the path."""
-    Vm = _vm_numpy(result)
-    T = Vm.shape[0]
-    times = result.times.detach().cpu().numpy()
+    """Animate the voltage propagation. Returns the path (str).
 
-    fig, ax = plt.subplots(figsize=(6, 3))
-    im = ax.imshow(Vm[0].T, origin="lower", aspect="auto", vmin=vmin, vmax=vmax, cmap=cmap)
-    fig.colorbar(im, ax=ax, label="Vm (mV)")
-    ax.set_xlabel("x (nodes)")
-    ax.set_ylabel("y (nodes)")
+    Thin wrapper over :func:`cardiac_core.video.render`, kept for the ``/sim-media`` skill and
+    existing Lab scripts. It preserves this function's historical look: annotated (axes +
+    colorbar + time), stretched ``aspect="auto"``, node-index labels, no masking, 600x300.
 
-    def _update(t):
-        im.set_data(Vm[t].T)
-        ax.set_title(f"t = {times[t]:.1f} ms")
-        return (im,)
+    For anything more — physical cm axes, ``phi_e``, playback ``speed=``, overlays, multi-panel,
+    the fast full-frame style, gradient presets — use ``result.video(slug, ...)`` or
+    ``cardiac_core.render`` directly.
 
-    anim = animation.FuncAnimation(fig, _update, frames=T, blit=False)
-    try:
-        path = media_path(question, "videos", slug, ext="mp4", bulk=bulk)
-        anim.save(path, writer="ffmpeg", fps=fps)
-    except Exception:
-        # gif is an IMAGE type in the media convention → kind="images"
-        path = media_path(question, "images", f"{slug}-propagation", ext="gif", bulk=bulk)
-        anim.save(path, writer="pillow", fps=fps)
-    plt.close(fig)
-    return path
+    .. note::
+       Previously this saved through matplotlib's ``ffmpeg`` writer inside a bare ``except``
+       that silently rewrote the output to a GIF at a different path and extension whenever
+       ffmpeg was not on ``PATH`` (and swallowed codec/disk errors identically). It now goes
+       through a PATH-independent bundled-ffmpeg backend, and any fallback warns loudly.
+
+    Two deliberate, documented behaviour changes: the per-frame time text moves from
+    ``ax.set_title`` to ``fig.suptitle``; and a GIF fallback is now named ``{slug}.gif`` rather
+    than ``{slug}-propagation.gif`` (the fallback is announced by a warning instead).
+    """
+    from .video import render, Video, Gradient
+    info = render(
+        Video(result,
+              gradient=Gradient(cmap=cmap, value_range=(vmin, vmax), bad="0.55"),
+              style="annotated",
+              aspect="auto",       # a Video field, NOT a render() kwarg
+              units="nodes",       # legacy drew node indices
+              mask=False),         # legacy did NOT mask — keep it that way
+        slug, question=question, bulk=bulk, fps=fps,
+        figsize=(6.0, 3.0), dpi=100, resolution=None,   # explicit figsize wins -> 600x300
+        max_frames=None, colorbar=True, show_time=True,
+    )
+    return info.path
 
 
 def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, **apd_kw) -> str:

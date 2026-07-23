@@ -233,17 +233,57 @@ times, Vm, phi_e, meta = cc.load_result(path) # returns a 4-TUPLE (not a Simulat
 # mesh I/O: cc.save_cardiac_mesh(path, data) / cc.load_cardiac_mesh(path) for a CardiacMeshData
 ```
 
-## 10. Media — standardized figures & video (`cc.viz`)
+## 10. Media — video & figures
+
+**The one-liner.** No arguments beyond a name: full-frame, no labels, 1080p, standard colours.
 
 ```python
-from cardiac_core import propagation_video, apd_map_figure, activation_isochrones
-propagation_video(result, slug, bulk=True)       # mp4 (gif fallback) of the wave
-apd_map_figure(result, slug, bulk=True)          # APD90 heatmap PNG
-activation_isochrones(result, slug, bulk=True)   # activation-time contours PNG
-# bulk=True → gitignored media/lab/_sim_outputs/... (regenerable; the normal case).
-# bulk=False → committed media/lab/... (a curated figure worth keeping).
-from cardiac_core.media import media_path        # raw path helper, if you save your own
+# runnable-video-section
+import numpy as np, cardiac_core as cc
+from cardiac_core import Video, Gradient, render
+
+g    = cc.Grid(40, 10, 0.025)                                  # dx is REQUIRED (cm)
+cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+sim  = cc.monodomain(g, "ttp06", cond, cc.Stim.boundary(g, "left", amplitude=-80.0,
+                                                        start_time=1.0, duration=2.0))
+r    = sim.run(t_end=20.0, save_every=1.0)
+
+info = r.video("my-wave", bulk=True)             # -> media/lab/_sim_outputs/videos/{date}/my-wave_01.mp4
+print(info.backend, info.width, info.height, info.vmin, info.vmax)
+
+# Colour is a reusable object. The RANGE is a scientific choice, not decoration:
+# a 7.5 mV artifact spans 5.8% of the default -90..40 scale but 90.4% of the zoom window.
+Gradient.physiological()        # -90..40 mV, viridis          (the default)
+Gradient.rest_anchored()        # V_rest..40, inferno, grey masked tissue
+Gradient.zoom(span=8.0)         # V_rest-0.3 .. V_rest+8       (make a small artifact visible)
+Gradient.diverging()            # -90..50, RdBu_r
+Gradient.autoscale()            # the data's own finite range
+Gradient(cmap=["black", "red", "white"], gamma=1.4, levels=12)   # custom gradient
+
+# Anything beyond the default is opt-in, on the Video spec or on render():
+r.video("annotated", style="annotated", gradient=Gradient.rest_anchored(),
+        isochrones=True, front=-40.0, speed=20.0, bulk=True)   # 20 ms of sim per real second
+
+# Multi-panel: a panel IS a Video. Sharing one Gradient is what makes panels comparable.
+render([Video.annotated(r, gradient=Gradient.physiological(), label="control"),
+        Video.annotated(r, gradient=Gradient.physiological(), label="drug")],
+       "control-vs-drug", question="lab", bulk=True, max_frames=20)
+
+Video(r).preview(t_ms=10.0, bulk=True)           # ONE frame to PNG — check colours cheaply
+
+cc.apd_map_figure(r, "my-wave", bulk=True)       # APD90 heatmap PNG
+cc.activation_isochrones(r, "my-wave", bulk=True)  # activation-time contours PNG
+cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 600x300)
 ```
+
+- `bulk=True` → gitignored `media/lab/_sim_outputs/...` (regenerable; the normal case).
+  `bulk=False` → committed `media/{question}/...` (a curated figure worth keeping).
+- `question=` names the owning research question; defaults to `"lab"`.
+- `format=` is `"mp4"` (default), `"webm"` or `"gif"` — a GIF is filed under `images/` per the
+  media convention. The encoder used is reported on `info.backend`; a fallback always warns.
+- Figure-only knobs (`colorbar`, `title`, `figsize`/`dpi`, `label`, `front`, `isochrones`) RAISE
+  on a bare clip rather than silently doing nothing — use `Video.annotated(...)`.
+- `from cardiac_core.media import media_path` — raw path helper, if you save your own.
 
 ## 11. Full example — measure conduction velocity in a strip (the smoke pattern)
 

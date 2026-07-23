@@ -54,6 +54,7 @@ def test_no_prepare_engine_hack():
     assert not bad, "_prepare_engine hack reintroduced:\n" + "\n".join(bad)
 
 
-@pytest.mark.parametrize("sub", ["ionic", "mesh", "stimulus", "_monodomain", "_bidomain", "_lbm"])
+@pytest.mark.parametrize("sub", ["ionic", "mesh", "stimulus", "fields", "video",
+                                 "_monodomain", "_bidomain", "_lbm"])
 def test_subpackage_importable(sub):
     importlib.import_module(f"cardiac_core.{sub}")

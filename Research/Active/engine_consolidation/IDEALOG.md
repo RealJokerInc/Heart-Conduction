@@ -29,7 +29,55 @@ needed); `single_cell` drives the shared `IonicModel.step` (0d-vs-tissue match c
 `protocols.py`. **Spatial ops = real-space FD conv stencils, NOT spatial FFT** (FFT only for temporal DF/Hilbert-phase).
 
 ## Next Step
+**★ PRIORITY (2026-07-23, user) — `single_cell(conductances={...})`, the 0-D drug knob.** Full spec in
+KNOWLEDGE.md § "SPEC — `single_cell(conductances=...)`". One-line summary: tissue can apply a drug
+(`scale_conductance`), 0-D cannot — so the CHEAPEST drug question has no public route, and the only
+workaround (mutate a model instance) **bypasses name validation**, making a mis-cased conductance a
+SILENT no-op in a drug experiment. Fix is small: `api.py:43::_scale_ionic_conductances` already takes a
+dict and validates names; move it to a light home (`cardiac_core/ionic/scaling.py` — `single_cell.py`
+must stay free of the heavy `api` import) and add one keyword, applied BEFORE `pre_pace`. ~5 tests,
+no solver code, goldens unaffected. NOT built.
+
 **Backlog logged (2026-07-22, post-ship):**
+- **✗ `Grid` dx unit convention cm → mm — CONSIDERED AND REJECTED (user, 2026-07-23). `cm` STAYS CANONICAL.**
+  Proposal was: `Grid(Nx, Ny)` primary, `dx` demoted to an optional tissue-size knob in **mm** (default 0.1 mm,
+  chosen over the initially-floated 1 mm because the upstroke is only ~0.5–1 mm wide, so dx=1 mm puts it on ~1 node →
+  grid-dominated WRONG CV — the ionic-tuner's phantom "conduction block" failure). Blueprinted + adversarially
+  audited (19 findings: 4 critical / 5 high), then **scrapped: it is not the "small fix" it looked like.**
+  **Why rejected — the real blast radius is 102 executable `Grid(` sites across FIVE subsystems**, not the ~80
+  cardiac_core sites first estimated: 18 cardiac_core test files + `protocols.py` + the tutorial notebook & its
+  `_build` script; **`cardiac_mcp/core.py` ×2 — including the public `simulate(dx=…)` tool parameter AND the
+  generated-`run.py` template string**, so every newly committed Lab experiment would ship a script that raises;
+  `.claude/skills/sim-experiment/reference/run-template.py`; 3 `Lab/` scripts + `Lab/presets/*.yaml` + `_SCHEMA.md`;
+  plus the cheatsheet/API_REFERENCE/skill docs. Renaming the unit into every boundary variable (`DX`→`DX_MM`, the
+  MCP tool param, preset keys) was required to stop a cm value being pasted into `dx_mm=` (which raises nothing and
+  silently builds a 10×-too-fine grid). Not worth it for a unit preference.
+  **⚑ Two durable findings worth keeping (independent of this decision):**
+  1. **The integrity goldens are structurally blind to the `Grid` path.** `tests/_integrity/make_goldens.py` builds
+     all three goldens via `create_cardiac_mesh(Lx, Ly, dx)` — **no golden ever constructs a `Grid`**. So the
+     declarative `Grid` construction path has NO numerics drift-guard at all. Separately actionable.
+  2. **Census-grep trap** (it hid 5 real call sites): use `\bGrid\(` — `[^a-zA-Z_.]Grid\(` silently excludes every
+     `cc.Grid(` dotted call, and `grep -v "A|B|C"` is a BRE so the `|` is literal and filters nothing (use `-vE`).
+  Current convention stands: cardiac_core length is **cm** everywhere (`Grid(Nx, Ny, dx_cm)`, `Lx = dx*(Nx-1)`),
+  time ms, Vm mV, D cm²/ms, σ mS/cm, χ cm⁻¹, CV cm/s; the Optimizer alone speaks mm at its edge and divides by 10.
+- **`IonicPreset` — a savable ionic-model config object. PLAN WRITTEN + GATED (2026-07-23, user: "worry about it
+  later").** Spec: `cardiac_core/IONIC_PRESET_PLAN.md` (1 phase / 3 steps, tier large). A first-class object: base
+  model + a `{param: factor}` scaling map, accepted anywhere `ionic_model=` is, with `.save()`/`.load()` JSON — closes
+  the "a tuned conductance set has no home" gap (`scale_conductance` mutates in-memory; `.npz` stores only the model
+  NAME string; `set_parameter` is stubbed). Locked design (user, 2026-07-23): scalings canonical + resolved `.values`
+  (**BOTH**); any named param — conductance/concentration/kinetic — validate-exists + warn-denylist (**BREADTH**);
+  **CORE OBJECT ONLY** — `.npz` scalings-persistence and the tuner bridge (`g_Na`↔`GNa`, `from_tuning_result`)
+  DEFERRED. Resolves at the SINGLE `ionic/registry.py::build_ionic_model` seam (all 3 engines; already passes scaled
+  instances through). Design NOT audited (offered `/audit`, user shelved). Related: the ★ `single_cell(conductances=)`
+  priority above (both are the ionic drug/conductance knob — an `IonicPreset` could be the savable form of that knob)
+  + the gated [[project_ionic_tuner_redesign]].
+- **Tutorial notebook series — DESIGN CONVERGED 2026-07-22, AUTHORING GATED.** 11 lessons on a **lab-experiment
+  spine**, two tiers (Core 01–06 = one cell → drug → CV → video → pacing → scar+block, an afternoon; Advanced
+  07–11 = fibers → clamp → `fields` → two engines → bidomain capstone). Caveats **minimal/operational only**
+  (user call). Spec: `cardiac_core/tutorials/PLAN.md` (rewritten — the 2026-07-21 8-lesson version is
+  superseded: its `single_cell` prep step is already shipped and its dict-stimulus spine is now deprecated).
+  **Gate: author nothing until the video pipeline lands** (L04) **and Stim merges to `main`**. See the
+  2026-07-22 (3rd parallel agent) Thread entry.
 - **API_REFERENCE.md ("Object Atlas") generator + drift canary.** An introspection-driven reference (full
   `inspect.signature` + first-docstring-line over the `_LAZY` export map, + the object-atlas shape tables from a
   tiny fixture run) → a NEW `cardiac_core/gen_api_reference.py` emitting `cardiac_core/API_REFERENCE.md`, kept honest
@@ -98,7 +146,34 @@ needed); `single_cell` drives the shared `IonicModel.step` (0d-vs-tissue match c
   - Wins: serializable/inspectable/composable/visualizable stim (vs opaque lambdas) — matters for save/load + the MCP
     accountability path. The internal `Stimulus`/`StimulusProtocol` (stimulus/protocol.py) already supports a
     mask-region + amplitude-summing overlaps → `Stim` lowers onto it.
-- **Video-as-object (DESIGN LOCKED 2026-07-22, → plan at `cardiac_core/VIDEO_OBJECT_PLAN.md`).** A built-in video
+- **Video-as-object — ✅ SHIPPED 2026-07-23** (design locked 2026-07-22 · plan audited to convergence · all 3
+  phases implemented, `cardiac_core/video/`). `Video` + `Gradient` + `render` + `VideoInfo`, exported top-level;
+  `r.video("slug")` is the one-liner; `viz.propagation_video` delegates with its 600×300 annotated framing intact.
+  85 video tests; full suite green vs a pre-implementation baseline of 395 passed / 2 xfailed / **0 failures**.
+  Implementation-time findings worth keeping: (1) **`labels=` was mutating the caller's `Video` objects** — a
+  render-time override that persisted, and would then make a bare single-clip render of the same object RAISE
+  (label is figure-only); found by self-review, not by the tests, now fixed + regression-tested. (2) The
+  orientation probe test failed at `atol=8` purely from **yuv420p chroma subsampling** (H.264 is lossy) — the
+  tolerance is now sized for the codec with a companion assertion that opposite corners differ by >60 levels, so
+  it still catches a flip. (3) A `D=0` scar correctly renders as *non-conducting tissue at rest*, not masked grey
+  — grey is reserved for `domain_mask` holes; verified by rendering a real scar sim and looking at the frame.
+  **Below is the plan/audit record.**
+  **`/audit` cycle: 6 Opus rounds → CONVERGED** (R1 3C/11H/11M/8L → R2 3C/10H/14M/14L → R3 1C/6H/14M/12L →
+  R4 0C/4H/19M/9L → R5 0C/3H/11M/17L → **R6 0C/0H** — verdict: *"CONVERGED and ready for implementation"*; R6's
+  mediums/lows folded in as a final non-adversarial pass). **Pattern, every round: the majority of findings were
+  follow-ons to the PREVIOUS round's own fixes**, never new bug classes — R5 localised the whole tail to one
+  block (`render()`'s pseudocode) and rewriting it as an explicitly ordered sequence closed all three of its
+  HIGHs at once. **⚑ THE CYCLE CAUGHT TWO FALSE "VERIFIED" CLAIMS OF MINE** (see the corrected defect note below
+  and [[feedback-verify-env-with-conda-run]]): the ffmpeg-absence claim, and "mutating a registered colormap
+  contaminates the global" (it does not — `plt.get_cmap` returns a fresh copy; the real hazard is a
+  caller-supplied `Colormap` instance). Both came from inferring a conclusion from a weaker observation.
+  Load-bearing catches beyond those: **LBM masked nodes stay FINITE**, so `isfinite`-only masking would have
+  painted every obstacle as live tissue (masking now routes through `domain_mask`, True=ACTIVE) — and the same
+  contamination had to be propagated to the colour-range and isochrone paths; **no torch→numpy conversion
+  existed anywhere** (crash on any CUDA result); the `Video.field` attribute shadows `dataclasses.field`, which
+  would have `TypeError`ed at import; and every `Verify` block was unexecutable (`conda activate` is a silent
+  no-op non-interactively). Implementation remains **GATED on an explicit user go**. NOTE: `cardiac_core/tutorials/PLAN.md`
+  is explicitly **blocked on this plan** (its lesson 04 names the file), so this sits on that plan's critical path. A built-in video
   renderer, designed in parallel with (and deliberately mirroring) the `Stim` object shape: a **spec object holds the
   description**, a **render function** turns it into frames, output lands at a `media_path` convention path.
   **Locked (user):** (1) **full gradient control** — a reusable `Gradient` object (cmap by name / **a list of colors** →
@@ -143,6 +218,108 @@ P1 bidomain M4 etc.). Analysis-fields FUTURE polish (documented in the PLAN, not
 torch migration, a co-area identity explicit test. See the open-threads block below.
 
 ## Thread
+
+### 2026-07-23 (3rd parallel agent, cont.) — tutorial LESSON 01 SHIPPED (grid → stim → 3 engines → CV)
+**User re-scoped the session** ("something simpler — a simple little interval that guides a person to
+build a simulation": grid, stim, using the simulation, and a monodomain + bidomain + LBM run). Built it.
+**Shipped**: `cardiac_core/tutorials/01_build_a_simulation.ipynb` (34 cells / 12 code, ~90 s),
+`cardiac_core/tutorials/README.md` (index), and `cardiac_core/tutorials/_build/build_01_build_a_simulation.py`
+(the reviewable source of truth — a `.py` diff instead of an `.ipynb` diff; `--script PATH` emits a flat
+concatenation of the code cells for headless regression until the nbconvert gate exists).
+**Shipped config, all MEASURED not guessed**: `Grid(201,51,0.01)` (2×0.5 cm), `ConductivityConfig.bidomain(1.74,6.25)`,
+`Stim.boundary(g,"left",start_time=1,duration=2,amplitude=-52)` (102 nodes = 2 cols), `t_end=40, save_every=0.5`;
+**mono dt=0.05 → 58.8 cm/s (20.6 s)**, **bidomain dt=0.05 → 59.6 cm/s (31.8 s)**, **lbm dt=0.01 → 64.6 cm/s (11.5 s)**;
+total run wall 63.9 s. Tuning basis: dt=0.05 costs only ~1.2% CV vs the dt=0.02 default (59.49) for ~2× the
+speed; lbm dt=0.01 costs 0.2% vs dt=0.005 for ~2×. Baselines at default dt: 59.49 / 60.16 / 64.75.
+**Verified, not assumed**: ran the exact reader-facing code end-to-end under `conda run` (exit 0), and
+**rendered and LOOKED AT the figures** — the wavefront snapshots put the front at 0.17→1.62 cm between
+t=5 and 30 ms ⇒ ~58 cm/s, independently reproducing `r.cv()`; the `phi_e` panel confirmed positive AHEAD /
+negative BEHIND the front before the prose asserted it. Two defects caught this way and fixed: (1) the
+stim-mask figure was a near-empty box (a 0.02 cm electrode across 2 cm is a hairline) → now a two-panel
+full+zoom, and the emptiness became the teaching point; (2) the `phi_e` prose said "biphasic deflection",
+which is a TIME-domain statement about a SPATIAL map → rewritten to describe the sign flip they can see,
+then explain why a fixed electrode therefore records positive-then-negative.
+**⚠ Consequence for the 11-lesson arc**: lesson 01 front-loads the mechanics and now overlaps designed
+L03 (cell→monolayer CV), L10 (two engines) and part of L11 (`phi_e`). **The Core tier must be re-cut
+before authoring continues** — do not author 03/10 as specced. Noted at the top of the tutorials PLAN.
+**Tooling finding**: `nbformat`/`nbconvert` are **NOT installed** in `heart-conduction` (ipykernel,
+jupyter_client, jupyter_core, matplotlib are) — the old plan's P0.1 flagged this risk and it was real.
+Worked around by emitting the `.ipynb` as plain JSON (validated structurally: nbformat 4.5, unique cell
+ids, correct code-cell fields). Consequence: the notebook ships with EMPTY outputs, and the § 8
+execute-all anti-rot gate cannot be built until they're installed. Deliberately did NOT `pip install`
+— two other agents were running in the shared env and a mid-flight dependency upgrade wasn't worth it.
+**Observation for whoever owns the cheatsheet**: it states LBM CV runs **~30–47% higher** than FDM
+monodomain; measured here it is **+9.9%** (64.6 vs 58.8, same σ/grid/stim). Not investigated — may be
+dx- or config-dependent — but the documented range did not reproduce on the default declarative path.
+
+### 2026-07-22 Session (3rd parallel agent) — tutorial notebook series: DESIGN CONVERGED, authoring GATED
+**Context**: three agents working `cardiac_core` concurrently — (1) the video pipeline, (2) the Stim pipeline,
+(3) this one, on the Jupyter tutorial series. No code touched here; the deliverable is the lesson design.
+**Found — the 2026-07-21 `cardiac_core/tutorials/PLAN.md` had gone stale in 4 ways** (all from work that
+shipped between it being written and now):
+- **P0.2 is DONE, not a prerequisite.** The plan's blocking prep step ("implement `cc.single_cell()` before
+  writing any lesson") shipped in `63f6982`. Real signature `cc.single_cell('ttp06', celltype='EPI',
+  pre_pace=5)` → `sc.V`/`sc.apd(0.9)`/`sc.final_state` — NOT the `stim=/t_end=/dt=/cell_type=` the plan guessed.
+- **The plan's pedagogical SPINE was voided by the Stim work.** It hung lesson continuity on "L1 teaches the
+  `{start_time,duration,amplitude}` dict keys, they carry into L3+" — that dict now raises `DeprecationWarning`
+  (Phase 2, `743e6d4`), so the notebooks would ship warnings. Replaced by a better spine (below).
+- **`r.fields.*` + `safety_factor` + `wavelength`/`di`/`erp` didn't exist** when the plan was written; its one
+  "EP toolkit" lesson is far too small a container.
+- **Voltage clamp shipped as a first-class `Stim` mode** (`clamp=`, all 3 engines) — the plan lists it as v2 bonus.
+**Decisions (user, this session):**
+- **D1 — spine = LAB-EXPERIMENT ladder** (each lesson is a bench experiment, simulated; API taught as a side
+  effect). Rejected: the API-concept ladder (reads as software docs) and a physics-first ladder.
+- **D2 — two tiers: Core 01–06 + Advanced 07–11.** Core = one cell → drug → CV on a monolayer → video →
+  pacing/restitution → scar+block, completable in an afternoon, ends by handing the reader `/sim-experiment`.
+  Advanced = fibers → voltage clamp → `fields` → two engines → bidomain-infarct capstone.
+- **D3 — caveats MINIMAL / operational only** (user overrode my "inline where it bites" recommendation). No
+  numerics disclaimers in lessons; they live in `API_CHEATSHEET.md`. Two structural exceptions kept: L10 IS the
+  engine-comparison lesson (the differing numbers ARE its content), and masked-node `NaN` in L06 (the reader
+  sees holes in their own plot). Rule of thumb recorded in the plan: anything else that seems to need a warning
+  is a signal to pick better lesson PARAMETERS instead of explaining bad ones.
+- **New stimulus through-line** (replaces the dead dict bridge): `Stim` as *a named place*. L01–02 have no Stim
+  at all (0-D, `pre_pace=`); L03 introduces `cc.Stim.boundary(g,"left")` as "where you put the electrode" — it
+  reads as one English sentence where `lambda x,y: x<0.05` never did; L05 = the same Stim + `bcl/num_pulses`
+  (a pacing train is the electrode firing repeatedly); L07 `Stim.center`; L08 the same object with `clamp=`
+  instead of `amplitude=`. One object, learned once, re-used four ways.
+- **`tutorial_helpers.py` — default to NOT writing one.** With `cc.viz` + the incoming `Video`/`Gradient`, a
+  helper would teach a vocabulary that exists only inside the tutorials. Bar = "the library genuinely can't do
+  this"; likely residue is one `plot_ap` for L01. Decide after the video branch lands.
+**Gate**: authoring is BLOCKED until the video pipeline lands (L04 is the long pole — do NOT author it against
+`cc.propagation_video` and then rewrite) and Stim merges to `main`. L01–03 could go first if video stretches.
+**Also kept**: the execute-all anti-rot gate (nbconvert `--execute` every notebook, wired to `/verify`) — the
+plan this replaces rotted exactly this way.
+**Written to**: `cardiac_core/tutorials/PLAN.md` (full rewrite; §1 decision table, §3 the 11 lessons, §4 the
+stim through-line, §5 caveat policy, §6 branch dependencies, §8 anti-rot gate, §10 open questions).
+**API-SURFACE GAP FOUND while verifying lesson signatures (2026-07-23) — per-edge bath coupling is
+unreachable publicly.** `cc.bidomain(..., boundary=)` validates against exactly `('bath','insulated')`
+(`api.py:1751`) and maps `'bath'` → `BoundarySpec.bath_coupled()` = **ALL FOUR EDGES** (`api.py:1771`).
+`BoundarySpec.bath_coupled_edges([Edge.TOP, Edge.BOTTOM])` is real + test-covered
+(`tests/test_solver_fixes.py:148`) but reachable ONLY by importing `cardiac_core.mesh.boundary` and
+hand-assembling a `StructuredGrid`. So a MIXED-BC bidomain — the exact configuration the Kléber
+boundary-loading and `bidomain_parabolic_parabolic` questions care about — has no declarative route.
+**Candidate fix**: let `boundary=` accept a list/tuple of edges (`boundary=["top","bottom"]`) alongside
+the two strings. Consequence today: the tutorial capstone was re-scoped to `boundary="bath"` (all edges)
+and mixed-BC dropped from v1.
+**Second gap — `single_cell()` has NO conductance knob.** Verified sig: `single_cell(model, *,
+celltype='ENDO', dt, bcl, n_beats, pre_pace, stim_amplitude, stim_duration, t0, Cm, save_every,
+device)`. `scale_conductance` is a `CardiacSimulation` (tissue) method, so "apply a drug to ONE cell"
+— the single most natural 0-D experiment, and the classic hERG/APD story — has no public route; the
+only path is building an ionic-model instance, mutating a conductance attribute, and passing it as
+`model=`. **Candidate fix (small, additive): `single_cell(..., conductances={'GKr': 0.5})`**, lowering
+to the same name validation `scale_conductance` already does. Blocks tutorial lesson 02 (fallback:
+move the drug lesson after tissue). Note also `celltype` is ENDO/EPI/**MID** (not 'M'), and 0-D pacing
+already exists (`bcl`+`n_beats`+`pre_pace`).
+**Third (cosmetic, consistency)**: the 0-D stim kwargs are `stim_amplitude`/`stim_duration`/`t0` while
+`Stim` uses `amplitude`/`duration`/`start_time` — three renamed keywords for one idea, met by anyone
+graduating from a 0-D script to tissue.
+**Also corrected a second stale signature**: it's `ConductivityConfig.anisotropic(sigma_l, sigma_t,
+fiber_angle, chi, Cm)` — raw σ in mS/cm and the angle in RADIANS, ONE global angle (no per-node fiber
+field via the factories); `sigma_eff`/`D_eff` return a 3-tuple (xx,yy,xy) when anisotropic. The old
+tutorial plan said `anisotropic(D_l, D_t, …)`, which would have taught a χ·Cm units error.
+**Observed (worth knowing for 3-agent work)**: the Stim session committed `743e6d4` INTO THE SHARED WORKING TREE
+mid-session — 16 `cardiac_core` files went from modified to committed between two of my reads. Re-check `git
+status`/`log` before reasoning about tree state; don't cache it.
 
 ### 2026-07-22 Session (cont.) — analysis-fields IMPLEMENTATION: all 7 phases shipped → committed → pushed to main
 **Worked on:** executing `ANALYSIS_FIELDS_PLAN.md` end-to-end (user: "ready for plan.md implementation" → "run audit.

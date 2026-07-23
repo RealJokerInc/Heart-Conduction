@@ -130,6 +130,28 @@ class SimulationResult:
         DI, APD = analysis.restitution_curve(self.Vm, self.times, ix, iy, **kw)
         return analysis.restitution_slope(DI, APD)
 
+    # --- media ---
+    def video(self, slug: str, **kw):
+        """Render this run to a video at a convention-compliant ``media/`` path.
+
+        ``r.video("spiral-wave")`` -> ``media/lab/_sim_outputs/videos/{date}/spiral-wave_01.mp4``
+        — full-frame, unlabelled, 1080p, standard colour preset. Everything else is opt-in::
+
+            r.video("wave", gradient=cc.Gradient.zoom(), style="annotated", isochrones=True)
+            r.video("slow", speed=20.0, bulk=False)      # 20 ms of sim per second of video
+
+        Grid spacing, masked (NaN / ``domain_mask``) tissue and the model identity carried on this
+        result are applied automatically. Returns a :class:`cardiac_core.video.VideoInfo` — a
+        str-like path that also reports the encoder used, frame count, fps and colour range.
+        """
+        from .video import render, Video
+        # Split Video-level knobs from render-level ones: forwarding everything to render()
+        # would make gradient=/style=/front=/... a TypeError from the headline API.
+        video_keys = {"field", "gradient", "label", "front", "isochrones",
+                      "mask", "style", "aspect", "units"}
+        vkw = {k: kw.pop(k) for k in list(kw) if k in video_keys}
+        return render(Video(self, **vkw), slug, **kw)
+
 
 def _collect(sim, t_end, save_every, output_device):
     """Run sim, collect snapshots, return tensors on output_device."""

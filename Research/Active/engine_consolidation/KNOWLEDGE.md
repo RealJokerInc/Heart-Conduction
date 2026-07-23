@@ -3,8 +3,42 @@
 > This file is a running synthesis. Updated as findings accumulate.
 > When the question is complete, a copy is promoted to `Research/Knowledge/`.
 
-> **SHIPPED 2026-07-16 — P0/P1/P2 usability fixes** (branch `usability-fixes-p0-p1`, commits `a37d325`→`99e1fa3`,
-> NOT yet merged to main). Executed the audit-converged [PLAN.md](./PLAN.md) — all 5 phases + a 5-lane adversarial
+> **VIDEO OBJECT — SHIPPED 2026-07-23** (plan [VIDEO_OBJECT_PLAN.md](../../../cardiac_core/VIDEO_OBJECT_PLAN.md),
+> audited to convergence over **6 Opus rounds** before a line was written). `cardiac_core/video/` is a new
+> spec-first rendering layer: a **`Video`** object holds the description, **`render()`** turns it into a file, and
+> output lands at a `media_path` convention path. **`Gradient` makes colour a reusable first-class object** —
+> which matters here because the *range* is a scientific choice: a 7.5 mV wall artifact spans **5.8%** of the
+> default −90…40 mV colormap but **90.4%** of `Gradient.zoom()` (a **15.7× visibility gain**, measured). Five
+> presets encode the five colour intents found across the ~20-script render corpus. **The zero-argument call**
+> (`r.video("slug")`) is the common case: full-frame, unlabelled, **1080p**, viridis −90…40, aspect preserved
+> with letterbox padding — and it is also the FASTEST path (the bare producer skips matplotlib entirely,
+> 0.10 ms/frame vs 7.9). Multi-panel is native (`render([a, b], slug)` → one shared colorbar + one suptitle
+> time stamp), because most polished prior art IS a comparison. Overlays: live −40 mV front contour + static LAT
+> isochrones. **`viz.propagation_video` now delegates**, preserving its exact 600×300 annotated framing.
+> **Suite: 85 video tests; full cardiac_core suite green against a pre-implementation baseline of 395 passed /
+> 2 xfailed / 0 failures.**
+>
+> **⚑ The corrected defect (an earlier claim in this file was WRONG — do not re-introduce it).** The real bug in
+> `viz.propagation_video` was a **silent, PATH-dependent FORMAT DOWNGRADE**: a bare `except Exception` around
+> `anim.save(writer="ffmpeg")` rewrote the output to a `.gif` at a *different path and extension* whenever ffmpeg
+> was missing, and swallowed codec/disk errors identically. It was **NOT** true that "every mp4 was always a GIF"
+> — under `conda activate heart-conduction` ffmpeg IS on `PATH` and the writer works. That false claim came from
+> measuring in a shell without conda's PATH; see [[feedback-verify-env-with-conda-run]]. The fix is a
+> PATH-independent bundled-`imageio_ffmpeg` backend chain in which **every fallback warns** and the encoder used
+> is reported on `VideoInfo.backend`.
+>
+> **Design facts locked in by implementation + tests:** masking routes through **`domain_mask` (True = ACTIVE)**
+> unioned with finiteness, NOT `isfinite` alone — LBM leaves masked obstacle nodes **finite**, so an
+> isfinite-only rule paints obstacles as live tissue; that same contamination had to be propagated to the
+> **colour-range** and **isochrone** paths (an `auto` range or a `v_rest` median computed on raw frames is
+> polluted by non-tissue values). `np.flipud(V.T)` is pixel-identical to `imshow(V.T, origin="lower")` (verified
+> at all four corners), and BOTH producers must agree or a vertical flip passes the whole suite silently.
+> `PowerNorm` handles a negative `vmin` natively (no custom `Normalize` needed). `.copy()` before `set_bad` is
+> mandatory — but for the *caller-supplied `Colormap`* case, not for registered colormaps (`plt.get_cmap` already
+> hands out copies; a second false "verified" claim, caught by audit R3).
+
+> **SHIPPED 2026-07-16 — P0/P1/P2 usability fixes** (branch `usability-fixes-p0-p1`, commits `a37d325`→`99e1fa3`;
+> **NOW ON `main`** — verified 2026-07-22, landed via the analysis-fields fast-forward). Executed the audit-converged [PLAN.md](./PLAN.md) — all 5 phases + a 5-lane adversarial
 > audit of the whole branch (4 more real bugs found + fixed, commit `c0306d2`), each test-gated + per-engine
 > integrity goldens bit-identical (atol=0). Suite **260 passed / 2 xfailed** (218 baseline + 42 tests
 > in `cardiac_core/tests/test_usability_fixes.py`). **P1** six P0 bugs (B1 GPU device-mismatch, B8 NaN-fill masked
@@ -29,7 +63,8 @@
 > changed this session** (user: audit + measure first). Full ranked table + GPU characterization below ("Solver +
 > GPU audit — 2026-07-16"); next-direction plan (advanced features + Phase 2-5) in the same section.
 >
-> **SOLVER HARDENING — SHIPPED 2026-07-21** (branch `solver-hardening`, 4 commits `60acfbe`→`68b5847`, NOT merged;
+> **SOLVER HARDENING — SHIPPED 2026-07-21** (branch `solver-hardening`, 4 commits `60acfbe`→`68b5847`; **NOW ON `main`**
+> — the analysis-fields fast-forward carried it, verified 2026-07-22;
 > integrity goldens bit-identical every step; full suite 260/2). Executed the audit fix-roadmap: **(1)** a shared
 > `SolverConvergenceWarning` makes every iterative solver's non-convergence LOUD (was the systemic silent finding);
 > **(2)** ported the Chebyshev preconditioned-bounds fix to mono → **07-02 M1 CLOSED** (46% err → 3e-15);
@@ -44,6 +79,76 @@
 > 283/2)** — R1 fixed a warning-flood on the DEFAULT bidomain path (declarative-isotropic stores conductivity as a
 > field → is_isotropic=False → pcg_spectral under-converges ~1e-4; warn-once-per-run) + a clamp save-cadence bug;
 > R2/R3 fixed the warn-once lifetime scope + reverted an unsound chebyshev once-per-run opt. Branch = 16 commits.
+>
+> **ANALYSIS-FIELDS BRANCH — SHIPPED + on `main` (2026-07-22, commit `63f6982`, pushed).** The full `analysis.fields`
+> layer is implemented, test-gated, and on `origin/main`. All **7 PLAN phases done**; full cardiac_core suite **369
+> passed / 2 xfailed**; **integrity goldens bit-identical (atol=0)** — no solver code touched. Landed via a clean
+> fast-forward of `solver-hardening` (34-commit linear ancestor, carrying the design docs + its shipped solver work, so
+> main now has both). **The LAT triple-definition BIG ISSUE is CLOSED** (`r.lat()`/`r.cv()`/`cv_between`/`radial_cv` all
+> route through the one canonical interp/−40 LAT). Code: `cardiac_core/fields/` (`derivatives`/`lat_fields`/`integrals`/
+> `__init__`=`Fields`+`VectorField`), `_result_context.py`, `protocols.py`, `single_cell.py` + edits to
+> `run/api/grid/analysis/__init__` + `API_CHEATSHEET` + 8 test files (+109 tests). **Validated by tests:** the staggered
+> `laplacian` matches the engine's OWN FDM-5pt operator (rel<1e-6) and the divergence theorem is exact (1e-10);
+> `source_sink` via a conservative **harmonic-face-D** `diffusion_term` matches `apply_diffusion` on uniform D AND a
+> **masked scar**; `single_cell` matches a 0-D tissue node (the ORd-ordering-bug guard); `safety_factor` numerator = ∫
+> inward `source_sink` dt (= Cm·ΔV+Q_ion by the PDE → NO recorded states needed); the `apd` baseline fix is an
+> **upstroke-foot walk** (regression-safe). Per-phase implementation notes are in the PLAN Mutation Log; the pre-build
+> Opus audit was 0 blockers/0 majors (2 real med fixed: bidomain/LBM `cell_type`→ENDO, the CV-family canonicalization
+> guard). The four-doc spec set (below) was committed alongside.
+>
+> **[archived design record] ANALYSIS-FIELDS BRANCH — BLUEPRINTED + AUDITED-TO-CONVERGENCE + FULLY DOCUMENTED (2026-07-22).**
+> The `analysis.fields` layer's **four-doc spec set** under `cardiac_core/`:
+> [ANALYSIS_METHODS_PRIOR_ART.md](../../../cardiac_core/ANALYSIS_METHODS_PRIOR_ART.md) (prior art + §7 velocity deep dive + §8
+> structured-grid) · [ANALYSIS_FIELDS_DESIGN.md](../../../cardiac_core/ANALYSIS_FIELDS_DESIGN.md) (API + per-field math derivations +
+> operator toolkit + cited uniform-grid stencils A1–A8/B1–B7) · [ANALYSIS_FIELDS_PLAN.md](../../../cardiac_core/ANALYSIS_FIELDS_PLAN.md)
+> (7-phase blueprint) · [ANALYSIS_FIELDS_DATA_MODEL.md](../../../cardiac_core/ANALYSIS_FIELDS_DATA_MODEL.md) (object hierarchy +
+> terminology + every torch shape). **`/audit` ran 5 Opus rounds → CONVERGED** (R1 1C/6H/10M/4L → R2 1C/1H → R3 0C/1H
+> → R4 0C/1H → R5 **0C/0H/0M**). Code-verified design facts locked in by the audit: **`source_sink=∇·(D_eff∇V)` with
+> `D_eff=D_raw/(data.chi·data.Cm)`** (raw D is off by χ·Cm; declarative monodomain has chi=1, so a hard-coded 1400 is
+> 1400× wrong — a bug the audit caught in a prior fix); the operator toolkit is the **staggered `div=−grad*`** pair
+> (collocated `div(grad)` is the wide checkerboard stencil); the **canonical interp/−40 LAT** must be routed through
+> `r.lat()`+`r.cv()`+`cv_between`+`radial_cv` (each carries its OWN `threshold=-20` default → all four flip to −40, or
+> a residual −20-interp split survives); the result must carry `Cm`/`chi`/`conductivity`/`domain_mask`/`boundary_mode`
+> + the **RESOLVED** `ionic_model` name + `group_cell_types[0]` cell_type for device-aware `I_ion` re-eval (SF +
+> reaction-identity); `erp` lives in `protocols.py` (runs sims → circular-import if in `analysis`). **Spatial ops =
+> real-space FD conv stencils, NOT spatial FFT** (FFT only for temporal dominant-frequency/Hilbert-phase). No solver
+> changes → integrity goldens stay atol=0. Build order + all shapes in the docs. **→ IMPLEMENTED + SHIPPED — see the
+> SHIPPED callout above.** Detail: 2026-07-22 IDEALOG Session entries.
+>
+> **PRIOR-ART SURVEY — standard math + how others implement every planned analysis feature (2026-07-21,
+> RESEARCH ONLY, nothing built).** Six-lane literature + tool survey → [ANALYSIS_METHODS_PRIOR_ART.md](../../../cardiac_core/ANALYSIS_METHODS_PRIOR_ART.md)
+> covers, for each feature (fields branch + scalar EP metrics + `single_cell()` + canonical LAT): the standard
+> equation, prior implementations (openCARP `LATs`/`bench`/`GlFilament`, Myokit CVODES+`pre()`, Finitewave,
+> OpenEP, scipy.ndimage, skimage.find_contours), and a per-feature verdict. **Most of our design matches the
+> field standard.** Five load-bearing changes (doc § 0): (1) **canonical LAT** = linearly-interpolated V_m
+> crossing at ONE frozen threshold (−40 mV) torch/on-device + max(dV/dt) as a probe reference — the physiological
+> gold standard is max-dV/dt but the eikonal CV field needs interpolated single-threshold LAT; **this is the fix
+> for the OPEN LAT BIG ISSUE below**. (2) A **staggered adjoint numerical core** (`div=−grad*`): collocated
+> `div(grad)` is the WIDE 2h Laplacian (checkerboard), the staggered pair makes `div(grad)==laplacian` bitwise AND
+> the discrete divergence theorem EXACT (free `∬div=∮F·n` self-check). (3) `boundary_mode` MUST be a ghost/mirror
+> pad matching the solver (scipy `reflect`), never `numpy.gradient` one-sided edges (spurious boundary flux exactly
+> at the reduced-sink edge). (4) ONE **winding-number primitive** reused three ways — phase-singularity (rotors),
+> circulation/vorticity, Gauss-Bonnet ∮κ ds. (5) **`source_sink=∇·(D∇Vm)` IS the numerator of the Boyle–Vigmond
+> 2010 safety factor** — build the field → get source-sink map + divergence-theorem integral + most of SF for free
+> (SF needs one single-cell `Q_thr(t_A)` curve, which `single_cell()` produces). Also: **ERP is inherently a
+> PROTOCOL** (S1S2+bisection, must run sims) — an architectural fork from the pure trace-analysis metrics;
+> λ=CV·ERP correct, CV·APD a warned proxy (÷1000 unit fix); `single_cell()` should route through the SAME per-node
+> ionic step as the tissue reaction substep (closes the 0-D gap AND sidesteps the ORd concentration bug).
+> Dependency-sorted build order in the doc. **§ 7 DEEP DIVE** (added same day) drills into the CV **velocity field**
+> (the payoff of LAT) + the **LAT integrals**: method landscape (Bayly polynomial default + residual `quality`;
+> GP/GPMI for calibrated CV uncertainty; eikonal-fit/ellipse for anisotropy), **divergence gating** (D=∇·n̂; D>0 foci
+> / D<0 collisions → mask, the |∇T|→0 fix), and the accuracy reality (Vigmond 2024/25: CV reliable only ~2 cm from
+> pacing at ≤1 mm sampling). **⚠️ conduction_time integrates SLOWNESS ∇LAT, not velocity ∇LAT/|∇LAT|²** (only ∇LAT is
+> curl-free). Free consistency checks: ∮∇LAT·dl=0 (curl) / =CL (reentry); isochrone-spacing Δs/Δt≡1/|∇LAT|; co-area
+> dA/dt=∮(1/|∇LAT|)ds=L·⟨CV⟩; Gauss-Bonnet ∮κds=2πm. Unifying: build all fields+integrals on ONE smooth T-interpolant,
+> differentiate analytically (curl-free by construction). Single map can't separate CV_L/CV_T (needs ≥3 maps).
+> **§ 8 STRUCTURED-GRID regime** (our actual input = optical-mapping/simulation, NOT clinical scattered): **`optimap`**
+> (Python) is the direct code analog to mirror; **the Bayly fit on a uniform grid = a fixed 2-D Savitzky-Golay conv
+> kernel** (precompute `C=(XᵀX)⁻¹Xᵀ` → `conv2d` buffers, one fit gives velocity+curvature, residual=quality map);
+> **match the solver's staggered `div=−gradᵀ` operators for `source_sink`** (SG kernels only for display CV); resolution
+> law `δc/c≈c·δt/dx` (can't fix coarse dt with fine dx; under-resolution numerically depresses CV → ship a dx-ladder
+> acceptance test); interpolate the upstroke (1→16 kHz), spatial Gaussian σ≈1 ≤5×5, no temporal filter before dV/dt.
+> Concrete defaults in § 8.6.
 >
 > **DESIGN — cardiac_core feature specs (2026-07-21, SPEC ONLY, nothing built).** Design conversation captured to
 > [ANALYSIS_FIELDS_DESIGN.md](../../../cardiac_core/ANALYSIS_FIELDS_DESIGN.md) + tutorial [PLAN.md](../../../cardiac_core/tutorials/PLAN.md):
@@ -278,14 +383,14 @@ copy-vendoring (Chebyshev fix in bidomain-not-mono; `step()` in mono/lbm-not-bid
 accumulator vs quantized; PCG breakdown thresholds). The ~22 minors (docstrings, guards, footguns) are
 catalogued in the report.
 
-## Usability fixes — SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`, pending merge)
+## Usability fixes — SHIPPED (2026-07-16, branch `usability-fixes-p0-p1`; on `main` since 2026-07-22)
 
 The two-round task-based usability audit (agents actually solving+running realistic scientist tasks) found
 that the API could *express* far more than it looked, but the path to a **correct, timely first result** was
 booby-trapped. The audit-converged [PLAN.md](./PLAN.md) was executed as 5 test-gated phases, then hardened
 through **three adversarial audit passes** (1 Phase-3 diff audit + a 5-lane whole-branch audit + a 4-lane
 audit-the-fix/completeness round). 10 commits, `a37d325`→`9f387ef`. Suite **260 passed / 2 xfailed**; per-engine
-integrity goldens **bit-identical (atol=0)** at every step. NOT yet merged to `main` (review-ready).
+integrity goldens **bit-identical (atol=0)** at every step. **On `main` since the 2026-07-22 analysis-fields fast-forward** (verified).
 
 **What shipped (the scientist-facing wins):**
 - **Correctness on the first run:** GPU analysis no longer crashes (B1); masked/scar nodes return NaN not 0 mV,
@@ -561,6 +666,62 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 | Phase 4 | Rewire engines to import from `cardiac_core` (delete their copies) **+ convert monodomain diffusion Form A→B** (drop χ·Cm from mass term/spectral denominators, consume pre-scaled D) so all engines share Form B; then delete `ConductivityConfig.for_monodomain()` asymmetry | Not started |
 | Phase 5 | Remove `_prepare_engine()` hack, unify `cardiac_sim` namespace | Not started |
 | Validation | All 149+ tests pass, no duplicated ionic/mesh/stimulus code | Not started |
+
+## SPEC — `single_cell(conductances=...)`: the 0-D drug knob (2026-07-23, PRIORITY, not built)
+
+**The gap.** `single_cell()` has no conductance knob. Verified signature:
+`single_cell(model='ttp06', *, celltype='ENDO', dt, bcl, n_beats, pre_pace, stim_amplitude,
+stim_duration, t0, Cm, save_every, device)`. `scale_conductance` is a `CardiacSimulation` (tissue)
+method only (`api.py:800`). So **"apply a drug to one cell" — the cheapest, most common
+electrophysiology question there is — has no public route.**
+
+**Why this is a priority, not a nicety.**
+1. **The capability asymmetry is backwards.** Tissue can do drugs; 0-D cannot. But 0-D is where a drug
+   question is cheapest to ask (milliseconds, no grid), and it is how drug work actually starts —
+   screen at 0-D, then take the interesting ones to tissue. Today the cheap path is the blocked one.
+2. **The only current workaround is both forbidden and unsafe.** You must build an ionic-model
+   instance, mutate a conductance attribute, and pass it as `model=`. That is the drop-to-internals
+   move the tutorial audience contract forbids — and worse, **it bypasses name validation**:
+   `model.params.gKr = ...` (wrong case) silently creates a NEW attribute and the drug does nothing.
+   A silent no-op in a drug experiment is a wrong result that looks like a real one.
+3. **It blocks tutorial lesson 02** — the hERG/APD story, the one lesson written in the audience's
+   own language. See `cardiac_core/tutorials/PLAN.md` § "Verified API corrections" item 3.
+4. **Downstream consumers want it too**: the Optimizer fits ionic parameters at 0-D, and the MCP
+   `simulate()` accountability path has no 0-D drug route either.
+
+**Proposed API** — mirror the tissue vocabulary, take a dict (the helper already does):
+```python
+sc = cc.single_cell('ttp06', celltype='EPI', pre_pace=5, conductances={'GKr': 0.5})
+```
+- Multiplicative factors, identical semantics to `scale_conductance` (`<1` block, `>1` upregulation).
+- **Applied BEFORE `pre_pace`** — so the pre-pacing settles the *drugged* cell toward its own steady
+  state. This is the load-bearing design decision: applying the drug after pre-pacing would report a
+  drugged AP from an undrugged steady state, which is a different (and usually wrong) experiment.
+- If `model=` is a pre-built instance AND `conductances` is given, scale a copy of that instance —
+  matching the tissue rule of scaling the LIVE model, so cell type and prior scalings survive.
+
+**Implementation route (the work is one import move).** `api.py:43::_scale_ionic_conductances(model,
+scalings)` already does exactly the right thing: deep-copies the model, validates each name against
+`model.params` under a careful allowlist (`G*`/`g*`/`P*`, excluding `*_scale` and the two dimensionless
+traps `gamma_ncx`/`PkNa`), and raises `ValueError` listing the model's available conductances. It
+already takes a **dict**, so `conductances=` maps to it 1:1.
+- **Blocker**: it lives in `api.py`, which imports the vendored `_monodomain`/`_bidomain`/`_lbm`
+  packages. `single_cell.py` is deliberately light (`torch` + `.ionic.registry` only) and importing
+  `api` would drag the heavy solver stack into every 0-D call.
+- **Fix**: move the helper to a light shared home (`cardiac_core/ionic/scaling.py`), import it from
+  BOTH `api.py` and `single_cell.py`. Behavior-preserving; `api.py` keeps its current call site.
+- Net: one moved function, one keyword, one call before the `pre_pace` branch.
+
+**Tests to land** (`cardiac_core/tests/`):
+- `conductances={'GKr': 0.5}` prolongs APD90 vs baseline; `{'GNa': 0.1}` reduces max dV/dt.
+- An unknown name raises `ValueError` with the **same message** as the tissue path (shared helper).
+- **Parity**: `single_cell(conductances={'GKr': f})` matches a 1×1 tissue node under
+  `scale_conductance('GKr', f)` — extends the existing 0-D↔tissue parity guard to the drugged case.
+- Drug-before-pre-pace: `final_state` differs from a run that scales after pre-pacing.
+- Regression: the no-`conductances` path is bit-identical to today.
+
+**Risk: low.** Additive, no solver code, no engine touched. Per-engine integrity goldens are unaffected
+(`single_cell` is not on the goldens path). Effort: small.
 
 ## Open Questions
 

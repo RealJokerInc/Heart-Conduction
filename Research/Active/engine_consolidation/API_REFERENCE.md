@@ -450,6 +450,30 @@ call these): `activation_time`, `conduction_velocity`, `apd_at` / `apd_map`, `do
 
 ---
 
+
+## Video (`cardiac_core.video`)
+
+Spec-first video rendering. A `Video` holds the description, `render()` turns it into a file, and the
+output lands at a convention `media/` path. **Status: implemented** (Phases 1-3 of
+`cardiac_core/VIDEO_OBJECT_PLAN.md`).
+
+```python
+from cardiac_core import Video, Gradient, render, VideoInfo
+```
+
+| Object | Signature (abridged) | Notes |
+|---|---|---|
+| `SimulationResult.video` | `r.video(slug, **kw) -> VideoInfo` | The one-liner. Video-level kwargs (`gradient`, `style`, `front`, `isochrones`, `mask`, `field`, `label`, `aspect`, `units`) are split out and passed to `Video`; the rest go to `render`. |
+| `Video` | `Video(data, field="Vm", gradient=Gradient.physiological(), label=None, front=None, isochrones=False, mask=None, style="bare", aspect="equal", units="auto")` | `data` = `SimulationResult` \| `(times, V)` \| `(T,Nx,Ny)` array \| `.npz` path. `Video.bare()` / `Video.annotated()` presets. `mask=False` disables masking. `.preview(t_ms=…)` renders one frame to PNG. |
+| `Gradient` | `Gradient(cmap="viridis", value_range="physiological", gamma=1.0, levels=None, bad="0.55", interpolation="nearest", v_rest=None, rest_vmax=40.0, zoom_span=8.0, zoom_below=0.3)` | Frozen. Presets: `physiological()` `rest_anchored(vmax=40)` `zoom(span, below)` `diverging()` `autoscale()`. `cmap` accepts a name, a `Colormap`, or a list of colours. |
+| `render` | `render(video_or_list, slug, *, question="lab", bulk=True, resolution="1080p", fit="contain", fps=20.0, speed=None, max_frames=300, format="mp4", bitrate=None, show_time=None, colorbar=None, title=None, figsize=None, dpi=None, units=None, progress=False, labels=None, rows=None, cols=None, date=None, root=None) -> VideoInfo` | A LIST renders N panels sharing one colorbar + one time stamp. `render_video` is an alias. |
+| `VideoInfo` | `.path .n_frames .fps .backend .codec .bitrate .width .height .duration_s .vmin .vmax .stride .size_bytes` | Str-like (`os.fspath`/`str` give the path). `.backend` makes any encoder fallback visible. |
+
+Defaults worth knowing: the zero-argument call is **bare, unlabelled, 1080p**, `Gradient.physiological()`
+(viridis, -90..40 mV), aspect preserved with letterbox padding. Masking routes through `domain_mask`
+(**True = ACTIVE**) so LBM's *finite* obstacle nodes are excluded from both the display and the colour
+range. Figure-only knobs raise on a bare clip rather than silently doing nothing.
+
 ## Appendix — what exists today vs. designed
 
 | Area | Status |
