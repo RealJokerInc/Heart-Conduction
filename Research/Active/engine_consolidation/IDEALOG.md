@@ -5,6 +5,206 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
+**ANALYSIS-FIELDS BRANCH — SHIPPED + COMMITTED + PUSHED to `main` (2026-07-22, commit `63f6982`).** The full
+`analysis.fields` layer (named fields + operator toolkit + integrals + scalar EP + `single_cell` + `safety_factor`
++ the canonical LAT) is implemented, test-gated, and on `origin/main`. All **7 PLAN phases done**; full cardiac_core
+suite **369 passed / 2 xfailed**; **integrity goldens bit-identical (atol=0)** — no solver code touched (pure analysis
+layer). Landed on main via a clean fast-forward of `solver-hardening` (34 commits, which carried the design docs +
+solver-hardening's shipped work) — so main now also has the solver-hardening fixes. **The LAT triple-definition BIG
+ISSUE is CLOSED** (`r.lat()`/`r.cv()`/`cv_between`/`radial_cv` all route through the one canonical interp/−40 LAT).
+
+Delivered code: `cardiac_core/fields/` (`derivatives`, `lat_fields`, `integrals`, `__init__` = `Fields`+`VectorField`),
+`_result_context.py`, `protocols.py`, `single_cell.py`, edits to `run/api/grid/analysis/__init__` + `API_CHEATSHEET`
++ 8 test files (+109 tests). The four-doc spec set (PRIOR_ART/DESIGN/PLAN/DATA_MODEL) is committed alongside.
+
+Load-bearing facts, now VALIDATED by the implementation + tests: canonical interp/−40 LAT (torch); operator toolkit
+on the **staggered `div=−grad*`** pair → `laplacian` matches the engine's OWN FDM-5pt operator to rel<1e-6, divergence
+theorem exact to 1e-10; `source_sink=∇·(D_eff∇V)` via a conservative **harmonic-face-D** `diffusion_term` → matches the
+solver's `apply_diffusion` on uniform D AND a **masked scar** (the flagship source-sink-mismatch case); `D_eff=D_raw/
+(data.chi·data.Cm)` (declarative mono chi=1 — a 1400 fallback would be 1400× wrong); LAT fields via the Bayly/Savitzky–
+Golay conv + divergence gating; ONE `winding_loop_sum` primitive (`phase_singularities` refactored onto it); the
+`apd` diastolic-baseline fix is an **upstroke-foot walk** (not min-over-interval, which caught the previous beat's
+undershoot); `safety_factor` numerator = ∫ inward `source_sink` dt (= Cm·ΔV+Q_ion by the PDE → NO recorded states
+needed); `single_cell` drives the shared `IonicModel.step` (0d-vs-tissue match confirmed); `erp` is a protocol in
+`protocols.py`. **Spatial ops = real-space FD conv stencils, NOT spatial FFT** (FFT only for temporal DF/Hilbert-phase).
+
+## Next Step
+**Backlog logged (2026-07-22, post-ship):**
+- **API_REFERENCE.md ("Object Atlas") generator + drift canary.** An introspection-driven reference (full
+  `inspect.signature` + first-docstring-line over the `_LAZY` export map, + the object-atlas shape tables from a
+  tiny fixture run) → a NEW `cardiac_core/gen_api_reference.py` emitting `cardiac_core/API_REFERENCE.md`, kept honest
+  by a `test_api_reference.py` drift canary (regenerate-into-string == committed doc; mirrors
+  `test_cheatsheet_examples_execute`). Pairs with the recipe-oriented `API_CHEATSHEET.md` (verbs) as the
+  reference-oriented atlas (nouns). GATED — approved as a task, not yet built.
+- **Stim-as-object — SHIPPED Phases 1-2 (2026-07-22); Phase 3 DEFERRED (user).** Branch `stim-object`, commits
+  `c087b8c` (P1: the `Stim` object + presets + current/clamp modes + native additive flux-preserving LBM clamp +
+  dict coexistence; 24 tests, integrity atol=0) + `743e6d4` (P2: Stim canonical — internals build Stims, dict path
+  soft-deprecated with a `DeprecationWarning`, cheatsheet + 11 test files migrated; full suite 395 pass/0 fail).
+  Phase 3 (migrate live consumers Surrogate×5/Optimizer×2/mcp/Lab×3 off dicts) DEFERRED — optional, non-blocking,
+  one-PR-per-consumer, gate on each consumer's suite; the dict path keeps working. Branch NOT yet merged to main.
+- **Stim-as-object — BLUEPRINTED + AUDITED-TO-CONVERGENCE (2026-07-22).** `cardiac_core/STIM_OBJECT_PLAN.md` (3 phases:
+  Stim object+presets+coexistence+clamp → steer cardiac_core → per-consumer migration). **`/audit` 3 Opus rounds →
+  CONVERGED** (R1 1blk/6maj → R2 1blk/3maj → R3 0blk/0maj, all code-verified). Real catches (all fixed): R1 — a clamp
+  Stim would be silently injected as a −52 current (the single-`_normalize_stimulus`-seam thesis fails for clamp →
+  needs a factory-level `_partition_stimulus` split + post-build `clamp_voltage`); R2 — that fix's tail: periodic clamp
+  isn't expressible (`add_clamp_protocol` sig mismatch → reject bcl/num_pulses on a clamp Stim), LBM clamp mask
+  numpy-vs-torch CUDA crash, LBM clamp dropped on `reset()` (store on the wrapper, re-push), `self.V` re-sync, timing
+  after `self.t+=dt`; R3 — 5 minors (`_resolve_where` must delegate to geometry.py not a 3rd mask system; overlap-sum
+  is mono/bidomain-only, LBM OVERWRITES). Implementation GATED (hard gate). Design summary below.
+- **Stim-as-object (DESIGN LOCKED 2026-07-22).** Promote stimulus to a public mask-first `Stim` object.
+  **Locked design decisions (user):**
+  - **Mask primary + callable convenience** — `Stim(mask=(Nx,Ny)bool, amplitude, start_time, duration, bcl,
+    num_pulses, label)`; a `region=lambda` is accepted and resolved to the mask at build (stored as the mask).
+  - **One fixed mask per Stim** — moving/multi-site = a list of `Stim`s (overlaps sum, as `StimulusProtocol` already does).
+  - **COEXIST, non-breaking → Stim is the final canonical form.** Factories accept `Stim | dict | list[either]`;
+    the dict path KEEPS WORKING (soft-deprecated), the blueprint steers cardiac_core + consumers toward `Stim` as
+    the documented product. NOT a big-bang rip (the dict form reaches ~19 cardiac_core tests + Surrogate datagen ×5
+    + Optimizer tuner ×2 + cardiac_mcp + Lab ×3 + the `.npz`/`CardiacMeshData.stimuli` serialization — a same-PR
+    removal would break live cross-project consumers, the pattern consolidation always defers). Depth = front-door:
+    `Stim ⇄ dict` lowering keeps the `.npz` format stable.
+  - **Location — EAGER-ONLY classmethod factory constructors (FINAL 2026-07-22).** Primary API =
+    `Stim.boundary(grid, side, bcl=…, num_pulses=…, amplitude=…, width=…)` (a FULL constructor — grid + side + any
+    timing params); plus `Stim.point(grid, (x,y), radius=…, **kw)`, `Stim.center(grid, **kw)`,
+    `Stim.from_region(grid, callable, **kw)`; base `Stim(mask, **kw)` for an explicit mask. `side ∈
+    {left,right,top,bottom}` is the sole edge API (no `*_edge`). **NOT subclasses** — one `Stim` type (the
+    datetime.fromtimestamp pattern); a resolved boundary vs point differ only in their mask, so a type hierarchy adds
+    nothing (user asked; confirmed no subclass). **Deferred/grid-free path SCRAPPED** — its only benefit was not
+    re-typing the grid; eager is self-contained, inspectable, serializable, validated-early. Each classmethod builds
+    the concrete mask via `_resolve_where(grid, where, width, radius)` (side rule `x≤x.min()+w` etc.; distance for
+    point/center; `width/radius=None`→thin strip ~2·dx) → returns `cls(mask, **kw)`. A Stim always has a mask, so
+    `_normalize_stimulus` just `to_dict()`s it (no coords/`.on`/`.resolve`); serialization/engines unchanged. Plan:
+    cardiac_core/STIM_OBJECT_PLAN.md. **Design churn note:** iterated grid-classmethods → deferred → eager → both →
+    **eager-only classmethod factories** (settled).
+  - **TWO MODES on Stim (user, 2026-07-22): current injection + voltage clamp.** `clamp=<mV>` ⇒ voltage clamp, else
+    current injection (`amplitude` µA/µF). Current-mode lowers to the stimulus protocol (`data.stimuli`/`Istim`);
+    clamp-mode routes to the clamp mechanism. **Clamp now on ALL THREE engines**: mono/bidomain via the existing
+    `_clamp_mask`/`_stepping_run` (hard-write `v[mask]=value`, api.py:720 — NOT Istim, user confirmed the intuition);
+    **LBM via a NEW native clamp — ADDITIVE, non-equilibrium-preserving.** Since `V=Σf_i` and `f_i=w_i·V + f^neq`
+    (the flux lives in `f^neq`), the clamp is per-step `V=Σf; f[:,mask]+=w·(value−V)` (forces Σf=value EXACTLY while
+    PRESERVING `f^neq`). **NOT** `f=w·value` (a pure equilibrium reset that ZEROS the local flux — crude/low-order),
+    **NOT** multiplicative rescale (V is signed, blows up / sign-flips at V≈0). Guo-style non-eq-preserving Dirichlet;
+    reaction runs BEFORE the clamp (gates integrate). **User caught this** ("V=Σf_i; normalize the injection w.r.t. the
+    current distribution configuration") — a real improvement over the initial reset idea. Opt-in → no-clamp LBM run
+    byte-identical → integrity goldens atol=0. Step 1.4 + cross-engine tests (`test_lbm_clamp_matches_mono`,
+    `..._preserves_nonequilibrium`).
+    **Reasoning conclusion (why B not A):** a voltage clamp pins VALUE not FLUX — current flows THROUGH the node
+    (in≠out, electrode supplies the residual). The flux lives in `f^neq`; B preserves it (conducts through, on-node,
+    O(h²)), A zeros it (isotropic reservoir, insulating flat point, O(h) value slip — the user's "funky" intuition).
+    **Arbiter = the mono/bidomain hard-write clamp** (ground truth: pins V on-node, Laplacian gives in≠out flux → it
+    ALSO conducts through), so B is the one consistent with mono; A deviates. Decision: SHIP B; the
+    `test_lbm_clamp_matches_mono` test computes BOTH A and B vs mono to conclusively retire A (a one-time comparison,
+    NOT a shipped toggle). Anchored on the mono cross-check, not pure LBM-BC theory (Zou-He equilibrium vs Guo
+    non-equilibrium extrapolation) — reasoning + cross-check agree.
+  - Wins: serializable/inspectable/composable/visualizable stim (vs opaque lambdas) — matters for save/load + the MCP
+    accountability path. The internal `Stimulus`/`StimulusProtocol` (stimulus/protocol.py) already supports a
+    mask-region + amplitude-summing overlaps → `Stim` lowers onto it.
+- **Video-as-object (DESIGN LOCKED 2026-07-22, → plan at `cardiac_core/VIDEO_OBJECT_PLAN.md`).** A built-in video
+  renderer, designed in parallel with (and deliberately mirroring) the `Stim` object shape: a **spec object holds the
+  description**, a **render function** turns it into frames, output lands at a `media_path` convention path.
+  **Locked (user):** (1) **full gradient control** — a reusable `Gradient` object (cmap by name / **a list of colors** →
+  custom LinearSegmentedColormap / a Colormap; `range` presets; `gamma` PowerNorm; `levels` banding; `bad`;
+  `interpolation`), with the FIVE color intents found in the render corpus shipped as classmethod presets
+  (`physiological` −90…40 viridis · `rest_anchored` V_rest…40 inferno · `zoom` V_rest−0.3…+8 magma · `diverging`
+  RdBu_r · `autoscale`). Color range is a SCIENTIFIC choice here, not cosmetic — `render_audit_video.py` exists to show
+  a **7.48 mV** artifact that the default −90…40 scale renders invisible. (2) **built-in streaming render** (writes as
+  it goes — 600 frames ≈ 570 MB if accumulated, so never accumulate) + a cheap single-frame `preview()`.
+  (3) **multi-panel native** — a panel IS a `Video`, so `render([a,b], slug)` shares ONE colorbar + ONE suptitle time
+  stamp (this is what most polished prior art already is: specular-vs-HBB, 3-BC oblique, 4 boundary modes, 5-panel
+  axis sweep). Overlays: **live −40 mV front contour** + **static LAT isochrones** IN, **time stamp/colorbar
+  optional**, **geometry outline DEFERRED** (needs caller-supplied analytic geometry). Returns a path-like `VideoInfo`
+  reporting the encoder, so a fallback is never silent.
+  **⚑ DEFECT (CORRECTED by the R1 audit — read this, an earlier version of this entry was WRONG):**
+  `viz.propagation_video` calls `anim.save(writer="ffmpeg")` inside a bare `except Exception` that silently rewrites
+  the output to a **GIF at a different path+extension** (`images/{slug}-propagation.gif`). The real defect is a
+  **PATH-dependent SILENT FORMAT DOWNGRADE**: a caller who asks for `.mp4` can receive `.gif` with no warning, and the
+  bare except also swallows codec/disk/permission errors identically.
+  **⚑ MY EARLIER CLAIM — "there is no ffmpeg on PATH, so every mp4 this API ever produced was silently a GIF" — WAS
+  FALSE.** It was an artifact of the Bash tool's **non-activated** shell. Under the documented
+  `conda activate heart-conduction` workflow, `which ffmpeg` →
+  `/home/norepinephrine/.conda/envs/heart-conduction/bin/ffmpeg` and `animation.writers.list()` →
+  `['ffmpeg','ffmpeg_file','html','pillow']`, i.e. **`propagation_video` really does write H.264 mp4 in the user's
+  actual environment** (the auditor ffprobe'd a genuine h264/yuv420p file written by `test_viz.py`). MEMORY.md already
+  warned that conda is not on the non-interactive shell PATH — I measured in the wrong shell and generalized.
+  **Lesson: verify environment-dependent claims under `conda activate`, not in the raw tool shell.**
+  Fix direction is unchanged but for a smaller reason: make the fallback LOUD, and prefer the bundled
+  `imageio_ffmpeg` binary so rendering is PATH-independent (~20 research scripts already do this via
+  `rcParams["animation.ffmpeg_path"]`; 6 hardcode the conda path — machine-specific, do NOT carry forward).
+  **Measured this session:** build-figure-once + `set_data` = **7.9 ms/frame** (vs 12.7 rebuilding; bare cmap path
+  0.10) → a 1000-frame video ≈ 8 s. libx264 needs **even dims** → pad (409×205 → 410×206 verified). A prototype
+  single-module `video.py` + 26 tests (25 green) was written then REVERTED out of the shared working tree (the Stim
+  session works in the same tree); draft preserved in the session scratchpad, to be folded into the `video/` package
+  per the plan. **Implementation is GATED on an explicit user go.**
+
+Analysis-fields is DONE. Open threads (unchanged by this session): **consolidation Phases 2–5** (mesh/stimulus/
+ConductivityConfig unify → engine rewire+delete; blocker: Surrogate/Optimizer consumers); the two **deferred solver
+decisions** #13 GPU sync-free PCG + #14 mono-ionic V5.3 alignment (both change a default path → need a regolden — now
+on main via the ff, so a decision is more pressing); **MCP follow-ups**; and the code-audit fix backlog (2026-07-02,
+P1 bidomain M4 etc.). Analysis-fields FUTURE polish (documented in the PLAN, not blocking): Shaw–Rudy SF, `front_metrics`
+torch migration, a co-area identity explicit test. See the open-threads block below.
+
+## Thread
+
+### 2026-07-22 Session (cont.) — analysis-fields IMPLEMENTATION: all 7 phases shipped → committed → pushed to main
+**Worked on:** executing `ANALYSIS_FIELDS_PLAN.md` end-to-end (user: "ready for plan.md implementation" → "run audit.
+then keep working through all phases, stop only when u need my intervention" → "commit on main" → "push it").
+**Accomplished:**
+- **Phase-1 `/audit` (Opus, before building on the foundation): 0 blockers / 0 majors / 3 med / 4 low.** Fixed the two
+  real ones live — MED-1 `r.cell_type` now forces ENDO for bidomain/LBM (those factories don't thread cell_type → a
+  Phase-7 I_ion re-eval would build the wrong model); MED-3 added the missing CV-family canonicalization guard (step-
+  wave synthetics can't distinguish interp/−40 from nearest/−20, so a smooth two-slope trace was needed). MED-2
+  (legacy-bidomain conductivity) routed into Phase 3 → guard keys on `r.phi_e is not None`, not `conductivity.is_bidomain`.
+- **All 7 phases implemented, each test-gated + a full-suite gate at phase boundaries.** P2 operators (staggered
+  laplacian matches the engine's OWN FDM-5pt operator rel<1e-6; divergence theorem exact 1e-10). P3 source_sink via a
+  conservative harmonic-face-D `diffusion_term` → matches `apply_diffusion` on uniform D AND a masked scar. P4 LAT
+  fields (Bayly/SG conv, divergence gating, the shared `winding_loop_sum`; `phase_singularities` refactored onto it).
+  P5 integrals (divergence/Stokes/Gauss-Bonnet cross-checks; isochrones via skimage marching squares). P6 scalar EP
+  (`wavelength`/`di`, the 3-function apd baseline fix, `erp` protocol). P7 `single_cell` (0d-vs-tissue match — the ORd-
+  bug guard) + Boyle–Vigmond `safety_factor`.
+- **Key implementation findings (also in the PLAN Mutation Log):** the apd baseline fix is an **upstroke-foot walk**,
+  not min-over-interval (the latter wrongly catches the previous beat's lower repolarization undershoot on a drifting
+  baseline); `safety_factor` needs NO recorded ionic states because `∇·(D∇V)=Cm·dV/dt+I_ion` makes the source_sink
+  integral the whole Boyle–Vigmond numerator (integrate only the INWARD/positive part = the charging phase, or the
+  sourcing phase cancels it); collocated `grad`/`div`/`curl` use a WHOLE-sample mirror boundary (normal derivative = 0
+  at a no-flux edge) while the staggered `laplacian` is a separate core.
+- **Final gate: 369 passed / 2 xfailed / 0 failures** (8m36s). Integrity goldens atol=0 (no solver touched).
+- **Shipped:** selective commit `63f6982` (26 files, +5,529 lines: code + 8 test files + the 4 spec docs + cheatsheet
+  + archived plan) on `solver-hardening`, then `git branch -f main` (clean ff, main was a 34-commit linear ancestor)
+  → `git push origin main` (`d1f43f6..63f6982`). Unrelated working-tree changes (MASTER.md, Optimizer, other Research
+  questions, fig4c scripts) left untouched. **NOTE: the ff also landed solver-hardening's shipped work on main** — the
+  deferred #13/#14 solver decisions are now on main too.
+**Next:** consolidation Phases 2–5, or resolve the deferred #13/#14 (now on main), or MCP follow-ups.
+
+### 2026-07-22 Session — analysis-fields: prior-art → math/calc docs → blueprint → audit-to-convergence → data model
+**Worked on:** turning the 2026-07-21 `analysis.fields` design specs into a research-grounded, audited implementation
+blueprint (user arc: "research the standard math for every feature" → "document the math" → "blueprint everything, run
+audit cycle until converge" → API-shape Q&A → "save session").
+**Accomplished:**
+- **Prior-art survey (10 web agents across the session)** → `ANALYSIS_METHODS_PRIOR_ART.md`. Verdict: most of our
+  design is the field standard. Five design changes adopted (canonical LAT interp/−40 + max-dV/dt reference; staggered
+  `div=−grad*`; ghost-mirror boundary; one winding primitive; `source_sink`=SF numerator). §7 velocity-field deep dive:
+  LAT-gradient ≡ optical-flow (both = |∂V/∂t|/|∇V| → LAT is *incidental*; optical flow is the no-LAT reentry fallback);
+  GP/GPMI for CV uncertainty; Vigmond 2024/25 accuracy reality (CV trustworthy only ~≤2 cm from pacing, ≤1 mm). §8
+  structured-grid: **optimap is our direct code analog**; the Bayly fit on a uniform grid = a fixed Savitzky-Golay
+  conv kernel (one fit → velocity+curvature+residual); resolution law `δc/c≈c·δt/dx` → dx-ladder acceptance test.
+- **Math + cited-calculation layers** written into `ANALYSIS_FIELDS_DESIGN.md`: per-field derivations (def → equivalent
+  routes → why equal → trap → canonical) for every field + every existing `analysis.py` op; the operator toolkit; and
+  a cited uniform-grid stencil/quadrature reference (A1–A8, B1–B7; LeVeque/Fornberg/Osher-Sethian/Savitzky-Golay/DLMF/
+  Lorensen-Cline, 2 verifier agents).
+- **Blueprint → `ANALYSIS_FIELDS_PLAN.md`** (7 phases, ~19 steps, test-gated, no solver changes) via `/blueprint`.
+- **`/audit` cycle: 5 Opus rounds → CONVERGED** (R1 1C/6H/10M/4L → R2 1C/1H → R3 0C/1H → R4 0C/1H → R5 0C/0H). Real
+  catches (all code-verified + fixed): result carried no conductivity/Cm (source_sink uncomputable); my R1 fix's
+  **non-existent `sim._chi`+1400 fallback → 1400× wrong D_eff on the declarative chi=1 path** (→ `D_eff=data.D_xx/
+  (data.chi·data.Cm)`); collocated `div(grad)`=wide checkerboard (→ staggered); flipping `activation_time`'s default
+  left the scalar-CV family on their own −20 threshold (→ flip each to −40); result needs the RESOLVED ionic-model
+  name + `group_cell_types[0]` cell_type + device-aware model rebuild for I_ion re-eval. **Pattern: each round's lone
+  finding was a follow-on to that round's own fix — convergence tail, not new bug classes.**
+- **`ANALYSIS_FIELDS_DATA_MODEL.md`** created from an API-shape Q&A: object hierarchy, property-vs-method-vs-operator
+  and Fields-vs-VectorField terminology, and every torch shape (rule: `T` present ⇔ per-frame Vm/φ_e, absent ⇔
+  LAT-based; trailing `2` ⇔ vector). Also nailed for the user: spatial ops = FD conv stencils not FFT; curl = cross
+  pattern `Dx⊛Fy−Dy⊛Fx` vs div straight; central-diff `/(2dx)` = two-cell span (Taylor O(h²)).
+**Next:** implement PLAN Phase 1 (canonical LAT) on the user's go. Docs uncommitted — 3 modified (DESIGN, KNOWLEDGE,
+IDEALOG) + 3 new (PLAN, PRIOR_ART, DATA_MODEL). No solver code touched.
+
 **SOLVER HARDENING — SHIPPED (2026-07-21, branch `solver-hardening`, 4 commits, NOT merged).** The audit findings
 below drove a fix campaign ("work through all"): Step 1 (non-convergence signal + Chebyshev M1 fix), Step 2 (mid-run
 voltage clamp + state injection), opt-in solver fixes (pcg_spectral mixed-BC, IMEX-SBDF2, RKC doc-defer). All
@@ -750,3 +950,27 @@ Still unmerged: `usability-fixes-p0-p1` branch → main (user's call).
 - **Usability audit** (report [API_USABILITY_AUDIT_2026-07-15.md](./API_USABILITY_AUDIT_2026-07-15.md), commits `09ee644` R1, `04611ed` R2): verdict "possible but painful," mean ease ≈2.7/5; 2 tasks impossible; **13 concrete bugs (B1–B13)** — B1 GPU crash-all-analysis, B2 broken fft/dct fast path, B3/B4 apd_at, B8 masked-node 23% CV error, + a fixed per-step runtime wall. Full running FLIPPED 2 verdicts up (paci automaticity; per-node-D scar) and several down.
 - **PLAN.md** (`9e6a0e7`) audit-converged (inline — see caveat): 5 phases, test-gated, golden-guarded; P3/P4 as future work.
 **Next**: **EXECUTE PLAN.md Phase 1** (see the ▶ HANDOVER at the top of Next Step). Optional: independent-subagent audit of PLAN.md after the session rate limit resets (~4:50am ET).
+
+### 2026-07-22 Session (cont.) — Stim-as-object: Phases 1-2 IMPLEMENTED → committed; Phase 3 deferred
+**Worked on**: Executed `cardiac_core/STIM_OBJECT_PLAN.md` (audit-converged) phase by phase on branch `stim-object`.
+**Accomplished**:
+- **Phase 1** (`c087b8c`): the public `Stim` object. `geometry.py` top/bottom edge masks; `stimulus/stim.py` — eager
+  classmethod factories `.boundary/.point/.center/.from_region` (NOT subclasses; one Stim type), mode inferred from
+  `clamp=` (voltage) vs `amplitude=` (current, default −52), `to_dict`/`from_dict` current-mode lowering (byte-identical
+  to the dict → `data.stimuli`/`.npz`). Clamp routing: `_partition_stimulus` splits clamp Stims out of the current
+  stimulus (declarative path only; mesh= drops stimulus=) → applied post-build via `clamp_voltage`; `_normalize_stimulus`
+  raises on a clamp Stim. `clamp_voltage` gains an LBM branch → a NEW native additive, flux-preserving clamp in
+  `LBMSimulation.step()` — `f[:,mask]+=w·(value−Σf)` drives Σf→value while preserving f^neq (conducts through, matches
+  the mono/bidomain hard-write clamp = arbiter). Stored on the wrapper (`_lbm_clamp`), re-pushed on `reset()`; opt-in →
+  integrity goldens **atol=0**. 24 new `test_stim.py` tests (holds[mono|bidomain|lbm], nonequilibrium-preservation,
+  survives-reset, cuda, partition, legacy-drop). Updated the now-stale `test_advanced_features::test_lbm_clamp_and_
+  injection_raise` (LBM clamp is supported now; set_voltage still raises).
+- **Phase 2** (`743e6d4`): Stim canonical. `stimulate()`/`add_stimulus`/`protocols.py` build Stims internally (no raw
+  dict through the warning path); `_normalize_stimulus` emits a `DeprecationWarning` (stacklevel=4) for a raw dict ONLY;
+  cheatsheet §3/§11/§12 + the 11 dict-using cardiac_core test files migrated to `Stim` (a general-purpose subagent did
+  the mechanical grid-threaded migration, gated on `-W error::DeprecationWarning` → 141 passed). Guards
+  `test_dict_warns`/`test_dict_path_unchanged`. Full `cardiac_core/tests/` **395 passed / 0 failed** (2 xfailed).
+- Kept both commits strictly scoped to Stim files — the working tree also carries a PARALLEL cloud session's video
+  pipeline (`run.py`/`viz.py`/`video.py`/`test_video.py`, `r.video()`), left entirely untouched.
+**Next**: Phase 3 (per-consumer dict→Stim migration) DEFERRED by the user — optional, non-blocking, one PR per consumer,
+gate on each consumer's own suite. Branch `stim-object` not yet merged to main / not pushed.

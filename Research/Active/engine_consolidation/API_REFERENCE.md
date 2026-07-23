@@ -23,14 +23,14 @@
 ## Quickstart
 
 ```python
-from cardiac_core import monodomain, Grid, ConductivityConfig, TTP06Model, CellType
-from cardiac_core import StimulusProtocol, left_edge_region
+from cardiac_core import monodomain, Grid, ConductivityConfig, TTP06Model, CellType, Stim
 
+g = Grid(Nx=200, Ny=50, dx=0.01)                                   # structured grid
 sim = monodomain(
-    Grid(Nx=200, Ny=50, dx=0.01),                                  # structured grid
+    g,
     TTP06Model(cell_type=CellType.EPI),                            # ionic model
     ConductivityConfig.bidomain(sigma_i=1.74, sigma_e=6.25),       # physics -> D_eff inside
-    stimulus=StimulusProtocol().add_stimulus(left_edge_region, start_time=1.0),
+    stimulus=Stim.boundary(g, "left", start_time=1.0),             # canonical Stim (dicts still work)
 )
 result = sim.run(t_end=50.0)        # eager -> SimulationResult
 print(result.cv())                  # ~54 cm/s
@@ -48,7 +48,8 @@ faster = sim.with_(conductivity=ConductivityConfig.isotropic(sigma=2.0))
 | `Grid` | class | structured-grid geometry descriptor |
 | `ConductivityConfig` | class | physics → diffusivity; the χ/Cm + Formulation-A/B firewall |
 | `IonicModel` / `TTP06Model` / `ORdModel` / `CellType` | class / enum | cell electrophysiology (shared ABC) |
-| `Stimulus` / `StimulusProtocol` | class | pacing events + protocols |
+| `Stim` | class | **canonical** stimulus — presets + current/clamp modes (lowers to the dict/protocol) |
+| `Stimulus` / `StimulusProtocol` | class | lower-level pacing events + protocols `Stim` lowers onto |
 | region helpers (`left_edge_region`, `circular_region`, …) | function | build stimulus regions |
 | `monodomain` / `bidomain` / `lbm` | factory fn | DECLARE a `Simulation` |
 | `Simulation` | protocol | the runtime object: `run` / `step` / `with_` / `stimulate` |
@@ -177,7 +178,48 @@ Factories also accept a **string** alias (`"ttp06"`, `"ord"`) for convenience.
 
 ## Stimulus
 
+`Stim` is the **canonical, factory-facing** stimulus object (the form the engine factories and `.npz`
+serialization consume via a normalized dict). `Stimulus`/`StimulusProtocol` (below) are the lower-level
+per-engine protocol `Stim` lowers onto. The bare **dict** form is legacy (soft-deprecated — still works,
+emits a `DeprecationWarning`).
+
+### `class Stim`  `[now]`
+
+A masked, timed stimulus with two modes, inferred from the keyword: **current injection** (`amplitude`,
+default `-52.0` µA/µF, negative = depolarizing) or **voltage clamp** (`clamp=<mV>`, a hard V override on
+mono/bidomain/LBM — routed to `clamp_voltage`, never serialized as a current). One fixed mask per `Stim`;
+pass a **list** for multi-site/moving stimuli (overlaps sum on FDM/FEM, LBM overwrites).
+
+```python
+Stim(mask, *, amplitude=None, clamp=None, start_time=0.0, duration=2.0,
+     bcl=0.0, num_pulses=1, label="stim")            # base: an explicit (Nx, Ny) bool mask
+
+# eager classmethod factories over a Grid (NOT subclasses — one Stim type):
+Stim.boundary(grid, side, *, width=None, **kw)       # side ∈ "left"/"right"/"top"/"bottom"
+Stim.point(grid, (x, y), *, radius=None, **kw)       # a blob at an (x, y) cm point
+Stim.center(grid, *, radius=None, **kw)              # a blob at the domain centre
+Stim.from_region(grid, region, **kw)                 # any callable (x,y)->bool mask OR an (Nx,Ny) mask
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `mask` | `(Nx,Ny)` bool (torch/numpy) | — | where the stimulus applies (factories build it from the grid) |
+| `amplitude` | float | `-52.0` | current µA/µF; **negative = depolarizing** (current mode) |
+| `clamp` | float / `(Nx,Ny)` field / `callable(t)` | `None` | clamp voltage (mV); presence selects voltage-clamp mode |
+| `start_time` / `duration` | float | `0.0` / `2.0` | active window (ms) |
+| `bcl` / `num_pulses` | float / int | `0.0` / `1` | pacing train (current mode only — rejected for a clamp) |
+
+Methods: `to_dict()` (current-mode 7-key lowering; raises on a clamp Stim), `from_dict(d)`, `times()`,
+`n_nodes()`. Passing `amplitude` **and** `clamp` together raises.
+
+```python
+sim = cc.monodomain(g, "ttp06", cond, cc.Stim.boundary(g, "left", bcl=1000, num_pulses=5))  # pace
+sim = cc.lbm(g, "ttp06", cond, cc.Stim.boundary(g, "left", clamp=-20, duration=50))          # clamp
+```
+
 ### `class Stimulus`  `[now]`
+
+Lower-level per-engine stimulus event (what `Stim` lowers onto).
 
 ```python
 Stimulus(region, start_time, duration=1.0, amplitude=-52.0)
@@ -215,7 +257,9 @@ Callables returning a boolean over `(x, y)`: `left_edge_region`, `right_edge_reg
 ## DECLARE — engine factories
 
 Each returns a `Simulation`. Shared positional args: `(geometry, ionic_model, conductivity, stimulus=None)`.
-Engine-specific knobs are keyword-only and never leak across engines.
+`stimulus` accepts a `Stim`, a list of `Stim`s, or the legacy dict/list-of-dicts (soft-deprecated). A
+`clamp`-mode `Stim` is split out and applied via `clamp_voltage` (all three engines) rather than injected as a
+current. Engine-specific knobs are keyword-only and never leak across engines.
 
 ### `monodomain(...)`  `[now]`
 
@@ -314,8 +358,10 @@ sim2 = sim.with_(dt=0.01)
 sim3 = sim.with_(conductivity=ConductivityConfig.isotropic(sigma=2.0))
 ```
 
-### `stimulate(region, start_time, duration=1.0, amplitude=-52.0)`  `[design]`
-Add a stimulus after construction (incremental alternative to passing a `StimulusProtocol`). `-> None`.
+### `stimulate(region, start_time=0.0, duration=1.0, amplitude=-52.0)`  `[now]`
+Add a stimulus after construction and rebuild from t=0. `region` is a `Stim`, a callable `(x,y)->bool mask`,
+or an `(Nx,Ny)` mask (a `Stim` carries its own timing/amplitude; a clamp `Stim` routes to `clamp_voltage`).
+`-> None`.
 
 ---
 
