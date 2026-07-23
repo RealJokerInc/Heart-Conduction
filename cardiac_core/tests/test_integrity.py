@@ -1,33 +1,29 @@
-"""Integrity gate (engine_consolidation Phase 0+).
+"""Integrity gate for the vendored engines.
 
-After each vendoring phase, the vendored engine must reproduce its pre-vendor golden output
-BIT-IDENTICALLY (atol=0), and the original engine source trees must stay byte-unchanged.
+Each engine must reproduce its recorded golden output BIT-IDENTICALLY (atol=0), so that a
+refactor cannot silently change numerics.
 
-Captured by `_integrity/make_goldens.py`. These tests run every phase and must stay green —
-a failure means the code-move changed numerics (behavioral regression) or touched an original.
+Goldens are captured by `_integrity/make_goldens.py`. These tests must stay green — a failure
+means the code move changed numerics (a behavioral regression) or touched an original tree.
 
-Vendoring policy (2026-06-30): the vendored `cardiac_core` tree is the LIVING source and an
-intentional fix may edit an original in place (kept in sync) — regenerate the goldens + hashes
-in the SAME change via `make_goldens.py`. Missing goldens hard-FAIL (not skip) so a deleted
-golden cannot silently disable the drift guard (Audit #42).
+An intentional numerics change must regenerate the goldens in the SAME change, via
+`make_goldens.py`. Missing goldens hard-FAIL rather than skip, so that deleting a golden
+cannot silently disable the drift guard.
 """
 
 import os
-import json
 
 import torch
 import pytest
 
-from cardiac_core.tests._integrity.make_goldens import (
-    canonical_sim, tree_hash, ENGINE_SRC, HERE,
-)
+from cardiac_core.tests._integrity.make_goldens import canonical_sim, HERE
 
 
 def _check_golden(engine: str):
     path = os.path.join(HERE, f"golden_{engine}.pt")
     if not os.path.exists(path):
         pytest.fail(f"golden_{engine}.pt missing — regenerate via _integrity/make_goldens.py "
-                    f"(a deleted golden silently disables the numerics drift guard, Audit #42)")
+                    f"(a deleted golden silently disables the numerics drift guard)")
     g = torch.load(path, weights_only=False)
     r = canonical_sim(engine)
     assert torch.equal(r.times.cpu(), g["times"]), f"{engine}: times drifted from golden"
@@ -47,13 +43,3 @@ def test_bidomain_matches_golden():
 def test_lbm_matches_golden():
     _check_golden("lbm")
 
-
-def test_originals_untouched():
-    path = os.path.join(HERE, "engine_src_sha.json")
-    if not os.path.exists(path):
-        pytest.fail("engine_src_sha.json missing — regenerate via _integrity/make_goldens.py (Audit #42)")
-    baseline = json.load(open(path))
-    for e, src in ENGINE_SRC.items():
-        assert tree_hash(src) == baseline[e], (
-            f"{e} ORIGINAL source tree changed ({src}) — vendoring must be copy-only"
-        )

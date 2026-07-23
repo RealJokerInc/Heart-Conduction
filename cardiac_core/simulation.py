@@ -2,8 +2,9 @@
 Simulation — the engine-agnostic runtime Protocol.
 
 A ``typing.Protocol`` (``runtime_checkable``) describing what every cardiac simulation exposes,
-regardless of engine. Optimizer / Surrogate / the LLM layer program against THIS, not against a
-concrete engine; the engine is hidden behind the ``monodomain()/bidomain()/lbm()`` factories.
+regardless of engine. Downstream tooling (parameter fitting, surrogate training, scripted
+front-ends) programs against THIS, not against a concrete engine; the engine stays hidden behind
+the ``monodomain()/bidomain()/lbm()`` factories.
 
 ``CardiacSimulation`` (in ``api.py``) satisfies this Protocol structurally — there is no inheritance.
 ``isinstance(sim, Simulation)`` is True because all members below are present.

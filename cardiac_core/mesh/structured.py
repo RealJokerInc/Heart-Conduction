@@ -4,8 +4,6 @@ Structured Cartesian Grid
 Provides a rectangular grid for FDM, FVM, and LBM discretizations.
 Supports domain masks (for irregular geometries), fiber angle fields,
 and BoundarySpec for bidomain simulations.
-
-Ref: improvement.md L414-453
 """
 
 from dataclasses import dataclass, field

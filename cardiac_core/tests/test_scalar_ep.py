@@ -1,4 +1,4 @@
-"""Phase-6 (analysis.fields): scalar EP metrics — wavelength, di, the multi-beat APD baseline fix,
+"""analysis.fields: scalar EP metrics — wavelength, di, the multi-beat APD baseline fix,
 and the protocol-based ERP.
 """
 
@@ -13,7 +13,7 @@ from cardiac_core.analysis import wavelength, di, apd_at, apd_per_beat, restitut
 
 
 # ======================================================================
-# Step 6.1 — wavelength + di
+# wavelength + di
 # ======================================================================
 
 def test_wavelength_units():
@@ -36,7 +36,7 @@ def test_di_algebraic():
 
 
 # ======================================================================
-# Step 6.1 — the per-beat diastolic APD baseline fix (three functions)
+# the per-beat diastolic APD baseline fix (three functions)
 # ======================================================================
 
 def _beat(v_rest, v_peak, n_rest=10, n_plateau=40, n_repol=20):
@@ -90,7 +90,7 @@ def test_apd_at_single_beat_regression():
 
 
 # ======================================================================
-# Step 6.2 — protocol-based ERP (smoke)
+# protocol-based ERP (smoke)
 # ======================================================================
 
 def test_post_repol_refractoriness_algebra():

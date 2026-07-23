@@ -16,8 +16,6 @@ Supports any combination of per-axis BCs: e.g. Neumann in x (DCT),
 Dirichlet in y (DST) for bath_coupled_edges([TOP, BOTTOM]).
 
 For the bidomain elliptic solve: D = D_i + D_e.
-
-Ref: improvement.md L1055-1242 (SpectralSolver spec)
 """
 
 import torch

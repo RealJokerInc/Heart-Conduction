@@ -1,7 +1,8 @@
-"""Phase-3 (analysis.fields): the Fields accessor + VectorField + Vm/φ_e named fields.
+"""analysis.fields: the Fields accessor + VectorField + Vm/φ_e named fields.
 
-Steps 3.1 (accessor + wrapper + lazy cache), 3.2 (voltage_gradient/voltage_flux/source_sink),
-3.3 (electric_field/current_flux). The load-bearing gate is source_sink == the engine's OWN
+Covers the accessor (wrapper + lazy cache), the Vm-derived fields
+(voltage_gradient/voltage_flux/source_sink) and the bidomain fields
+(electric_field/current_flux). The load-bearing gate is source_sink == the engine's OWN
 FDM diffusion operator (uniform + a masked scar), which FAILS if raw D (not D_eff) is used.
 """
 
@@ -29,7 +30,7 @@ def _mono(Nx=24, Ny=18, mask=None):
 
 
 # ======================================================================
-# Step 3.1 — accessor + VectorField + lazy cache
+# accessor + VectorField + lazy cache
 # ======================================================================
 
 class TestAccessorAndCache:
@@ -57,7 +58,7 @@ class TestAccessorAndCache:
 
 
 # ======================================================================
-# Step 3.2 — voltage_gradient / voltage_flux / source_sink
+# voltage_gradient / voltage_flux / source_sink
 # ======================================================================
 
 class TestVmFields:
@@ -84,8 +85,8 @@ class TestVmFields:
             f"max rel {(mi - ei).abs().max().item():.2e}"
 
     def test_source_sink_matches_solver_masked_scar(self):
-        # The flagship consumers (source_sink_mismatch, fig4c) run on MASKED geometry — the
-        # no-flux hole rim is exactly where a wrong stencil would diverge from the engine.
+        # Source-sink studies typically run on MASKED geometry — the no-flux hole rim is
+        # exactly where a wrong stencil would diverge from the engine.
         mask = np.ones((24, 18), dtype=bool)
         mask[10:14, 8:12] = False
         sim = _mono(mask=mask)
@@ -101,8 +102,9 @@ class TestVmFields:
 
     def test_div_voltage_flux_consistent_with_source_sink(self):
         # A smooth analytic field: collocated div(D*grad V) and the staggered source_sink are the
-        # SAME operator at two stencils -> agree to O(h^2) in the interior (NOT 1e-10 — the plan's
-        # "identity" is the staggered self-consistency, checked in test_source_sink_matches_*).
+        # SAME operator at two stencils -> they agree to O(h^2) in the interior, not to 1e-10.
+        # The exact identity is the staggered self-consistency, checked in
+        # test_source_sink_matches_* above.
         x = torch.linspace(0, 1, 40, dtype=torch.float64)
         y = torch.linspace(0, 1, 36, dtype=torch.float64)
         xx, yy = torch.meshgrid(x, y, indexing='ij')
@@ -130,7 +132,7 @@ class TestVmFields:
 
 
 # ======================================================================
-# Step 3.3 — electric_field / current_flux (bidomain)
+# electric_field / current_flux (bidomain)
 # ======================================================================
 
 class TestBidomainFields:

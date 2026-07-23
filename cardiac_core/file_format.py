@@ -196,9 +196,8 @@ def create_cardiac_mesh(
     ``D`` is a RAW conductivity-like value. The **membrane-effective diffusivity
     is ``D/(χ·Cm)``**, computed identically by monodomain, bidomain, and LBM.
     The default ``D=1.4, chi=1400, Cm=1`` → effective ``1e-3 cm²/ms`` (physiological).
-    To pass an EFFECTIVE diffusivity directly (e.g. ``D=1e-3``), set ``chi=1.0``
-    (as the Optimizer chip code does, ``cc_runner``/``chip.chip_mesh``): then
-    ``D/(χ·Cm) = D``. A ``D/(χ·Cm)`` outside [1e-4, 1e-1] cm²/ms emits a warning.
+    To pass an EFFECTIVE diffusivity directly (e.g. ``D=1e-3``), set ``chi=1.0``,
+    so that ``D/(χ·Cm) = D``. A ``D/(χ·Cm)`` outside [1e-4, 1e-1] cm²/ms emits a warning.
 
     Parameters
     ----------

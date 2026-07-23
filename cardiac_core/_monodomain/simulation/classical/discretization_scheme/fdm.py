@@ -5,9 +5,6 @@ Finite Difference Method Discretization
 Reduces to standard 5-point stencil when Dxy=0 (isotropic or axis-aligned).
 Neumann (no-flux) BC via modified boundary stencils.
 Cardinal directions use harmonic mean at interfaces for correct scar/heterogeneity handling.
-
-Ref: improvement.md:L848-899
-Ref: Research/01_FDM (stencil coefficients, Neumann BC, harmonic mean)
 """
 
 from typing import Optional, Tuple
@@ -65,17 +62,17 @@ class FDMDiscretization(SpatialDiscretization):
         Tensor fields, each shape (Nx, Ny), for anisotropic/heterogeneous diffusion.
     boundary_mode : str
         Discrete Neumann ghost choice at the rectangle wall. Options:
-          - 'face_mirror' (DEFAULT, 2026-04-29): ghost = boundary cell itself
+          - 'face_mirror' (default): ghost = boundary cell itself
             (V[i,-1]=V[i,0]). Wall placed at y=-h/2 (face-centered). Off-grid
             neighbor flux is identically zero for any V; no entry written.
             L_y at j=0 = (V[i,1]-V[i,0]).  Genuine no-flux Neumann.
-          - 'node_mirror_existing' (LEGACY pre-2026-04-29): ghost = sub-edge cell
+          - 'node_mirror_existing' (legacy): ghost = sub-edge cell
             (V[i,-1]=V[i,1]). Wall placed AT the boundary node; cardinal stencil
             writes mirror off-diagonal that combines with the interior cardinal
             entry to give 2w after coalesce. L_y at j=0 = 2*(V[i,1]-V[i,0]).
-            Amplifies any column-wise gradient at the wall by 2x — root cause of
-            storage-tank "camel-toe" / "crescent" boundary artifacts. Kept for
-            bit-exact reproduction of pre-flip experiments only.
+            Amplifies any column-wise gradient at the wall by 2x, which produces
+            spurious wall artifacts. Retained only for bit-exact reproduction of
+            results generated with the legacy default.
           - 'zero_pad': ghost = 0 (no Neumann; Dirichlet-to-zero outside).
             Off-grid contributes -w to diagonal only; matrix stays SPD.
             L_y at j=0 = (V[i,1]-V[i,0]) - V[i,0].
@@ -92,17 +89,17 @@ class FDMDiscretization(SpatialDiscretization):
     """
 
     # Order: default first, then legacy, then non-Neumann modes.
-    # face_mirror_iso (added 2026-04-30): diagonal-aware reflection — for diagonal
-    #   off-grid pipes, mirror only the off-grid axis (ghost(i+di,-1)=V[i+di,0]).
+    # face_mirror_iso: diagonal-aware reflection — for diagonal off-grid
+    #   neighbours, mirror only the off-grid axis (ghost(i+di,-1)=V[i+di,0]).
     #   For cardinal4 stencil, degenerates to face_mirror (no diagonals).
     #   For moore8_uniform/moore8_iso, eliminates the boundary deficit in
     #   y-uniform fields (LBM bounce-back analog).
     BOUNDARY_MODES = ('face_mirror', 'face_mirror_iso', 'node_mirror_existing',
                       'zero_pad', 'rest_pad')
 
-    # Stencil options (added 2026-04-30):
+    # Stencil options:
     #   cardinal4      — 5-point cardinal Laplacian + Dxy cross-derivative diagonals
-    #                    (existing legacy behavior; full anisotropic D support)
+    #                    (default; full anisotropic D support)
     #   moore8_uniform — 8-neighbour uniform weights w_card=w_diag=1/(3·h²)
     #                    (isotropic D only; raises NotImplementedError if Dxy != 0)
     #   moore8_iso     — Patra-Kaluza isotropic 9-pt: w_card=4/(6·h²), w_diag=1/(6·h²)
@@ -157,7 +154,7 @@ class FDMDiscretization(SpatialDiscretization):
             Dyy = torch.full((self._nx, self._ny), D, device=self._device, dtype=self._dtype)
 
         # Max RAW diagonal diffusivity — used by explicit solvers for the CFL
-        # stability limit dt <= chi*Cm*min(dx,dy)^2/(4*D_max) (B6).
+        # stability limit dt <= chi*Cm*min(dx,dy)^2/(4*D_max).
         self._D_max = float(torch.maximum(Dxx.max(), Dyy.max()).item())
 
         # Whether D is isotropic AND spatially uniform (Dxx==Dyy==const, Dxy==0).
@@ -312,22 +309,21 @@ class FDMDiscretization(SpatialDiscretization):
             All 8 directions weight 1/(3·h²). y-uniform interior recovers
             (V_E + V_W − 2·V_C)/h² (matches continuum). Boundary deficit
             with face_mirror BC: 1/3 (boundary cells lose 1 inflow + 1 outflow
-            diagonal pipe each).
+            diagonal neighbour each).
         weighting='iso':
             Patra-Kaluza isotropic 9-pt: ∇²V ≈ (1/6h²)·[4·cards + diags − 20·V_C].
             Cardinals weight 4/(6·h²), diagonals 1/(6·h²). The 1/6 prefactor IS
             the canonical normalisation — without it, D_eff = 6k violates the
             2D-explicit CFL limit of 0.25 and produces grid-scale mosaic
-            instability (see IDEALOG.md "Bug fix — iso weights need 1/6
-            normalisation" for the failure we hit on John's tanks).
+            instability.
             Boundary deficit with face_mirror BC: 1/6 (smaller than uniform
             because cardinals are weighted more heavily).
 
         Boundary modes:
             face_mirror      : ghost = self for ALL off-grid (cardinal AND
-                               diagonal). Off-grid pipes contribute 0. This
-                               is the John-equivalent — boundary cells genuinely
-                               have fewer effective neighbours, deficit is REAL.
+                               diagonal). Off-grid neighbours contribute 0;
+                               boundary cells genuinely have fewer effective
+                               neighbours, so the deficit is real.
             face_mirror_iso  : ghost = self for cardinals (same as face_mirror).
                                For diagonals: mirror only the off-grid axis to
                                the in-grid cell at the boundary row/col. Gives
@@ -429,9 +425,8 @@ class FDMDiscretization(SpatialDiscretization):
                         # Off-grid neighbour — boundary mode dispatch.
                         bm = self._boundary_mode
                         if bm == 'face_mirror':
-                            # ghost = self -> flux = 0. No contribution.
-                            # Faithful John-equivalent: cell genuinely has
-                            # fewer effective neighbours.
+                            # ghost = self -> flux = 0. No contribution: the
+                            # cell genuinely has fewer effective neighbours.
                             pass
                         elif bm == 'face_mirror_iso':
                             if is_cardinal:
@@ -569,8 +564,8 @@ class FDMDiscretization(SpatialDiscretization):
 
         cx = 1.0 / (dx * dx)
         cy = 1.0 / (dy * dy)
-        # 2·Dxy·d²V/dxdy → cxy = 2/(4·dx·dy) = 1/(2·dx·dy). Signs match the
-        # bidomain face-based builder (NE +, NW −, SE −, SW +). (Audit #4.)
+        # 2·Dxy·d²V/dxdy → cxy = 2/(4·dx·dy) = 1/(2·dx·dy). Sign convention for
+        # the cross-derivative diagonals: NE +, NW −, SE −, SW +.
         cxy = 1.0 / (2.0 * dx * dy)
 
         for i in range(nx):

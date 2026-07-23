@@ -10,8 +10,6 @@ k2 = L * (V^n + dt * k1)
 V^{n+1} = V^n + dt/2 * (k1 + k2)
 
 CFL-limited: dt <= Cm * h^2 / (2 * D_max)
-
-Ref: Research/02_openCARP:L280-290
 """
 
 from typing import TYPE_CHECKING

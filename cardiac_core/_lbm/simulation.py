@@ -49,7 +49,7 @@ class LBMSimulation:
             uniform_8 selects the non-canonical D2Q9_uniform lattice with
             equal weight 1/8 on all 8 moving particles (rest particle = 0).
             Used for connectivity-effect comparison against the canonical
-            isotropic 4:1 weights — see Research/Active/boundary_conduction_speedup.
+            isotropic 4:1 weights.
             Must be 'canonical' for d2q5 (no diagonals to weight differently).
         bounce_masks: dict of boundary masks (if None, uses full-grid rectangular)
     """
@@ -79,10 +79,9 @@ class LBMSimulation:
         self.device = ionic_model.device
         self.dtype = ionic_model.dtype
 
-        # Boundary wall mode (boundary_conduction_speedup). Default 'neumann' is the generic
-        # halfway bounce-back, valid on every lattice (bit-identical to the historical behaviour).
-        # The D2Q9 flat-wall family — 'hbb' (the specular baseline; numerically == neumann) plus
-        # the specular/combined overlays — is D2Q9-only (guarded below).
+        # Boundary wall mode. Default 'neumann' is the generic halfway bounce-back, valid on
+        # every lattice. The D2Q9 flat-wall family — 'hbb' (the specular baseline; numerically
+        # == neumann) plus the specular/combined overlays — is D2Q9-only (guarded below).
         boundary = normalize_mode(boundary)   # accept 'ncs'/'scs' abbreviations
         if boundary not in WALL_MODES:
             raise ValueError(f"boundary must be one of {WALL_MODES} (or 'ncs'/'scs'), got {boundary!r}")
@@ -124,10 +123,9 @@ class LBMSimulation:
         # Collision setup
         self.collision = collision
         if collision == 'bgk':
-            # CRITICAL FIX (2026-04-30): pass cs2 from lattice. Previously this used
-            # the default cs2=1/3 regardless of lattice, which is bit-correct for
-            # canonical D2Q9 (cs2=1/3) but produces an incorrect tau for any non-
-            # canonical lattice (e.g., D2Q9_uniform with cs2=0.75).
+            # cs2 MUST come from the lattice. Assuming the usual cs2=1/3 is correct for
+            # canonical D2Q5/D2Q9 but yields an incorrect tau for any non-canonical
+            # lattice (e.g. D2Q9_uniform, where cs2=0.75).
             tau = tau_from_D(D, dx, dt, cs2=self.lattice.cs2)
             self.omega = 1.0 / tau
         elif collision == 'mrt':

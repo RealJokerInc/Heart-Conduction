@@ -13,10 +13,10 @@ labels anywhere, in the standard preset, at 1080p. Everything else is opt-in::
     from cardiac_core import Video, Gradient, render
 
     render(Video.annotated(r, gradient=Gradient.zoom(span=8.0), isochrones=True),
-           "wall-artifact", question="boundary_conduction_speedup", bulk=False)
+           "wall-artifact", question="my_study", bulk=False)
 
-Colour is a reusable object (:class:`Gradient`) because in this project the value range is a
-scientific choice: a few-mV artifact is invisible on the -90..40 mV scale and obvious on a zoom
+Colour is a reusable object (:class:`Gradient`) because the value range is a scientific choice,
+not decoration: a few-mV feature is invisible on the -90..40 mV scale and obvious on a zoom
 window. Sharing one ``Gradient`` across panels is what makes a comparison comparable.
 """
 

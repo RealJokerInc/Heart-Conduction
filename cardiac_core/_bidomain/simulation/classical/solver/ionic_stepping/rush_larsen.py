@@ -4,8 +4,8 @@ Rush-Larsen Ionic Solver
 Exponential integrator for gating variables, Forward Euler for concentrations.
 Primary ionic solver for cardiac simulations.
 
-Ref: improvement.md:L1214-1248
-Ref: V5.3/IMPLEMENTATION.md:L620-638
+Ref: Rush & Larsen (1978) "A practical algorithm for solving dynamic
+     membrane equations", IEEE Trans Biomed Eng.
 """
 
 from typing import TYPE_CHECKING
@@ -48,7 +48,7 @@ class RushLarsenSolver(IonicSolver):
 
         Modifies state.V and state.ionic_states in-place.
 
-        Order of operations (matches V5.3):
+        Order of operations:
         1. Compute Iion from current state
         2. Compute gate_inf, gate_tau from current state (OLD voltage)
         3. Update voltage (Forward Euler)
@@ -69,8 +69,8 @@ class RushLarsenSolver(IonicSolver):
         # 1. Compute ionic current from current state (BEFORE any updates)
         Iion = model.compute_Iion(V, S)  # (n_dof,)
 
-        # 2. Compute gate steady-states and time constants BEFORE voltage update
-        # This matches V5.3 which uses OLD voltage for gate updates
+        # 2. Compute gate steady-states and time constants BEFORE voltage update,
+        # so the gate update uses the OLD voltage
         gate_inf = model.compute_gate_steady_states(V, S)  # (n_dof, n_gates)
         gate_tau = model.compute_gate_time_constants(V, S)  # (n_dof, n_gates)
 

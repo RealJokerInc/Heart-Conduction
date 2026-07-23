@@ -1,6 +1,6 @@
-"""Phase-7 (analysis.fields): the 0-D single_cell driver (Step 7.1).
+"""The 0-D single_cell driver.
 
-The safety_factor (Step 7.2) tests live in test_safety_factor.py.
+The companion safety_factor tests live in test_safety_factor.py.
 """
 
 import pytest

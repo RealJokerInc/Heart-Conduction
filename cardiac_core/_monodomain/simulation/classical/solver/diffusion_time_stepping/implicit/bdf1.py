@@ -6,8 +6,6 @@ First-order implicit time integrator for diffusion.
 (A_lhs) * V^{n+1} = (B_rhs) * V^n
 
 Uses LinearSolver for the implicit system.
-
-Ref: V5.3/IMPLEMENTATION.md:L780-825
 """
 
 from typing import TYPE_CHECKING

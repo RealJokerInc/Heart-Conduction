@@ -1,5 +1,5 @@
 """
-Utility modules for Engine V5.4
+Utility modules
 
 Provides unified CPU/GPU backend management.
 """

@@ -1,9 +1,8 @@
-# cardiac_core — API cheatsheet (for generated simulation scripts)
+# cardiac_core — API cheatsheet
 
-> **Canonical, maintained reference.** This is the ONLY API source the `/sim-*` skills may generate
-> against — never invent signatures. Co-located with the code so it can't drift.
-> **After any `cardiac_core` API change, re-run `Lab/_validate/smoke.py`** and the two canaries that
-> execute code straight out of this file — if they break, fix this file:
+> **Canonical, maintained reference.** Every signature here is real; co-located with the code so it
+> can't drift. **After any `cardiac_core` API change, re-run the two canaries that execute code
+> straight out of this file** — if they break, fix this file:
 > `tests/test_usability_fixes.py::test_cheatsheet_examples_execute` (the `# runnable-canary` block, §12)
 > and `tests/test_video.py::test_cheatsheet_video_section_executes` (the `# runnable-video-section`
 > block, §10).

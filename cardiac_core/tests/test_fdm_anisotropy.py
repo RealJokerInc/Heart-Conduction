@@ -1,4 +1,4 @@
-"""Regression tests for the monodomain FDM anisotropic cross-derivative (Audit #4).
+"""Regression tests for the monodomain FDM anisotropic cross-derivative.
 
 The cardinal4 stencil discretizes ``div(D·∇V) = Dxx·V_xx + 2·Dxy·V_xy + Dyy·V_yy``.
 The cross term must use ``cxy = 1/(2·dx·dy)`` (the factor 2 from 2·Dxy) and the diagonal

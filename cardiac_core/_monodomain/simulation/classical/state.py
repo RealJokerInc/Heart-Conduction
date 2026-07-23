@@ -9,8 +9,6 @@ State is scheme-agnostic: works with FEM, FDM, or FVM.
 V (membrane potential) is stored as a separate field from ionic_states
 (gates + concentrations). This matches the PDE structure where V is the
 coupling variable and ionic_states are local ODE variables.
-
-Ref: improvement.md:L521-594
 """
 
 from dataclasses import dataclass, field
@@ -83,7 +81,7 @@ class SimulationState:
 
     # Tissue membrane capacitance (uF/cm^2). Single source of truth for the
     # reaction step: ionic dV = -(Iion + Istim) / Cm. Populated from spatial.Cm
-    # at construction (MonodomainSimulation). Default 1.0 reproduces V5.3/V5.4.
+    # at construction (MonodomainSimulation). Default 1.0 leaves the division a no-op.
     Cm: float = 1.0
 
     # Stimulus data

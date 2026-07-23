@@ -44,9 +44,9 @@ def activation_time(
 
     This is the CANONICAL LAT: ``r.lat()``, ``r.cv()``/``conduction_velocity``,
     ``cv_between``, ``radial_cv``, and every eikonal / LAT-based field route through it, so
-    they all agree on ONE activation map. Default = ``method="interp", threshold=-40`` (the
-    2026-07-22 canonicalization; ``method="nearest", threshold=-20`` reproduces the historical
-    frame-quantized value as an OVERRIDE).
+    they all agree on ONE activation map. Default = ``method="interp", threshold=-40``;
+    ``method="nearest", threshold=-20`` reproduces the older frame-quantized value as an
+    OVERRIDE.
 
     Two crossing estimators:
 
@@ -55,7 +55,7 @@ def activation_time(
       denom-guarded. The eikonal CV field ``1/|∇T|`` needs this smooth sub-frame LAT, since
       nearest-frame staircases make ``|∇T|→0`` at flat neighbours and blow the velocity up.
     - ``method="nearest"``: the save time of the first frame at/above ``threshold`` —
-      frame-quantized, bit-identical to the pre-2026-07-22 behaviour.
+      frame-quantized (the legacy behaviour).
 
     Reentry note: a first-crossing LAT is undefined once a node re-activates (a rotor /
     repeated waves) — use a phase-based map (:func:`phase_map`) there instead.
@@ -168,7 +168,7 @@ def conduction_velocity(
 
     Routes through the CANONICAL LAT (:func:`activation_time`, interp/−40 by default), so
     ``r.cv()`` agrees with ``r.lat()`` and the eikonal ``1/|∇T|`` field. Pass
-    ``method="nearest", threshold=-20`` to reproduce the pre-2026-07-22 frame-quantized value.
+    ``method="nearest", threshold=-20`` to reproduce the legacy frame-quantized value.
     A first-crossing LAT is invalid under reentry — use a phase-based map there.
 
     Parameters
@@ -236,7 +236,7 @@ def apd_at(
     dome_aware : bool
         If True (default), the repolarization endpoint is the LAST crossing of
         V_repol within the beat, so a spike-and-dome morphology's early notch
-        does not truncate low-repol APDs (B4). Set False for a plain
+        does not truncate low-repol APDs. Set False for a plain
         first-crossing endpoint.
 
     Returns
@@ -579,11 +579,11 @@ def restitution_curve(
 
 
 # ---------------------------------------------------------------------------
-# Eikonal / source-sink metrics (source_sink_mismatch_investigation)
+# Eikonal / source-sink metrics
 #
-# Separate the dynamic curvature slowing (-D*kappa) from kinematic fanning, so a
-# diverging "fan" can be quantified rather than dismissed. Used by the Fig-4C/D
-# campaign (Research/Active/source_sink_mismatch_investigation/FIG4C_BLOCK_TEST_PLAN.md).
+# These separate the dynamic curvature slowing (-D*kappa) from purely kinematic
+# fanning of the wavefront, so a diverging "fan" can be quantified rather than
+# conflated with a change in conduction velocity.
 #
 # Sign convention: n_hat = grad(LAT)/|grad(LAT)| points along propagation (LAT
 # increases downstream). kappa = div(n_hat) is +1/r for a convex/expanding front,
@@ -729,7 +729,7 @@ def dominant_frequency_map(
     freqs = torch.fft.rfftfreq(n, d=dt_ms / 1000.0).to(V.device)  # Hz
     peak = spec.argmax(dim=0)                        # (Nx*Ny,)
     df = freqs[peak].reshape(Nx, Ny)
-    # Masked/out-of-domain nodes are NaN across time (B8); their rfft is NaN and argmax
+    # Masked/out-of-domain nodes are NaN across time; their rfft is NaN and argmax
     # would return a phantom frequency — set them NaN, not a bogus low frequency.
     non_finite = ~torch.isfinite(V).all(dim=0)      # (Nx, Ny)
     if non_finite.any():
@@ -884,7 +884,7 @@ def restitution_slope(DI, APD) -> dict:
     """Max APD-restitution slope and DI* (the DI where slope crosses 1, alternans onset).
 
     Takes the ``(DI, APD)`` arrays from :func:`restitution_curve`. Guards the divide by
-    a zero DI-spacing (B13). Returns dict(max_slope, DI_star [ms], n). ``DI_star`` is NaN
+    a zero DI-spacing. Returns dict(max_slope, DI_star [ms], n). ``DI_star`` is NaN
     if the slope never reaches 1 (or < 2 points).
     """
     DI = np.asarray(DI.cpu() if isinstance(DI, torch.Tensor) else DI, dtype=float)

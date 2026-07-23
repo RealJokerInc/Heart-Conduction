@@ -65,7 +65,7 @@ def _frames_of(path, n=1):
         rd.close()
 
 
-# =========================================================== Step 1.1 — encoders
+# =============================================================== encoders
 
 def test_writes_real_mp4(wave):
     times, V = wave
@@ -179,7 +179,7 @@ def test_gif_backend_and_path(wave):
     assert info.path.endswith(".gif") and _ok(info.path)
 
 
-# =========================================================== Step 1.2 — Gradient
+# =============================================================== Gradient
 
 def test_presets_resolve_expected_ranges():
     """V_rest = -82 deliberately: -85 is infer_v_rest's FALLBACK, so it cannot discriminate."""
@@ -313,7 +313,7 @@ def test_phi_e_rest_requires_explicit():
         Gradient.rest_anchored().resolve(iter(V), field="phi_e")
 
 
-# =========================================================== Step 1.3 — Video
+# ================================================================== Video
 
 def test_accepts_result_pair_array_and_npz(wave, small_result, tmp_path):
     times, V = wave
@@ -406,7 +406,7 @@ def test_invalid_enums_raise(wave):
         render(Video((times, V)), "x", question=QUESTION, bulk=True, fit="containn")
 
 
-# =========================================================== Step 1.4 — render
+# ================================================================= render
 
 def test_default_is_bare_1080p_unlabelled():
     """Wide fixture so `contain` letterboxes on TOP/BOTTOM (which axis pads depends on aspect)."""
@@ -644,7 +644,7 @@ def test_media_path_convention(wave):
     assert "_sim_outputs" in info.path
 
 
-# =========================================================== Step 1.5 — wiring
+# ================================================================= wiring
 
 def test_result_hook_returns_videoinfo(small_result):
     info = small_result.video("tv-hook", question=QUESTION, bulk=True, max_frames=5)
@@ -679,7 +679,7 @@ def test_legacy_still_annotated_nodes_unmasked(small_result):
     assert frame.mean() > 60, "legacy output lost its matplotlib chrome (went bare?)"
 
 
-# =========================================================== Phase 2 — multi-panel
+# ============================================================ multi-panel
 
 def test_two_panel_shared_colorbar(wave):
     """Bare clips are PROMOTED, not rejected — the single-clip capability rule must not fire."""
@@ -794,7 +794,7 @@ def test_reproduces_semicircle_composition():
 
 def test_reproduces_zoom_artifact_visibility():
     """Why the zoom preset exists, quantitatively: 5.8% vs 90.4% of the colormap."""
-    V_REST, PATCH = -85.0, -77.5                       # +7.5 mV RELATIVE, the audit-video scale
+    V_REST, PATCH = -85.0, -77.5                       # +7.5 mV RELATIVE — a subtle patch
     V = np.full((3, 20, 20), V_REST)
     V[:, 5:10, 5:10] = PATCH
 
@@ -812,7 +812,7 @@ def test_reproduces_zoom_artifact_visibility():
     assert zoom > 0.60, f"artifact should dominate the zoom window, got {zoom:.1%}"
 
 
-# =========================================================== Phase 3 — docs
+# =================================================================== docs
 
 def test_cheatsheet_video_section_executes():
     """§10 must stay true. The repo canary only execs `# runnable-canary` (§12), so §10 needs

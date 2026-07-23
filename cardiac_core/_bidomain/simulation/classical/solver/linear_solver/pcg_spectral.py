@@ -6,8 +6,6 @@ SpectralSolver (exact inverse of the isotropic constant-coefficient Laplacian).
 
 For mildly anisotropic problems the spectral preconditioner gives condition
 number close to 1, converging in 1-5 iterations.
-
-Ref: improvement.md L1055-1242
 """
 
 import torch
@@ -108,7 +106,7 @@ class PCGSpectralSolver(LinearSolver):
             Ap.copy_(sparse_mv(A, p))
 
             pAp = torch.dot(p, Ap)
-            # Scale-relative pAp threshold (matches PCG fix PCG-1)
+            # Scale-relative pAp breakdown threshold (same convention as PCGSolver)
             if pAp.abs() < 1e-14 * b_norm * b_norm:
                 iters = k + 1
                 broke_down = True
@@ -139,9 +137,10 @@ class PCGSpectralSolver(LinearSolver):
         self.last_iters = iters
         self.last_converged = converged
         # Surface a silently under-solved elliptic solve (this feeds phi_e -> the Vm RHS).
-        # Warn ONCE per instance: the default declarative-bidomain elliptic tier chronically
-        # breaks down below tol (pre-existing; the isotropic spectral preconditioner on a
-        # field-stored sigma_i!=sigma_e operator) — warning per step would flood every run.
+        # Warn ONCE per instance rather than per step: when this tier is used as the default
+        # elliptic solver it can chronically stop short of tol — the preconditioner assumes an
+        # isotropic Laplacian while the operator carries a field-stored sigma_i != sigma_e — so
+        # a per-step warning would flood the whole run.
         if not converged and not getattr(self, '_nonconv_warned', False):
             r_final = torch.norm(r)
             warn_nonconvergence('PCGSpectral', iters, r_final.item(),

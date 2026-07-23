@@ -1,8 +1,8 @@
-"""Regression tests for the audit-driven solver fixes (solver-hardening Steps 1 & opt-in).
+"""Regression tests for the linear-solver hardening fixes.
 
-- Step 1: SolverConvergenceWarning fires on non-convergence; mono Chebyshev preconditioned
-  bounds (07-02 M1) — accurate at high diffusion-number.
-- Opt-in: bidomain pcg_spectral falls back to plain PCG on a mixed per-axis BC (Lane C2 HIGH);
+- SolverConvergenceWarning fires on non-convergence; the monodomain Chebyshev preconditioned
+  eigenvalue bounds stay accurate at a high diffusion number.
+- The bidomain pcg_spectral tier falls back to plain PCG on a mixed per-axis BC, and
   IMEX-SBDF2 runs with the 2nd-order coupling extrapolation.
 """
 
@@ -31,7 +31,7 @@ def _spd(n, cond_scale=1.0, seed=0):
     return (M @ M.T + cond_scale * n * torch.eye(n)).to_sparse()
 
 
-# --- Step 1: non-convergence signal ----------------------------------------
+# --- non-convergence signal -------------------------------------------------
 
 def test_pcg_warns_on_nonconvergence():
     A, b = _spd(60), torch.randn(60)
@@ -50,7 +50,7 @@ def test_pcg_silent_when_converged():
 
 
 def test_nonconvergence_warns_at_most_once_per_run():
-    # Regression (audit R1, Lane A): a chronically under-converging elliptic tier (default
+    # Regression: a chronically under-converging elliptic tier (the default
     # declarative bidomain hits pcg_spectral breakdown at ~1e-4) must warn ONCE per run, not
     # once per step (437-warning flood otherwise). Also checks the 'breakdown' reason label.
     import cardiac_core as cc
@@ -69,7 +69,7 @@ def test_nonconvergence_warns_at_most_once_per_run():
 
 
 def test_nonconvergence_warning_rearms_each_run():
-    # Regression (audit R2): warn-once must be per-RUN, not per-solver-lifetime. A reused sim
+    # Regression: warn-once must be per-RUN, not per-solver-lifetime. A reused sim
     # (restitution / S1-S2 pattern) must re-warn on every run; the flag is reset at run start
     # (_reset_solver_diagnostics). Without the reset, run 2+ would silently under-solve.
     import cardiac_core as cc
@@ -88,7 +88,7 @@ def test_nonconvergence_warning_rearms_each_run():
 
 
 def test_chebyshev_checks_every_solve_not_just_first():
-    # Regression (audit R3): the Chebyshev end-of-solve residual check must run on EVERY solve.
+    # Regression: the Chebyshev end-of-solve residual check must run on EVERY solve.
     # A converged first solve must NOT latch the check off — the actual residual is b-dependent
     # and A is not fixed across a run (bdf2/IMEX bootstrap), so a later solve can diverge even
     # after the first converged. Reused solver over two operators (bootstrap analogue).
@@ -117,12 +117,12 @@ def test_convergence_warning_escalates_to_error():
             PCGSolver(max_iters=2, tol=1e-12).solve(A, b)
 
 
-# --- Step 1: mono Chebyshev preconditioned bounds (07-02 M1) ----------------
+# --- monodomain Chebyshev preconditioned bounds -----------------------------
 
 def test_chebyshev_jacobi_accurate_high_diffusion_number():
     # A REAL FDM diffusion operator at a high diffusion number (large dt / fine dx), the regime
     # where the OLD raw-A Gershgorin bounds gave up to ~46% silent error. The preconditioned
-    # bounds (07-02 M1 fix) must recover machine precision, matching plain PCG.
+    # bounds must recover near-machine precision, matching plain PCG.
     import cardiac_core as cc
     g = cc.Grid(41, 41, 0.01)
     cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1.0)   # chi=1 -> large diffusion number
@@ -141,7 +141,7 @@ def test_chebyshev_jacobi_accurate_high_diffusion_number():
     assert rel < 1e-3, f"Chebyshev(Jacobi) rel error {rel:.2e} — preconditioned bounds regressed (M1)"
 
 
-# --- Opt-in: bidomain pcg_spectral mixed-BC fallback (Lane C2 HIGH) ---------
+# --- bidomain pcg_spectral mixed-BC fallback --------------------------------
 
 def _mixed_bc_spatial():
     grid = StructuredGrid(Nx=24, Ny=20, Lx=1.0, Ly=1.0,

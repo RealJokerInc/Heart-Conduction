@@ -80,7 +80,7 @@ class TestMonodomainFromFile:
 
 
 class TestEngineIsV55:
-    """Phase 0: the monodomain factory must run the Cm-correct V5.5 engine.
+    """The monodomain factory must run the Cm-correct V5.5 engine.
 
     NOT a path/`state.Cm` substring check (brittle against stale sys.modules,
     and V5.4's SimulationState has no Cm field anyway). Instead a BEHAVIORAL

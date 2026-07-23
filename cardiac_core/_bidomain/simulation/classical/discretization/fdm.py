@@ -4,16 +4,17 @@ Bidomain FDM Discretization
 9-point anisotropic stencil on structured Cartesian grids.
 Builds two symmetric Laplacians (L_i, L_e) using face-based stencils.
 
-DESIGN DECISION — Symmetric Face-Based Stencil (differs from V5.4)
+DESIGN DECISION — Symmetric Face-Based Stencil
 
-V5.4 uses ghost-node mirror for Neumann BCs: at boundary node i=N-1,
-the ghost at i+1 mirrors to i-1, doubling the connection weight.
-This gives L[N-1, N-2] = 2w but L[N-2, N-1] = w — asymmetric.
+The common alternative, a ghost-node mirror for Neumann BCs, is deliberately
+NOT used here. With a ghost-node mirror, at boundary node i=N-1 the ghost at
+i+1 mirrors to i-1, doubling the connection weight. That gives
+L[N-1, N-2] = 2w but L[N-2, N-1] = w — asymmetric.
 
-For monodomain, asymmetry is harmless because A = chi_Cm/dt * I - theta*L
-is dominated by the identity (ratio ~10^6). But the bidomain elliptic
-operator A_ellip = -(L_i + L_e) has NO identity term, so asymmetry
-makes the matrix non-SPD and PCG fails.
+In a monodomain solve that asymmetry is harmless because
+A = chi_Cm/dt * I - theta*L is dominated by the identity (ratio ~10^6). But the
+bidomain elliptic operator A_ellip = -(L_i + L_e) has NO identity term, so
+asymmetry makes the matrix non-SPD and PCG fails.
 
 Solution: face-based stencil where each interior face contributes
 equally to both adjacent nodes. Out-of-domain faces are skipped
@@ -32,10 +33,6 @@ anywhere in this module. Cm is stored only for source term scaling.
 
 Dirichlet enforcement is NOT baked into L_i or L_e. It is applied
 only in get_elliptic_operator() via symmetric row+column elimination.
-
-Ref: improvement.md L737-812 (FDM concrete impl)
-Ref: improvement.md L481-527 (FDM Stencil at Boundary Nodes)
-Ref: V5.4 fdm.py (original ghost-node approach)
 """
 
 from typing import Optional, Tuple
@@ -136,7 +133,7 @@ class BidomainFDMDiscretization(BidomainSpatialDiscretization):
         chi*Cm scaling (D = sigma/(chi*Cm)).
     chi : float
         Deprecated. Ignored. Chi is already absorbed into D values.
-        Kept for backward compatibility — will be removed in V2.
+        Kept for backward compatibility — will be removed in a future release.
     """
 
     def __init__(

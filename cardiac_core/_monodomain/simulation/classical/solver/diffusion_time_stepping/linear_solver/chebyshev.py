@@ -7,9 +7,6 @@ making it ideal for GPU execution.
 
 Uses Gershgorin bounds for eigenvalue estimation.
 Requires SPD matrix (all diffusion operators are SPD).
-
-Ref: Research/03_GPU_Linear:L39-65 (algorithm)
-Ref: Research/03_GPU_Linear:L77-106 (Gershgorin bounds)
 """
 
 import torch
@@ -85,8 +82,6 @@ def _gershgorin_bounds_preconditioned(
     is ~``chi*Cm`` times wider, producing a polynomial tuned for the wrong interval that barely
     damps the error, i.e. up to ~46% silent error at large diffusion number). Each row of
     ``D^{-1}A`` is centered at 1 with radius ``sum_j!=i |a_ij| / a_ii``.
-
-    Ported from the bidomain ChebyshevSolver ("CH-1 fix"); closes CODE_AUDIT 2026-07-02 M1.
     """
     A = A.coalesce()
     indices = A.indices()
@@ -200,8 +195,8 @@ class ChebyshevSolver(LinearSolver):
         if self._A_id != A_id:
             self._diag_inv = self._extract_diag_inv(A) if self.use_jacobi_precond else None
 
-            # CH-1 FIX (CODE_AUDIT 2026-07-02 M1): bound the PRECONDITIONED operator D^{-1}A
-            # that the iteration actually acts on, not the raw A.
+            # Bound the PRECONDITIONED operator D^{-1}A that the iteration actually
+            # acts on, not the raw A.
             if self.use_jacobi_precond:
                 self._lam_min, self._lam_max = _gershgorin_bounds_preconditioned(
                     A, self._diag_inv, self.safety_margin)

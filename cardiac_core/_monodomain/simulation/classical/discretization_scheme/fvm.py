@@ -10,9 +10,8 @@ Each cell has volume dx*dy. Flux is computed at faces between cells.
 
 Supports anisotropic D via D_field=(D_xx, D_yy) and masked grids.
 
-Ref: improvement.md:L901-935
-Ref: Research/02_openCARP:L200-250
-Ref: Research/00_Research_Summary:L90 (harmonic mean)
+The TPFA formulation and the harmonic-mean face conductivity follow the
+finite-volume scheme used by openCARP.
 """
 
 from typing import Optional, Tuple, Union

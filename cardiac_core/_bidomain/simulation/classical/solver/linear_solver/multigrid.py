@@ -2,10 +2,9 @@
 Geometric Multigrid Preconditioner (Stub)
 
 V-cycle multigrid for structured FDM grids. Tier 3 component.
-Full implementation deferred — requires multi-level grid hierarchy
-and smoothers. Stub for import/architecture completeness.
 
-Ref: improvement.md L1390-1509
+TODO: full implementation — requires a multi-level grid hierarchy and smoothers.
+This module is a stub that keeps the solver-tier architecture importable.
 """
 
 

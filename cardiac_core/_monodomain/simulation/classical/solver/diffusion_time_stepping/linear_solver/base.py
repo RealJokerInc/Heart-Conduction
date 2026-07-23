@@ -2,8 +2,6 @@
 LinearSolver Abstract Base Class
 
 Solves Ax = b. Owns workspace buffers for zero-allocation per step.
-
-Ref: improvement.md:L1076-1109
 """
 
 from abc import ABC, abstractmethod

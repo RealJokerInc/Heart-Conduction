@@ -10,8 +10,6 @@ k2 = L * (V^n + dt/2 * k1)
 k3 = L * (V^n + dt/2 * k2)
 k4 = L * (V^n + dt * k3)
 V^{n+1} = V^n + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-
-Ref: Research/00_Research_Summary:L68
 """
 
 from typing import TYPE_CHECKING

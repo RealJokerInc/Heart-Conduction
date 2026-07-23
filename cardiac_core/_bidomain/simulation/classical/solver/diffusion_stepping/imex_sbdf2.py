@@ -14,20 +14,18 @@ BDF2 (steps 1+):
     -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
 
 The explicit coupling term uses the SBDF2 2nd-order extrapolation (2*phi_e^n - phi_e^{n-1});
-lagging it at just phi_e^n adds an O(dt) error to the explicit term (audit 2026-07-16, Lane C1).
-NOTE (verified on the real solver): fixing the extrapolation ~halves the temporal error but does
-NOT by itself restore full 2nd order — the decoupled parabolic->elliptic *staggering* (phi_e is
-slaved to Vm within the step and lagged across steps) imposes its own O(dt) splitting floor.
-True 2nd order would require a monolithic Vm/phi_e solve. This fix removes the extrapolation
-error term; the staggering floor is a separate, deeper limitation left documented.
+lagging it at just phi_e^n would add an O(dt) error to the explicit term.
+
+KNOWN LIMITATION: the extrapolation above removes that error term, which roughly halves the
+measured temporal error, but it does not by itself restore full 2nd order. The decoupled
+parabolic->elliptic *staggering* (phi_e is slaved to Vm within a step and lagged across steps)
+imposes its own O(dt) splitting floor. True 2nd order would require a monolithic Vm/phi_e solve.
 
 Properties:
   - 2nd order in time (vs 1st order for GS/semi-implicit)
   - L-stable (no spurious oscillations unlike CN)
   - Unconditionally stable (no CFL constraint)
   - Stores one extra N-vector (Vm^{n-1})
-
-Ref: DIFFUSION_SPLITTING_DESIGN.md § Strategy 5
 """
 
 from typing import TYPE_CHECKING

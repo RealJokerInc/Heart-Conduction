@@ -1,7 +1,8 @@
 """D2Q9 lattice with UNIFORM weights — non-canonical variant for connectivity studies.
 
-Used to compare against canonical D2Q9 in the boundary_conduction_speedup
-research. NOT a standard LBM scheme. Notes on the deviations from canonical:
+Provided as a controlled contrast against canonical D2Q9, to isolate the effect of the
+weight distribution across lattice directions. NOT a standard LBM scheme. Deviations from
+canonical D2Q9:
 
   - The rest particle (index 0) has weight 0, so f[0] is driven to zero
     each step. This makes the lattice effectively 8-velocity (D2Q8-like)

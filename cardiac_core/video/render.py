@@ -42,7 +42,7 @@ _LEGAL_FIT = ("contain", "stretch", "cover")
 
 @dataclass
 class _FigState:
-    """Everything ``produce_figure`` mutates per frame. Phase 2 holds one per panel."""
+    """Everything ``produce_figure`` mutates per frame. The multi-panel path holds one per panel."""
     fig: Any
     ax: Any
     im: Any

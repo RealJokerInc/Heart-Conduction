@@ -3,8 +3,6 @@ Forward Euler Ionic Solver
 
 Simple explicit Forward Euler for all ionic ODEs.
 Requires smaller time steps than Rush-Larsen for stability.
-
-Ref: improvement.md:L1006-1031
 """
 
 from typing import TYPE_CHECKING
@@ -61,7 +59,7 @@ class ForwardEulerIonicSolver(IonicSolver):
 
         # 3. Forward Euler on voltage
         # Formulation B: dV = -(Iion + Istim) / Cm  (Cm = tissue capacitance from state;
-        # Cm = 1.0 reproduces the V5.3/V5.4 convention exactly).
+        # Cm = 1.0 is the normalized convention, for which the division is a no-op).
         state.V = V + dt * (-(Iion + Istim) / state.Cm)
 
         # 4. Forward Euler on gates

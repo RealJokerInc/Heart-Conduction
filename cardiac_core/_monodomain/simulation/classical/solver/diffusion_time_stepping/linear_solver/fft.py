@@ -9,8 +9,6 @@ O(N log N) complexity via FFT/DCT.
 
 For cardiac simulation, Neumann BCs are most appropriate
 (no current leaks at tissue boundaries).
-
-Ref: Research/03_GPU_Linear:L169-261
 """
 
 import torch

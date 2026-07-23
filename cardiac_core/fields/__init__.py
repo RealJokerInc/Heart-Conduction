@@ -1,13 +1,13 @@
 """``cardiac_core.fields`` — the analysis-fields layer.
 
 * :mod:`cardiac_core.fields.derivatives` — the primitive operator toolkit
-  (``grad``/``div``/``curl``/``laplacian`` + the ``diffusion_term`` source_sink core), torch,
-  on-device, boundary/mask-aware.
+  (``grad``/``div``/``curl``/``laplacian`` plus the ``diffusion_term`` core behind
+  ``source_sink``), torch, on-device, boundary/mask-aware.
 * :class:`VectorField` — a light wrapper over a ``(..., 2)`` vector tensor.
 * :class:`Fields` — the ``r.fields`` accessor: lazily-computed, cached NAMED physical fields on a
-  ``SimulationResult`` (Phase 3: the Vm/φ_e fields ``voltage_gradient``/``voltage_flux``/
-  ``source_sink``/``electric_field``/``current_flux``; the LAT-based velocity/curvature/vorticity
-  family lands in Phase 4), plus a grid-bound ``r.fields.derivatives`` toolkit.
+  ``SimulationResult``. Vm/φ_e fields (``voltage_gradient``/``voltage_flux``/``source_sink``/
+  ``electric_field``/``current_flux``), the LAT-based velocity/curvature/vorticity family, and a
+  grid-bound ``r.fields.derivatives`` toolkit.
 """
 
 import torch
@@ -205,7 +205,7 @@ class Fields:
             return derivatives.diffusion_term(r.Vm, D, r.dx, r.dy, **_op_kw(r))
         return self._cached('source_sink', _f)
 
-    # ---------------------------------------------------------------- LAT-based fields (Phase 4)
+    # ---------------------------------------------------------------- LAT-based fields
     def _lat_bundle(self) -> dict:
         """All LAT-derived fields computed once (they share ∇T) and cached."""
         return self._cached('_lat_bundle', lambda: lat_field_bundle(self._r))

@@ -4,8 +4,6 @@ DiffusionSolver Abstract Base Class
 Owns DiffusionOperators (built at init from spatial discretization).
 Implicit solvers also own a LinearSolver.
 Advances the diffusion PDE in-place on state.
-
-Ref: improvement.md:L1033-1074
 """
 
 from abc import ABC, abstractmethod

@@ -1,4 +1,4 @@
-"""Phase-5 (analysis.fields): fields.integrals — region/line integrals and the theorem cross-checks.
+"""analysis.fields: fields.integrals — region/line integrals and the theorem cross-checks.
 
 region_integral, net_flux (divergence theorem), circulation (Stokes), winding_number,
 conduction_time (the slowness-vs-velocity trap), activated_area, and the isochrone family
@@ -24,7 +24,7 @@ def _grid(Nx=40, Ny=36, dx=0.05, dy=0.05):
 
 
 # ======================================================================
-# Step 5.1 — region_integral + net_flux (divergence theorem)
+# region_integral + net_flux (divergence theorem)
 # ======================================================================
 
 class TestRegionAndFlux:
@@ -64,7 +64,7 @@ class TestRegionAndFlux:
 
 
 # ======================================================================
-# Step 5.2 — circulation (Stokes), winding, conduction_time (slowness trap)
+# circulation (Stokes), winding, conduction_time (slowness trap)
 # ======================================================================
 
 class TestLineIntegrals:

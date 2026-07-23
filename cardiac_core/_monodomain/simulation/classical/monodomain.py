@@ -3,9 +3,6 @@ MonodomainSimulation — Top-Level Orchestrator
 
 Builds state and solvers from config strings. Owns the time loop,
 output buffering, and progress reporting.
-
-Ref: improvement.md:L1113-1187
-Ref: improvement.md:L1329-1393 (User API)
 """
 
 from typing import Optional, Callable, Iterator, Tuple, Union
@@ -72,9 +69,9 @@ def _build_ionic_model(
     -------
     model : IonicModel
     """
-    # Delegate to the shared registry (C3): one builder that branches on ctor capability
-    # (cell_type only to TTP06/ORd; device-only for PHAS13/MHAS13/paci). Mono forwards its
-    # mesh-derived cell_type; TTP06/ORd's ENDO/EPI plumbing is preserved.
+    # Delegate to the shared registry: one builder that branches on constructor capability
+    # (cell_type is only accepted by TTP06/ORd; the other models take device only). The
+    # mesh-derived cell_type is forwarded so TTP06/ORd's ENDO/EPI plumbing is preserved.
     from cardiac_core.ionic.registry import build_ionic_model
     return build_ionic_model(name, cell_type=cell_type, device=device)
 
@@ -189,9 +186,8 @@ def _build_linear_solver(name: str, tol: float = 1e-8, max_iters: int = 500,
         return ChebyshevSolver(max_iters=max_iters, tol=tol)
     elif name_lower in ('dct', 'fft'):
         # DCT/FFT are direct spectral solves needing grid params (nx,ny,dx,dy,dt,D,
-        # chi,Cm,scheme). Before B2 these were never threaded through, so the factory
-        # called DCTSolver()/FFTSolver() with empty kwargs -> TypeError, and every
-        # run fell back to slow PCG. Full-rectangle grids only (the solve reshapes to
+        # chi,Cm,scheme), so the caller must thread `spatial` and `dt` through — without
+        # them the constructors raise. Full-rectangle grids only (the solve reshapes to
         # nx*ny; a masked domain must use pcg).
         if spatial is None or dt is None:
             raise ValueError(

@@ -1,10 +1,10 @@
-"""LBM flat-wall boundary modes (boundary_conduction_speedup, productized in Phase 3).
+"""LBM flat-wall boundary modes.
 
 - Every mode is rest-neutral (uniform field is a no-op) + mass-conserving.
 - Named-mode / alpha-endpoint equivalences: neumann==hbb, combined(1)==hbb,
   combined(0)==specular_samecell; and the modes genuinely differ on a non-uniform field.
 - API validation: D2Q9-only, unknown mode rejected, default is neumann, replay preserves it.
-- Oblique anisotropy (D_xy != 0) is rejected by lbm() (#40).
+- Oblique anisotropy (D_xy != 0) is rejected by lbm().
 """
 import numpy as np
 import pytest
@@ -104,7 +104,7 @@ def test_lbm_boundary_unknown_rejected():
 
 
 def test_lbm_default_boundary_is_lattice_aware():
-    # d2q9 defaults to the HBB flat-wall baseline; d2q5 to generic neumann (user 2026-07-15)
+    # d2q9 defaults to the HBB flat-wall baseline; d2q5 to generic neumann.
     assert lbm(_mesh(), lattice='d2q9')._engine.boundary == 'hbb'
     assert lbm(_mesh(), lattice='d2q5')._engine.boundary == 'neumann'
 
@@ -130,19 +130,19 @@ def test_ncs_scs_aliases():
 
 def test_lbm_rejects_oblique_Dxy():
     """OBLIQUE anisotropy (D_xy != 0) is a REAL numerics limitation, not a wiring gap:
-    mrt_collide_d2q9 discards D_xy (p_xy_eq=0); it needs the moment-space rotation of
-    s_jx/s_jy (Audit #46). So lbm() raises a *documented* limitation. This tests the
-    OBLIQUE case specifically (not per-axis anisotropy, which now works — see below).
-    MUST be REPLACED with a positive CV-along-fiber test if Audit #46 is ever implemented;
-    do NOT keep the raise merely to keep this test green.
+    mrt_collide_d2q9 discards D_xy (p_xy_eq=0); supporting it needs the moment-space
+    rotation of s_jx/s_jy. So lbm() raises on a *documented* limitation. This covers the
+    OBLIQUE case specifically (not per-axis anisotropy, which does work — see below).
+    MUST be REPLACED with a positive CV-along-fiber test if the rotation is ever
+    implemented; do NOT keep the raise merely to keep this test green.
     """
     m = _mesh()
     m.D_xy = np.full_like(m.D_xy, 1e-4)
-    with pytest.raises(ValueError, match="oblique|Audit #46"):
+    with pytest.raises(ValueError, match="oblique"):
         lbm(m, lattice='d2q9')
 
 
-# ------------------------------- Phase 2: MRT / per-axis-anisotropic wall modes (C1)
+# ------------------------------- MRT / per-axis-anisotropic wall modes
 def test_lbm_anisotropic_boundary_runs():
     """Per-axis-anisotropic D (D_xx != D_yy, D_xy = 0 → MRT) + a specular wall must
     construct + run finite. The old `collision != 'bgk'` guard wrongly blocked this."""
@@ -175,7 +175,7 @@ def test_mrt_wall_rest_neutral():
     assert abs(f.sum().item() - m0) < 1e-8, "MRT wall mass drift"
 
 
-# --------------------------------------------- Phase 1: one-shot API parity (P1)
+# --------------------------------------------------- one-shot API parity
 def _wall_mesh():
     """Left-edge-stim mesh whose front reaches the top/bottom walls (where the modes act)."""
     return create_cardiac_mesh(0.5, 0.3, 0.02, D=1e-3, chi=1.0)

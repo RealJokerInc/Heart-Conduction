@@ -1,5 +1,5 @@
-"""chi/D convention (Audit #2/#8/#21): `D_xx` is RAW; the membrane-effective
-diffusivity is `D_xx/(χ·Cm)`, computed identically by every engine.
+"""chi/D convention: `D_xx` is RAW; the membrane-effective diffusivity is
+`D_xx/(χ·Cm)`, computed identically by every engine.
 
 - `create_cardiac_mesh` / any raw mesh stores raw D_xx + real chi.
 - The declarative path (`_build_mesh_data`) also stores raw D_xx so the factory

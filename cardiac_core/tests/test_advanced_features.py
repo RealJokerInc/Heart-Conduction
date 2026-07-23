@@ -1,4 +1,4 @@
-"""Tests for the mid-run advanced features (solver-hardening Step 2).
+"""Tests for the mid-run advanced features.
 
 Masked voltage clamp (clamp_voltage / add_clamp_protocol / release_clamp) and mid-run state
 injection (set_voltage / set_state / get_state / state_names). The unclamped path stays on the
@@ -139,10 +139,10 @@ def test_clamp_result_matches_unclamped_when_released():
 # --- LBM guards -------------------------------------------------------------
 
 def test_lbm_clamp_supported_but_injection_raises():
-    # Stim-object Phase 1.4: LBM gained a NATIVE additive voltage clamp (Σf→value, flux-preserving),
-    # so clamp_voltage NO LONGER raises for LBM (see test_stim.py::TestClampHolds for the held-value
-    # checks). Other stateful mid-run ops still raise — V is a lattice-population moment (Σf), not a
-    # stored per-node field, so set_voltage/set_state can't write it back.
+    # LBM has a NATIVE additive voltage clamp (Σf→value, flux-preserving), so clamp_voltage does
+    # NOT raise for LBM (see test_stim.py::TestClampHolds for the held-value checks). Other
+    # stateful mid-run ops still raise — V is a lattice-population moment (Σf), not a stored
+    # per-node field, so set_voltage/set_state cannot write it back.
     sim = _sim(engine=lbm)
     sim.clamp_voltage(np.ones((60, 20), bool), 10.0)      # native LBM clamp — no longer raises
     assert sim._lbm_clamp is not None                      # registered on the wrapper (re-pushed on reset)
@@ -153,9 +153,9 @@ def test_lbm_clamp_supported_but_injection_raises():
 # --- bidomain parity --------------------------------------------------------
 
 def test_clamp_frame_cadence_matches_unclamped_bidomain():
-    # Regression (audit R1, Lane B): _stepping_run must use the engine's OWN save-cadence
-    # tolerances. Bidomain.run uses t_end-1e-12; the trigger is save_every == dt, where a
-    # wrong tolerance emits one extra trailing frame past t_end (101 vs 100).
+    # Regression: _stepping_run must use the engine's OWN save-cadence tolerances. Bidomain.run
+    # uses t_end-1e-12; the trigger is save_every == dt, where a wrong tolerance emits one extra
+    # trailing frame past t_end (101 vs 100).
     g = Grid(24, 16, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
     stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}

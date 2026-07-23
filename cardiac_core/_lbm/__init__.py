@@ -1,9 +1,8 @@
-"""cardiac_core._lbm — the vendored LBM V1 solver (engine_consolidation).
+"""cardiac_core._lbm — the lattice-Boltzmann monodomain solver.
 
-Copied verbatim from LBM/Engine_V1/src (fully relative-import internally; it receives the ionic
-model as an OBJECT, so there were zero cross-imports to rewrite). Private package (underscore) so it
-does not shadow the public lbm() factory. The original src/__init__.py was docstring-only, so this
-facade adds the LBMSimulation re-export.
+Self-contained: fully relative-import internally, and it receives the ionic model as an object
+rather than importing one. Private package (leading underscore) so it does not shadow the public
+``lbm()`` factory; this facade re-exports :class:`LBMSimulation`.
 """
 
 from .simulation import LBMSimulation

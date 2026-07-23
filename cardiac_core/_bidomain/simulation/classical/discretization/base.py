@@ -3,8 +3,6 @@ BidomainSpatialDiscretization Abstract Base Class
 
 Provides two Laplacians (L_i, L_e) and operators for the decoupled
 parabolic + elliptic solves.
-
-Ref: improvement.md L658-735
 """
 
 from abc import ABC, abstractmethod

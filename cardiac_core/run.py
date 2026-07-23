@@ -34,8 +34,8 @@ class SimulationResult:
     ionic_states : torch.Tensor | None
         Recorded ionic-state history (opt-in via ``record=``). None unless requested.
 
-    Analysis context (Phase-1 ``analysis.fields``) — the edge/mask/conductivity/model the
-    solver used, so the field ops honour them instead of guessing:
+    Analysis context — the edge/mask/conductivity/model the solver used, so the field ops
+    honour them instead of guessing:
 
     domain_mask : torch.Tensor | None
         ``(Nx, Ny)`` bool active-tissue mask; ``None`` when the domain is full-rectangle.
@@ -49,8 +49,8 @@ class SimulationResult:
         Resolved effective diffusivity ``D_eff = D_raw/(chi*Cm)`` (+ raw tensor + σ tuples
         for bidomain) the ``voltage_flux``/``source_sink``/``current_flux`` fields need.
     ionic_model, cell_type : str | None
-        Resolved model identity (name actually run + cell type), so Phase 3/7 can rebuild
-        the model and re-evaluate ``I_ion`` for the reaction-identity / safety-factor.
+        Resolved model identity (name actually run + cell type), so the analysis layer can
+        rebuild the model and re-evaluate ``I_ion`` for the reaction-identity / safety-factor.
     """
     times: torch.Tensor
     Vm: torch.Tensor
@@ -58,7 +58,7 @@ class SimulationResult:
     dx: Optional[float] = None
     dy: Optional[float] = None
     ionic_states: Optional[torch.Tensor] = None
-    # --- analysis context (Phase 1) ---
+    # --- analysis context ---
     domain_mask: Optional[torch.Tensor] = None
     boundary_mode: str = "face_mirror"
     Cm: Optional[float] = None
@@ -169,9 +169,9 @@ def _collect(sim, t_end, save_every, output_device):
 
     if not V_list:
         # Zero save-points (e.g. t_end < save_every) — degrade like the eager run()
-        # path instead of an IndexError on V_list[0] (Audit #5). Preserve the spatial
-        # dims as a rank-3 (0, Nx, Ny) empty so the analysis hooks (.apd()/.lat()/.cv())
-        # return NaN maps rather than crashing on a rank-1 (0,) tensor (F1, 2026-07-15).
+        # path instead of raising IndexError on V_list[0]. Preserve the spatial dims as a
+        # rank-3 (0, Nx, Ny) empty so the analysis hooks (.apd()/.lat()/.cv()) return NaN
+        # maps rather than crashing on a rank-1 (0,) tensor.
         dev = torch.device(output_device) if output_device else torch.device('cpu')
         nx, ny = getattr(sim, '_Nx', None), getattr(sim, '_Ny', None)
         empty_t = torch.empty(0, dtype=torch.float64, device=dev)

@@ -5,8 +5,6 @@ Explicit time integrator for diffusion. No linear solve required.
 CFL-limited: dt <= Cm * h^2 / (4 * D_max)
 
 V^{n+1} = V^n + dt * L * V^n
-
-Ref: Research/01_FDM:L67 (CFL constraint)
 """
 
 import warnings
@@ -50,7 +48,7 @@ class ForwardEulerDiffusionSolver(DiffusionSolver):
         self._cfl_checked = False
 
     def _check_cfl(self, dt: float) -> None:
-        """Warn (once) if dt exceeds the explicit CFL stability limit (B6).
+        """Warn (once) if dt exceeds the explicit CFL stability limit.
 
         Limit: dt <= chi*Cm*min(dx,dy)^2/(4*D_max). The spatial operator applies
         L*V/(chi*Cm), so the raw D_max and chi*Cm both enter. Skips silently if the

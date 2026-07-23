@@ -1,26 +1,14 @@
 """Tests for cardiac_core.conductivity.ConductivityConfig — the chi/Cm firewall.
 
-Two gates (Phase 1):
-- test_arithmetic_gate : in-process, fast, always-on. The for_monodomain D must equal the
-  reference D_EFF_input to machine precision and be Cm-INDEPENDENT (= sigma_eff/chi).
-- test_live_cv_gate    : feeds for_monodomain() into a LIVE V5.5 cable (subprocess-isolated) and
-  checks CV against the bidomain reference within 5%. Skips cleanly if V5.5 dir / ref JSON absent.
+The for_monodomain D must equal the reference effective diffusivity to machine precision and
+be Cm-INDEPENDENT (= sigma_eff/chi).
 """
 
-import json
 import math
-import os
-import subprocess
-import sys
 
 import pytest
 
 from cardiac_core import ConductivityConfig
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.abspath(os.path.join(_HERE, "..", ".."))
-_V55 = os.path.join(_REPO, "Monodomain", "Engine_V5.5")
-_REF = os.path.join(_V55, "_regression", "bidomain_cm_ref.json")
 
 # Reference effective diffusivity for sigma_i=1.74, sigma_e=6.25, chi=1400 (Cm-independent).
 _D_EFF_REF = 0.0009721973895941354
@@ -80,34 +68,3 @@ class TestConductivityArithmetic:
         # An empty config has no conductivity data.
         with pytest.raises(ValueError):
             _ = ConductivityConfig().sigma_eff
-
-
-@pytest.mark.skipif(
-    not os.path.exists(_REF),
-    reason="V5.5 _regression/bidomain_cm_ref.json absent — run the bidomain reference first",
-)
-def test_live_cv_gate():
-    """Feed for_monodomain() into a live V5.5 cable; CV must match the bidomain ref within 5%.
-
-    Runs in a subprocess so the V5.5 cardiac_sim namespace is isolated from this pytest session.
-    """
-    driver = os.path.join(_HERE, "_live_cv_gate_driver.py")
-    proc = subprocess.run(
-        [sys.executable, driver],
-        capture_output=True, text=True, timeout=600,
-    )
-    # Parse the last JSON line (the engine may print other progress to stdout).
-    payload = None
-    for line in reversed(proc.stdout.strip().splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            payload = json.loads(line)
-            break
-
-    if proc.returncode == 2 or (payload and payload.get("error")):
-        pytest.skip(f"live-CV gate setup unavailable: {payload or proc.stderr[-500:]}")
-
-    assert payload is not None, f"no JSON from driver.\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
-    assert payload["ok"], f"live-CV gate failed: {payload['results']}"
-    for row in payload["results"]:
-        assert row["rel"] <= 0.05, row

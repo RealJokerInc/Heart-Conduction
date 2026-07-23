@@ -1,20 +1,21 @@
 """Discrete vector-calculus operators on a uniform structured grid — the machinery every
-named field composes from (Phase 2 of the ``analysis.fields`` branch).
+named field composes from.
 
 Torch, on-device, float64. Scalars are ``(..., Nx, Ny)`` (leading ``...`` absorbs a time axis
 or batch); vectors are ``(..., Nx, Ny, 2)`` with x/y on the trailing axis. Every operator honours
 the run's ``boundary_mode`` (``"face_mirror"`` = no-flux/Neumann mirror) and an optional
 ``domain_mask`` (interior holes are no-flux edges; masked nodes come back NaN).
 
-Two families, on purpose (DESIGN § "operator toolkit" / § Calculations A1–A8):
+Two families, on purpose:
 
-* **Collocated central** ``grad`` / ``div`` / ``curl`` (A1–A2) — the user-facing operators for
+* **Collocated central** ``grad`` / ``div`` / ``curl`` — the user-facing operators for
   ``velocity``/``direction``/``curvature``/``vorticity`` and display. Whole-sample mirror boundary
   ⇒ the normal derivative is 0 at a no-flux edge and ``curl(grad f) ≡ 0`` in the interior.
-* **Staggered adjoint** ``laplacian`` via the forward-grad / backward-div face pair (A8) — the
+* **Staggered adjoint** ``laplacian`` via the forward-grad / backward-div face pair — the
   COMPACT 5-point ``∇²`` (NOT the wide checkerboard stencil that collocated ``div(grad)`` gives),
   so ``laplacian(V)`` equals the solver's diffusion term and the discrete divergence theorem is
-  exact. ``_grad_face`` / ``_div_face`` are exposed for the region-integral flux (Phase 5).
+  exact. ``_grad_face`` / ``_div_face`` are exposed for the region-integral flux in
+  :mod:`cardiac_core.fields.integrals`.
 """
 
 import torch
@@ -53,7 +54,7 @@ def _slice_axis(a: torch.Tensor, axis: int, start: int, length: int) -> torch.Te
 
 
 def _central(f: torch.Tensor, h: float, axis: int, mask) -> torch.Tensor:
-    """2nd-order central difference ∂f/∂axis (A1) with mirror boundary + mask severing.
+    """2nd-order central difference ∂f/∂axis with mirror boundary + mask severing.
 
     axis is ``-2`` (x) or ``-1`` (y). With ``mask`` (``(Nx, Ny)`` bool), a differencing partner that
     is masked-out is replaced by the CENTRE value (sever the connection ⇒ zero flux across that
@@ -95,7 +96,7 @@ def grad(f: torch.Tensor, dx: float, dy: float = None, *,
 
 def div(F: torch.Tensor, dx: float, dy: float = None, *,
         boundary_mode: str = "face_mirror", mask=None) -> torch.Tensor:
-    """∇·F — divergence of a vector. ``(..., Nx, Ny, 2)`` → ``(..., Nx, Ny)`` (A2, collocated)."""
+    """∇·F — divergence of a vector. ``(..., Nx, Ny, 2)`` → ``(..., Nx, Ny)`` (collocated)."""
     _check_mode(boundary_mode)
     dy = dx if dy is None else dy
     Fx = F[..., 0]
@@ -119,7 +120,7 @@ def curl(F: torch.Tensor, dx: float, dy: float = None, *,
     return _apply_mask_nan(out, mask)
 
 
-# --------------------------------------------------------------------------- staggered core (A8)
+# -------------------------------------------------------------------------------- staggered core
 
 def _grad_face(f: torch.Tensor, h: float, axis: int, mask):
     """Forward difference cell→face along ``axis``: g[i+½] = (f[i+1]−f[i])/h.
@@ -152,7 +153,7 @@ def _div_face(g: torch.Tensor, h: float, axis: int):
 
 def laplacian(f: torch.Tensor, dx: float, dy: float = None, *,
               boundary_mode: str = "face_mirror", mask=None) -> torch.Tensor:
-    """∇²f via the staggered forward-grad / backward-div pair (A8) — the COMPACT 5-point Laplacian.
+    """∇²f via the staggered forward-grad / backward-div pair — the COMPACT 5-point Laplacian.
 
     ``div(grad)`` of the collocated central operators would be the WIDE 2h stencil with a
     checkerboard null-space; the staggered adjoint pair gives ``(f[i+1]−2f[i]+f[i−1])/dx²`` exactly
@@ -172,7 +173,7 @@ def winding_loop_sum(phase: torch.Tensor, *, ccw: bool = True) -> torch.Tensor:
 
     ``W(Δφ) = atan2(sin Δφ, cos Δφ)`` wraps each edge difference to ``(−π, π]``; the CCW loop sum is
     ``≈ 2π · (integer charge)`` — ``±2π`` at a phase singularity / rotor tip. The ONE primitive
-    behind ``phase_singularities``, ``circulation``/``winding_number``, and Gauss–Bonnet (DESIGN § 5).
+    behind ``phase_singularities``, ``circulation``/``winding_number``, and Gauss–Bonnet.
 
     Parameters
     ----------
@@ -211,7 +212,7 @@ def diffusion_term(f: torch.Tensor, D, dx: float, dy: float = None, *,
                    boundary_mode: str = "face_mirror", mask=None) -> torch.Tensor:
     """Conservative isotropic diffusion operator ∇·(D∇f) — the ``source_sink`` numerical core.
 
-    Staggered face pair (A8) with HARMONIC face-averaged ``D`` (matching the solver's cardinal-4
+    Staggered face pair with HARMONIC face-averaged ``D`` (matching the solver's cardinal-4
     operator), so it reduces to ``D·laplacian(f)`` for uniform D and equals the engine's
     ``apply_diffusion`` (incl. a masked/scar no-flux rim). ``D`` is a scalar or an ``(Nx, Ny)`` field.
     Masked nodes → NaN.

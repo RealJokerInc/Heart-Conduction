@@ -19,8 +19,6 @@ class SplittingStrategy(ABC):
 
     Owns ionic and diffusion solvers and determines the order
     they are called to advance the simulation by one time step.
-
-    Ref: improvement.md:L975-991
     """
 
     def __init__(

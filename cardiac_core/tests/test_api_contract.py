@@ -1,28 +1,27 @@
-"""Contract-matrix stress harness (engine_consolidation API-consistency PLAN, Phase 0).
+"""Contract-matrix stress harness for cross-engine API consistency.
 
-WRITTEN FIRST (before any fix), per the post-mortem lesson: the contract of
-{entry point} x {engine} x {param} x {physics} is enumerated as data with an
-expected verdict + audit finding ID, so a never-considered cell surfaces as a
-standing xfail — not an absence — and each fix flips a cell that already exists.
+The contract of {entry point} x {engine} x {param} x {physics} is enumerated as
+data, each cell carrying an expected verdict and a finding ID. A combination that
+was never considered therefore surfaces as a standing xfail rather than as a silent
+absence, and every fix flips a cell that already exists instead of adding a new test.
 
 Cell.status drives the marker (see `_marks`):
-  * 'to_fix'   -> xfail(strict=True). The cell FAILS today; when its Phase-1..4 fix
-                 lands the cell XPASSes and strict=True FAILS the suite, FORCING the
-                 executor to flip status -> 'landed' in that same phase (no deferred
-                 cleanup). This is what stops the matrix rotting into a green suite.
-  * 'deferred' -> xfail(strict=False). Genuinely deferred (C2 oblique capability,
-                 C7 boundary-Dxy truncation); body never passes; permanent xfail.
+  * 'to_fix'   -> xfail(strict=True). The cell fails today; once its fix lands the
+                 cell XPASSes and strict=True fails the suite, forcing status to be
+                 flipped to 'landed' in the same change (no deferred cleanup). This
+                 is what stops the matrix rotting into a vacuously green suite.
+  * 'deferred' -> xfail(strict=False). Genuinely deferred capability (C2 oblique
+                 fibers, C7 boundary-D_xy truncation); the body never passes, so the
+                 xfail is permanent.
   * 'landed'   -> no marker (live assert). Already-correct behavior, regression-locked.
 
-NOTE (execution refinement vs PLAN Step 0.1): the plan's Cell tuple listed
-(entry,engine,param,physics,expected,match,finding_id,status,note,exc). A generic
-data-only dispatch can't reconstruct arbitrary calls, so each Cell carries a `run`
-callable (the honest way to encode "assert the change / raise / warn"); `exc` stays
-the last, sole-defaulted field (namedtuple right-aligns defaults). Documentary
-`entry/engine/param/physics` live in the pytest id; `note` folded into `run` docstrings.
+Each Cell carries a `run` callable rather than a purely declarative call description,
+because a generic data-only dispatcher cannot reconstruct arbitrary calls; `run` is
+what encodes "assert the change / raise / warn". `exc` is the last field because a
+namedtuple right-aligns its defaults. The documentary `entry/engine/param/physics`
+fields appear in the pytest id, and per-cell notes live in the `run` docstrings.
 
-Run: /home/norepinephrine/.conda/envs/heart-conduction/bin/python -m pytest \
-        cardiac_core/tests/test_api_contract.py -q
+Run: python -m pytest cardiac_core/tests/test_api_contract.py -q
 """
 import os
 import tempfile
@@ -98,15 +97,15 @@ def _lbm_aniso_wall_runs():
 
 
 def _lbm_oblique_cv_correct():
-    """C2 capability (DEFERRED, Audit #46): oblique fibers need moment-space rotation.
-    Today the construction raises; asserts the not-yet-true capability → permanent xfail."""
+    """C2 capability (DEFERRED): oblique fibers need a moment-space rotation.
+    Today the construction raises; this asserts the not-yet-true capability → permanent xfail."""
     lbm(_oblique(_tiny()), lattice='d2q9')  # raises today
-    raise AssertionError("C2 oblique CV-along-fiber not implemented (Audit #46)")
+    raise AssertionError("C2 oblique CV-along-fiber not implemented")
 
 
 def _c7_boundary_dxy_truncation():
     """C7 (DEFERRED, paired to C2): mono/bidomain drop D_xy at the wall (interior-correct only)."""
-    raise AssertionError("C7 boundary-Dxy truncation — deferred, paired to C2/Audit #46")
+    raise AssertionError("C7 boundary-Dxy truncation — deferred, paired to C2")
 
 
 def _lbm_weights_mode_exposed():
@@ -170,7 +169,7 @@ CONTRACT = [
          '', 'landed'),
     # --- HIGH: cross-engine capability / oblique ----------------------------
     Cell('C2', 'lbm', 'lbm', 'oblique-raise', 'oblique', 'raise',
-         lambda: lbm(_oblique(_tiny()), lattice='d2q9'), 'oblique|Audit #46', 'landed'),
+         lambda: lbm(_oblique(_tiny()), lattice='d2q9'), 'oblique', 'landed'),
     Cell('C2', 'lbm', 'lbm', 'oblique-capability', 'oblique', 'effect',
          _lbm_oblique_cv_correct, '', 'deferred'),
     Cell('C3', 'monodomain', 'monodomain', 'ionic-phas13', 'iso', 'effect',

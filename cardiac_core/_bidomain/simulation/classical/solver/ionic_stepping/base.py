@@ -3,8 +3,6 @@ IonicSolver Abstract Base Class
 
 Owns an IonicModel. Advances ionic ODEs in-place on state.
 Evaluates Istim internally from state's stimulus data.
-
-Ref: improvement.md:L1006-1031
 """
 
 from abc import ABC, abstractmethod

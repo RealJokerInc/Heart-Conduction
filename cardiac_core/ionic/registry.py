@@ -1,14 +1,12 @@
-"""Single shared ionic-model builder used by all three engines (C3).
+"""Single shared ionic-model builder used by all three engines.
 
-Before this, mono/bidomain/lbm each had their own resolver: mono forwarded `cell_type`,
-bidomain/lbm did not, and mono/bidomain accepted only ttp06/ord (lbm also accepted
-phas13/mhas13/paci) — an asymmetry that made `monodomain(ionic_model='phas13')` raise.
+One resolver for every engine, so `monodomain(ionic_model=...)`, `bidomain(...)` and
+`lbm(...)` accept exactly the same set of model names.
 
 `build_ionic_model` branches on CONSTRUCTOR CAPABILITY: TTP06/ORd take a `CellType`
 (string -> enum here); PHAS13/MHAS13/paci are device-only (their ctors take no cell_type).
-Default `cell_type='ENDO'` matches every engine's current default (TTP06/ORd ctors default
-ENDO; bidomain/lbm pass no cell_type), so delegating is behavior-preserving (goldens hold).
-`'paci'` is a same-class alias of PHAS13Model.
+Default `cell_type='ENDO'` matches every model's own default. `'paci'` is a same-class
+alias of PHAS13Model.
 """
 from .base import IonicModel, CellType
 from .ttp06 import TTP06Model
@@ -28,10 +26,10 @@ def build_ionic_model(name, cell_type='ENDO', device='cuda'):
     ----------
     name : str | IonicModel
         Model name ('ttp06', 'ord', 'phas13', 'mhas13', 'paci') or a pre-built instance
-        (e.g. a tuner-scaled model) — returned as-is.
+        (e.g. one with rescaled conductances) — returned as-is.
     cell_type : str | CellType
         Applied ONLY to TTP06/ORd (string is upper-cased into the CellType enum). Ignored
-        for the device-only models. Default 'ENDO' matches every engine's current default.
+        for the device-only models.
     device : str
         Compute device.
     """

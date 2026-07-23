@@ -1,9 +1,13 @@
-"""cardiac_core._bidomain — the vendored Bidomain V1 solver (engine_consolidation).
+"""cardiac_core._bidomain — the bidomain solver implementation.
 
-Copied verbatim from Bidomain/Engine_V1/cardiac_sim (solver subtree only; dead simulation/lbm/
-dropped); the only edits are the 9 cross-imports to the shared cardiac_core.{ionic,mesh} packages
-(BidomainConductivity stays per-engine under ._bidomain.tissue). Private package (underscore) so it
-does not shadow the public bidomain() factory.
+Holds the full bidomain solver stack: spatial discretization, splitting strategies,
+ionic/diffusion steppers, and the linear-solver tiers. Ionic models and mesh types are
+shared with the rest of cardiac_core (``cardiac_core.ionic`` / ``cardiac_core.mesh``);
+only ``BidomainConductivity`` is bidomain-specific and lives here.
+
+This package is private (leading underscore) so it does not shadow the public
+``bidomain()`` factory; import the names re-exported below rather than reaching into
+submodules.
 """
 
 from .simulation.classical import BidomainSimulation

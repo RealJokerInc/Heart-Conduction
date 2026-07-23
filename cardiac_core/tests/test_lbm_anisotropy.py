@@ -1,13 +1,12 @@
-"""Phase 0 Step 0.2 — LBM per-axis anisotropy via D2Q9-MRT.
+"""LBM per-axis anisotropy via D2Q9-MRT.
 
-0.2c (the correctness gate): a pure-diffusion benchmark with **dx != dt** that
-recovers the per-axis diffusion tensor from second-moment growth. dx != dt is
-essential — the correct mapping tau = 0.5 + D*dt/(cs2*dx^2) and the wrong
-lattice-unit form tau = 0.5 + D/(cs2*dt) coincide when dx == dt, so a dx==dt
-benchmark would pass for both and prove nothing.
+The correctness gate is a pure-diffusion benchmark with **dx != dt** that recovers
+the per-axis diffusion tensor from second-moment growth. dx != dt is essential —
+the correct mapping tau = 0.5 + D*dt/(cs2*dx^2) and the wrong lattice-unit form
+tau = 0.5 + D/(cs2*dt) coincide when dx == dt, so a dx == dt benchmark would pass
+for both and prove nothing.
 
-Plus engine guards (0.2a) and the cardiac_core lbm() wrapper routing (0.2b).
-Covers PLAN Phase 0 Step 0.2.
+Also covered: the engine-level guards and the cardiac_core lbm() wrapper routing.
 """
 import numpy as np
 import pytest

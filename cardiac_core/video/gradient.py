@@ -1,11 +1,11 @@
 """``Gradient`` — the reusable colour object.
 
-In this project the colour *range* is a scientific choice, not decoration: the wall artifact
-`render_audit_video.py` exists to show spans 5.8% of the default -90..40 mV colormap but 90.4% of
-the zoom window — a 15.7x visibility gain. Making the mapping a first-class object is also what
+The colour *range* is a scientific choice, not decoration. A small-amplitude feature — a few mV,
+say near a boundary — spans about 5.8% of the default -90..40 mV colormap but 90.4% of a matched
+zoom window, a ~15.7x gain in visibility. Making the mapping a first-class object is also what
 lets multi-panel comparisons share one colorbar (and therefore be comparable at all).
 
-The five presets encode the five colour intents found across the project's ~20 render scripts.
+The five presets cover the common colour intents: physiological, rest, zoom, auto and auto99.
 """
 
 from __future__ import annotations

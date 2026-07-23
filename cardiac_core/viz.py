@@ -1,9 +1,9 @@
 """
-cardiac_core.viz — standardized result visuals (engine_consolidation Goal-2 /sim-media).
+cardiac_core.viz — standardized result visuals.
 
-One place to turn a ``SimulationResult`` into the canonical figures/videos lab scientists want, saved to
-convention-compliant ``media/`` paths (``cardiac_core.media.media_path``). Headless (Agg) + float64.
-Generated experiment scripts call these instead of hand-rolling matplotlib.
+One place to turn a ``SimulationResult`` into the figures and videos most experiments want, saved
+to convention-compliant ``media/`` paths (``cardiac_core.media.media_path``). Headless (Agg) +
+float64, so analysis scripts call these instead of hand-rolling matplotlib.
 
     from cardiac_core import propagation_video, apd_map_figure, activation_isochrones
     propagation_video(result, "my-experiment")      # -> media/lab/videos/{date}/my-experiment_NN.mp4
@@ -23,12 +23,12 @@ def _vm_numpy(result):
 
 
 def propagation_video(result, slug, *, question="lab", fps=20, vmin=-90.0, vmax=40.0,
-                      cmap="inferno", bulk=False) -> str:
+                      cmap="inferno", bulk=False, root=None) -> str:
     """Animate the voltage propagation. Returns the path (str).
 
-    Thin wrapper over :func:`cardiac_core.video.render`, kept for the ``/sim-media`` skill and
-    existing Lab scripts. It preserves this function's historical look: annotated (axes +
-    colorbar + time), stretched ``aspect="auto"``, node-index labels, no masking, 600x300.
+    Thin wrapper over :func:`cardiac_core.video.render`, kept for backwards compatibility. It
+    preserves this function's historical look: annotated (axes + colorbar + time), stretched
+    ``aspect="auto"``, node-index labels, no masking, 600x300.
 
     For anything more — physical cm axes, ``phi_e``, playback ``speed=``, overlays, multi-panel,
     the fast full-frame style, gradient presets — use ``result.video(slug, ...)`` or
@@ -52,14 +52,15 @@ def propagation_video(result, slug, *, question="lab", fps=20, vmin=-90.0, vmax=
               aspect="auto",       # a Video field, NOT a render() kwarg
               units="nodes",       # legacy drew node indices
               mask=False),         # legacy did NOT mask — keep it that way
-        slug, question=question, bulk=bulk, fps=fps,
+        slug, question=question, bulk=bulk, root=root, fps=fps,
         figsize=(6.0, 3.0), dpi=100, resolution=None,   # explicit figsize wins -> 600x300
         max_frames=None, colorbar=True, show_time=True,
     )
     return info.path
 
 
-def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, **apd_kw) -> str:
+def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, root=None,
+                   **apd_kw) -> str:
     """APD90 map (ms) as a heatmap PNG. Returns the path."""
     from . import analysis
     apd = analysis.apd_map(result.Vm, result.times, **apd_kw).detach().cpu().numpy()
@@ -71,14 +72,14 @@ def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, 
     ax.set_title("APD map")
     ax.set_xlabel("x (nodes)")
     ax.set_ylabel("y (nodes)")
-    path = media_path(question, "images", f"{slug}-apd", ext="png", bulk=bulk)
+    path = media_path(question, "images", f"{slug}-apd", ext="png", bulk=bulk, root=root)
     fig.savefig(path, dpi=120, bbox_inches="tight")
     plt.close(fig)
     return path
 
 
 def activation_isochrones(result, slug, *, question="lab", levels=15, cmap="plasma",
-                          bulk=False, **lat_kw) -> str:
+                          bulk=False, root=None, **lat_kw) -> str:
     """Local-activation-time isochrones (filled contours) PNG. Returns the path."""
     from . import analysis
     lat = analysis.activation_time(result.Vm, result.times, **lat_kw).detach().cpu().numpy()
@@ -91,7 +92,7 @@ def activation_isochrones(result, slug, *, question="lab", levels=15, cmap="plas
     ax.set_title("Activation isochrones")
     ax.set_xlabel("x (nodes)")
     ax.set_ylabel("y (nodes)")
-    path = media_path(question, "images", f"{slug}-isochrones", ext="png", bulk=bulk)
+    path = media_path(question, "images", f"{slug}-isochrones", ext="png", bulk=bulk, root=root)
     fig.savefig(path, dpi=120, bbox_inches="tight")
     plt.close(fig)
     return path

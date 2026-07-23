@@ -1,10 +1,10 @@
 """
 Grid — the single structured-grid geometry descriptor for cardiac_core.
 
-Structured grids are the ONLY geometry standard (decision 2026-06-24: FEM/unstructured dropped —
-no ``TriangularMesh``, no flat ``(n_dof,)`` secondary path). ``Grid`` holds ``Nx, Ny, dx, dy`` and an
-optional boolean ``mask``, derives ``Lx/Ly/coordinates/n_dof``, and lazily builds the engines'
-``StructuredGrid`` when a factory needs it (Phase 4).
+Structured grids are the ONLY geometry standard — there is no unstructured/FEM mesh type and no
+flat ``(n_dof,)`` secondary path. ``Grid`` holds ``Nx, Ny, dx, dy`` and an optional boolean
+``mask``, derives ``Lx/Ly/coordinates/n_dof``, and lazily builds the engines' ``StructuredGrid``
+when a factory needs it.
 
 Coordinate convention matches the engine ``StructuredGrid`` exactly:
 ``x_1d = linspace(0, Lx, Nx)``, ``y_1d = linspace(0, Ly, Ny)``, ``meshgrid(..., indexing='ij')`` →

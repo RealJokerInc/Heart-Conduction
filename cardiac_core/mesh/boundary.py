@@ -3,8 +3,6 @@ Boundary Condition Protocol for Bidomain Simulations
 
 Per-edge, per-variable BC specification. Stored in StructuredGrid at init time,
 read by discretization and solver layers.
-
-Ref: improvement.md L272-597
 """
 
 from enum import Enum

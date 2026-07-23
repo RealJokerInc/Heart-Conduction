@@ -1,4 +1,4 @@
-"""Phase 5: the unified run() eager/batch contract + SimulationResult analysis hooks."""
+"""The unified run() eager/batch contract + SimulationResult analysis hooks."""
 
 import pytest
 import torch

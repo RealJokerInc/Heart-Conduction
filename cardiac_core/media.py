@@ -1,9 +1,11 @@
-"""media_path — canonical save-path helper for project images & videos.
+"""media_path — canonical save-path helper for figures & videos.
 
-Enforces the repo-wide convention (see CLAUDE.md "Saving images & videos"):
+Every asset lands at a predictable, self-describing location, so output stays organised without
+any per-script bookkeeping:
 
-    media/{question}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext
+    media/{topic}/{images|videos}/{YYYY-MM-DD}/{slug}_NN.ext
 
+The topic is chosen by the caller — a study name, a dataset, a chapter, whatever groups the work.
 Self-contained (stdlib only) — import directly: ``from cardiac_core.media import media_path``.
 Does NOT trigger the lazy ``cardiac_core`` API import.
 
@@ -11,8 +13,8 @@ Example
 -------
     from cardiac_core.media import media_path
     import matplotlib.pyplot as plt
-    plt.savefig(media_path("boundary_conduction_speedup", "images", "wavefront snapshot t10"))
-    # -> media/boundary_conduction_speedup/images/2026-05-31/wavefront-snapshot-t10_01.png
+    plt.savefig(media_path("wall_effects", "images", "wavefront snapshot t10"))
+    # -> media/wall_effects/images/2026-05-31/wavefront-snapshot-t10_01.png
 """
 from __future__ import annotations
 
@@ -20,8 +22,35 @@ import os
 import re
 from datetime import date as _date
 
-# repo root = parent of the cardiac_core/ package directory
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_MEDIA_ROOT_ENV = "CARDIAC_MEDIA_ROOT"
+
+
+def default_root() -> str:
+    """Directory that ``media/`` is created under when no ``root`` is given.
+
+    Resolved in order:
+
+    1. ``$CARDIAC_MEDIA_ROOT``, if set.
+    2. The nearest enclosing project directory, found by walking up from the current working
+       directory for a ``.git`` entry. This keeps output at the top of a checkout no matter
+       which subdirectory a script is run from.
+    3. The current working directory.
+
+    Deriving the root from the package location instead would place output inside
+    ``site-packages`` for an installed copy, which is both wrong and unwritable on many systems.
+    """
+    env = os.environ.get(_MEDIA_ROOT_ENV)
+    if env:
+        return env
+
+    here = os.path.abspath(os.getcwd())
+    while True:
+        if os.path.exists(os.path.join(here, ".git")):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return os.path.abspath(os.getcwd())
+        here = parent
 
 _IMAGE_EXT = {"png", "jpg", "jpeg", "svg", "gif"}
 _VIDEO_EXT = {"mp4", "webm", "mov", "avi"}
@@ -50,15 +79,16 @@ def media_path(
 
     Parameters
     ----------
-    question : research-question slug (the ``Research/Active/{question}/`` folder).
+    question : topic slug grouping related assets (a study, dataset or chapter name).
                Use ``"_unmapped"`` if the asset has no clear owner.
     kind     : ``"images"`` or ``"videos"``.
     slug     : short description (slugified automatically).
     ext      : file extension (with or without leading dot). Default ``"png"``.
     date     : ``YYYY-MM-DD``; defaults to today.
-    bulk     : if True, place under ``{question}/_sim_outputs/{kind}/...`` (gitignored)
-               for regenerable bulk output instead of the committed tree.
-    root     : repo root override (defaults to the repo containing cardiac_core/).
+    bulk     : if True, place under ``{question}/_sim_outputs/{kind}/...`` — a separate
+               subtree for regenerable bulk output, so it can be excluded from version
+               control without touching the curated assets.
+    root     : output-root override (defaults to the directory containing cardiac_core/).
 
     Returns the full path; the containing directory is created.
 
@@ -74,7 +104,7 @@ def media_path(
     if ext not in expected:
         raise ValueError(f"extension {ext!r} is not a {kind[:-1]} type {sorted(expected)}")
 
-    root = root or _REPO_ROOT
+    root = root or default_root()
     day = date or _date.today().isoformat()
     slug = slugify(slug)
 

@@ -1,4 +1,4 @@
-"""Regression tests for the P0/P1 usability-audit fixes (engine_consolidation PLAN 2026-07-16).
+"""Regression tests for the public-API usability fixes.
 
 One (or two) focused test(s) per bug: B1 GPU device-mismatch, B3/B4 apd_at peak/notch,
 B5 Grid(N,1), B6 forward_euler CFL guard, B7 record= validation, B8 NaN-fill masked nodes.
@@ -258,15 +258,15 @@ def test_spectral_solvers_reject_unsupported_configs():
 
 
 # ===========================================================================
-# Phase 3 — stub de-trap + scale_conductance / set_conductivity implementations
+# stub de-trap + scale_conductance / set_conductivity implementations
 # ===========================================================================
 def test_stubs_have_informative_errors():
     """Still-unimplemented stubs raise NotImplementedError with a message naming the route.
 
     NOTE: get_state / set_state / set_voltage / clamp_voltage / add_clamp_protocol /
-    release_clamp were IMPLEMENTED on the solver-hardening branch (mid-run voltage clamp +
-    state injection) — they are tested in test_advanced_features.py and no longer stubs.
-    The methods below remain unimplemented.
+    release_clamp ARE implemented (mid-run voltage clamp + state injection) — they are
+    tested in test_advanced_features.py and are no longer stubs. The methods below
+    remain unimplemented.
     """
     sim = monodomain(create_cardiac_mesh(0.2, 0.12, 0.02, D=1e-3, chi=1.0), stimulus=_stim())
     for call in (lambda: sim.compute_cv(0.0, 0.1, 0.05),
@@ -319,8 +319,8 @@ def test_set_conductivity_scar_blocks():
         "shadow node must activate later than the open lane (detour around the scar)"
 
 
-# --- audit follow-ups: the conductivity/conductance methods must also work on the
-#     bidomain sigma path and must not flip cell type (found by the Phase-3 audit) ---
+# --- the conductivity/conductance methods must also work on the bidomain sigma
+#     path, and must not flip the cell type ---
 def test_set_conductivity_scar_blocks_declarative_bidomain():
     """A declarative bidomain stores conductivity as sigma fields (not D_xx); a scar
     must zero those too (else it silently no-ops and the wave passes through)."""
@@ -391,7 +391,7 @@ def test_regional_conductivity_on_lbm_raises_clearly():
 
 
 # ===========================================================================
-# Phase 4 — the cheatsheet's runnable example must actually execute (doc canary)
+# the cheatsheet's runnable example must actually execute (doc canary)
 # ===========================================================================
 def test_cheatsheet_examples_execute():
     """Extract the tagged runnable block from API_CHEATSHEET.md and exec it, so the
@@ -407,7 +407,7 @@ def test_cheatsheet_examples_execute():
 
 
 # ===========================================================================
-# Phase 5 (P2) — aggregate / per-beat / axis analysis helpers + guards
+# aggregate / per-beat / axis analysis helpers + guards
 # ===========================================================================
 def _planar_wave_x(Nx=30, Ny=6, n=60, idx_per_save=2):
     times = torch.arange(n, dtype=torch.float64)
@@ -505,7 +505,7 @@ def test_zero_node_stimulus_warns_declarative():
 
 
 def test_result_p2_hooks_wired():
-    """The SimulationResult P2 hooks delegate to analysis without error."""
+    """The SimulationResult analysis hooks delegate to the analysis module without error."""
     times, V = _planar_wave_x(Nx=20, Ny=5, idx_per_save=2)
     from cardiac_core.run import SimulationResult
     r = SimulationResult(times=times, Vm=V, dx=0.02, dy=0.02)
@@ -514,7 +514,7 @@ def test_result_p2_hooks_wired():
 
 
 # ===========================================================================
-# Round-2 audit remediation
+# follow-up hardening
 # ===========================================================================
 def test_scale_conductance_hipsc_lowercase_names():
     """hiPSC models (paci/phas13/mhas13) name conductances lowercase g_* — scale_conductance

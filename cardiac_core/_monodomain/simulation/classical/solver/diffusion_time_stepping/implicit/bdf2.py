@@ -13,9 +13,6 @@ Rearranged:
 Where M is the mass matrix (identity for FDM, χ·Cm·Vol for FVM, assembled mass for FEM).
 
 Uses LinearSolver for the implicit system.
-
-Ref: V5.3/IMPLEMENTATION.md:L780-825
-Ref: IMPLEMENTATION.md § Phase 6 (6-V10, 6-V11)
 """
 
 from typing import TYPE_CHECKING, Optional

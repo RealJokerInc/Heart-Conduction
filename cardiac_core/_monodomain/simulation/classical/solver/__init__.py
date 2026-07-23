@@ -9,8 +9,6 @@ Hierarchical solver architecture for operator splitting:
 
 Ownership: MonodomainSimulation -> SplittingStrategy -> IonicSolver + DiffusionSolver
 All solvers operate on SimulationState in-place. No allocation per step.
-
-Ref: improvement.md:L939-1109
 """
 
 from .splitting import SplittingStrategy, GodunovSplitting, StrangSplitting

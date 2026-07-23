@@ -75,7 +75,7 @@ class TestResultIO:
         torch.testing.assert_close(V2, V)
 
     def test_positional_phi_e_back_compat(self, tmp_path):
-        """AUDIT HIGH: save_result(path, times, V, phi_e) positional call must still work."""
+        """Back-compat: save_result(path, times, V, phi_e) positional call must still work."""
         times = torch.tensor([1.0, 2.0])
         V = torch.randn(2, 5, 5, dtype=torch.float64)
         phi_e = torch.randn(2, 5, 5, dtype=torch.float64)

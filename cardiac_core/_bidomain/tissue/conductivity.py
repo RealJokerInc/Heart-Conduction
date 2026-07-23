@@ -1,7 +1,5 @@
 """
 Bidomain Conductivity — Paired intracellular and extracellular conductivity.
-
-Ref: improvement.md L234-270
 """
 
 from dataclasses import dataclass

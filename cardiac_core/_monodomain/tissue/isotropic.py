@@ -2,8 +2,6 @@
 Isotropic Tissue Properties
 
 Provides uniform (scalar) conductivity tissue definition.
-
-Extracted from V5.3 tissue/simulation.py SimulationConfig.
 """
 
 from dataclasses import dataclass

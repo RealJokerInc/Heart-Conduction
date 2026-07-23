@@ -1,4 +1,4 @@
-"""Tests for the public Stim object (STIM_OBJECT_PLAN Phase 1)."""
+"""Tests for the public Stim object."""
 
 import numpy as np
 import pytest
@@ -13,7 +13,7 @@ def _grid(Nx=20, Ny=12, dx=0.05):
 
 
 # ======================================================================
-# Step 1.2 — the Stim class + presets + lowering
+# the Stim class + presets + lowering
 # ======================================================================
 
 class TestStimConstruction:
@@ -83,7 +83,7 @@ class TestStimConstruction:
 
 
 # ======================================================================
-# Step 1.3 — non-breaking coexistence at the _normalize_stimulus seam
+# non-breaking coexistence at the _normalize_stimulus seam
 # ======================================================================
 
 from cardiac_core import monodomain, bidomain, lbm, ConductivityConfig, create_cardiac_mesh
@@ -136,7 +136,7 @@ class TestCoexistence:
 
 
 # ======================================================================
-# Step 1.4 — voltage-clamp mode: factory routing + native LBM clamp
+# voltage-clamp mode: factory routing + native LBM clamp
 # ======================================================================
 
 REST = -85.23   # TTP06 ENDO V_rest
@@ -239,7 +239,7 @@ class TestClampHolds:
 
 
 class TestDeprecation:
-    """Step 2.2 — the dict path is soft-deprecated (warns) but still works; Stim never warns."""
+    """The dict path is soft-deprecated (warns) but still works; Stim never warns."""
 
     def test_dict_warns(self):
         g = Grid(20, 12, 0.05)
@@ -302,10 +302,10 @@ class TestLBMClampPhysics:
         f_pre = w * V0 + neq
         assert torch.isclose(f_pre.sum(), torch.tensor(V0, dtype=w.dtype), atol=1e-12)
         value = 15.0
-        # additive (shipped): f += w·(value − Σf)
+        # additive (the implemented scheme): f += w·(value − Σf)
         f_add = f_pre + w * (value - f_pre.sum())
         assert torch.isclose(f_add.sum(), torch.tensor(value, dtype=w.dtype), atol=1e-12)  # Σf→value
         assert torch.allclose(f_add - w * value, neq, atol=1e-12)                          # f^neq preserved
-        # pure reset (retired): f = w·value → f^neq zeroed, so the schemes genuinely differ
+        # pure reset (the rejected alternative): f = w·value → f^neq zeroed, so the schemes differ
         assert torch.allclose(w * value - w * value, torch.zeros_like(w))
         assert not torch.allclose(neq, torch.zeros_like(neq))

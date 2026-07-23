@@ -1,4 +1,4 @@
-"""Tests for the declarative construction API (Phase 4): factories from
+"""Tests for the declarative construction API: factories from
 (Grid, ionic_model, ConductivityConfig, stimulus) + reset/with_/stimulate + the Simulation Protocol."""
 
 import torch

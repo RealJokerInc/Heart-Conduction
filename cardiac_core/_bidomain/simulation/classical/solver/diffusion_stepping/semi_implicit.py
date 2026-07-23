@@ -14,8 +14,6 @@ Step 2 (Elliptic — implicit):
 
 CFL constraint: dt < dx^2 / (4 * D_i)
 For dx=0.025 cm, D_i=0.00124 cm^2/ms: dt_max ~ 0.126 ms
-
-Ref: DIFFUSION_SPLITTING_DESIGN.md § Strategy 2
 """
 
 import warnings

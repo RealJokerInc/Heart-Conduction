@@ -2,8 +2,6 @@
 BidomainDiffusionSolver Abstract Base Class
 
 Solves the bidomain diffusion step. Updates both Vm and phi_e in-place.
-
-Ref: improvement.md L916-948
 """
 
 from abc import ABC, abstractmethod

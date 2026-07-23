@@ -1,9 +1,9 @@
 """Shared builder for the analysis-context fields carried on ``SimulationResult``.
 
-Phase-1 of the ``analysis.fields`` branch: the result must carry the SAME edge
-treatment, mask, conductivity, and Cm the solver used, plus the resolved ionic-model
-identity — otherwise the field ops (``source_sink = div(D_eff ∇V)``, the safety-factor
-``Cm·ΔV`` numerator, and every mask/boundary-aware stencil) are silently wrong.
+The result must carry the SAME edge treatment, mask, conductivity, and Cm the solver
+used, plus the resolved ionic-model identity — otherwise the field ops
+(``source_sink = div(D_eff ∇V)``, the safety-factor ``Cm·ΔV`` numerator, and every
+mask/boundary-aware stencil) are silently wrong.
 
 BOTH result builders call :func:`build_result_context` so the ``.run()`` path
 (``api._result_from``) and the ``simulate()`` path (``run._collect``) populate the new
@@ -33,9 +33,9 @@ class Conductivity:
         bidomain result (bidomain carries ``sigma_i``/``sigma_e`` instead).
     D_raw, D_xx, D_yy, D_xy : torch.Tensor | None
         The RAW stored conductivity-tensor components ``(Nx, Ny)`` (``D_raw`` aliases
-        ``D_xx``). Kept so Phase 3 can (a) recompute ``D_eff`` and (b) detect anisotropy
-        — ``∇·(D∇V)`` is a tensor contraction, not ``D·∇²V``, when ``D_xy≠0`` or
-        ``D_xx≠D_yy``.
+        ``D_xx``). Kept so the field layer can (a) recompute ``D_eff`` and (b) detect
+        anisotropy — ``∇·(D∇V)`` is a tensor contraction, not ``D·∇²V``, when ``D_xy≠0``
+        or ``D_xx≠D_yy``.
     sigma_i, sigma_e : tuple[torch.Tensor, ...] | None
         ``(xx, yy, xy)`` intra/extra-cellular conductivity fields — bidomain only;
         ``None`` for monodomain/LBM.
@@ -60,8 +60,8 @@ class Conductivity:
     def is_anisotropic(self) -> bool:
         """True when the RAW diffusivity tensor is non-scalar (``D_xy≠0`` or ``D_xx≠D_yy``).
 
-        Phase 3 uses this to reject the scalar ``D_eff·∇V`` ``source_sink`` route on an
-        anisotropic field (which needs the full ``∂_i(D_ij ∂_j V)`` contraction).
+        The field layer uses this to reject the scalar ``D_eff·∇V`` ``source_sink`` route
+        on an anisotropic field (which needs the full ``∂_i(D_ij ∂_j V)`` contraction).
         """
         if self.D_xx is None:
             return False

@@ -62,12 +62,12 @@ class MHAS13Model(IonicModel):
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         super().__init__(device)
         self.params = MHAS13Parameters()
-        # --- Na-kinetic multipliers (Engine Tuner V2 / P1.5) ---------------------
-        # Per-INSTANCE knobs that reshape the Na current in TIME (not amplitude), so
-        # the joint fit can decouple dV/dt (peak I_Na) from CV (charge-to-sink) —
-        # conductance scaling alone cannot (architecture §5). Identity by default
-        # (1.0/0.0) → the gate hooks are bitwise-unchanged, so nothing changes unless
-        # a tuner sets them. Applied in the HOOKS (compute_gate_*), NOT step(), because
+        # --- Na-kinetic multipliers -----------------------------------------------
+        # Per-INSTANCE knobs that reshape the Na current in TIME (not amplitude), so a
+        # parameter fit can decouple dV/dt (peak I_Na) from CV (charge delivered to the
+        # downstream sink) — conductance scaling alone cannot. Identity by default
+        # (1.0/0.0) → the gate hooks are bitwise-unchanged, so nothing changes unless a
+        # caller sets them. Applied in the HOOKS (compute_gate_*), NOT step(), because
         # the tissue Rush-Larsen solver drives the model via the hooks and never calls
         # step() (whose Cai-dependent ICaL constf1/constfCa are off the tissue path).
         # PHAS13 is UNAFFECTED — these live only on MHAS13 instances.

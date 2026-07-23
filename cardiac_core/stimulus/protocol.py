@@ -2,8 +2,6 @@
 Stimulus Protocol Definition
 
 Provides stimulus event definition and pacing protocol management.
-
-Migrated from V5.3 tissue/stimulus.py (Stimulus + StimulusProtocol classes).
 """
 
 from dataclasses import dataclass, field

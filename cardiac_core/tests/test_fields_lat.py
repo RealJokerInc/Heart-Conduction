@@ -1,9 +1,9 @@
-"""Phase-4 (analysis.fields): LAT-based fields — velocity/direction/speed/curvature/vorticity,
+"""analysis.fields: LAT-based fields — velocity/direction/speed/curvature/vorticity,
 divergence gating, and the shared winding-loop-sum primitive.
 
-Unit-tests the geometry on synthetic planar/radial LAT (known |∇T| and curvature), then the full
-r.fields.* stack on a real sim; Step 4.4 tests the winding primitive + the phase_singularities
-refactor onto it.
+Unit-tests the geometry on synthetic planar/radial activation-time (LAT) maps with known
+|∇T| and curvature, then the full r.fields.* stack on a real sim, and finally the winding
+primitive together with the phase_singularities routine built on it.
 """
 
 import math
@@ -24,7 +24,7 @@ def _cond():
 
 
 # ======================================================================
-# Step 4.1 — Bayly / Savitzky-Golay gradient + quality
+# Bayly / Savitzky-Golay gradient + quality
 # ======================================================================
 
 class TestBaylyGradient:
@@ -52,7 +52,7 @@ class TestBaylyGradient:
 
 
 # ======================================================================
-# Step 4.2 — velocity/direction/speed/curvature + gating (synthetic radial LAT)
+# velocity/direction/speed/curvature + gating (synthetic radial LAT)
 # ======================================================================
 
 class TestLatGeometry:
@@ -107,7 +107,7 @@ class TestLatGeometry:
 
 
 # ======================================================================
-# Step 4.2 (integration) — r.fields.* on a real sim
+# integration — r.fields.* on a real sim
 # ======================================================================
 
 class TestLatFieldsOnSim:
@@ -142,7 +142,7 @@ class TestLatFieldsOnSim:
 
 
 # ======================================================================
-# Step 4.4 — shared winding-loop-sum primitive + phase_singularities refactor
+# shared winding-loop-sum primitive + phase_singularities
 # ======================================================================
 
 class TestWinding:

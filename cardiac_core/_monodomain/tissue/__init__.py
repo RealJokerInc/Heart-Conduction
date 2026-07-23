@@ -3,8 +3,8 @@ Tissue Subpackage
 
 Provides tissue material property definitions:
 - IsotropicTissue: Uniform scalar conductivity
-- AnisotropicTissue: Fiber-oriented conductivity [Phase 7]
-- HeterogeneousTissue: Scar tissue (D=0 regions) [Phase 7]
+- AnisotropicTissue: Fiber-oriented conductivity (planned)
+- HeterogeneousTissue: Scar tissue (D=0 regions) (planned)
 """
 
 from .isotropic import IsotropicTissue

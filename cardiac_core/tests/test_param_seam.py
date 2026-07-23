@@ -1,15 +1,13 @@
-"""Phase 0 Step 0.1 — cardiac_core tuning seam.
+"""The cardiac_core parameter-tuning seam.
 
 Per-axis mesh diffusion (`create_cardiac_mesh(D_yy=...)`) + IonicModel-instance
-pass-through (the LBM factory no longer `.lower()`-crashes on an instance, and
-mono/bidomain already accept instances + per-axis D).
-
-Covers PLAN Phase 0 Step 0.1 (Research/Active/ionic_model_optimization/PLAN.md).
+pass-through (the LBM factory must not `.lower()`-crash on an instance, and
+mono/bidomain must accept instances as well as per-axis D).
 
 NOTE (convention): `create_cardiac_mesh(D=...)` treats `D` as RAW; the
 membrane-effective diffusivity is `D/(χ·Cm)` in every engine. To pass an
-already-effective `D` (cm²/ms), set **chi=1.0** so `D/(χ·Cm)=D` (as the chip
-meshes do). See Research/Active/engine_consolidation (Audit #2/#8/#21).
+already-effective `D` (cm²/ms), set **chi=1.0** so that `D/(χ·Cm) = D` (as the
+tissue-chip meshes do).
 """
 import numpy as np
 import torch

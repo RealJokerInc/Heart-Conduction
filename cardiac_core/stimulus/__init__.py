@@ -1,7 +1,7 @@
-"""cardiac_core.stimulus — shared stimulus protocol + region helpers (engine_consolidation).
+"""cardiac_core.stimulus — shared stimulus protocol + region helpers.
 
-`protocol.py` is the canonical accumulate (`+=`) form (bidomain/LBM convention; the census decided
-accumulate is canonical — V5.5's protocol overwrote (`=`), which differs only for OVERLAPPING stimuli).
+`protocol.py` accumulates overlapping stimuli (`+=`) rather than overwriting; the two conventions
+differ only where two stimulus regions overlap in both space and time.
 """
 
 from .protocol import Stimulus, StimulusProtocol

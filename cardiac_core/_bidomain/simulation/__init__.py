@@ -1,1 +1,1 @@
-"""Simulation paradigms — classical (FDM) and LBM."""
+"""Simulation paradigms — classical (PDE / FDM) bidomain."""

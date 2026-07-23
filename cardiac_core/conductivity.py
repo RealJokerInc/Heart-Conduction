@@ -4,12 +4,7 @@ ConductivityConfig — the chi/Cm + Formulation-A/B firewall.
 The single owner of conductivity, ``chi``, and ``Cm`` in cardiac_core. Stores **physics**
 (raw conductivities ``sigma_*`` in mS/cm, ``chi``, ``Cm``, ``fiber_angle``) and emits the
 diffusion input each engine actually wants via ``for_monodomain()`` / ``for_bidomain()`` /
-``for_lbm()``. This is the ONLY place the Formulation-A/B asymmetry lives — the user never sees it.
-
-Design + verified arithmetic: ``Research/Active/engine_consolidation/API_DESIGN.md`` §4 and
-``API_REFERENCE.md`` "Conductivity". The Cm-handling was gate-verified to machine precision and
-against a live V5.5 cable CV (2026-06-24) — see ``Monodomain/Engine_V5.5/_probe_conductivity_firewall.py``,
-whose arithmetic this module mirrors exactly.
+``for_lbm()``. This is the ONLY place the Formulation-A/B asymmetry lives — callers never see it.
 
 Units
 -----

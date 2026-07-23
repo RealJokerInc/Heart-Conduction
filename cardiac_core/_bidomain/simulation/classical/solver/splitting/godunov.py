@@ -2,8 +2,6 @@
 Godunov (Lie) Operator Splitting
 
 First-order splitting: ionic step then diffusion step.
-
-Ref: improvement.md:L993-997
 """
 
 from typing import TYPE_CHECKING

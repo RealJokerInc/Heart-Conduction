@@ -2,8 +2,6 @@
 Stimulus Region Definitions
 
 Common spatial region functions for stimulus application.
-
-Migrated from V5.3 tissue/stimulus.py (region helper functions).
 """
 
 

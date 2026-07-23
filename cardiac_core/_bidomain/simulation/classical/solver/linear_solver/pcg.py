@@ -4,9 +4,8 @@ Preconditioned Conjugate Gradient (PCG) Solver
 Solves Ax = b for symmetric positive-definite systems using
 PCG with Jacobi (diagonal) preconditioning.
 
-Migrated from V5.3 solver/linear.py with lazy workspace allocation.
-
-Ref: V5.3/IMPLEMENTATION.md:L966-1019
+Workspace buffers are allocated lazily on the first solve and reused thereafter,
+so a steady-state run performs no per-step allocation.
 """
 
 from dataclasses import dataclass
@@ -159,7 +158,8 @@ class PCGSolver(LinearSolver):
         # r = b - A*x
         r = self._r
         r.copy_(b)
-        if has_warm_start:  # PCG-2 FIX: track warm start via flag, not O(n) check
+        # Track whether a warm start is in play with a flag rather than an O(n) test on x
+        if has_warm_start:
             r.sub_(sparse_mv(A, x))
 
         # Check for convergence

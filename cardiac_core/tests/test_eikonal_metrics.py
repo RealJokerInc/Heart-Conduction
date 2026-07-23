@@ -1,8 +1,8 @@
 """Self-test for the eikonal metrics (front normal / CV_n / curvature / fit).
 
-Gate for the Fig-4C/D campaign (PLAN.md Phase 1, Step 1.1): the analysis pipeline
-must recover known answers on synthetic LAT fields before any physics run, so a
-diverging fan's dynamic slowing is never confused with kinematic spreading.
+The analysis pipeline must recover known answers on synthetic activation-time
+(LAT) fields before it is trusted on a physics run, so that a diverging fan's
+dynamic slowing is never confused with purely kinematic spreading.
 """
 import numpy as np
 

@@ -1,4 +1,4 @@
-"""Phase 5: cardiac_core is self-contained.
+"""cardiac_core is self-contained.
 
 Durable guard — fails if any future edit reintroduces a cross-folder import into the original
 engine trees or the deleted `_prepare_engine` sys.modules hack. Matches real IMPORT statements and
@@ -22,7 +22,7 @@ _HACK = re.compile(r'_prepare_engine\(')
 # Files allowed to mention the originals:
 #  - this guard file itself (contains the patterns/messages)
 #  - the firewall-gate driver, which deliberately subprocess-drives the original V5.5 cable harness
-_EXCLUDE = {"test_self_contained.py", "_live_cv_gate_driver.py"}
+_EXCLUDE = {"test_self_contained.py"}
 
 
 def _iter_py():

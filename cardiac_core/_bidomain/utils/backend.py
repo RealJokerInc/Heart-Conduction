@@ -1,8 +1,8 @@
 """
 Backend Abstraction for CPU/GPU Computation
 
-Provides unified device management for Engine V5.3, supporting both
-CPU and CUDA GPU backends via PyTorch.
+Provides unified device management, supporting both CPU and CUDA GPU
+backends via PyTorch.
 
 Usage:
     from utils import Backend, get_backend
@@ -129,7 +129,7 @@ class Backend:
     def _print_info(self):
         """Print device information."""
         info = self._device_info
-        print(f"Engine V5.4 Backend:")
+        print("cardiac_core backend:")
         print(f"  Device: {info.name}")
         print(f"  Type: {info.type.upper()}")
         if info.memory_total_gb:

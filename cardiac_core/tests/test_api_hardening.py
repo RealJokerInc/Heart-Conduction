@@ -1,8 +1,8 @@
-"""Phase 3 — silent-failure hardening (engine_consolidation API-consistency PLAN).
+"""Silent-failure hardening for the public factories.
 
 One named test per finding (S1, I1, I2, S2, S3, C4, I3), plus the S3 negative case
-and S1 valid-input case. These document each fix; the contract matrix
-(test_api_contract.py) is the systemic guard that FORCES the fix via strict-xfail.
+and the S1 valid-input case. These document each individual fix; the contract matrix
+(test_api_contract.py) is the systemic guard that forces the fix via strict-xfail.
 """
 import os
 import tempfile
@@ -100,7 +100,7 @@ def test_load_result_dtype_roundtrip():
         assert V.dtype == torch.float32
 
 
-# --- Phase 4: capability exposure (C3, C5, C6, S4) --------------------------
+# --- capability exposure (C3, C5, C6, S4) -----------------------------------
 def test_ionic_registry_all_engines():
     """Every advertised ionic model constructs on ALL THREE engines (shared registry, C3)."""
     for name in ('ttp06', 'ord', 'phas13', 'mhas13', 'paci'):

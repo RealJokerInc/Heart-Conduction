@@ -1,7 +1,8 @@
-"""Phase-2 (analysis.fields): the operator toolkit grad/div/curl/laplacian.
+"""analysis.fields: the operator toolkit grad/div/curl/laplacian.
 
-Steps 2.1 (collocated central grad/div/curl + ghost-mirror boundary) and 2.2 (staggered
-div=-grad* -> compact 5-point laplacian). Pure-tensor tests; no simulation needed.
+Covers the collocated central grad/div/curl with a ghost-mirror boundary, and the
+staggered div = -grad* pairing that yields a compact 5-point laplacian. These are
+pure-tensor tests; no simulation is needed.
 """
 
 import math
@@ -24,7 +25,7 @@ def _interior(a, w=2):
 
 
 # ======================================================================
-# Step 2.1 — grad / div / curl (collocated central) + boundary
+# grad / div / curl (collocated central) + boundary
 # ======================================================================
 
 class TestFirstOrder:
@@ -104,7 +105,7 @@ class TestFirstOrder:
 
 
 # ======================================================================
-# Step 2.2 — staggered laplacian (compact 5-point, not wide)
+# staggered laplacian (compact 5-point, not wide)
 # ======================================================================
 
 class TestLaplacian:

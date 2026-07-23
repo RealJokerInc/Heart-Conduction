@@ -1,10 +1,10 @@
-"""Global reductions — ``fields.integrals`` (Phase 5 of ``analysis.fields``).
+"""Global reductions — ``fields.integrals``.
 
 Each is the Stokes / divergence-theorem partner of a ``fields.derivatives`` operator, so the two
-tiers cross-check for free (DESIGN § integrals, § Calculations B2–B7):
+tiers cross-check for free:
 
-    region_integral   ∬_Ω f dA                        (B2 midpoint; the workhorse)
-    net_flux          ∮_∂Ω F·n̂ ds = ∬_Ω div F dA      (B5 telescoping — EXACT to ~1e-12)
+    region_integral   ∬_Ω f dA                        (midpoint rule; the workhorse)
+    net_flux          ∮_∂Ω F·n̂ ds = ∬_Ω div F dA      (telescoping — EXACT to ~1e-12)
     circulation       ∮_C v·dl = ∬ curl v dA          (Stokes)
     winding_number    ∮ ∇φ·dl / 2π                    (enclosed rotors; the shared loop-sum)
     conduction_time   ∫ ∇T·dl = T(b) − T(a)           (integrate the SLOWNESS ∇T, NOT velocity)
@@ -31,7 +31,7 @@ def _as_raw(F):
 
 
 def region_integral(f: torch.Tensor, dx: float, dy: float, over=None) -> torch.Tensor:
-    """∬_Ω f dA (B2 midpoint, ``dA = dx·dy``). ``f`` is ``(Nx, Ny)`` → scalar, or ``(T, Nx, Ny)`` →
+    """∬_Ω f dA (midpoint rule, ``dA = dx·dy``). ``f`` is ``(Nx, Ny)`` → scalar, or ``(T, Nx, Ny)`` →
     ``(T,)``. ``over`` is an ``(Nx, Ny)`` bool region (default = the whole grid). NaN nodes are
     skipped (``nansum``)."""
     if over is not None:
@@ -44,7 +44,7 @@ def region_integral(f: torch.Tensor, dx: float, dy: float, over=None) -> torch.T
 
 def _divergence_flux(F: torch.Tensor, dx: float, dy: float, mask=None) -> torch.Tensor:
     """Staggered divergence of a NODE vector ``F`` (``…, Nx, Ny, 2``): average F to faces, then the
-    backward face-div. Its region-sum telescopes EXACTLY to the boundary face flux (B5)."""
+    backward face-div. Its region-sum telescopes EXACTLY to the boundary face flux."""
     Fx, Fy = F[..., 0], F[..., 1]
     gx = 0.5 * (Fx[..., 1:, :] + Fx[..., :-1, :])       # x-faces  (…, Nx-1, Ny)
     gy = 0.5 * (Fy[..., :, 1:] + Fy[..., :, :-1])       # y-faces  (…, Nx, Ny-1)
@@ -113,7 +113,7 @@ def state_fraction(V: torch.Tensor, *, threshold: float = -40.0, over=None) -> t
     return num / max(den, 1.0)
 
 
-# --------------------------------------------------------------------------- isochrone family (B6)
+# ------------------------------------------------------------------------------- isochrone family
 
 def isochrone(lat: torch.Tensor, level: float, dx: float, dy: float):
     """Marching-squares contour(s) of the LAT level set ``T = level``. Returns a list of ``(n, 2)``

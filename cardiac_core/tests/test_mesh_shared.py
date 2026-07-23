@@ -1,4 +1,4 @@
-"""Phase 1: shared cardiac_core.mesh + cardiac_core.stimulus packages import and work."""
+"""The shared cardiac_core.mesh + cardiac_core.stimulus packages import and work."""
 
 import torch
 

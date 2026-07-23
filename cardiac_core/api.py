@@ -19,9 +19,9 @@ from .file_format import CardiacMeshData, load_cardiac_mesh
 from .grid import Grid
 from .conductivity import ConductivityConfig
 
-# cardiac_core is now self-contained: the three engines are vendored under cardiac_core/_monodomain,
-# _bidomain, _lbm — no sys.modules engine-path hack, no cross-folder imports. (The original engine
-# folders remain on disk, frozen; cardiac_core is the centralized home going forward.)
+# cardiac_core is self-contained: the three engines live under cardiac_core/_monodomain,
+# _bidomain and _lbm, and are imported relatively — no sys.path manipulation, no external
+# engine packages.
 
 # Fields ``run()``/``snapshots()`` know how to collect. "Vm" is always saved; "ionic_states" is opt-in.
 _SUPPORTED_RECORD = frozenset({"Vm", "ionic_states"})
@@ -29,7 +29,7 @@ _SUPPORTED_RECORD = frozenset({"Vm", "ionic_states"})
 
 def _validate_record(record) -> None:
     """Reject unknown ``record=`` keys so a typo/unsupported field raises instead of
-    silently recording nothing (B7). e.g. ``record=("Vm", "I_Kr")`` -> ValueError."""
+    silently recording nothing. e.g. ``record=("Vm", "I_Kr")`` -> ValueError."""
     if isinstance(record, str):
         record = (record,)
     unknown = [k for k in record if k not in _SUPPORTED_RECORD]
@@ -187,7 +187,7 @@ class CardiacSimulation:
     probes get_state/set_state/set_voltage/state_names/ionic_states; voltage clamp; pacing/
     injection helpers; general set_parameter; probes; on-object analysis compute_cv/apd/
     activation_time). For analysis use ``cardiac_core.analysis`` or the ``result`` hooks
-    (``result.cv()/apd()/lat()``) on a recorded ``run()`` (Audit #7/#12).
+    (``result.cv()/apd()/lat()``) on a recorded ``run()``.
 
     Parameters
     ----------
@@ -1147,7 +1147,7 @@ class CardiacSimulation:
 
         Mirrors the engine's own run() save cadence (step, t+=dt, save when t crosses the
         next save point) but injects _apply_clamp() each step. Used only when a clamp is
-        active; the unclamped path stays on the fast engine.run() loop (goldens untouched).
+        active; the unclamped path stays on the fast engine.run() loop, bit-for-bit unchanged.
 
         The loop/save tolerances MUST match the underlying engine's run() exactly, or a
         clamped run drifts from its unclamped control by a trailing frame. Monodomain.run
@@ -1225,12 +1225,12 @@ class CardiacSimulation:
 def _resolve_mesh(mesh: Union[str, CardiacMeshData]) -> CardiacMeshData:
     """Accept path or CardiacMeshData, return CardiacMeshData.
 
-    DEEP-COPY the in-memory branch (I2): _resolve_mesh is the single choke point for every
+    DEEP-COPY the in-memory branch: _resolve_mesh is the single choke point for every
     construction path (factory, with_, reset), so copying here makes each sim OWN its mesh —
     stimulate()/with_() then can't mutate the caller's object or a sibling sim. _data holds
     only numpy arrays + scalars + a stimuli list of dicts (no torch/CUDA tensors, no ionic
-    instance — that lives in _build_kwargs), so the copy is cheap and bit-identical (goldens
-    unaffected). The str/path branch already loads fresh from disk.
+    instance — that lives in _build_kwargs), so the copy is cheap and bit-identical. The
+    str/path branch already loads fresh from disk.
     """
     if isinstance(mesh, (str, Path)):
         return load_cardiac_mesh(str(mesh))
@@ -1238,12 +1238,12 @@ def _resolve_mesh(mesh: Union[str, CardiacMeshData]) -> CardiacMeshData:
 
 
 def _lbm_bounce_masks(data, lattice_name, anisotropic, device):
-    """Per-direction LBM bounce-back masks for a MASKED interior geometry (I1).
+    """Per-direction LBM bounce-back masks for a MASKED interior geometry.
 
     UNION of (a) the interior-hole rim from ``precompute_bounce_masks`` — which uses a
     periodic ``torch.roll`` and so flags ONLY the hole rim, NOT the outer array walls —
     and (b) the outer rectangular edges. Returns None for a full (all-True) mask so the
-    engine's own ``_make_rect_masks`` is used unchanged (golden-safe).
+    engine's own ``_make_rect_masks`` is used unchanged.
     """
     if bool(data.mask.all()):
         return None
@@ -1353,7 +1353,7 @@ def _apply_clamp_stims(sim: 'CardiacSimulation', clamp_stims) -> 'CardiacSimulat
 def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: str) -> CardiacMeshData:
     """Assemble a CardiacMeshData from (Grid, ionic_model, ConductivityConfig, stimulus).
 
-    Conductivity is mapped per the target engine (see Step 4.0):
+    Conductivity is mapped per the target engine:
     - monodomain: ``for_monodomain()`` -> D=sigma_eff/chi, engine chi=1, real Cm (Form A).
     - bidomain:   RAW sigma tuples ``(σ,σ,0)`` + real chi/Cm (the factory does σ→D internally; Form B).
     - lbm:        ``for_lbm()`` -> D=D_eff (fully scaled), real Cm (Form B).
@@ -1381,7 +1381,7 @@ def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: 
         emit = conductivity.for_lbm()
         # for_lbm() emits EFFECTIVE D. Store RAW (× χ·Cm) so the lbm() factory's
         # χ·Cm division recovers it — keeps D_xx meaning consistent with the
-        # create_cardiac_mesh path (Audit #21, round-2). Cm-safe: real Cm below.
+        # create_cardiac_mesh path. Cm-safe: real Cm below.
         chi, Cm = conductivity.chi, emit['Cm']
         _eff = emit['D']
         if isinstance(_eff, tuple):
@@ -1443,7 +1443,7 @@ def _result_from(snaps, record, dx, dy, shape=None, sim=None):
 
     ``shape`` = ``(Nx, Ny)`` lets the zero-snapshot case return a rank-3 ``(0, Nx, Ny)``
     empty ``Vm`` so the analysis hooks degrade to NaN maps instead of crashing on a
-    rank-1 ``(0,)`` tensor (F1, 2026-07-15).
+    rank-1 ``(0,)`` tensor.
 
     ``sim`` is the live ``CardiacSimulation`` — passed so this ``.run()`` path populates the
     Phase-1 analysis context (mask/boundary_mode/Cm/chi/conductivity/model identity)
@@ -1603,7 +1603,7 @@ def monodomain(
     # Back-compat type-sniff: a positional CardiacMeshData/str/path is the legacy `mesh`.
     if isinstance(geometry, (str, Path, CardiacMeshData)):
         if mesh is not None:
-            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
+            raise TypeError("pass a mesh positionally OR as mesh=, not both")
         mesh, geometry = geometry, None
     if mesh is not None:
         _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
@@ -1737,7 +1737,7 @@ def bidomain(
     """
     if isinstance(geometry, (str, Path, CardiacMeshData)):
         if mesh is not None:
-            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
+            raise TypeError("pass a mesh positionally OR as mesh=, not both")
         mesh, geometry = geometry, None
     if mesh is not None:
         _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
@@ -1812,7 +1812,7 @@ def bidomain(
             and np.isclose(data.D_xx.flat[0], data.D_yy.flat[0])
         )
 
-        # D_xx is RAW; effective diffusivity = D/(χ·Cm) (Audit #2/#8/#21). This
+        # D_xx is RAW; effective diffusivity = D/(χ·Cm). This
         # D_eff branch is reached only by the legacy create_cardiac_mesh→bidomain
         # path (the declarative path sets sigma_i/sigma_e → sigma branch above).
         chi_Cm = data.chi * data.Cm
@@ -1888,13 +1888,13 @@ def lbm(
 ) -> CardiacSimulation:
     """Create an LBM simulation.
 
-    ``boundary`` selects the flat top/bottom wall mode (boundary_conduction_speedup). The
-    default (``None``) is lattice-aware: generic 'neumann' bounce-back on d2q5, and the 'hbb'
-    flat-wall baseline on d2q9. The D2Q9-ONLY flat-wall family is 'hbb' (the specular baseline),
-    'specular_nextcell' (a.k.a. 'ncs' — next-cell specular, zero bias), 'specular_samecell'
-    (a.k.a. 'scs' — same-cell specular, inverse crescent), and 'combined' (HBB↔same-cell blend
-    via ``alpha``: 1=HBB … 0=same-cell specular — the β-controlled curvature knob). Requesting
-    any of these on lattice='d2q5' raises. Corners + east/west stay HBB.
+    ``boundary`` selects the flat top/bottom wall mode. The default (``None``) is
+    lattice-aware: generic 'neumann' bounce-back on d2q5, and the 'hbb' flat-wall baseline on
+    d2q9. The D2Q9-ONLY flat-wall family is 'hbb' (the halfway bounce-back baseline the others
+    are measured against), 'specular_nextcell' (a.k.a. 'ncs' — next-cell specular),
+    'specular_samecell' (a.k.a. 'scs' — same-cell specular), and 'combined' (an HBB↔same-cell
+    blend via ``alpha``: 1=HBB … 0=same-cell specular). Requesting any of these on
+    lattice='d2q5' raises. Corners + east/west stay HBB.
 
     Declarative: ``lbm(Grid(...), 'ttp06', ConductivityConfig.isotropic(σ), stimulus)``.
     Legacy: ``lbm(mesh)`` (positional ``CardiacMeshData``/``str`` auto-detected as ``mesh=``).
@@ -1925,7 +1925,7 @@ def lbm(
     """
     if isinstance(geometry, (str, Path, CardiacMeshData)):
         if mesh is not None:
-            raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
+            raise TypeError("pass a mesh positionally OR as mesh=, not both")
         mesh, geometry = geometry, None
     if mesh is not None:
         _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
@@ -1937,7 +1937,7 @@ def lbm(
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
     # Lattice-aware default boundary: d2q9 defaults to the HBB flat-wall baseline; every
-    # other lattice defaults to generic neumann bounce-back (user 2026-07-15). hbb is now
+    # other lattice defaults to generic neumann bounce-back. hbb is
     # D2Q9-only (wall_modes.D2Q9_ONLY), so an explicit hbb on d2q5 is rejected downstream.
     if boundary is None:
         boundary = 'hbb' if lattice == 'd2q9' else 'neumann'
@@ -1950,7 +1950,7 @@ def lbm(
     from ._lbm.simulation import LBMSimulation
     from .ionic.registry import build_ionic_model
 
-    # Instantiate ionic model via the shared registry (C3); LBM passes no cell_type → ENDO.
+    # Instantiate ionic model via the shared registry; LBM passes no cell_type → ENDO.
     if ionic_model is not None and not isinstance(ionic_model, str):
         ionic_instance = ionic_model            # pre-built (e.g. tuner-scaled) IonicModel — use as-is
     else:
@@ -1967,11 +1967,11 @@ def lbm(
     if not uniform:
         raise ValueError(
             "LBM supports spatially-uniform diagonal D only "
-            "(D_xx, D_yy constant; D_xy = 0). "
-            "Oblique fibers (D_xy != 0) are not yet wired — they need the "
-            "moment-space rotation of s_jx/s_jy (Audit #46)."
+            "(D_xx, D_yy constant; D_xy = 0). Support for oblique fibers "
+            "(D_xy != 0) is not yet wired: it needs a moment-space rotation "
+            "of s_jx/s_jy."
         )
-    # D_xx is RAW; the membrane-effective diffusivity is D/(χ·Cm) (Audit #2/#8/#21).
+    # D_xx is RAW; the membrane-effective diffusivity is D/(χ·Cm).
     _chi_Cm = data.chi * data.Cm
     D_xx = float(data.D_xx.flat[0]) / _chi_Cm
     D_yy = float(data.D_yy.flat[0]) / _chi_Cm

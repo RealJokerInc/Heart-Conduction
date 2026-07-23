@@ -3,8 +3,6 @@ Forward Euler Ionic Solver
 
 Simple explicit Forward Euler for all ionic ODEs.
 Requires smaller time steps than Rush-Larsen for stability.
-
-Ref: improvement.md:L1006-1031
 """
 
 from typing import TYPE_CHECKING

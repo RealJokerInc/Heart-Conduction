@@ -1,11 +1,9 @@
 """
 BidomainSimulation — Top-Level Orchestrator
 
-Builds state, solvers, and splitting strategy from config strings.
-Follows V5.4's MonodomainSimulation pattern.
-
-Ref: improvement.md L1686-1766 (runtime step spec)
-Ref: improvement.md L1943-2018 (user API)
+Builds state, solvers, and splitting strategy from config strings, mirroring the
+monodomain simulation's construction pattern so the two engines are interchangeable
+behind the unified API.
 """
 
 import torch
@@ -142,10 +140,10 @@ class BidomainSimulation:
 # === Factory Functions ===
 
 def _resolve_ionic_model(ionic_model, device=None):
-    """Resolve ionic model from string or instance (delegates to the shared registry, C3).
+    """Resolve an ionic model from a name or an instance via the shared model registry.
 
-    Bidomain passes no cell_type → the registry's ENDO default preserves prior behavior
-    (TTP06/ORd defaulted ENDO); phas13/mhas13/paci are now available too."""
+    No ``cell_type`` is passed, so the registry's ENDO default applies. Every model in the
+    registry is available here, not just TTP06/ORd."""
     if device is None:
         device = torch.device('cpu')
     dev_str = str(device) if not isinstance(device, str) else device
@@ -199,11 +197,10 @@ def _build_linear_solver(name, spatial):
         bc = grid.boundary_spec
         # PCGSpectral uses a single-BC spectral operator as preconditioner. That is only
         # valid when the BC is UNIFORM across all four edges. For a MIXED per-axis BC
-        # (e.g. Neumann-x + Dirichlet-y) `spectral_transform` is None, and the old code
-        # silently fell back to a Neumann (DCT×DCT) preconditioner — which is SINGULAR for
-        # the Dirichlet axis and stalls PCG at a large residual, returning a wrong phi_e
-        # that feeds the Vm RHS (audit 2026-07-16, Lane C2). Route mixed BCs to plain PCG,
-        # which converges on the identical operator.
+        # (e.g. Neumann-x + Dirichlet-y) `spectral_transform` is None, and defaulting to a
+        # Neumann (DCT×DCT) preconditioner would be SINGULAR for the Dirichlet axis: PCG
+        # stalls at a large residual and returns a wrong phi_e that then feeds the Vm RHS.
+        # Route mixed BCs to plain PCG, which converges on the identical operator.
         uniform = bc.spectral_transform
         if uniform is None:
             import warnings
@@ -218,7 +215,8 @@ def _build_linear_solver(name, spatial):
         return PCGSpectralSolver(nx, ny, dx, dy, D, bc_type=bc_type,
                                  stencil=stencil)
     elif name == 'pcg_gmg':
-        # GMG preconditioner is unimplemented — fall back to plain PCG, loudly (Audit #13).
+        # TODO: the geometric-multigrid preconditioner is not implemented yet. Until it is,
+        # fall back to plain PCG and warn rather than silently changing the solver tier.
         import warnings
         warnings.warn(
             "linear_solver='pcg_gmg': geometric-multigrid preconditioner is unimplemented; "

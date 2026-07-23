@@ -22,7 +22,7 @@ Algorithm (direct Chebyshev 3-term recurrence):
 The stability polynomial is P_s(z) = T_s(w0 + w1*z) / T_s(w0),
 which maps the stability region to [-2*s^2, 0] along the real axis.
 
-KNOWN LIMITATION (audit 2026-07-16, Lane C1 — CONFIRMED, documented-not-yet-fixed):
+KNOWN LIMITATION:
     The direct unnormalized 3-term recurrence above is correct for the HOMOGENEOUS operator
     (F(Vm) = L_i*Vm), but F here is INHOMOGENEOUS — it carries the frozen constant
     b = L_i*phi_e^n at every stage. The unnormalized form mis-weights that constant (it is
@@ -47,7 +47,6 @@ Properties:
 
 Ref: Sommeijer, Shampine, Verwer (1998) "RKC: An Explicit Method for
      Parabolic PDEs", SIAM J Sci Comput.
-Ref: DIFFUSION_SPLITTING_DESIGN.md § Strategy 6
 """
 
 import math

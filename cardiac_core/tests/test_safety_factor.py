@@ -1,4 +1,4 @@
-"""Phase-7 (analysis.fields): the Boyle–Vigmond safety factor (Step 7.2).
+"""The Boyle–Vigmond safety factor.
 
 SF = ∫_A source_sink dt / Q_thr. Qualitative validation: SF is finite/positive in a healthy
 propagating wake and DROPS at a source–sink mismatch (an expansion); it raises on a bidomain result

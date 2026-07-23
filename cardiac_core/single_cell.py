@@ -2,9 +2,9 @@
 
 ``Cm dV/dt = −(I_ion + I_stim)`` with diffusion removed, integrated by the SAME per-node ionic
 ``step`` the tissue reaction substep uses (Rush–Larsen gates + forward-Euler V/concentrations). Two
-payoffs (DESIGN § 9): a 1×1 tissue node and ``single_cell`` agree to tolerance (the ORd
-concentration-ordering bug is sidestepped by sharing the step), and it produces the threshold-charge
-curve the safety factor needs. Does NOT re-implement the ODE — it drives ``IonicModel.step``.
+payoffs from sharing that step: a 1×1 tissue node and ``single_cell`` agree to tolerance (no drift
+from a divergent concentration-update ordering), and it produces the threshold-charge curve the
+safety factor needs. Does NOT re-implement the ODE — it drives ``IonicModel.step``.
 """
 
 from dataclasses import dataclass

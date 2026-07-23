@@ -66,7 +66,7 @@ def mrt_collide_d2q9(f: Tensor, V: Tensor, R: Tensor, dt: float,
         D_xx = cs2 * (1/s_jx - 0.5) * dt
         D_yy = cs2 * (1/s_jy - 0.5) * dt
     D_xy is NOT applied (s_pxy is a free stability rate); off-diagonal fibers
-    need the moment-space rotation of s_jx/s_jy — not implemented (Audit #46).
+    would need a moment-space rotation of s_jx/s_jy, which is not implemented.
 
     Args:
         f: (9, Nx, Ny) distributions

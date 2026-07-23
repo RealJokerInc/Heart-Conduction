@@ -1,1 +1,1 @@
-# Integrity baseline package: pre-vendor goldens + source-tree hashes (engine_consolidation Phase 0).
+# Integrity baseline package: pre-vendor goldens + source-tree hashes.

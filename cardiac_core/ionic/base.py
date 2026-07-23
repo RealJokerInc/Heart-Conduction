@@ -2,7 +2,7 @@
 IonicModel Abstract Base Class
 
 Defines the interface that all ionic models (ORd, TTP06, etc.) must implement.
-Based on openCARP's LIMPET pattern for model interoperability.
+Inspired by openCARP's LIMPET pattern for model interoperability.
 
 V is always separate from ionic_states. The ionic model is a pure data provider:
 it computes Iion, gate steady-states, gate time constants, and concentration

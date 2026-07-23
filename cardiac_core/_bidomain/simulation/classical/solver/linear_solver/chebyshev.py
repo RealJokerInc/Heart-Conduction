@@ -8,14 +8,13 @@ making it ideal for GPU execution.
 Uses Gershgorin bounds for eigenvalue estimation.
 Requires SPD matrix (all diffusion operators are SPD).
 
-Bug fixes from LINEAR_SOLVER_IMPLEMENTATION.md:
-  CH-1: Preconditioned Gershgorin bounds for D^{-1}A (was using bounds for A)
-  CH-2: Guard theta > 0 (guaranteed for SPD but now asserted)
-  CH-3: Clamp rho_new to prevent overflow
-  CH-4: Warm start support (x0 parameter in solve())
-
-Ref: Research/03_GPU_Linear:L39-65 (algorithm)
-Ref: Research/03_GPU_Linear:L77-106 (Gershgorin bounds)
+Implementation notes:
+  - When Jacobi preconditioning is enabled the Gershgorin bounds are computed for the
+    preconditioned operator D^{-1}A, not for A itself.
+  - theta > 0 and delta > 0 are asserted; both are guaranteed for an SPD operator with
+    distinct eigenvalue bounds, so a violation signals a malformed matrix.
+  - The recurrence coefficient rho is clamped to avoid overflow in degenerate cases.
+  - Warm starting is supported through the optional x0 argument to solve().
 """
 
 import torch
@@ -190,7 +189,7 @@ class ChebyshevSolver(LinearSolver):
         if self._A_id != A_id:
             self._diag_inv = self._extract_diag_inv(A) if self.use_jacobi_precond else None
 
-            # CH-1 FIX: Use preconditioned bounds when Jacobi is enabled
+            # Use bounds for D^{-1}A when Jacobi preconditioning is enabled
             if self.use_jacobi_precond:
                 self._lam_min, self._lam_max = _gershgorin_bounds_preconditioned(
                     A, self._diag_inv, self.safety_margin)
@@ -212,7 +211,7 @@ class ChebyshevSolver(LinearSolver):
         b : torch.Tensor
             Right-hand side vector
         x0 : torch.Tensor, optional
-            Initial guess for warm start (CH-4 fix)
+            Initial guess for warm start
 
         Returns
         -------
@@ -233,7 +232,7 @@ class ChebyshevSolver(LinearSolver):
         theta = (lam_max + lam_min) / 2.0
         delta = (lam_max - lam_min) / 2.0
 
-        # CH-2 FIX: Guard theta and delta
+        # Guard theta and delta (both must be positive for a valid SPD spectrum)
         assert theta > 0, f"Chebyshev theta={theta} <= 0 (not SPD?)"
         assert delta > 0, f"Chebyshev delta={delta} <= 0 (single eigenvalue?)"
 
@@ -244,7 +243,7 @@ class ChebyshevSolver(LinearSolver):
         z = self._z
         d = self._d
 
-        # CH-4 FIX: Warm start support
+        # Warm start from x0 when supplied
         if x0 is not None:
             x.copy_(x0)
         else:
@@ -278,7 +277,7 @@ class ChebyshevSolver(LinearSolver):
             else:
                 z.copy_(r)
 
-            # CH-3 FIX: Guard against overflow
+            # Guard against overflow in the recurrence coefficient
             denom = 2.0 * sigma - rho
             if abs(denom) < 1e-15:
                 break  # Degenerate — stop iterating

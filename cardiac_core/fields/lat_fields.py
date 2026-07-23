@@ -1,7 +1,7 @@
-"""LAT-based named fields (Phase 4 of ``analysis.fields``): the conduction-velocity vector field
-and wavefront geometry, all derived from ONE canonical activation-time map.
+"""LAT-based named fields: the conduction-velocity vector field and wavefront geometry, all
+derived from ONE canonical activation-time map.
 
-Method (PRIOR_ART § 7–8): the Bayly (1998) local-quadratic CV fit on a uniform grid IS a fixed
+Method: the Bayly (1998) local-quadratic CV fit on a uniform grid IS a fixed
 2-D Savitzky–Golay convolution — ``Tx = K_x * T`` with ``K_x = s_y ⊗ g_x`` (a 5-point SG derivative
 ``g`` across the propagation axis, a 5-point SG smoother ``s`` across the other), ``Ty = K_y * T``.
 The smoother's own residual ``|T − Ŝ*T|`` is a free per-node ``quality`` (high at collisions /
@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from . import derivatives
 
-# 5-point Savitzky–Golay kernels (A7): smoother (quadratic/cubic) and 1st-derivative (linear/quad).
+# 5-point Savitzky–Golay kernels: smoother (quadratic/cubic) and 1st-derivative (linear/quad).
 _S = (-3.0, 12.0, 17.0, 12.0, -3.0)     # ÷35
 _G = (-2.0, -1.0, 0.0, 1.0, 2.0)        # ÷(10·h)
 _R = 2                                   # kernel half-width (5-point)

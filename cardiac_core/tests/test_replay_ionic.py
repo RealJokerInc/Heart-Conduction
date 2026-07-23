@@ -1,4 +1,4 @@
-"""An ionic_model override must survive reset()/stimulate()/with_() (Audit #1).
+"""An ionic_model override must survive reset()/stimulate()/with_().
 
 Before the fix, build_kwargs omitted ionic_model, so reset()/stimulate() rebuilt
 the engine from the MESH DEFAULT ('ttp06'), silently discarding an 'ord' override.

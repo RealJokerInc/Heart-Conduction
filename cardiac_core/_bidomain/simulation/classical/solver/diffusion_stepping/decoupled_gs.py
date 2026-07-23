@@ -10,8 +10,6 @@ Step 1 (Parabolic — Formulation B, D-based):
 
 Step 2 (Elliptic):
     -(L_i + L_e) * phi_e^{n+1} = L_i * Vm^{n+1}
-
-Ref: improvement.md L960-1044
 """
 
 from typing import TYPE_CHECKING

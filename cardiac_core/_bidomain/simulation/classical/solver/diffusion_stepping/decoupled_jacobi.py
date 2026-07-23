@@ -14,7 +14,6 @@ Step 2 (Elliptic — uses Vm^n, NOT Vm^{n+1}):
 
 Both steps depend only on state^n, so they can run concurrently.
 
-Ref: DIFFUSION_SPLITTING_DESIGN.md § Strategy 3
 Ref: Fernandez & Zemzemi 2010 (energy stability proof)
 """
 

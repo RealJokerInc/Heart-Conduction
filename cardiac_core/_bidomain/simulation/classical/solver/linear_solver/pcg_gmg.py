@@ -2,9 +2,9 @@
 PCG with Geometric Multigrid Preconditioner (Stub)
 
 Tier 3: PCG with GMG preconditioner for heterogeneous/mixed-BC problems.
-Full implementation deferred — requires GeometricMultigridPreconditioner.
 
-Ref: improvement.md L1390-1509
+TODO: full implementation — depends on GeometricMultigridPreconditioner, which is
+itself still a stub.
 """
 
 from .base import LinearSolver

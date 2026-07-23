@@ -2,8 +2,6 @@
 Strang Operator Splitting
 
 Second-order splitting: half-ionic, full-diffusion, half-ionic.
-
-Ref: improvement.md:L999-1004
 """
 
 from typing import TYPE_CHECKING

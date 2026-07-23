@@ -1,8 +1,9 @@
-"""Phase-1 (analysis.fields): SimulationResult analysis-context + canonical interpolated LAT.
+"""SimulationResult analysis-context + canonical interpolated LAT.
 
-Covers Steps 1.1 (result carries mask/boundary_mode/Cm/chi/conductivity/model identity on
-BOTH build paths) and 1.2 (opt-in torch interpolated LAT + max_dvdt_time). Step 1.3's default
-flip + CV-family routing is exercised in test_analysis.py's regolden.
+Covers the result carrying mask/boundary_mode/Cm/chi/conductivity/model identity on BOTH
+build paths, and the torch interpolated activation time (LAT) plus max_dvdt_time. The
+default-method flip and CV-family routing are additionally exercised by the golden
+comparison in test_analysis.py.
 """
 
 import dataclasses
@@ -29,7 +30,7 @@ def _cond():
 
 
 # ======================================================================
-# Step 1.1 — result carries analysis context
+# result carries analysis context
 # ======================================================================
 
 class TestResultContext:
@@ -102,7 +103,7 @@ class TestResultContext:
         assert r.ionic_model == 'phas13'
 
     def test_bidomain_cell_type_is_endo_not_mesh_group(self):
-        # MEDIUM-1 guard: bidomain/LBM factories force ENDO (no cell_type to build_ionic_model),
+        # The bidomain/LBM factories force ENDO (no cell_type is passed to build_ionic_model),
         # so r.cell_type must be the ACTUALLY-RUN ENDO, not the mesh's group_cell_types[0].
         mesh = create_cardiac_mesh(Lx=0.8, Ly=0.6, dx=0.05)
         mesh_epi = dataclasses.replace(mesh, group_cell_types=['EPI'])
@@ -111,7 +112,7 @@ class TestResultContext:
 
 
 # ======================================================================
-# Step 1.2 — canonical interpolated LAT + max_dvdt_time
+# canonical interpolated LAT + max_dvdt_time
 # ======================================================================
 
 class TestCanonicalLAT:
@@ -132,7 +133,7 @@ class TestCanonicalLAT:
         assert lat_near[0, 0].item() == 2.0        # first frame >= -40 is t=2
 
     def test_default_is_canonical_interp(self):
-        # Step 1.3 flip: the DEFAULT is now interp/-40 (crossing at 1.3333), NOT nearest/-20.
+        # The DEFAULT is interp/-40 (crossing at 1.3333), NOT nearest/-20.
         V, times = self._synthetic()
         assert abs(activation_time(V, times)[0, 0].item() - (1.0 + 1.0 / 3.0)) < 1e-9
 
@@ -188,11 +189,10 @@ class TestCanonicalLAT:
 
 
 class TestCVFamilyCanonical:
-    """MEDIUM-3 / LOW-2 guard: the scalar CV family DEFAULTS to interp/-40 and the
-    method='nearest', threshold=-20 OVERRIDE reproduces the historical frame-quantized value.
-    Uses a SMOOTH two-node trace with DIFFERENT upstroke slopes, so interp/-40 and nearest/-20
-    give DIFFERENT CV (the step-wave synthetics can't distinguish them — the whole gap the
-    auditor flagged)."""
+    """The scalar CV family DEFAULTS to interp/-40, and the method='nearest', threshold=-20
+    OVERRIDE reproduces the historical frame-quantized value. Uses a SMOOTH two-node trace
+    with DIFFERENT upstroke slopes, so interp/-40 and nearest/-20 give DIFFERENT CV — a
+    step-wave synthetic cannot distinguish the two and would leave the behavior untested."""
 
     def _two_node(self):
         from cardiac_core.analysis import conduction_velocity  # noqa: F401 (import check)

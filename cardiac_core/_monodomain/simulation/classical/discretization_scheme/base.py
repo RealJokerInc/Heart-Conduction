@@ -3,8 +3,6 @@ SpatialDiscretization Abstract Base Class
 
 Defines the interface that all spatial discretization methods must implement.
 Discretization schemes provide spatial OPERATORS — they do NOT control time stepping.
-
-Ref: improvement.md:L761-806
 """
 
 from abc import ABC, abstractmethod
@@ -28,8 +26,6 @@ class DiffusionOperators:
 
     These are constructed by SpatialDiscretization.get_diffusion_operators()
     and consumed by DiffusionSolver.
-
-    Ref: improvement.md:L964-973
     """
     A_lhs: torch.Tensor           # LHS matrix (e.g., M + 0.5*dt*K for CN)
     B_rhs: torch.Tensor           # RHS matrix (e.g., M - 0.5*dt*K for CN)
@@ -71,8 +67,6 @@ class SpatialDiscretization(ABC):
     - mass_type: type of mass matrix (IDENTITY, DIAGONAL, SPARSE)
     - get_diffusion_operators(dt, scheme): build time-step-dependent operators
     - apply_diffusion(V): compute div(D*grad(V)) directly
-
-    Ref: improvement.md:L761-806
     """
 
     @property

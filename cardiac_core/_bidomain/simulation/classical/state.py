@@ -6,8 +6,6 @@ Extends monodomain SimulationState with phi_e.
 
 V (transmembrane potential Vm) is stored as a separate field from ionic_states
 (gates + concentrations). phi_e (extracellular potential) is a second field.
-
-Ref: improvement.md L599-656
 """
 
 from dataclasses import dataclass, field
