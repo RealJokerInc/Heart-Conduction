@@ -34,11 +34,11 @@ def test_cm_scaling_reaction():
 def test_0d_vs_tissue_singlenode():
     # A uniformly-stimulated tissue patch has NO gradient -> diffusion=0 -> each node is 0-D. Its
     # trace matches single_cell to the splitting truncation (the ORd-ordering-bug guard: same step).
-    from cardiac_core import monodomain, Grid, ConductivityConfig
+    from cardiac_core import monodomain, Grid, ConductivityConfig, Stim
     g = Grid(4, 4, 0.05)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    stim = {'region': (lambda x, y: x > -1.0), 'start_time': 10.0, 'duration': 2.0,
-            'amplitude': -52.0}                # whole-domain stimulus -> uniform field
+    stim = Stim.from_region(g, (lambda x, y: x > -1.0), start_time=10.0, duration=2.0,
+                            amplitude=-52.0)   # whole-domain stimulus -> uniform field
     r = monodomain(g, 'ttp06', cond, stim, dt=0.02).run(300.0, save_every=1.0)
     from cardiac_core import analysis
     tissue_apd = analysis.apd_at(r.Vm, r.times, 2, 2, repol=0.9)

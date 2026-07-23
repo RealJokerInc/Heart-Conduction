@@ -13,15 +13,24 @@ import numpy as np
 import pytest
 import torch
 
-from cardiac_core import monodomain, bidomain, lbm, Grid, ConductivityConfig, create_cardiac_mesh
+from cardiac_core import monodomain, bidomain, lbm, Grid, ConductivityConfig, create_cardiac_mesh, Stim
 from cardiac_core import analysis
 from cardiac_core.analysis import apd_at
 from cardiac_core.mesh.structured import StructuredGrid
 
 
 def _stim(width=0.05, amplitude=-52.0, start=1.0, duration=2.0):
+    # Dict form — retained for the legacy mesh= factory path (monodomain(mesh, stimulus=...)),
+    # which drops stimulus= and never emits the dict-deprecation warning.
     return {'region': (lambda x, y: x < width), 'start_time': start,
             'duration': duration, 'amplitude': amplitude}
+
+
+def _gstim(g, width=0.05, amplitude=-52.0, start=1.0, duration=2.0):
+    # Stim form for the declarative Grid factory path (monodomain(grid, ...)); resolved eagerly
+    # against the grid, byte-identical to the dict once normalized.
+    return Stim.from_region(g, (lambda x, y: x < width), start_time=start,
+                            duration=duration, amplitude=amplitude)
 
 
 # ===========================================================================
@@ -168,7 +177,7 @@ def test_structuredgrid_single_column():
 def test_monodomain_1d_cable_runs():
     g = Grid(101, 1, 0.02)
     cond = ConductivityConfig.isotropic(1.4, chi=1.0)
-    sim = monodomain(g, 'ttp06', cond, _stim(width=0.06))
+    sim = monodomain(g, 'ttp06', cond, _gstim(g, width=0.06))
     r = sim.run(4.0, 1.0)
     assert r.Vm.shape == (r.Vm.shape[0], 101, 1)
 
@@ -215,7 +224,7 @@ def test_dct_solver_runs_and_matches_pcg():
     default — compare the Vm FIELD (CV is frame-quantized and would hide a wrong solve)."""
     g = Grid(60, 6, 0.02)
     cond = ConductivityConfig.isotropic(1.4)  # eff D = 1.4/1400 = 1e-3 cm^2/ms
-    stim = _stim(width=0.06)
+    stim = _gstim(g, width=0.06)
     r_pcg = monodomain(g, 'ttp06', cond, stim, linear_solver='pcg').run(40.0, 0.5)
     r_dct = monodomain(g, 'ttp06', cond, stim, linear_solver='dct').run(40.0, 0.5)
     assert torch.isfinite(r_dct.Vm).all()
@@ -227,10 +236,10 @@ def test_spectral_solvers_reject_unsupported_configs():
     """DCT/FFT invert an idealized eigen-operator; the factory must REJECT (not silently
     mis-solve) masked / anisotropic / bdf2 configs, and reject fft (Neumann meshes)."""
     cond = ConductivityConfig.isotropic(1.4)
-    stim = _stim(width=0.06)
     # fft is never valid via the mono factory (it builds Neumann meshes)
+    g_fft = Grid(32, 8, 0.02)
     with pytest.raises(ValueError, match="fft"):
-        monodomain(Grid(32, 8, 0.02), 'ttp06', cond, stim, linear_solver='fft')
+        monodomain(g_fft, 'ttp06', cond, _gstim(g_fft, width=0.06), linear_solver='fft')
     # dct on a masked domain
     mask = np.ones((20, 12), dtype=bool); mask[8:11, 5:8] = False
     with pytest.raises(ValueError, match="masked|silently wrong"):
@@ -238,11 +247,13 @@ def test_spectral_solvers_reject_unsupported_configs():
                    linear_solver='dct')
     # dct on anisotropic D
     aniso = ConductivityConfig.anisotropic(2.0, 0.5, 0.0)
+    g_aniso = Grid(30, 20, 0.02)
     with pytest.raises(ValueError, match="anisotropic|silently wrong"):
-        monodomain(Grid(30, 20, 0.02), 'ttp06', aniso, stim, linear_solver='dct')
+        monodomain(g_aniso, 'ttp06', aniso, _gstim(g_aniso, width=0.06), linear_solver='dct')
     # dct with bdf2 (its bootstrap step switches operators)
+    g_bdf2 = Grid(30, 8, 0.02)
     with pytest.raises(ValueError, match="scheme|silently wrong"):
-        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+        monodomain(g_bdf2, 'ttp06', cond, _gstim(g_bdf2, width=0.06),
                    linear_solver='dct', diffusion_solver='bdf2')
 
 
@@ -272,7 +283,7 @@ def test_scale_conductance_changes_apd():
     """Reducing GKr (IKr block) prolongs APD; an unknown conductance raises."""
     g = Grid(12, 4, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    stim = _stim(width=0.06)
+    stim = _gstim(g, width=0.06)
     r0 = monodomain(g, 'ttp06', cond, stim, dt=0.1).run(600.0, 2.0)
     sim = monodomain(g, 'ttp06', cond, stim, dt=0.1)
     sim.scale_conductance('GKr', 0.4)
@@ -290,7 +301,7 @@ def test_set_conductivity_scar_blocks():
     """set_conductivity(mask, D=0) makes an inexcitable scar; the wave routes around."""
     g = Grid(24, 20, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    sim = monodomain(g, 'ttp06', cond, _stim(width=0.06), dt=0.1)
+    sim = monodomain(g, 'ttp06', cond, _gstim(g, width=0.06), dt=0.1)
     scar = np.zeros((24, 20), dtype=bool)
     scar[11:14, 6:16] = True   # vertical barrier (open lanes at rows 0-5 and 16-19)
     sim.set_conductivity(scar, D=0.0)
@@ -315,7 +326,7 @@ def test_set_conductivity_scar_blocks_declarative_bidomain():
     must zero those too (else it silently no-ops and the wave passes through)."""
     g = Grid(24, 16, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    sim = bidomain(g, 'ttp06', cond, _stim(width=0.06), dt=0.1)
+    sim = bidomain(g, 'ttp06', cond, _gstim(g, width=0.06), dt=0.1)
     scar = np.zeros((24, 16), dtype=bool)
     scar[11:14, 5:12] = True
     sim.set_conductivity(scar, D=0.0)
@@ -329,7 +340,7 @@ def test_set_conductivity_nonzero_D_on_sigma_bidomain_raises():
     apply it to the ignored D_xx field."""
     g = Grid(16, 12, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    sim = bidomain(g, 'ttp06', cond, _gstim(g), dt=0.1)
     scar = np.zeros((16, 12), dtype=bool); scar[7:9, 4:8] = True
     with pytest.raises(NotImplementedError, match="bidomain"):
         sim.set_conductivity(scar, D=5e-4)
@@ -340,7 +351,7 @@ def test_scale_conductance_preserves_celltype_on_bidomain():
     the bidomain factory builds ENDO, so a name-rebuild would jump Gto 0.073->0.294."""
     g = Grid(16, 12, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    sim = bidomain(g, 'ttp06', cond, _gstim(g), dt=0.1)
     gto0 = sim._live_ionic_model().params.Gto
     gkr0 = sim._live_ionic_model().params.GKr
     sim.scale_conductance('GKr', 0.5)
@@ -351,7 +362,7 @@ def test_scale_conductance_preserves_celltype_on_bidomain():
 def test_scale_conductivity_scales_sigma_on_bidomain():
     g = Grid(16, 12, 0.02)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    sim = bidomain(g, 'ttp06', cond, _stim(), dt=0.1)
+    sim = bidomain(g, 'ttp06', cond, _gstim(g), dt=0.1)
     zone = np.zeros((16, 12), dtype=bool); zone[6:10, 4:8] = True
     si0 = float(sim._data.sigma_i[0][7, 6])
     sim.scale_conductivity(zone, 0.25)
@@ -362,7 +373,7 @@ def test_scale_conductance_on_lbm():
     """scale_conductance works on LBM too (deep-copies the live model — ENDO-consistent)."""
     g = Grid(16, 8, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    sim = lbm(g, 'ttp06', cond, _stim(width=0.06), dt=0.005)
+    sim = lbm(g, 'ttp06', cond, _gstim(g, width=0.06), dt=0.005)
     gkr0 = sim._live_ionic_model().params.GKr
     sim.scale_conductance('GKr', 0.5)
     assert sim._live_ionic_model().params.GKr == pytest.approx(gkr0 * 0.5)
@@ -373,7 +384,7 @@ def test_regional_conductivity_on_lbm_raises_clearly():
     error must name LBM, not the misleading 'oblique fibers (D_xy != 0)' message."""
     g = Grid(16, 12, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    sim = lbm(g, 'ttp06', cond, _stim(), dt=0.005)
+    sim = lbm(g, 'ttp06', cond, _gstim(g), dt=0.005)
     scar = np.zeros((16, 12), dtype=bool); scar[7:9, 4:8] = True
     with pytest.raises(NotImplementedError, match="LBM"):
         sim.set_conductivity(scar, D=0.0)
@@ -488,7 +499,7 @@ def test_zero_node_stimulus_warns_stimulate():
 def test_zero_node_stimulus_warns_declarative():
     g = Grid(10, 6, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    bad = {'region': (lambda x, y: x < -1.0), 'start_time': 1.0, 'duration': 2.0, 'amplitude': -52.0}
+    bad = Stim.from_region(g, (lambda x, y: x < -1.0), start_time=1.0, duration=2.0, amplitude=-52.0)
     with pytest.warns(UserWarning, match="0 tissue nodes"):
         monodomain(g, 'ttp06', cond, bad)
 
@@ -511,7 +522,7 @@ def test_scale_conductance_hipsc_lowercase_names():
     dimensionless gamma_ncx / PkNa that merely start with g/p."""
     g = Grid(12, 4, 0.02)
     cond = ConductivityConfig.isotropic(1.4)
-    sim = monodomain(g, 'paci', cond, _stim(width=0.06), dt=0.02)
+    sim = monodomain(g, 'paci', cond, _gstim(g, width=0.06), dt=0.02)
     gna0 = sim._live_ionic_model().params.g_Na
     sim.scale_conductance('g_Na', 0.5)
     assert sim._live_ionic_model().params.g_Na == pytest.approx(gna0 * 0.5)
@@ -563,10 +574,11 @@ def test_bidomain_masked_default_elliptic_solver_works():
 def test_dct_rejected_on_nondefault_stencil_and_boundary():
     """Cover the stencil/boundary_mode branches of the spectral gate (were untested)."""
     cond = ConductivityConfig.isotropic(1.4)
-    stim = _stim(width=0.06)
+    g = Grid(30, 8, 0.02)
+    stim = _gstim(g, width=0.06)
     with pytest.raises(ValueError, match="stencil|silently wrong"):
-        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+        monodomain(g, 'ttp06', cond, stim,
                    linear_solver='dct', stencil='moore8_iso')
     with pytest.raises(ValueError, match="boundary_mode|silently wrong"):
-        monodomain(Grid(30, 8, 0.02), 'ttp06', cond, stim,
+        monodomain(g, 'ttp06', cond, stim,
                    linear_solver='dct', boundary_mode='rest_pad')

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh
+from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh, Stim
 from cardiac_core.fields import VectorField
 from cardiac_core.fields.derivatives import div, grad, diffusion_term
 
@@ -18,14 +18,14 @@ def _cond():
     return ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
 
 
-def _stim():
-    return {'region': (lambda x, y: x < 0.06), 'start_time': 1.0,
-            'duration': 2.0, 'amplitude': -52.0}
+def _stim(g):
+    return Stim.from_region(g, (lambda x, y: x < 0.06),
+                            start_time=1.0, duration=2.0, amplitude=-52.0)
 
 
 def _mono(Nx=24, Ny=18, mask=None):
     g = Grid(Nx, Ny, 0.05, mask=mask)
-    return monodomain(g, 'ttp06', _cond(), _stim())
+    return monodomain(g, 'ttp06', _cond(), _stim(g))
 
 
 # ======================================================================
@@ -115,14 +115,15 @@ class TestVmFields:
         assert torch.allclose(a, b, rtol=3e-2, atol=1e-3)
 
     def test_source_sink_bidomain_raises(self):
-        r = bidomain(Grid(16, 12, 0.05), 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        g = Grid(16, 12, 0.05)
+        r = bidomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
         with pytest.raises(ValueError, match="monodomain"):
             _ = r.fields.source_sink
 
     def test_source_sink_anisotropic_raises(self):
         g = Grid(16, 12, 0.05)
         cond = ConductivityConfig.anisotropic(3.0, 1.0, fiber_angle=0.4, chi=1400.0)
-        r = monodomain(g, 'ttp06', cond, _stim()).run(2.0, save_every=1.0)
+        r = monodomain(g, 'ttp06', cond, _stim(g)).run(2.0, save_every=1.0)
         assert r.conductivity.is_anisotropic
         with pytest.raises(ValueError, match="[Aa]nisotropic"):
             _ = r.fields.source_sink
@@ -139,7 +140,8 @@ class TestBidomainFields:
             _ = r.fields.electric_field
 
     def test_current_flux_bidomain(self):
-        r = bidomain(Grid(16, 12, 0.05), 'ttp06', _cond(), _stim()).run(3.0, save_every=1.0)
+        g = Grid(16, 12, 0.05)
+        r = bidomain(g, 'ttp06', _cond(), _stim(g)).run(3.0, save_every=1.0)
         cf = r.fields.current_flux
         T = r.times.shape[0]
         assert cf.components.shape == (T, 16, 12, 2)

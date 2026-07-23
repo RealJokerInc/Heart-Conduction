@@ -608,8 +608,22 @@ green on `Stim`, no dict-stimulus left · **Risk** breaking a live consumer → 
   raises (registers `_lbm_clamp`), while `set_voltage` still raises (V is a lattice moment). Not a scope change —
   a foreseen consequence of adding the LBM clamp.
 
-## Phase 1 — DONE (2026-07-22)
+## Phase 1 — DONE (2026-07-22, commit c087b8c)
 Steps 1.1–1.4 implemented on branch `stim-object`. `test_stim.py` (24) + `test_geometry` edge-mask pass;
 `test_advanced_features` (14) pass after the mutation above; integrity goldens **atol=0** (opt-in clamp is
 byte-identical on no-clamp runs). Full `cardiac_core/tests/` green except `test_video.py` (a PARALLEL cloud
 session's in-progress video pipeline — `run.py`/`viz.py`/`video.py`/`test_video.py`, NOT this feature; left untouched).
+
+## Phase 2 — DONE (2026-07-22)
+Step 2.1: internal dict callers migrated to `Stim` — `stimulate()`/`add_stimulus` build a `Stim` internally
+(no raw dict through `_normalize_stimulus`); `protocols.py::_captures` builds `Stim.from_region` S1/S2 trains;
+the 11 dict-using cardiac_core test files migrated (module `STIM` const → `_stim(g)`; dict helpers → grid-threaded
+`Stim.from_region`; test_usability_fixes keeps a dict `_stim()` for the non-warning mesh= path + a Stim `_gstim(g)`
+for the Grid path); `API_CHEATSHEET.md` §3 + the §11 full-example + the §12 runnable-canary all present `Stim` as
+canonical. Step 2.2: `_normalize_stimulus` emits a `DeprecationWarning` (stacklevel=4 → user's call) for a raw dict
+ONLY; Stims/`stimulate()`/mesh= never warn. Guards: `test_stim.py::TestDeprecation::{test_dict_warns,
+test_dict_path_unchanged}`. All 11 migrated files + canary pass under `-W error::DeprecationWarning` (141 passed);
+integrity goldens still atol=0.
+
+**Phase 3 (cross-project consumer migration) NOT started** — optional/deferrable, one-PR-per-consumer, gate on each
+consumer's own suite. Checkpoint with the user before starting.

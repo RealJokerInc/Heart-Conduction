@@ -5,14 +5,14 @@ import torch
 
 from cardiac_core import (
     monodomain, bidomain, lbm,
-    Grid, ConductivityConfig, Simulation, create_cardiac_mesh,
+    Grid, ConductivityConfig, Simulation, create_cardiac_mesh, Stim,
 )
 from cardiac_core import analysis
 
 
-def _left_edge_stim(width=0.05, amplitude=-52.0, start=1.0, duration=2.0):
-    return {'region': (lambda x, y: x < width), 'start_time': start,
-            'duration': duration, 'amplitude': amplitude}
+def _left_edge_stim(g, width=0.05, amplitude=-52.0, start=1.0, duration=2.0):
+    return Stim.from_region(g, (lambda x, y: x < width), start_time=start,
+                            duration=duration, amplitude=amplitude)
 
 
 def _collect_vt(sim, t_end, save_every=0.5):
@@ -27,7 +27,7 @@ class TestDeclarativeConstruction:
     def test_monodomain_from_grid(self):
         g = Grid(40, 20, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = monodomain(g, 'ttp06', cond, _left_edge_stim())
+        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(g))
         assert sim.Nx == 40 and sim.Ny == 20
         assert sim.dx == 0.05
         snap = next(sim.snapshots(2.0, save_every=1.0))
@@ -43,7 +43,7 @@ class TestDeclarativeConstruction:
     def test_bidomain_from_grid(self):
         g = Grid(30, 30, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = bidomain(g, 'ttp06', cond, _left_edge_stim())
+        sim = bidomain(g, 'ttp06', cond, _left_edge_stim(g))
         assert sim.engine_type == 'bidomain'
         snap = next(sim.snapshots(2.0, save_every=1.0))
         assert snap.Vm.shape == (30, 30)
@@ -52,7 +52,7 @@ class TestDeclarativeConstruction:
     def test_lbm_from_grid(self):
         g = Grid(40, 20, 0.025)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = lbm(g, 'ttp06', cond, _left_edge_stim(), dt=0.005)
+        sim = lbm(g, 'ttp06', cond, _left_edge_stim(g), dt=0.005)
         assert sim.engine_type == 'lbm'
         snap = next(sim.snapshots(1.0, save_every=0.5))
         assert snap.Vm.shape == (40, 20)
@@ -66,7 +66,7 @@ class TestConductivityMapping:
         """
         g = Grid(200, 50, 0.01)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(width=0.05))
+        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(g, width=0.05))
         # Front ~50 cm/s = 0.05 cm/ms; x2=100 (1.0 cm) activates ~21 ms → t_end=40 ms for margin.
         times, V = _collect_vt(sim, t_end=40.0, save_every=0.5)
         cv = analysis.conduction_velocity(V, times, dx=g.dx, x1=20, x2=100, y=25, threshold=-20.0)
@@ -77,7 +77,7 @@ class TestSimulationSurface:
     def test_introspection(self):
         g = Grid(20, 20, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = monodomain(g, 'ttp06', cond, _left_edge_stim())
+        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(g))
         assert sim.dt == 0.02       # default
         assert sim.Cm == 1.0
         assert sim.ionic_model == 'ttp06'
@@ -85,7 +85,7 @@ class TestSimulationSurface:
     def test_with_is_functional(self):
         g = Grid(20, 20, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        s = monodomain(g, 'ttp06', cond, _left_edge_stim())
+        s = monodomain(g, 'ttp06', cond, _left_edge_stim(g))
         s2 = s.with_(dt=0.01)
         assert s2.dt == 0.01
         assert s.dt == 0.02         # original untouched
@@ -94,7 +94,7 @@ class TestSimulationSurface:
     def test_reset(self):
         g = Grid(20, 20, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = monodomain(g, 'ttp06', cond, _left_edge_stim())
+        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(g))
         list(sim.snapshots(3.0, save_every=1.0))
         assert sim.t > 0.0
         sim.reset()
@@ -124,5 +124,5 @@ class TestSimulationSurface:
     def test_protocol_isinstance(self):
         g = Grid(20, 20, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        sim = monodomain(g, 'ttp06', cond, _left_edge_stim())
+        sim = monodomain(g, 'ttp06', cond, _left_edge_stim(g))
         assert isinstance(sim, Simulation)

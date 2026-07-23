@@ -13,15 +13,15 @@ import pytest
 import torch
 
 from cardiac_core import (
-    monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh, simulate,
+    monodomain, bidomain, Grid, ConductivityConfig, create_cardiac_mesh, simulate, Stim,
 )
 from cardiac_core.analysis import activation_time, max_dvdt_time
 from cardiac_core.ionic.registry import build_ionic_model
 
 
-def _stim():
-    return {'region': (lambda x, y: x < 0.06), 'start_time': 1.0,
-            'duration': 2.0, 'amplitude': -52.0}
+def _stim(g):
+    return Stim.from_region(g, (lambda x, y: x < 0.06),
+                            start_time=1.0, duration=2.0, amplitude=-52.0)
 
 
 def _cond():
@@ -35,7 +35,7 @@ def _cond():
 class TestResultContext:
     def test_result_carries_context(self):
         g = Grid(16, 12, 0.05)
-        r = monodomain(g, 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        r = monodomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
         assert r.domain_mask is None            # full rectangle -> no mask
         assert r.boundary_mode == 'face_mirror'
         assert r.Cm == 1.0
@@ -43,7 +43,7 @@ class TestResultContext:
         mask = np.ones((16, 12), dtype=bool)
         mask[6:9, 5:8] = False                  # an interior hole
         gm = Grid(16, 12, 0.05, mask=mask)
-        rm = monodomain(gm, 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        rm = monodomain(gm, 'ttp06', _cond(), _stim(gm)).run(2.0, save_every=1.0)
         assert rm.domain_mask is not None
         assert tuple(rm.domain_mask.shape) == (16, 12)
         assert rm.domain_mask.dtype == torch.bool
@@ -53,7 +53,7 @@ class TestResultContext:
         # R2-critical guard: declarative monodomain sets data.chi=1 (Form-A), so
         # D_eff = D_raw/(chi*Cm) — NOT off by a hard-coded 1400.
         g = Grid(16, 12, 0.05)
-        r = monodomain(g, 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        r = monodomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
         assert r.chi == 1.0
         c = r.conductivity
         assert c is not None and c.D_eff is not None and c.D_raw is not None
@@ -65,7 +65,7 @@ class TestResultContext:
     def test_both_builders_thread(self):
         # .run() path (api._result_from) AND simulate() path (run._collect) both populate ctx.
         g = Grid(16, 12, 0.05)
-        r_run = monodomain(g, 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        r_run = monodomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
         mesh = create_cardiac_mesh(Lx=0.8, Ly=0.6, dx=0.05)   # ttp06 default
         r_sim = simulate(mesh, t_end=2.0, save_every=1.0, engine='monodomain')
         for r in (r_run, r_sim):
@@ -77,7 +77,7 @@ class TestResultContext:
 
     def test_bidomain_result_has_sigma(self):
         g = Grid(16, 12, 0.05)
-        r = bidomain(g, 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+        r = bidomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
         c = r.conductivity
         assert c is not None and c.is_bidomain
         assert c.sigma_i is not None and c.sigma_e is not None

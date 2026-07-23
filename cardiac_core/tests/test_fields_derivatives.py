@@ -160,11 +160,11 @@ class TestLaplacian:
         # The load-bearing gate: my staggered laplacian must equal the engine's OWN assembled
         # FDM 5-point diffusion operator (cardinal4, iso-uniform), NOT a hand-rolled stencil.
         # apply_diffusion(V) = (1/(chi*Cm)) div(D grad V) = div(D_eff grad V) = D_eff * lap(V).
-        from cardiac_core import monodomain, Grid, ConductivityConfig
+        from cardiac_core import monodomain, Grid, ConductivityConfig, Stim
         g = Grid(24, 18, 0.05)
         cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-        stim = {'region': (lambda x, y: x < 0.06), 'start_time': 1.0,
-                'duration': 2.0, 'amplitude': -52.0}
+        stim = Stim.from_region(g, (lambda x, y: x < 0.06), start_time=1.0,
+                                duration=2.0, amplitude=-52.0)
         sim = monodomain(g, 'ttp06', cond, stim)
         sp = sim._engine.spatial
         assert getattr(sp, '_is_iso_uniform', False)          # FDM-5pt path

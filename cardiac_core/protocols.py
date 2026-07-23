@@ -24,12 +24,13 @@ def _captures(geometry, ionic_model, conductivity, stim_region, *, bcl, n_s1, ci
 
     Capture ⇔ the downstream probe activates ONCE MORE than the S1 train alone would drive it."""
     from .api import monodomain
+    from .stimulus.stim import Stim
 
     t_s2 = t0 + (n_s1 - 1) * bcl + ci
-    stims = [{'region': stim_region, 'start_time': t0 + k * bcl,
-              'duration': duration, 'amplitude': amplitude} for k in range(n_s1)]
-    stims.append({'region': stim_region, 'start_time': t_s2,
-                  'duration': duration, 'amplitude': amplitude})
+    stims = [Stim.from_region(geometry, stim_region, start_time=t0 + k * bcl,
+                              duration=duration, amplitude=amplitude) for k in range(n_s1)]
+    stims.append(Stim.from_region(geometry, stim_region, start_time=t_s2,
+                                  duration=duration, amplitude=amplitude))
     sim = monodomain(geometry, ionic_model, conductivity, stims, dt=dt, device=device, **sim_kwargs)
     t_end = t_s2 + max(bcl, 400.0)
     r = sim.run(t_end, save_every=1.0)

@@ -3,17 +3,22 @@
 import pytest
 import torch
 
-from cardiac_core import monodomain, lbm, Grid, ConductivityConfig
+from cardiac_core import monodomain, lbm, Grid, ConductivityConfig, Stim
 from cardiac_core import analysis
 from cardiac_core.run import SimulationResult
 
 COND = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-STIM = {'region': (lambda x, y: x < 0.05), 'start_time': 1.0, 'duration': 2.0, 'amplitude': -52.0}
+
+
+def _stim(g):
+    return Stim.from_region(g, (lambda x, y: x < 0.05),
+                            start_time=1.0, duration=2.0, amplitude=-52.0)
 
 
 class TestRunContract:
     def test_eager_returns_result(self):
-        sim = monodomain(Grid(20, 20, 0.05), 'ttp06', COND, STIM)
+        g = Grid(20, 20, 0.05)
+        sim = monodomain(g, 'ttp06', COND, _stim(g))
         r = sim.run(t_end=10.0, save_every=1.0)
         assert isinstance(r, SimulationResult)
         assert r.Vm.ndim == 3
@@ -22,24 +27,27 @@ class TestRunContract:
         assert r.dx == 0.05 and r.dy == 0.05
 
     def test_batch_streams(self):
-        sim = monodomain(Grid(20, 20, 0.05), 'ttp06', COND, STIM)
+        g = Grid(20, 20, 0.05)
+        sim = monodomain(g, 'ttp06', COND, _stim(g))
         chunks = list(sim.run(t_end=10.0, save_every=1.0, batch=3))
         assert len(chunks) > 1
         assert all(isinstance(c, SimulationResult) for c in chunks)
         assert all(c.Vm.shape[0] <= 3 for c in chunks)
         # Concatenated chunks equal the eager result.
-        eager = monodomain(Grid(20, 20, 0.05), 'ttp06', COND, STIM).run(t_end=10.0, save_every=1.0)
+        eager = monodomain(g, 'ttp06', COND, _stim(g)).run(t_end=10.0, save_every=1.0)
         cat = torch.cat([c.Vm for c in chunks], dim=0)
         assert cat.shape == eager.Vm.shape
         torch.testing.assert_close(cat, eager.Vm)
 
     def test_default_record_no_ionic(self):
-        sim = monodomain(Grid(15, 15, 0.05), 'ttp06', COND, STIM)
+        g = Grid(15, 15, 0.05)
+        sim = monodomain(g, 'ttp06', COND, _stim(g))
         r = sim.run(t_end=3.0, save_every=1.0)
         assert r.ionic_states is None
 
     def test_record_ionic_states_monodomain(self):
-        sim = monodomain(Grid(15, 15, 0.05), 'ttp06', COND, STIM)
+        g = Grid(15, 15, 0.05)
+        sim = monodomain(g, 'ttp06', COND, _stim(g))
         r = sim.run(t_end=5.0, save_every=1.0, record=("Vm", "ionic_states"))
         assert r.ionic_states is not None
         T = r.times.shape[0]
@@ -50,13 +58,15 @@ class TestRunContract:
         assert r.ionic_states.shape[1] >= 14  # TTP06 has ~18 states
 
     def test_record_ionic_states_lbm_not_implemented(self):
-        sim = lbm(Grid(20, 20, 0.025), 'ttp06', COND, STIM, dt=0.005)
+        g = Grid(20, 20, 0.025)
+        sim = lbm(g, 'ttp06', COND, _stim(g), dt=0.005)
         with pytest.raises(NotImplementedError):
             sim.run(t_end=1.0, save_every=0.5, record=("Vm", "ionic_states"))
 
     def test_snapshots_still_generates(self):
         # The back-compat generator alias still yields SimulationSnapshot frames.
-        sim = monodomain(Grid(15, 15, 0.05), 'ttp06', COND, STIM)
+        g = Grid(15, 15, 0.05)
+        sim = monodomain(g, 'ttp06', COND, _stim(g))
         snaps = list(sim.snapshots(3.0, save_every=1.0))
         assert len(snaps) >= 2
         assert snaps[0].Vm.shape == (15, 15)
@@ -65,7 +75,8 @@ class TestRunContract:
 @pytest.fixture(scope="module")
 def propagating_result():
     """One propagating monodomain run (front ~50 cm/s) reused by the hook tests."""
-    sim = monodomain(Grid(150, 20, 0.01), 'ttp06', COND, STIM)
+    g = Grid(150, 20, 0.01)
+    sim = monodomain(g, 'ttp06', COND, _stim(g))
     return sim.run(t_end=30.0, save_every=0.5)
 
 

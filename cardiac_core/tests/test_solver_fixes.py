@@ -56,7 +56,7 @@ def test_nonconvergence_warns_at_most_once_per_run():
     import cardiac_core as cc
     g = cc.Grid(41, 41, 0.02)
     cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    stim = cc.Stim.from_region(g, (lambda x, y: x < 0.06), start_time=1.0, duration=2.0, amplitude=-52.0)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         cc.bidomain(g, "ttp06", cond, stim, dt=0.05).run(t_end=2.0, save_every=0.5)  # ~40 steps
@@ -75,7 +75,7 @@ def test_nonconvergence_warning_rearms_each_run():
     import cardiac_core as cc
     g = cc.Grid(41, 41, 0.02)
     cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    stim = cc.Stim.from_region(g, (lambda x, y: x < 0.06), start_time=1.0, duration=2.0, amplitude=-52.0)
     sim = cc.bidomain(g, "ttp06", cond, stim, dt=0.05)
     counts = []
     for _ in range(3):
@@ -126,7 +126,7 @@ def test_chebyshev_jacobi_accurate_high_diffusion_number():
     import cardiac_core as cc
     g = cc.Grid(41, 41, 0.01)
     cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1.0)   # chi=1 -> large diffusion number
-    stim = {"region": lambda x, y: x < 0.02, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+    stim = cc.Stim.from_region(g, (lambda x, y: x < 0.02), start_time=1.0, duration=2.0, amplitude=-52.0)
     sim = cc.monodomain(g, "ttp06", cond, stim, dt=1.0, diffusion_solver="bdf1")
     A = sim._engine.splitting.diffusion_solver.ops.A_lhs
     n = A.shape[0]
@@ -178,7 +178,7 @@ def test_imex_sbdf2_runs_and_is_stable():
     import cardiac_core as cc
     g = cc.Grid(25, 25, 0.04)
     condcfg = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    stim = {"region": lambda x, y: x < 0.04, "start_time": 1e9, "duration": 1.0, "amplitude": 0.0}
+    stim = cc.Stim.from_region(g, (lambda x, y: x < 0.04), start_time=1e9, duration=1.0, amplitude=0.0)
 
     def run(which):
         sim = cc.bidomain(g, "ttp06", condcfg, stim, dt=0.02)

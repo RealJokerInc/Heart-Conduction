@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from cardiac_core import monodomain, Grid, ConductivityConfig
+from cardiac_core import monodomain, Grid, ConductivityConfig, Stim
 from cardiac_core import analysis
 from cardiac_core.fields import VectorField
 from cardiac_core.fields.derivatives import winding_loop_sum
@@ -113,8 +113,8 @@ class TestLatGeometry:
 class TestLatFieldsOnSim:
     def test_speed_matches_cv_hook(self):
         g = Grid(80, 12, 0.02)
-        stim = {'region': (lambda x, y: x < 0.04), 'start_time': 1.0,
-                'duration': 2.0, 'amplitude': -52.0}
+        stim = Stim.from_region(g, (lambda x, y: x < 0.04), start_time=1.0,
+                                duration=2.0, amplitude=-52.0)
         r = monodomain(g, 'ttp06', _cond(), stim).run(26.0, save_every=0.5)
         sp = r.fields.speed
         assert sp.shape == (80, 12)
@@ -129,8 +129,8 @@ class TestLatFieldsOnSim:
 
     def test_lat_fields_shapes_and_direction(self):
         g = Grid(60, 12, 0.02)
-        stim = {'region': (lambda x, y: x < 0.04), 'start_time': 1.0,
-                'duration': 2.0, 'amplitude': -52.0}
+        stim = Stim.from_region(g, (lambda x, y: x < 0.04), start_time=1.0,
+                                duration=2.0, amplitude=-52.0)
         r = monodomain(g, 'ttp06', _cond(), stim).run(16.0, save_every=0.5)
         assert r.fields.curvature.shape == (60, 12)
         assert r.fields.vorticity.shape == (60, 12)

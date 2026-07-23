@@ -588,13 +588,14 @@ class CardiacSimulation:
                 self.clamp_voltage(region.mask, region.clamp,
                                    start_time=region.start_time, duration=region.duration)
                 return
-            entry = region.to_dict()
+            stim = region
         else:
-            entry = _normalize_stimulus(
-                {'region': region, 'start_time': start_time, 'duration': duration,
-                 'amplitude': amplitude},
-                self._grid_coords(),
-            )[0]
+            # Build a current Stim internally (NOT a raw dict) so the dict-path deprecation
+            # warning never fires on this kept API. Resolve a callable region against the grid.
+            x, y = self._grid_coords()
+            mask = region(x, y) if callable(region) else region
+            stim = Stim(mask, amplitude=amplitude, start_time=start_time, duration=duration)
+        entry = stim.to_dict()
         entry['mask'] = entry['mask'] & self._data.mask
         if not entry['mask'].any():
             warnings.warn(
@@ -1289,6 +1290,15 @@ def _normalize_stimulus(stimulus, coords) -> list:
                     "_normalize_stimulus with a clamp Stim is an internal routing error.")
             out.append(s.to_dict())
             continue
+        # Soft-deprecation: a raw stimulus dict is the legacy form. It still works (coexistence),
+        # but steer users to cardiac_core.Stim. Internal callers (stimulate/protocols) build Stims,
+        # so this fires only where a USER passes a dict to a public factory.
+        # stacklevel=4 targets the user's factory call (user → factory → _build_mesh_data →
+        # _normalize_stimulus → warn); _build_mesh_data is the only production caller.
+        warnings.warn(
+            "stimulus dicts are deprecated; use cardiac_core.Stim (e.g. Stim.boundary(grid, 'left') "
+            "or Stim.from_region(grid, region, amplitude=...)) — dicts still work for now.",
+            DeprecationWarning, stacklevel=4)
         region = s.get('region', s.get('mask'))
         if region is None:
             raise ValueError("each stimulus needs a 'region' (callable or (Nx,Ny) mask)")

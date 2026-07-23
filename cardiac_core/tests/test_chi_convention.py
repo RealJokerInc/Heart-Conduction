@@ -11,12 +11,12 @@ import warnings
 import numpy as np
 import pytest
 
-from cardiac_core import Grid, ConductivityConfig, monodomain, lbm, create_cardiac_mesh
+from cardiac_core import Grid, ConductivityConfig, monodomain, lbm, create_cardiac_mesh, Stim
 
 
-def _stim():
-    return {'region': lambda x, y: x < 0.06, 'start_time': 1.0,
-            'duration': 2.0, 'amplitude': -80.0}
+def _stim(g):
+    return Stim.from_region(g, (lambda x, y: x < 0.06),
+                            start_time=1.0, duration=2.0, amplitude=-80.0)
 
 
 def test_lbm_factory_divides_raw_D():
@@ -29,7 +29,7 @@ def test_declarative_lbm_no_double_divide():
     """Declarative path must land on cond.D_eff, not D_eff/(χ·Cm)."""
     g = Grid(40, 20, 0.05)
     cond = ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
-    sim = lbm(g, 'ttp06', cond, _stim())
+    sim = lbm(g, 'ttp06', cond, _stim(g))
     assert np.isclose(sim._engine.D, float(cond.D_eff), rtol=1e-9)
 
 

@@ -54,18 +54,27 @@ per-node fiber fields are not exposed by the factories.
 > → `sigma_eff≈1.36` → `D_eff≈0.000972 cm²/ms` → CV ≈ 55–60 cm/s (solver/dx-dependent; the strip
 > example below gives 59.3 at dx=0.01/CN-PCG). Lower σ = weaker coupling (fibrosis-like).
 
-## 3. Stimulus — a plain dict (or a list of them)
+## 3. Stimulus — a `Stim` object (canonical), or a list of them
 
 ```python
-stim = {
-    "region":   lambda x, y: x < 0.05,   # callable (x,y)->bool mask, OR an (Nx,Ny) bool array
-    "start_time": 1.0,                    # ms
-    "duration":   2.0,                    # ms
-    "amplitude": -80.0,                   # µA/µF (negative = depolarizing)
-}
+stim = cc.Stim.boundary(g, "left")                     # a border strip (left/right/top/bottom)
+stim = cc.Stim.point(g, (0.5, 0.3))                    # a blob at an (x, y) cm point
+stim = cc.Stim.center(g)                               # a blob at the domain centre
+stim = cc.Stim.from_region(g, lambda x, y: x < 0.05)   # any callable (x,y)->bool mask / (Nx,Ny) array
+stim = cc.Stim(mask)                                   # an explicit (Nx, Ny) bool mask
 ```
-`x`/`y` in the callable are the grid coordinate tensors (cm). For repeated pacing, add `"bcl"` (ms) and
-`"num_pulses"`.
+Every factory takes the usual keywords: `amplitude=-52.0` µA/µF (negative = depolarizing), `start_time`,
+`duration` (ms), and `bcl`/`num_pulses` for a pacing train. Pass a **list** of `Stim`s for multi-site /
+moving stimuli (overlaps sum on FDM/FEM; LBM overwrites). Two **modes**, inferred from the keyword:
+
+```python
+cc.Stim.boundary(g, "left", amplitude=-52, bcl=1000, num_pulses=5)   # CURRENT injection (Istim)
+cc.Stim.boundary(g, "left", clamp=-20, duration=50)                  # VOLTAGE clamp (hard override, all engines)
+```
+A `clamp=<mV>` Stim holds V (not Istim) on its nodes — routed to `clamp_voltage`, never serialized as a current.
+
+> **Legacy dict form** (still works, now `DeprecationWarning`): `{"region": lambda x,y: x<0.05, "start_time":1.0,
+> "duration":2.0, "amplitude":-80.0, "bcl":..., "num_pulses":...}`. Prefer `Stim`.
 
 ## 4. Construct — pick the engine by calling its factory
 
@@ -243,7 +252,7 @@ import cardiac_core as cc
 
 g    = cc.Grid(201, 51, 0.01)                                  # 2.0 × 0.5 cm strip (Nx=round(Lx/dx)+1)
 cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)  # healthy ventricle σ
-stim = {"region": lambda x, y: x < 0.05, "start_time": 1.0, "duration": 2.0, "amplitude": -80.0}
+stim = cc.Stim.from_region(g, lambda x, y: x < 0.05, start_time=1.0, duration=2.0, amplitude=-80.0)
 
 sim = cc.monodomain(g, "ttp06", cond, stim)
 r   = sim.run(t_end=40.0, save_every=0.5)
@@ -260,7 +269,7 @@ import os, tempfile
 
 g    = cc.Grid(30, 8, 0.03)
 cond = cc.ConductivityConfig.isotropic(1.4)
-stim = {"region": lambda x, y: x < 0.06, "start_time": 1.0, "duration": 2.0, "amplitude": -52.0}
+stim = cc.Stim.from_region(g, lambda x, y: x < 0.06, start_time=1.0, duration=2.0, amplitude=-52.0)
 
 sim = cc.monodomain(g, "ttp06", cond, stim, dt=0.05)          # default pcg
 r   = sim.run(t_end=10.0, save_every=1.0, record=("Vm", "ionic_states"))

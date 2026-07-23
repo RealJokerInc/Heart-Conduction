@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig
+from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, Stim
 from cardiac_core.single_cell import safety_factor
 
 
@@ -17,9 +17,9 @@ def _cond():
     return ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
 
 
-def _stim():
-    return {'region': (lambda x, y: x < 0.04), 'start_time': 1.0, 'duration': 2.0,
-            'amplitude': -52.0}
+def _stim(g):
+    return Stim.from_region(g, (lambda x, y: x < 0.04), start_time=1.0, duration=2.0,
+                            amplitude=-52.0)
 
 
 # A fixed Q_thr keeps the tests fast (the auto-calibration bisects many single_cell sims).
@@ -28,7 +28,7 @@ _QTHR = 40.0
 
 def test_sf_healthy_cable_positive():
     g = Grid(70, 6, 0.02)
-    r = monodomain(g, 'ttp06', _cond(), _stim()).run(22.0, save_every=0.5)
+    r = monodomain(g, 'ttp06', _cond(), _stim(g)).run(22.0, save_every=0.5)
     sf = safety_factor(r, q_thr=_QTHR)
     assert sf.shape == (70, 6)
     wake = sf[10:55, 3]
@@ -45,7 +45,7 @@ def test_sf_drops_at_source_sink_mismatch():
     mask[:40, 18:22] = True                       # left half: a thin 4-wide isthmus
     mask[40:, :] = True                           # right half: full-width chamber
     g = Grid(Nx, Ny, 0.02, mask=mask)
-    r = monodomain(g, 'ttp06', _cond(), _stim()).run(30.0, save_every=0.5)
+    r = monodomain(g, 'ttp06', _cond(), _stim(g)).run(30.0, save_every=0.5)
     sf = safety_factor(r, q_thr=_QTHR)
     isthmus = sf[20:35, 20]                        # well inside the uniform isthmus
     mouth = sf[41:45, 20]                          # just past the expansion
@@ -56,6 +56,7 @@ def test_sf_drops_at_source_sink_mismatch():
 
 
 def test_sf_bidomain_raises():
-    r = bidomain(Grid(16, 12, 0.05), 'ttp06', _cond(), _stim()).run(2.0, save_every=1.0)
+    g = Grid(16, 12, 0.05)
+    r = bidomain(g, 'ttp06', _cond(), _stim(g)).run(2.0, save_every=1.0)
     with pytest.raises(ValueError, match="monodomain"):
         safety_factor(r, q_thr=_QTHR)

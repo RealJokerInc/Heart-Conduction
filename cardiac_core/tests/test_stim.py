@@ -238,6 +238,38 @@ class TestClampHolds:
         assert np.allclose(_region_V(r, left), -20.0, atol=1e-2)
 
 
+class TestDeprecation:
+    """Step 2.2 — the dict path is soft-deprecated (warns) but still works; Stim never warns."""
+
+    def test_dict_warns(self):
+        g = Grid(20, 12, 0.05)
+        with pytest.warns(DeprecationWarning, match="Stim"):
+            monodomain(g, 'ttp06', _COND, {'region': lambda x, y: x < 0.1})
+        # a Stim (any mode) never warns; nor does stimulate() with a Stim OR a callable/mask
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("error", DeprecationWarning)
+            monodomain(g, 'ttp06', _COND, Stim.boundary(g, "left"))
+            sim = monodomain(g, 'ttp06', _COND, stimulus=None)
+            sim.stimulate(Stim.boundary(g, "left", start_time=0.0, duration=2.0))
+            sim.stimulate(lambda x, y: x < 0.1)          # builds a Stim internally → no warn
+
+    def test_dict_path_unchanged(self):
+        """Back-compat guard: the legacy dict still lowers to the same stimulus entry as a Stim."""
+        g = Grid(20, 12, 0.05)
+        with pytest.warns(DeprecationWarning):
+            s_dict = monodomain(g, 'ttp06', _COND,
+                                {'region': lambda x, y: x < 0.1, 'amplitude': -52.0,
+                                 'start_time': 1.0, 'duration': 2.0})
+        s_stim = monodomain(g, 'ttp06', _COND,
+                            Stim.from_region(g, lambda x, y: x < 0.1, amplitude=-52.0,
+                                             start_time=1.0, duration=2.0))
+        ed, es = s_dict._data.stimuli[0], s_stim._data.stimuli[0]
+        assert np.array_equal(ed['mask'], es['mask'])
+        for k in ('amplitude', 'start_time', 'duration'):
+            assert ed[k] == es[k], k
+
+
 class TestLBMClampPhysics:
     def test_lbm_clamp_matches_mono(self):
         """Arbiter: the additive LBM clamp holds V AND conducts inward, like the mono hard-write
