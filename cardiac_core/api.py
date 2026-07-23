@@ -220,10 +220,12 @@ class CardiacSimulation:
         self._Nx = data.mask.shape[0]
         self._Ny = data.mask.shape[1]
         self._probes: dict[str, dict] = {}   # name → {x, y, ix, iy, t[], V[]}
-        self._clamp_mask: Optional[torch.Tensor] = None   # flat (n_dof,) bool
+        self._clamp_mask: Optional[torch.Tensor] = None   # flat (n_dof,) bool (mono/bidomain)
         self._clamp_value = None                           # scalar | (Nx,Ny) field | callable(t)
         self._clamp_start: Optional[float] = None
         self._clamp_end: Optional[float] = None
+        # LBM native clamp record (mask_t, value, start, end) — re-pushed to a fresh engine on reset().
+        self._lbm_clamp = None
 
     # ========================================================================
     # Core simulation control
@@ -333,6 +335,9 @@ class CardiacSimulation:
         fresh = _factory_for(self._engine_type)(mesh=self._data, **self._build_kwargs)
         self._engine = fresh._engine
         self._grid = fresh._grid
+        # A native LBM clamp lives on the engine, which we just rebuilt — re-push it.
+        if self._engine_type == 'lbm' and self._lbm_clamp is not None:
+            self._engine.set_clamp(*self._lbm_clamp)
 
     def with_(self, **overrides) -> 'CardiacSimulation':
         """Functional CHANGE: return a NEW simulation with ``overrides`` applied; ``self`` untouched.
@@ -570,15 +575,26 @@ class CardiacSimulation:
                   amplitude: float = -52.0):
         """STIMULATE idiom: append a stimulus and rebuild (so it takes effect from t=0).
 
-        ``region`` is a callable ``(x, y) -> bool mask`` or an ``(Nx, Ny)`` mask. Stored on
-        ``self._data.stimuli`` (the path both declarative and legacy construction share), so this
-        works identically regardless of how the sim was built.
+        ``region`` is a callable ``(x, y) -> bool mask``, an ``(Nx, Ny)`` mask, or a
+        :class:`~cardiac_core.stimulus.stim.Stim`. A current ``Stim`` carries its own
+        ``start_time``/``duration``/``amplitude`` (the positional kwargs are ignored for it); a
+        clamp ``Stim`` is routed to :meth:`clamp_voltage`. Stored on ``self._data.stimuli`` (the path
+        both declarative and legacy construction share), so this works regardless of how the sim was
+        built.
         """
-        entry = _normalize_stimulus(
-            {'region': region, 'start_time': start_time, 'duration': duration,
-             'amplitude': amplitude},
-            self._grid_coords(),
-        )[0]
+        from .stimulus.stim import Stim  # local import — avoids an api<->stim module cycle at load
+        if isinstance(region, Stim):
+            if region.mode == "clamp":
+                self.clamp_voltage(region.mask, region.clamp,
+                                   start_time=region.start_time, duration=region.duration)
+                return
+            entry = region.to_dict()
+        else:
+            entry = _normalize_stimulus(
+                {'region': region, 'start_time': start_time, 'duration': duration,
+                 'amplitude': amplitude},
+                self._grid_coords(),
+            )[0]
         entry['mask'] = entry['mask'] & self._data.mask
         if not entry['mask'].any():
             warnings.warn(
@@ -679,10 +695,22 @@ class CardiacSimulation:
 
         Notes
         -----
-        Activating a clamp switches ``run()`` to wrapper-driven stepping so the clamp can be
-        enforced every step; the unclamped path stays on the fast engine loop. LBM is
-        unsupported (V is a lattice-population moment, not a stored field).
+        Activating a clamp switches ``run()`` to wrapper-driven stepping (monodomain/bidomain) so
+        the clamp can be enforced every step; the unclamped path stays on the fast engine loop.
+        For LBM the clamp is native (V is a lattice-population moment, ``Σf``): the wrapper pushes an
+        additive, flux-preserving clamp into the engine (:meth:`LBMSimulation.set_clamp`), enforced
+        inside the fast engine loop — no wrapper-driven stepping.
         """
+        if self._engine_type == 'lbm':
+            # Native LBM clamp: cast the mask to a torch bool tensor on the ENGINE's device
+            # (numpy-indexing a CUDA tensor would crash), store it so reset() can re-push it,
+            # then hand it to the engine.
+            m = self._as_grid_mask(mask)   # (Nx, Ny) bool ndarray
+            mask_t = torch.as_tensor(m, dtype=torch.bool, device=self._engine.device)
+            end = None if duration is None else ((start_time or 0.0) + duration)
+            self._lbm_clamp = (mask_t, voltage, start_time, end)
+            self._engine.set_clamp(*self._lbm_clamp)
+            return
         self._require_stateful("voltage clamp")
         m = self._as_grid_mask(mask)   # (Nx, Ny) bool ndarray
         mask_t = torch.as_tensor(m, dtype=torch.bool, device=self._voltage_ref().device)
@@ -697,6 +725,10 @@ class CardiacSimulation:
         self._clamp_value = None
         self._clamp_start = None
         self._clamp_end = None
+        if self._lbm_clamp is not None:
+            self._lbm_clamp = None
+            if self._engine_type == 'lbm':
+                self._engine.release_clamp()
 
     def _clamp_active_at(self, t: float) -> bool:
         if self._clamp_mask is None:
@@ -1235,16 +1267,28 @@ def _lbm_bounce_masks(data, lattice_name, anisotropic, device):
 def _normalize_stimulus(stimulus, coords) -> list:
     """Convert a declarative ``stimulus`` arg into CardiacMeshData ``stimuli`` dicts.
 
-    Accepts ``None``, a single dict, or a list of dicts. Each dict carries a ``region``
-    (a callable ``(x, y) -> bool mask`` evaluated on the grid coordinates, OR an ``(Nx, Ny)``
-    array/mask) plus optional ``start_time``/``duration``/``amplitude``/``label``/``bcl``/``num_pulses``.
+    Accepts ``None``, a single ``dict``/:class:`~cardiac_core.stimulus.stim.Stim`, or a list of
+    either. A dict carries a ``region`` (a callable ``(x, y) -> bool mask`` evaluated on the grid
+    coordinates, OR an ``(Nx, Ny)`` array/mask) plus optional ``start_time``/``duration``/
+    ``amplitude``/``label``/``bcl``/``num_pulses``. A CURRENT-mode ``Stim`` lowers via ``to_dict()``;
+    a CLAMP-mode ``Stim`` is NOT a current stimulus — it raises here (it must be routed to
+    ``clamp_voltage`` by the factory-level ``_partition_stimulus``, never reach ``data.stimuli``).
     """
+    from .stimulus.stim import Stim  # local import — avoids an api<->stim module cycle at load
     if stimulus is None:
         return []
-    if isinstance(stimulus, dict):
+    if isinstance(stimulus, (dict, Stim)):
         stimulus = [stimulus]
     out = []
     for s in stimulus:
+        if isinstance(s, Stim):
+            if s.mode == "clamp":
+                raise ValueError(
+                    "a clamp-mode Stim cannot be lowered as a current stimulus — it must be applied "
+                    "via clamp_voltage (the factory routes clamp Stims there). Reaching "
+                    "_normalize_stimulus with a clamp Stim is an internal routing error.")
+            out.append(s.to_dict())
+            continue
         region = s.get('region', s.get('mask'))
         if region is None:
             raise ValueError("each stimulus needs a 'region' (callable or (Nx,Ny) mask)")
@@ -1266,6 +1310,34 @@ def _normalize_stimulus(stimulus, coords) -> list:
             'num_pulses': s.get('num_pulses', 1),
         })
     return out
+
+
+def _partition_stimulus(stimulus):
+    """Split a factory ``stimulus`` arg into ``(current, clamp_stims)``.
+
+    A clamp-mode :class:`~cardiac_core.stimulus.stim.Stim` is NOT a current stimulus — it must be
+    applied post-build via :meth:`CardiacSimulation.clamp_voltage`, never serialized into
+    ``data.stimuli`` (it is a hard voltage override, not an Istim). This routes clamp Stims out so
+    the CURRENT half flows through ``_build_mesh_data``/``_normalize_stimulus`` unchanged (dicts and
+    current Stims coexist byte-identically), and returns the clamp Stims for the factory to apply.
+
+    ``current`` is the (possibly empty→``None``) remainder passed to ``_build_mesh_data``; anything
+    that is not a clamp Stim (dicts, current Stims) stays in it.
+    """
+    from .stimulus.stim import Stim  # local import — avoids an api<->stim module cycle at load
+    if stimulus is None:
+        return None, []
+    items = list(stimulus) if isinstance(stimulus, (list, tuple)) else [stimulus]
+    clamp = [s for s in items if isinstance(s, Stim) and s.mode == "clamp"]
+    current = [s for s in items if not (isinstance(s, Stim) and s.mode == "clamp")]
+    return (current or None), clamp
+
+
+def _apply_clamp_stims(sim: 'CardiacSimulation', clamp_stims) -> 'CardiacSimulation':
+    """Apply any clamp-mode Stims to a freshly-built sim via ``clamp_voltage`` (engine-agnostic)."""
+    for cs in clamp_stims:
+        sim.clamp_voltage(cs.mask, cs.clamp, start_time=cs.start_time, duration=cs.duration)
+    return sim
 
 
 def _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, engine: str) -> CardiacMeshData:
@@ -1524,8 +1596,11 @@ def monodomain(
             raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
+        _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
         data = _resolve_mesh(mesh)
     else:
+        # Route clamp-mode Stims out of the current stimulus (applied post-build via clamp_voltage).
+        stimulus, _clamp_stims = _partition_stimulus(stimulus)
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'monodomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
@@ -1597,8 +1672,10 @@ def monodomain(
     build_kwargs = dict(dt=timestep, splitting=splitting, diffusion_solver=diffusion_solver,
                         linear_solver=linear_solver, stencil=stencil, boundary_mode=boundary_mode,
                         device=device, ionic_model=ionic)
-    return CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs,
-                             boundary_mode=boundary_mode)
+    return _apply_clamp_stims(
+        CardiacSimulation(sim, 'monodomain', grid, data, build_kwargs,
+                          boundary_mode=boundary_mode),
+        _clamp_stims)
 
 
 def bidomain(
@@ -1653,8 +1730,11 @@ def bidomain(
             raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
+        _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
         data = _resolve_mesh(mesh)
     else:
+        # Route clamp-mode Stims out of the current stimulus (applied post-build via clamp_voltage).
+        stimulus, _clamp_stims = _partition_stimulus(stimulus)
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'bidomain')
     ionic = ionic_model or data.ionic_model
     timestep = dt or data.dt
@@ -1778,7 +1858,8 @@ def bidomain(
     build_kwargs = dict(dt=timestep, sigma_ratio=sigma_ratio, boundary=boundary,
                         elliptic_solver=elliptic_solver, theta=theta, splitting=splitting,
                         stencil=stencil, device=device, ionic_model=ionic)
-    return CardiacSimulation(sim, 'bidomain', grid, data, build_kwargs)
+    return _apply_clamp_stims(
+        CardiacSimulation(sim, 'bidomain', grid, data, build_kwargs), _clamp_stims)
 
 
 def lbm(
@@ -1837,8 +1918,11 @@ def lbm(
             raise TypeError("pass a mesh positionally OR as mesh=, not both (Audit #17)")
         mesh, geometry = geometry, None
     if mesh is not None:
+        _clamp_stims = []          # mesh= path drops stimulus= (both current AND clamp) — pre-existing
         data = _resolve_mesh(mesh)
     else:
+        # Route clamp-mode Stims out of the current stimulus (applied post-build via clamp_voltage).
+        stimulus, _clamp_stims = _partition_stimulus(stimulus)
         data = _build_mesh_data(geometry, ionic_model, conductivity, stimulus, dt, 'lbm')
     ionic_name = ionic_model or data.ionic_model
     timestep = dt or data.dt
@@ -1934,4 +2018,5 @@ def lbm(
     build_kwargs = dict(dt=timestep, lattice=lattice, weights_mode=weights_mode,
                         device=device, ionic_model=ionic_name,
                         boundary=boundary, alpha=alpha)
-    return CardiacSimulation(sim, 'lbm', None, data, build_kwargs)
+    return _apply_clamp_stims(
+        CardiacSimulation(sim, 'lbm', None, data, build_kwargs), _clamp_stims)

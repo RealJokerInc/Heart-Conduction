@@ -5,10 +5,25 @@ import pytest
 
 from cardiac_core.geometry import (
     circle_mask, rectangle_mask, annulus_mask,
-    left_edge_mask, right_edge_mask,
+    left_edge_mask, right_edge_mask, top_edge_mask, bottom_edge_mask,
     point_distance, boundary_distance,
     fiber_field_uniform, fiber_field_transmural,
 )
+
+
+class TestEdgeMasks:
+    def test_top_bottom_edge_masks(self):
+        # dx=0.1, Ly=(10-1)*0.1=0.9; width=0.15 → the two lowest/highest y columns, for ALL x.
+        top = top_edge_mask(10, 10, 0.1, 0.15)
+        bot = bottom_edge_mask(10, 10, 0.1, 0.15)
+        assert top.shape == (10, 10) and top.dtype == bool
+        assert bot.shape == (10, 10) and bot.dtype == bool
+        assert top[:, 8].all() and top[:, 9].all() and not top[:, 7].any()   # y=0.8,0.9 selected
+        assert bot[:, 0].all() and bot[:, 1].all() and not bot[:, 2].any()   # y=0.0,0.1 selected
+        assert not (top & bot).any()                                         # disjoint
+        # dy override on a non-square spacing
+        t2 = top_edge_mask(6, 4, 0.1, 0.25, dy=0.2)   # Ly=(4-1)*0.2=0.6; y>0.35 → y=0.4,0.6
+        assert t2[:, 2].all() and t2[:, 3].all() and not t2[:, 1].any()
 
 
 class TestCircleMask:

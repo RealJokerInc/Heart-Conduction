@@ -43,9 +43,12 @@ _LAZY = {
     'erp': 'protocols', 'erp_proxy': 'protocols', 'post_repol_refractoriness': 'protocols',
     # single-cell (0-D) + safety factor
     'single_cell': 'single_cell', 'safety_factor': 'single_cell', 'threshold_charge': 'single_cell',
+    # stimulus object
+    'Stim': 'stimulus.stim',
     # geometry
     'circle_mask': 'geometry', 'rectangle_mask': 'geometry', 'annulus_mask': 'geometry',
-    'left_edge_mask': 'geometry', 'right_edge_mask': 'geometry', 'point_distance': 'geometry',
+    'left_edge_mask': 'geometry', 'right_edge_mask': 'geometry',
+    'top_edge_mask': 'geometry', 'bottom_edge_mask': 'geometry', 'point_distance': 'geometry',
     'boundary_distance': 'geometry', 'fiber_field_uniform': 'geometry',
     'fiber_field_transmural': 'geometry',
     # io

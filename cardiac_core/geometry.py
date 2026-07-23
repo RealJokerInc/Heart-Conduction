@@ -123,6 +123,25 @@ def right_edge_mask(Nx: int, Ny: int, dx: float, width: float) -> np.ndarray:
     return mask
 
 
+def bottom_edge_mask(Nx: int, Ny: int, dx: float, width: float, dy: float = None) -> np.ndarray:
+    """Mask for the bottom edge of the domain (low y: ``y < width``). ``dy`` defaults to ``dx``."""
+    dy = dx if dy is None else dy
+    y = np.arange(Ny) * dy
+    mask = np.zeros((Nx, Ny), dtype=bool)
+    mask[:, y < width] = True
+    return mask
+
+
+def top_edge_mask(Nx: int, Ny: int, dx: float, width: float, dy: float = None) -> np.ndarray:
+    """Mask for the top edge of the domain (high y: ``y > Ly - width``). ``dy`` defaults to ``dx``."""
+    dy = dx if dy is None else dy
+    y = np.arange(Ny) * dy
+    Ly = y[-1]
+    mask = np.zeros((Nx, Ny), dtype=bool)
+    mask[:, y > Ly - width] = True
+    return mask
+
+
 def point_distance(
     Nx: int, Ny: int, dx: float,
     center: tuple[float, float],

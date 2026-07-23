@@ -138,10 +138,14 @@ def test_clamp_result_matches_unclamped_when_released():
 
 # --- LBM guards -------------------------------------------------------------
 
-def test_lbm_clamp_and_injection_raise():
+def test_lbm_clamp_supported_but_injection_raises():
+    # Stim-object Phase 1.4: LBM gained a NATIVE additive voltage clamp (Σf→value, flux-preserving),
+    # so clamp_voltage NO LONGER raises for LBM (see test_stim.py::TestClampHolds for the held-value
+    # checks). Other stateful mid-run ops still raise — V is a lattice-population moment (Σf), not a
+    # stored per-node field, so set_voltage/set_state can't write it back.
     sim = _sim(engine=lbm)
-    with pytest.raises(NotImplementedError):
-        sim.clamp_voltage(np.ones((60, 20), bool), 10.0)
+    sim.clamp_voltage(np.ones((60, 20), bool), 10.0)      # native LBM clamp — no longer raises
+    assert sim._lbm_clamp is not None                      # registered on the wrapper (re-pushed on reset)
     with pytest.raises(NotImplementedError):
         sim.set_voltage(torch.zeros((60, 20), dtype=torch.float64))
 

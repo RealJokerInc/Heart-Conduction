@@ -175,6 +175,8 @@ class LBMSimulation:
 
         # Stimuli
         self.stimuli: List[Stimulus] = []
+        # Native voltage clamp: (mask, value, start, end) or None. See set_clamp().
+        self._clamp = None
 
     def _make_rect_masks(self) -> dict:
         """Create bounce masks for rectangular full-grid domain."""
@@ -194,6 +196,56 @@ class LBMSimulation:
                      amplitude: float = -80.0):
         """Add a stimulus protocol."""
         self.stimuli.append(Stimulus(mask, start, duration, amplitude))
+
+    def set_clamp(self, mask: Tensor, value, start, end):
+        """Register a native voltage clamp: hold V=``value`` on ``mask`` over ``[start, end)`` ms.
+
+        Additive, non-equilibrium-preserving. Each step (after the physics update) it drives the
+        macroscopic voltage ``Σf`` toward ``value`` WITHOUT discarding the non-equilibrium
+        (flux-carrying) part of ``f``::
+
+            f[:, mask] += w · (value − Σf[:, mask])
+
+        so the clamped node still conducts current into its neighbours — matching the hard-write
+        ``v[mask] = value`` clamp used by the monodomain/bidomain engines (the empirical arbiter),
+        rather than a pure equilibrium reset ``f = w·value`` which would zero the flux (O(h) slip).
+
+        Parameters
+        ----------
+        mask : (Nx, Ny) bool Tensor
+            Nodes to clamp. MUST already be a torch bool tensor on ``self.device`` (the wrapper
+            casts it there) — numpy-indexing a CUDA tensor would crash.
+        value : float | (Nx, Ny) field | callable(t) -> float|field
+            Clamp level (mV). A callable gives a time-varying step protocol.
+        start, end : float | None
+            Active window ``[start, end)`` ms. ``start=None`` ⇒ from t=0; ``end=None`` ⇒ until released.
+        """
+        self._clamp = (mask, value, start, end)
+
+    def release_clamp(self):
+        """Remove any native voltage clamp."""
+        self._clamp = None
+
+    def _apply_clamp(self):
+        """Re-impose the native clamp on the distributions (called after every step)."""
+        if self._clamp is None:
+            return
+        mask, value, start, end = self._clamp
+        t = self.t
+        if start is not None and t < start - 1e-9:
+            return
+        if end is not None and t >= end - 1e-9:
+            return
+        val = value(t) if callable(value) else value
+        if not isinstance(val, (int, float)):
+            val = torch.as_tensor(val, device=self.device, dtype=self.dtype)
+            if val.shape == (self.Nx, self.Ny):
+                val = val[mask]
+            else:
+                val = val.reshape(-1)      # already (n_masked,)
+        current = self.f[:, mask].sum(dim=0)                 # (n_masked,) = Σf at clamped nodes
+        self.f[:, mask] += self.w[:, None] * (val - current)  # additive, flux-preserving
+        self.V = recover_voltage(self.f)
 
     def _get_I_stim(self) -> Tensor:
         """Compute current stimulus at time self.t."""
@@ -254,6 +306,9 @@ class LBMSimulation:
 
         # 8. Advance time
         self.t += self.dt
+
+        # 9. Re-impose any native voltage clamp on the freshly-updated distributions
+        self._apply_clamp()
 
     def run(self, t_end: float, save_every: float = 1.0):
         """Run simulation to t_end, saving V snapshots.

@@ -6,8 +6,10 @@ accumulate is canonical — V5.5's protocol overwrote (`=`), which differs only 
 
 from .protocol import Stimulus, StimulusProtocol
 from .regions import rectangular_region, circular_region, left_edge_region, point_stimulus
+from .stim import Stim
 
 __all__ = [
+    'Stim',
     'Stimulus',
     'StimulusProtocol',
     'rectangular_region',
