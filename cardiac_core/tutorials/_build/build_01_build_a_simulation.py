@@ -38,10 +38,38 @@ identical experiment on all three simulation engines.
 5. **Measuring** — getting a number out
 6. **The three engines** — monodomain, bidomain and LBM on the same tissue
 
-**What you need**: a Python environment with `cardiac_core` installed. Nothing else — every number and picture below
-is produced by code you run here.
+**What you need**: nothing. Run the next cell and it will install what it needs. This notebook works
+in Google Colab as well as on your own machine — every number and picture below is produced by code
+you run here.
 
-**Runtime**: about a minute and a half. The three engine runs are the slow part.
+**Runtime**: a couple of minutes, most of it the three engine runs at the end. On Colab, add about a
+minute for the install.
+"""),
+
+(M, """---
+## 0. Setup
+
+The cell below installs `cardiac_core` if it isn't already available. On Google Colab that takes
+roughly a minute; if you already have it installed, the cell does nothing and you can move straight
+on. You only ever need to run it once per session.
+"""),
+
+(C, """# Installs cardiac_core if this environment doesn't already have it (e.g. a fresh Colab runtime).
+# If it is already installed, this does nothing.
+import importlib.util
+import subprocess
+import sys
+
+if importlib.util.find_spec("cardiac_core") is None:
+    print("Installing cardiac_core — this takes about a minute, please wait...")
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q",
+         "git+https://github.com/RealJokerInc/cardiac-core.git"],
+        check=True,
+    )
+    print("Installed.")
+else:
+    print("cardiac_core is already available.")
 """),
 
 (C, """import cardiac_core as cc
