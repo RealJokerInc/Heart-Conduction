@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 
 from ..video.clip import Video, _to_numpy
 from ..video.gradient import Gradient
 
-__all__ = ["Image"]
+__all__ = ["Image", "Trace"]
 
 _LEGAL_STYLE = ("bare", "annotated")
 _LEGAL_ASPECT = ("equal", "auto")
@@ -324,3 +324,195 @@ class Image:
                                     ("filled", bool(self.filled))) if on]
         return (f"Image(what={self._selector_name()!r}, grid=({Nx}, {Ny}), "
                 f"label={self.value_label!r}, style={self.style!r}, overlays={overlays})")
+
+
+# --------------------------------------------------------------------------- Trace
+
+_TRACE_WHATS = ("trace", "restitution", "apd_per_beat")
+# Marker/linestyle per intent: a restitution curve is conventionally a scatter, an AP is a line.
+_TRACE_STYLE = {
+    "trace": (None, "-"),
+    "restitution": ("o", "none"),
+    "apd_per_beat": ("o", "none"),
+}
+
+
+@dataclass(eq=False)
+class Trace:
+    """A renderable description of one series panel.
+
+    The line plot is the corpus's dominant figure kind and the one cardiac_core has never had a
+    route to: an action potential at a named node, a restitution curve, an alternans staircase.
+
+    ``at`` is a NODE — ``(ix, iy)``, a list of them, or a ``{label: node}`` dict whose keys become
+    the legend. (On :class:`Image` the same keyword means a TIME in ms.)
+    """
+
+    data: Any
+    what: str = "trace"
+    at: Any = None
+    series: Optional[Sequence] = None
+    label: Optional[str] = None
+    xlabel: Optional[str] = None
+    ylabel: Optional[str] = None
+    hline: Any = None
+    vline: Any = None
+    legend: Optional[bool] = None
+    marker: Optional[str] = None
+    linestyle: Optional[str] = None
+    xlim: Optional[tuple] = None
+    ylim: Optional[tuple] = None
+    logx: bool = False
+    logy: bool = False
+    colors: Optional[Sequence[str]] = None
+    what_kwargs: Optional[dict] = None
+
+    def __post_init__(self):
+        if self.what not in _TRACE_WHATS:
+            raise ValueError(
+                f"unknown what={self.what!r}; valid: {list(_TRACE_WHATS)}. "
+                f"For a spatial map use Image(...) / r.image()."
+            )
+        self.series = self._resolve_series()
+        m_default, ls_default = _TRACE_STYLE[self.what]
+        if self.marker is None:
+            self.marker = m_default
+        if self.linestyle is None:
+            self.linestyle = ls_default
+        if self.legend is None:
+            self.legend = len(self.series) > 1
+        self.hlines = _as_reference_lines(self.hline)
+        self.vlines = _as_reference_lines(self.vline)
+
+    # ---- series construction ----
+    def _resolve_series(self):
+        """-> [(label, x, y), ...] as float64 numpy, plus the axis labels."""
+        import warnings
+
+        from .. import analysis
+
+        data, kw = self.data, (self.what_kwargs or {})
+
+        # An explicit override wins outright.
+        if self.series is not None:
+            if self.at is not None:
+                raise ValueError("pass series= or at=, not both")
+            self.xlabel = self.xlabel or None
+            self.ylabel = self.ylabel or None
+            return [(lab, np.asarray(_to_numpy(x), dtype=np.float64),
+                     np.asarray(_to_numpy(y), dtype=np.float64)) for lab, x, y in self.series]
+
+        # A raw (x, y) pair or {label: (x, y)} dict bypasses `what` entirely.
+        if isinstance(data, dict):
+            if self.at is not None:
+                raise ValueError("at= selects nodes on a result; a dict already names its series")
+            return [(str(lab), np.asarray(_to_numpy(xy[0]), dtype=np.float64),
+                     np.asarray(_to_numpy(xy[1]), dtype=np.float64))
+                    for lab, xy in data.items()]
+        if isinstance(data, (tuple, list)) and len(data) == 2:
+            if self.at is not None:
+                raise ValueError("at= selects nodes on a result, not on a raw (x, y) pair")
+            return [(None, np.asarray(_to_numpy(data[0]), dtype=np.float64),
+                     np.asarray(_to_numpy(data[1]), dtype=np.float64))]
+
+        # A 0-D single-cell result: one series, no grid.
+        if hasattr(data, "V") and not hasattr(data, "Vm"):
+            if self.at is not None:
+                raise ValueError(
+                    "a single-cell result has no grid, so at= (a node) does not apply.")
+            if self.what != "trace":
+                raise ValueError(
+                    f"what={self.what!r} needs a tissue run; a single-cell result gives what='trace'.")
+            name = getattr(getattr(data, "model", None), "name", None) or "single cell"
+            self.xlabel = self.xlabel or "time (ms)"
+            self.ylabel = self.ylabel or "Vm (mV)"
+            return [(str(name), np.asarray(_to_numpy(data.times), dtype=np.float64),
+                     np.asarray(_to_numpy(data.V), dtype=np.float64))]
+
+        if not (hasattr(data, "Vm") and hasattr(data, "times")):
+            raise TypeError(
+                "Trace takes a SimulationResult, a SingleCellResult, an (x, y) pair or a "
+                "{label: (x, y)} dict.")
+
+        nodes = self._resolve_nodes(data)
+        times = np.asarray(_to_numpy(data.times), dtype=np.float64)
+        out = []
+        if self.what == "trace":
+            self.xlabel = self.xlabel or "time (ms)"
+            self.ylabel = self.ylabel or "Vm (mV)"
+            for lab, (ix, iy) in nodes:
+                out.append((lab, times,
+                            np.asarray(_to_numpy(data.Vm[:, ix, iy]), dtype=np.float64)))
+            return out
+
+        if self.what == "restitution":
+            self.xlabel = self.xlabel or "DI (ms)"
+            self.ylabel = self.ylabel or "APD90 (ms)"
+            for lab, (ix, iy) in nodes:
+                DI, APD = analysis.restitution_curve(data.Vm, data.times, ix, iy, **kw)
+                x = np.asarray(_to_numpy(DI), dtype=np.float64)
+                y = np.asarray(_to_numpy(APD), dtype=np.float64)
+                if x.size == 0:
+                    warnings.warn(
+                        f"no restitution points at node {(ix, iy)}: a restitution curve needs a "
+                        f"multi-beat recording (this run has at most one detected beat).",
+                        UserWarning, stacklevel=4)
+                out.append((lab, x, y))
+            return out
+
+        # apd_per_beat
+        self.xlabel = self.xlabel or "beat"
+        self.ylabel = self.ylabel or "APD90 (ms)"
+        for lab, (ix, iy) in nodes:
+            APD = np.asarray(_to_numpy(analysis.apd_per_beat(data.Vm, data.times, ix, iy, **kw)),
+                             dtype=np.float64)
+            if APD.size == 0:
+                warnings.warn(
+                    f"no beats detected at node {(ix, iy)}", UserWarning, stacklevel=4)
+            out.append((lab, np.arange(1, APD.size + 1, dtype=np.float64), APD))
+        return out
+
+    def _resolve_nodes(self, data):
+        """-> [(label, (ix, iy)), ...]. Bounds-checked, with the message pinned."""
+        Nx, Ny = int(data.Vm.shape[1]), int(data.Vm.shape[2])
+        at = self.at
+        if at is None:
+            items = [(None, (Nx // 2, Ny // 2))]
+        elif isinstance(at, dict):
+            items = [(str(k), tuple(v)) for k, v in at.items()]
+        elif isinstance(at, (list, tuple)) and at and isinstance(at[0], (list, tuple)):
+            items = [(None, tuple(n)) for n in at]
+        else:
+            items = [(None, tuple(at))]
+        out = []
+        for lab, node in items:
+            ix, iy = int(node[0]), int(node[1])
+            if not (0 <= ix < Nx and 0 <= iy < Ny):
+                raise ValueError(
+                    f"node ({ix}, {iy}) is out of range for a {Nx}x{Ny} grid "
+                    f"(ix must be 0..{Nx - 1}, iy 0..{Ny - 1})")
+            out.append((lab if lab is not None else f"({ix}, {iy})", (ix, iy)))
+        if len(out) == 1 and self.at is None:
+            out = [(None, out[0][1])]        # an unnamed default node needs no legend entry
+        return out
+
+    def __repr__(self) -> str:
+        return (f"Trace(what={self.what!r}, series={len(self.series)}, "
+                f"label={self.label!r})")
+
+
+def _as_reference_lines(spec):
+    """Normalise hline=/vline= to [(value, label|None), ...]."""
+    if spec is None:
+        return []
+    if isinstance(spec, (int, float)):
+        return [(float(spec), None)]
+    if isinstance(spec, tuple) and len(spec) == 2 and isinstance(spec[1], (str, type(None))):
+        return [(float(spec[0]), spec[1])]
+    out = []
+    for item in spec:
+        if isinstance(item, (int, float)):
+            out.append((float(item), None))
+        else:
+            out.append((float(item[0]), item[1]))
+    return out

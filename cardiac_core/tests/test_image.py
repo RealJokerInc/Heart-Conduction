@@ -357,3 +357,101 @@ def test_video_behaviour_is_unchanged_by_the_new_params(wave):
     finally:
         import matplotlib.pyplot as plt
         plt.close(st.fig)
+
+
+# =========================================================================== Phase 2: Trace
+
+@pytest.fixture(scope="module")
+def multibeat():
+    """A SYNTHETIC 4-beat result. `long_wave` fires one stimulus, so restitution is empty on it;
+    a real paced run would cost ~98 s, and restitution needs only `times` + `Vm`."""
+    V_REST, V_PEAK, BCL, DT = -85.0, 20.0, 400.0, 1.0
+    apds = (225.0, 245.0, 215.0, 235.0)     # VARY per beat, or the curve is identical points
+    n = int(len(apds) * BCL / DT)
+    trace = torch.full((n,), V_REST, dtype=torch.float64)
+    for k, apd in enumerate(apds):
+        s, d = int(k * BCL / DT), int(apd / DT)
+        trace[s:s + 2] = V_PEAK
+        trace[s + 2:s + d] = torch.linspace(V_PEAK, V_REST, d - 2)
+    return cc.SimulationResult(times=torch.arange(n, dtype=torch.float64) * DT,
+                               Vm=trace.view(-1, 1, 1).expand(n, 30, 8).contiguous())
+
+
+def test_trace_named_series_and_legend(wave):
+    info = wave.trace(at={"edge": (0, 4), "centre": (20, 4)}, hline=(-40.0, "threshold"))
+    assert info.path is None and info.data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert info.vmin is None and info.vmax is None, "a trace has no colour range"
+    spec = cc.Trace(wave, at={"edge": (0, 4), "centre": (20, 4)})
+    assert [lab for lab, _, _ in spec.series] == ["edge", "centre"]
+    assert spec.legend is True
+
+
+def test_trace_defaults_to_the_grid_centre(wave):
+    spec = cc.Trace(wave)
+    assert len(spec.series) == 1 and spec.legend is False
+    assert spec.xlabel == "time (ms)" and spec.ylabel == "Vm (mV)"
+
+
+def test_single_cell_trace(wave):
+    info = cc.single_cell("ttp06", n_beats=1, bcl=200.0).trace()
+    assert info.data and not info.saved
+
+
+def test_single_cell_rejects_at():
+    with pytest.raises(ValueError, match="no grid"):
+        cc.Trace(cc.single_cell("ttp06", n_beats=1, bcl=100.0), at=(0, 0))
+
+
+def test_restitution_is_marker_only_and_non_degenerate(multibeat):
+    from cardiac_core import analysis
+    DI, APD = analysis.restitution_curve(multibeat.Vm, multibeat.times, 20, 4)
+    assert DI.numel() >= 2 and APD.unique().numel() >= 2, "fixture must not be degenerate"
+    spec = cc.Trace(multibeat, what="restitution", at=(20, 4))
+    assert spec.marker == "o" and spec.linestyle == "none"
+    assert multibeat.trace(what="restitution", at=(20, 4)).data
+
+
+def test_restitution_warns_on_a_single_beat_run(wave):
+    with pytest.warns(UserWarning, match="multi-beat"):
+        wave.trace(what="restitution", at=(20, 4))
+
+
+def test_apd_per_beat(multibeat):
+    assert multibeat.trace(what="apd_per_beat", at=(20, 4)).data
+
+
+def test_reference_lines(wave):
+    spec = cc.Trace(wave, hline=(-40.0, "threshold"), vline=[1.0, 3.0])
+    assert spec.hlines == [(-40.0, "threshold")]
+    assert spec.vlines == [(1.0, None), (3.0, None)]
+
+
+def test_raw_xy_and_dict_data(wave):
+    xy = cc.Trace((np.arange(5.0), np.arange(5.0) ** 2))
+    assert len(xy.series) == 1 and xy.series[0][0] is None
+    d = cc.Trace({"a": (np.arange(3.0), np.zeros(3)), "b": (np.arange(3.0), np.ones(3))})
+    assert [lab for lab, _, _ in d.series] == ["a", "b"]
+    assert draw(d).data
+
+
+def test_trace_rejects_map_knobs(wave):
+    with pytest.raises(ValueError, match="r.image"):
+        wave.trace(gradient=cc.Gradient.zoom())
+    with pytest.raises(ValueError, match="Trace has no image"):
+        draw(cc.Trace(wave), colorbar=True)
+
+
+def test_out_of_range_node_raises_with_the_valid_range(wave):
+    with pytest.raises(ValueError, match=r"0\.\.29"):
+        wave.trace(at=(999, 0))
+
+
+def test_trace_keys_covers_every_spec_field():
+    from cardiac_core.run import _TRACE_KEYS
+    fields = {f for f in cc.Trace.__dataclass_fields__ if f != "data"}
+    assert not (fields - set(_TRACE_KEYS)), sorted(fields - set(_TRACE_KEYS))
+
+
+def test_trace_export_is_stable():
+    first = cc.Trace
+    assert not isinstance(first, types.ModuleType) and cc.Trace is first

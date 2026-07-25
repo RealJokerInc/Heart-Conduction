@@ -64,7 +64,7 @@ _LAZY = {
     'render_video': 'video', 'VideoInfo': 'video', 'ImagePath': 'video',
     # image (spec-first still figures: Image + draw). The submodule holding `draw` is `_draw`,
     # not `draw`, for the same shadowing reason `_single_cell` is private.
-    'Image': 'image', 'draw': 'image', 'ImageInfo': 'image',
+    'Image': 'image', 'Trace': 'image', 'draw': 'image', 'ImageInfo': 'image',
 }
 
 

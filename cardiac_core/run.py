@@ -25,6 +25,15 @@ _IMAGE_KEYS = {"what", "at", "field", "what_kwargs", "gradient", "label", "front
                "units", "value_label"}
 
 
+_TRACE_KEYS = {"what", "at", "series", "label", "xlabel", "ylabel", "hline", "vline",
+               "legend", "marker", "linestyle", "xlim", "ylim", "logx", "logy", "colors",
+               "what_kwargs"}
+# Image-only spec fields, caught explicitly in .trace() so the message names the right verb
+# instead of surfacing as a raw draw() TypeError.
+_MAP_ONLY_KEYS = {"gradient", "front", "isochrones", "filled", "contour_levels", "mask",
+                  "aspect", "value_label", "field"}
+
+
 @dataclass
 class SimulationResult:
     """Plain tensor output from a one-shot simulation run.
@@ -164,6 +173,27 @@ class SimulationResult:
         # TypeError from the headline API.
         ikw = {k: kw.pop(k) for k in list(kw) if k in _IMAGE_KEYS}
         return draw(Image(self, **ikw), slug, **kw)
+
+    def trace(self, slug: str = "trace", **kw):
+        """Draw a series from this run — an action potential, a restitution curve, per-beat APD.
+
+        **Drawing displays; naming a destination saves**, as with :meth:`image`::
+
+            r.trace()                                        # Vm(t) at the grid centre
+            r.trace(at={"edge": (0, 4), "centre": (20, 4)})   # two labelled series + a legend
+            r.trace(what="restitution", at=(20, 4))           # APD vs DI, marker-only
+            r.trace(hline=(-40.0, "threshold"))               # a labelled reference line
+
+        ``at`` is a NODE here (on :meth:`image` the same keyword is a TIME in ms).
+        """
+        from .image import Trace
+        from .image._draw import draw
+        bad = sorted(set(kw) & _MAP_ONLY_KEYS)
+        if bad:
+            raise ValueError(
+                f"{bad[0]}= is a map knob and has no meaning for a series — use r.image(...).")
+        tkw = {k: kw.pop(k) for k in list(kw) if k in _TRACE_KEYS}
+        return draw(Trace(self, **tkw), slug, **kw)
 
     def video(self, slug: str = "video", **kw):
         """Render this run to a video — full-frame, unlabelled, 1080p, standard colour preset.

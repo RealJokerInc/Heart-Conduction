@@ -24,14 +24,14 @@ module instead of the function.
 
 import importlib
 
-__all__ = ["Image", "draw", "ImageInfo"]
+__all__ = ["Image", "Trace", "draw", "ImageInfo"]
 
 # Public name -> submodule that defines it. Resolved lazily so that importing this package does not
 # drag in matplotlib and the vendored solver stack before anything is actually drawn.
-# A name is registered only once its implementation exists — `Trace` joins in Phase 2.
 _LAZY = {
     "ImageInfo": "info",
     "Image": "panel",
+    "Trace": "panel",
     "draw": "_draw",
 }
 

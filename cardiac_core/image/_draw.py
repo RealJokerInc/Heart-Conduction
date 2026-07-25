@@ -35,9 +35,9 @@ from ..video.render import (                                     # noqa: E402
     _produce_bare, _produce_figure, _resolve_destination, enforce_capabilities,
 )
 from .info import ImageInfo                                      # noqa: E402
-from .panel import Image                                         # noqa: E402
+from .panel import Image, Trace                                  # noqa: E402
 
-__all__ = ["draw"]
+__all__ = ["draw", "_draw_trace_on"]
 
 
 class _Unset:
@@ -142,7 +142,8 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
     if isinstance(spec, (list, tuple)):
         raise NotImplementedError("multi-panel lands in Phase 3")
     is_image = isinstance(spec, Image)
-    if not is_image and not isinstance(spec, Video):
+    is_trace = isinstance(spec, Trace)
+    if not is_image and not is_trace and not isinstance(spec, Video):
         raise TypeError(
             f"draw() takes an Image, a Trace or a Video spec; got {type(spec).__name__}.")
 
@@ -150,6 +151,22 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
         if val is not None:
             raise ValueError(
                 f"{name}= applies to multi-panel rendering; pass a list of specs.")
+
+    if is_trace:
+        for name, val in (("frame", frame), ("colorbar", colorbar), ("show_time", show_time),
+                          ("units", units)):
+            if val is not None:
+                raise ValueError(
+                    f"{name}= applies to a spatial map; a Trace has no image. Use r.image(...).")
+        for name, val in (("resolution", resolution), ("fit", fit)):
+            if val is not _UNSET:
+                raise ValueError(
+                    f"{name}= scales the bare map producer; a Trace is always a figure.")
+        return _draw_trace(spec, slug, path=path, question=question, bulk=bulk, date=date,
+                           root=root, fmt=_resolve_format(format, path), figsize=figsize,
+                           dpi=dpi if dpi is not None else 150,
+                           tight=True if tight is None else bool(tight),
+                           title=title, transparent=transparent)
 
     clip = spec._clip if is_image else spec
 
@@ -308,3 +325,71 @@ def _lat_from_result(spec: Image):
         return None
     return np.asarray(
         _to_numpy(analysis.activation_time(result.Vm, result.times)), dtype=np.float64)
+
+
+def _draw_trace_on(spec: Trace, ax) -> None:
+    """Draw a ``Trace`` onto an EXISTING axes. Owns no figure — the layout path calls this too."""
+    for i, (label, x, y) in enumerate(spec.series):
+        color = spec.colors[i] if spec.colors and i < len(spec.colors) else None
+        ax.plot(x, y, label=label, marker=spec.marker,
+                linestyle=("none" if spec.linestyle == "none" else spec.linestyle),
+                color=color)
+    for value, label in spec.hlines:
+        ax.axhline(value, color="0.4", lw=1.0, ls="--", label=label)
+    for value, label in spec.vlines:
+        ax.axvline(value, color="0.4", lw=1.0, ls=":", label=label)
+    if spec.xlabel:
+        ax.set_xlabel(spec.xlabel)
+    if spec.ylabel:
+        ax.set_ylabel(spec.ylabel)
+    if spec.label:
+        ax.set_title(spec.label)
+    if spec.logx:
+        ax.set_xscale("log")
+    if spec.logy:
+        ax.set_yscale("log")
+    if spec.xlim:
+        ax.set_xlim(*spec.xlim)
+    if spec.ylim:
+        ax.set_ylim(*spec.ylim)
+    if spec.legend and any(h.get_label() and not h.get_label().startswith("_")
+                           for h in ax.get_lines()):
+        ax.legend()
+
+
+def _draw_trace(spec: Trace, slug: str, *, path, question, bulk, date, root, fmt,
+                figsize, dpi, tight, title, transparent) -> ImageInfo:
+    """Single-panel wrapper: owns the figure, delegates the drawing, shares the delivery path."""
+    if fmt in ("pdf", "webp") and path is None and _named_destination(
+            None, question, bulk, date, root):
+        raise ValueError(
+            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
+            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
+    fig = None
+    try:
+        fig, ax = plt.subplots(figsize=tuple(figsize) if figsize else (6.4, 3.6), dpi=dpi)
+        _draw_trace_on(spec, ax)
+        if title:
+            fig.suptitle(title)
+        fig.savefig(out_path, dpi=dpi, bbox_inches=("tight" if tight else None),
+                    transparent=transparent)
+    except BaseException:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        raise
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    width = height = None
+    if fmt not in _VECTOR:
+        from PIL import Image as PILImage
+        with PILImage.open(out_path) as probe:
+            width, height = probe.size
+    final_path, data = _finalize(out_path, is_temp)
+    # A trace has no colour range — vmin/vmax stay None rather than being invented.
+    return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
+                     n_panels=1, vmin=None, vmax=None, size_bytes=size)

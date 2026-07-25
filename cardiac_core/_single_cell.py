@@ -32,6 +32,18 @@ class SingleCellResult:
         V3 = self.V.reshape(-1, 1, 1)
         return analysis.apd_at(V3, self.times, 0, 0, repol=repol, threshold=threshold)
 
+    def trace(self, slug: str = "ap", **kw):
+        """Draw this action potential. Displays inline; naming a destination saves.
+
+            cc.single_cell("ttp06", pre_pace=5).trace()
+            cc.single_cell("ttp06").trace(hline=(-40.0, "threshold"), path="ap.png")
+        """
+        from .image import Trace
+        from .image._draw import draw
+        from .run import _TRACE_KEYS
+        tkw = {k: kw.pop(k) for k in list(kw) if k in _TRACE_KEYS}
+        return draw(Trace(self, **tkw), slug, **kw)
+
     @property
     def v_peak(self) -> float:
         return float(self.V.max())
