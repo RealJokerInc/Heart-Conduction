@@ -7,6 +7,21 @@ Source: user directive 2026-07-25 — *"notice what we built over video. do the 
 `.image`; because we assume people don't know matplotlib"* — plus a census of the repo's figure corpus
 and the shipped `cardiac_core/video/` layer this mirrors.
 
+> **✅ EXECUTED 2026-07-25 — all 4 phases shipped** (`fba6ed3` → `c3ace72` → `e4079d4` → `7ba147f` on
+> `video-portable-output`). **580 passed / 7 failed / 2 xfailed**; the 7 are the identical CUDA-OOM set
+> present in the pre-implementation baseline (another user holds 32 GB of the shared GPU). **No NEW failures
+> at any of the four phase gates; integrity goldens bit-identical throughout** — no solver code was touched.
+> **+87 tests.** Both preview paths are pixel-identical to their pre-phase capture; the two viz stills land at
+> +5.6 %/−13.4 % and +10.6 %/−13.4 %, exactly the deviations R8 measured when it proved equality unachievable.
+> All four corpus acceptance compositions reproduce in ONE `draw()` call. This file is now a historical record.
+>
+> **Implementation-time finding worth keeping:** the plan's R9 M-2 rule earned itself back immediately — the
+> first cut of `draw()` used the *condemned* "differs from the default" comparison, so `resolution="auto"` on
+> an annotated spec silently did nothing. The Verify block the plan mandates caught it in seconds. Two test
+> defects of the same family also surfaced during the build: a needle asserting `"not directly comparable"`
+> against a message reading `"NOT directly comparable"`, and a `pytest.warns` defeated by Python's
+> per-location `__warningregistry__` de-duplication.
+
 > **Design premise.** The `Video` layer proved the shape: a **spec object holds the description**, a **verb
 > turns it into bytes**, **rendering displays and naming a destination saves**, colour is a **reusable
 > `Gradient`**, and **multi-panel is native**. This plan applies that shape to STILLS — and extends it to the

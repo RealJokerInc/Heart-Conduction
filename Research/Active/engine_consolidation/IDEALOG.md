@@ -5,28 +5,15 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**ANALYSIS-FIELDS BRANCH — SHIPPED + COMMITTED + PUSHED to `main` (2026-07-22, commit `63f6982`).** The full
-`analysis.fields` layer (named fields + operator toolkit + integrals + scalar EP + `single_cell` + `safety_factor`
-+ the canonical LAT) is implemented, test-gated, and on `origin/main`. All **7 PLAN phases done**; full cardiac_core
-suite **369 passed / 2 xfailed**; **integrity goldens bit-identical (atol=0)** — no solver code touched (pure analysis
-layer). Landed on main via a clean fast-forward of `solver-hardening` (34 commits, which carried the design docs +
-solver-hardening's shipped work) — so main now also has the solver-hardening fixes. **The LAT triple-definition BIG
-ISSUE is CLOSED** (`r.lat()`/`r.cv()`/`cv_between`/`radial_cv` all route through the one canonical interp/−40 LAT).
+**IMAGE LAYER — SHIPPED 2026-07-25** (4 commits `fba6ed3`→`7ba147f` on `video-portable-output`).
+`cardiac_core/image/` gives stills the shape the video layer proved: `Image`/`Trace` specs, `draw()`,
+`ImageInfo`, `Gradient` reused. `r.image()` / `r.trace()` are the one-liners; drawing displays, naming a
+destination saves. **580 passed / 7 failed** (pre-existing CUDA OOM), **+87 tests**, integrity goldens
+bit-identical at all four phase gates. Plan audited to convergence over **12 Opus rounds** first:
+[plans/2026-07-25_IMAGE_OBJECT_PLAN.md](./plans/2026-07-25_IMAGE_OBJECT_PLAN.md).
 
-Delivered code: `cardiac_core/fields/` (`derivatives`, `lat_fields`, `integrals`, `__init__` = `Fields`+`VectorField`),
-`_result_context.py`, `protocols.py`, `single_cell.py`, edits to `run/api/grid/analysis/__init__` + `API_CHEATSHEET`
-+ 8 test files (+109 tests). The four-doc spec set (PRIOR_ART/DESIGN/PLAN/DATA_MODEL) is committed alongside.
-
-Load-bearing facts, now VALIDATED by the implementation + tests: canonical interp/−40 LAT (torch); operator toolkit
-on the **staggered `div=−grad*`** pair → `laplacian` matches the engine's OWN FDM-5pt operator to rel<1e-6, divergence
-theorem exact to 1e-10; `source_sink=∇·(D_eff∇V)` via a conservative **harmonic-face-D** `diffusion_term` → matches the
-solver's `apply_diffusion` on uniform D AND a **masked scar** (the flagship source-sink-mismatch case); `D_eff=D_raw/
-(data.chi·data.Cm)` (declarative mono chi=1 — a 1400 fallback would be 1400× wrong); LAT fields via the Bayly/Savitzky–
-Golay conv + divergence gating; ONE `winding_loop_sum` primitive (`phase_singularities` refactored onto it); the
-`apd` diastolic-baseline fix is an **upstroke-foot walk** (not min-over-interval, which caught the previous beat's
-undershoot); `safety_factor` numerator = ∫ inward `source_sink` dt (= Cm·ΔV+Q_ion by the PDE → NO recorded states
-needed); `single_cell` drives the shared `IonicModel.step` (0d-vs-tissue match confirmed); `erp` is a protocol in
-`protocols.py`. **Spatial ops = real-space FD conv stencils, NOT spatial FFT** (FFT only for temporal DF/Hilbert-phase).
+The layer exists because the corpus census says `plot(` 163 vs `imshow(` 70 — the line plot is what this
+project's figures actually are, and there was no route to one. The 0-D action potential now has one.
 
 ## Next Step
 **★ PRIORITY (2026-07-23, user) — `single_cell(conductances={...})`, the 0-D drug knob.** Full spec in
@@ -218,6 +205,59 @@ P1 bidomain M4 etc.). Analysis-fields FUTURE polish (documented in the PLAN, not
 torch migration, a co-area identity explicit test. See the open-threads block below.
 
 ## Thread
+
+### 2026-07-23 — EXTRACTION AUDIT: cardiac_core as a standalone public repo → **DONE, PUSHED** (see Session Log)
+**⚑ RESOLVED 2026-07-23**: the audit below said "NOT READY TO PUSH"; the blockers were then fixed and the repo
+was extracted, verified (480/2 from a clean-venv install), and **pushed to `github.com/RealJokerInc/cardiac-core`
+(public, MIT)**. Colab install verified from the live URL. Full execution in the 2026-07-23 Session Log entry.
+The audit findings below stand as the record of what had to be fixed first.
+**User intent**: push `cardiac_core` as its own public GitHub repo (so Colab can `pip install` it) and use
+that instead of the monorepo. Asked for a comprehensive readiness audit first.
+**Method**: 4 independent adversarial lanes (monorepo coupling · packaging · test portability ·
+public-exposure) + direct verification by me of every load-bearing finding. Full report:
+[EXTRACTION_AUDIT_2026-07-23.md](./EXTRACTION_AUDIT_2026-07-23.md).
+**Git premise CONFIRMED**: HEAD == `stim-object` == `origin/main` == `9ef97f3`; video (`2a4b0e3`) + Stim
+merged and pushed; library code fully committed.
+**GOOD**: package stands alone at module level (wheel → fresh venv → imported from `/` → all 3 engines
+run, `single_cell` APD90 217 ms); suite **482 passed / 2 xfailed** in 8m26s; NO third-party code vendored
+(engines are all ours; ionic models original from published equations w/ citations) → no licensing
+entanglement; no secrets; 61 commits extractable via subtree split; `cardiac-core` free on PyPI; nothing
+to carry from monorepo pytest config (root conftest only adds `Surrogate/`, proven unused empirically).
+**BLOCKERS needing a HUMAN decision:**
+- **⚑ H1 — a collaborator is NAMED in shipped solver code.** `_monodomain/.../fdm.py:322,329,433`:
+  "the failure we hit on **John's tanks**", "the **John-equivalent**" ×2. Verified in source. Names a real
+  person without context AND identifies his **unpublished** discrete-reduction tank model as the validation
+  reference for a shipped stencil. 3-line rewrite, but **cannot be undone after publication**, and is not
+  ours to consent to on his behalf.
+- **H2 — unpublished research productized in public docstrings**: `_lbm/boundary/wall_modes.py:1-19`
+  ("boundary_conduction_speedup research → productized", ZERO bias / INVERSE crescent / β-curvature knob)
+  + `analysis.py:582-586`. Our own work — but it publishes ahead of the papers.
+- **H3 — no LICENSE anywhere.** The EXISTING public monorepo is therefore already all-rights-reserved.
+**MECHANICAL blockers**: M1 `media.py:24` `_REPO_ROOT` → `site-packages` when installed (REPRODUCED;
+fix must be backward-compatible — **50 monorepo files** depend on today's root: Monodomain 23, Research 22,
+Optimizer 2, Lab 2, mcp 1 → use `root=` → `$CARDIAC_MEDIA_ROOT` → walk-up-for-`.git` → cwd);
+M2 deps 100% wrong (declares `mcp`, which the package never imports; omits torch/numpy/**scipy**/
+**scikit-image**/**torch-dct** — the last three verified as bare imports with NO fallback, and torch_dct is
+CORE because `bidomain()` auto-selects the spectral solver → **bidomain fails out of the box without it**;
+torch-dct is single-maintainer, last released 2020 → consider vendoring the ~60-line DCT);
+M3 `test_originals_untouched` HARD-FAILS on a fresh clone (hashes 3 monorepo trees, empty-digest → assert
+false, not skip) → **delete it**, it is a monorepo-only guard; M4 no license/authors/readme/classifiers/
+`py.typed` (84% of 1121 fns annotated!) + wheel drops `API_CHEATSHEET.md` which `cardiac_mcp` reads at
+runtime + `namespaces` defaults true so the wheel silently ships `tutorials/_build/`; M5 `cardiac_mcp` +
+its console script must be cut or every user gets a broken `cardiac-mcp` on PATH.
+**⚑ L1 — LAYOUT IS LOAD-BEARING**: `test_integrity.py:21` imports `cardiac_core.tests._integrity.make_goldens`
+and `tests/__init__.py` exists → `tests/` MUST stay a subpackage. `git subtree split` flattens contents to
+the repo root by default, which breaks that import AND makes the suite's ~60 media writes escape the
+checkout into its PARENT. Re-nest commit is mandatory.
+**Also**: L2 `test_live_cv_gate` = 25% of runtime and points outside the repo (delete); L3 tests write
+~60 media files to repo-root `media/lab/_sim_outputs/` (22 MB accumulated) with no `root=` available →
+needs a tests conftest fixture; L4 CI hazards — golden bit-identity is BLAS/hardware sensitive (atol=0),
+and `test_video.py` has no `importorskip` (missing imageio/PIL → collection ERRORS, not skips).
+**KEEP AS-IS**: the RKC `KNOWN LIMITATION` block (`explicit_rkc.py:25-40`) — honest, precise, opt-in and
+unreachable from the public API. Reads as rigor.
+**~360 KB of internal planning docs** ship as top-level package files (more bytes than the library);
+`ANALYSIS_METHODS_PRIOR_ART.md` + `ANALYSIS_FIELDS_DATA_MODEL.md` are the two publishable ones.
+**Status**: staging NOT started — gated on H1/H2/H3.
 
 ### 2026-07-23 (3rd parallel agent, cont.) — tutorial LESSON 01 SHIPPED (grid → stim → 3 engines → CV)
 **User re-scoped the session** ("something simpler — a simple little interval that guides a person to
@@ -557,7 +597,8 @@ monodomain convergence; oblique-LBM moment-space rotation (Audit #46) if ever wa
 
 **Consolidation (A2 vendoring) SHIPPED (2026-06-25).** `cardiac_core` is one self-contained package — 3 engines vendored `_monodomain`/`_bidomain`/`_lbm` + shared `ionic`/`mesh`/`stimulus`, `_prepare_engine()` hack deleted, bit-identical goldens, originals frozen. Phases 0–5 `935160b`→`37dc381`. → KNOWLEDGE "cardiac_core unified ground-up package". *(Predecessors condensed — full detail in Thread: V5.5 Cm-correct fork + consolidation Phase-1 copy-only, 2026-05-30/31; the Goal-2 design reframe to wet-lab code-gen, 2026-06-25; the "ditch FEM → structured-grid only" pending constraint — RESOLVED by the 2026-07-01 FEM/TriangularMesh removal. The deferred code-dedup [engines import from cardiac_core + delete copies] stays per-consumer — big-bang breaks Surrogate/Optimizer.)*
 
-## Next Step
+### 2026-07-16 (superseded next-step snapshot — kept for the narrative)
+*The merge named below happened: `usability-fixes-p0-p1` has been on `main` since 2026-07-22.*
 **▶ MERGE `usability-fixes-p0-p1` → `main`** (commits `a37d325`→`c0306d2`: 5 phases + `562a7a0`/`257b2c1` docs + `c0306d2`/`9f387ef` audit-remediation; PLAN EXECUTED + 5-lane final audit clean, see Current Direction). Suite 260/2xfail,
 goldens bit-identical. The branch is review-ready; nothing else in the plan is outstanding. After the merge, the OPEN threads below are unchanged (none were touched this session). Two
 usability items that were NOT in this PLAN and remain P3/future work: **B9** dead `stim_amplitudes_e` (no
@@ -583,7 +624,7 @@ The A2 unification, Goal-2 skill suite, cardiac_mcp server, AND the 2026-07-01 f
 
 **Next Step:** the DEFERRED migration (PLAN.md "Deferred" section) — when resumed, migrate consumers REPO-WIDE (engines' tests/examples + Surrogate datagen + Optimizer + `cv_shared` bare `from ionic`) to `cardiac_core.ionic`, per-consumer with test gates, never deleting out from under a live consumer; exclude V5.3/V5.4/_archive/torchcor from any survivor check. cardiac_core is now editable-installed (engines/consumers gain `import cardiac_core` for free once rewired).
 
-## Thread
+<!-- (continues the Thread section above) -->
 
 ### 2026-07-16 (audit round 2): audit-the-fix + completeness critic → 2 more real bugs + 2 masked-data gaps
 Ran a SECOND round (4 lanes: gate-correctness, analysis-fixes, P3-validation, and a whole-branch completeness
@@ -926,6 +967,88 @@ NOTE: `cv_shared.run_monodomain_fdm` is NOT Cm-aware (line 303 has no /Cm, takes
 
 ## Session Log
 
+### 2026-07-25 Session: image layer — 12 audit rounds, then 4 phases shipped
+**Worked on**: "notice what we built over video. do the same equivalent but for `.image`; because we assume
+people don't know matplotlib." Blueprint → `/audit`-revise to convergence → implement all 4 phases.
+**Accomplished**:
+- **Corpus census first**, because the design question was *which* figure kinds. `plot(` **163** ·
+  `axhline(` 74 · `imshow(` 70 · `axvline(` 32 · `contour(` 29 over 87 `savefig` scripts. Line plots
+  dominate → `Trace` is a first-class spec, not an afterthought. ⚑ The first census command used
+  `grep -h -o`, which strips the path so its own `grep -v` exclusion was a **silent no-op** — a
+  "reproducible" command that reproduced nothing.
+- **12 adversarial rounds** (5C/8H → 1C/5H → 3C/7H → 3C/4H → 1C/5H → 2C/4H → 1C/4H → 0C/3H → 0C/1H →
+  0C/2H → 0C/1H → **0C/0H CONVERGED**). **The dominant pattern every round: most C/H findings were
+  follow-ons to the PREVIOUS round's own fixes.** Two structural lessons worth carrying forward:
+  1. **The two-layer problem (R5).** Rules in a normative prose section contradicted the implementation
+     steps, because a fix updated only the prose — and the *contradicting* half sat where an implementer
+     copies from. Fix: sweep every restatement, delete superseded forms rather than annotate them.
+  2. **Write an interaction down in ONE place (R4).** Three rounds each added a rule to the
+     `isochrones`/`lat`/`filled` triangle and none wrote the three together; that gap produced a
+     double-draw, an unmasked overlay and two contradictory compute rules.
+- **Five assertions-that-cannot-fail** were caught across the cycle (`assert info.saved` for "contours were
+  drawn", a spy patching the wrong binding, a set-of-characters subtraction, …) and **three Verify blocks
+  that would have failed on conforming code**. Both classes recurred *after* being named.
+- **Implementation confirmed the audit's value immediately**: the first cut of `draw()` used the exact
+  `resolution` comparison R9 M-2 condemned, and `resolution="auto"` silently did nothing until the mandated
+  Verify caught it.
+**Durable findings**:
+1. **`conda run` discards stdin** — a heredoc never runs and **exits 0**. Repo-wide hazard.
+2. **`apd_map` is 100 % NaN below one AP** (0 % finite at 12 ms *and* 20 ms; TTP06 APD90 ≈ 230 ms). Any APD
+   assertion on a short fixture is vacuous, and an all-NaN map falls back to exactly the (−90, 40) range such
+   a test usually tries to exclude.
+3. **`fig.colorbar(None, …)` does not raise** — it fabricates `Normalize(0, 1)` and draws a plausible,
+   meaningless bar.
+4. **Never name a `_LAZY` submodule after a public export** — now proven twice (`single_cell`, `draw`). The
+   existing guard's collision check cannot see the second form.
+**Next**: nothing blocking. Candidates: `annotations=` on `Image`/`Trace` (48 corpus `text`/`annotate` calls,
+deliberately out of scope for v1), and the auto-generated Object Atlas + drift canary.
+
+
+### 2026-07-23 Session (3rd parallel agent): cardiac_core EXTRACTED + PUSHED as a standalone public library
+**Worked on**: took `cardiac_core` from monorepo package → standalone public GitHub repo, so Google Colab can
+`pip install` it and a lab member can run the tutorial with no local setup. Four-lane readiness audit →
+systematic source cleanup → extraction → verification → push → Colab wiring.
+**Accomplished**:
+- **Four-lane extraction audit** (monorepo-coupling · packaging · test-portability · public-exposure) →
+  `EXTRACTION_AUDIT_2026-07-23.md`. Every load-bearing finding re-verified by hand in source. Headline
+  blockers all real: `media.py` wrote into `site-packages` when installed; declared deps were 100% wrong
+  (declared `mcp`, which the package never imports; omitted torch/numpy/**scipy**/**scikit-image**/
+  **torch-dct**, the last three bare imports with no fallback); a collaborator ("John") named in shipped
+  `fdm.py`; the suite hard-FAILED on a fresh clone (`test_originals_untouched` hashed absent monorepo trees).
+- **Systematic source de-narrativization** (user framing: "Claude's artifacts" — session logs that leaked into
+  `.py` files). 4 parallel cleanup agents, one per subtree (`_monodomain`/`_bidomain`/`_lbm`+top-level/`tests`).
+  Removed: the collaborator name + storage-tank/pipe metaphor, unpublished research findings (LBM wall modes,
+  eikonal source-sink), ~25 `Ref: improvement.md:Lnnn` pointers, audit tags, dated fix stamps, engine version
+  lineage. KEPT: all numerics, published citations, the RKC `KNOWN LIMITATION` block (de-framed). **Verified
+  comments-only** by comparing docstring-stripped ASTs vs HEAD — 122/127 byte-identical; the other 5 were the
+  deliberate code edits (media root, viz `root=`, api message, 2 backend banners).
+- **Code fixes shipped**: `media.py` default root `root=`→`$CARDIAC_MEDIA_ROOT`→nearest-`.git`→cwd (the `.git`
+  walk keeps all ~50 monorepo callers writing where they did); `viz.py` gained `root=` (had NO escape hatch);
+  removed 2 monorepo-only tests; added a tests `conftest.py` redirecting media to a tmpdir (suite wrote ~60
+  files/run into the tree → now **0**, verified). Coupled-edit trap caught: a test matched `oblique|Audit #46`
+  case-sensitively against "**O**blique" → it was passing ONLY on the audit tag; stripping naively would have
+  turned it red. Fixed message + matcher together.
+- **Moved 8 internal planning docs OUT of the package** (~360 KB, > the library itself) → `plans/`. Only
+  `API_CHEATSHEET.md` ships. Added `py.typed`, MIT `LICENSE` (Copyright 2026 Li Chang), standalone
+  `pyproject.toml` (real deps + viz/test extras + package-data + `namespaces=false`), README, `.gitignore`.
+- **Extraction is layout-critical**: `git subtree split` flattens contents to the repo root, but `tests/` MUST
+  stay a subpackage (`test_integrity` imports `cardiac_core.tests._integrity.make_goldens`) → mandatory re-nest
+  commit. Scripted in `extract.sh`. Result: 64 commits of preserved history, 225 files.
+- **Verified NOT assumed**: full suite **480 passed / 2 xfailed** (was 482/2; −2 monorepo-only) both in-repo
+  AND from a **clean venv running in `/tmp` against the installed wheel**. Then `pip install git+https://…`
+  from the real pushed GitHub URL into a fresh venv → all three engines reproduce 58.8/59.6/64.6 cm/s exactly.
+- **PUSHED**: user created empty `RealJokerInc/cardiac-core`; `git push -u origin main` succeeded (SSH key
+  authenticates as RealJokerInc; no `gh`/token on the box, so repo creation needed the user). Public, MIT.
+- **Colab**: lesson 01 got a setup cell (cell 0) that `pip install`s from GitHub only if `cardiac_core` is
+  absent — no-op locally, works on a fresh Colab runtime. Regenerated notebook (36 cells), re-verified. Share
+  link + brief in the [[reference-drive-shared]] Drive folder.
+**Next**: (1) merge branch `cardiac-core-extraction` (`9ba0442`) to monorepo `main` when the video/stim agents
+are quiet. (2) DECIDE monorepo↔standalone sync: keep the monorepo copy or switch it to `pip install -e
+~/cardiac-core` — two drifting copies is the failure that bit twice this week. (3) `cardiac_mcp/core.py:32`
+still resolves the cheatsheet by monorepo path → switch to `importlib.resources.files("cardiac_core")` (works
+now, the wheel ships the file). (4) open: does Cornell need to be on the copyright; the monorepo itself is
+public with NO license (all-rights-reserved today).
+
 ### 2026-07-21 Session (cont.): audit-to-convergence + analysis `fields` design + LAT big issue
 **Worked on**: /save-session → adversarial audit of the solver-hardening branch to convergence; then a
 long design conversation on next features (single_cell, an analysis `fields` branch, adjacent EP metrics).
@@ -1151,3 +1274,49 @@ Still unmerged: `usability-fixes-p0-p1` branch → main (user's call).
   pipeline (`run.py`/`viz.py`/`video.py`/`test_video.py`, `r.video()`), left entirely untouched.
 **Next**: Phase 3 (per-consumer dict→Stim migration) DEFERRED by the user — optional, non-blocking, one PR per consumer,
 gate on each consumer's own suite. Branch `stim-object` not yet merged to main / not pushed.
+
+### 2026-07-23 Session — Stim→main; IonicPreset plan (gated); Grid dx cm→mm REJECTED; Object Atlas + PDFs; single_cell bug fixed
+**Worked on**: finished/merged the Stim object, then a run of API-surface + docs work interleaved with two parallel
+cloud agents (video pipeline, tutorial notebooks) sharing the working tree.
+**Accomplished**:
+- **Stim object → `main`.** Verified full `cardiac_core/tests/` green (395 pass / 0 fail, only the parallel session's
+  `test_video.py` failing), then fast-forwarded `main` to the 3 Stim commits (`c087b8c`/`743e6d4`/`b7fc061`) via
+  `git branch -f` (NO checkout — the shared tree had two agents' uncommitted work; 197 dirty entries preserved
+  byte-for-byte) and pushed. `docs` commit `b7fc061` added the `Stim` class to `API_REFERENCE.md` + an IDEALOG snapshot.
+  Phase 3 (consumer dict→Stim migration) still DEFERRED.
+- **`IonicPreset` plan — WRITTEN + GATED.** `cardiac_core/IONIC_PRESET_PLAN.md` (1 phase / 3 steps). Savable
+  ionic-model config = base model + `{param: factor}` scaling map, accepted anywhere `ionic_model=` is, JSON save/load.
+  Locked design (user): scalings-canonical + resolved `.values` (BOTH); any named param — conductance/concentration/
+  kinetic (BREADTH); CORE OBJECT ONLY — `.npz` scalings-persistence + the tuner bridge DEFERRED. Resolves at the single
+  `ionic/registry.py::build_ionic_model` seam (all 3 engines). User shelved implementation ("worry about it later").
+- **⚑ Grid dx cm→mm — PROPOSED → BLUEPRINTED → AUDITED → REJECTED (user).** Proposal: `Grid(Nx, Ny)` primary, `dx`
+  demoted to optional mm knob (default 0.1 mm, not 1 mm — 1 mm under-resolves the ~0.5–1 mm upstroke → grid-dominated
+  wrong CV, the ionic-tuner phantom-block failure). Blueprinted `GRID_DX_MM_PLAN.md`, one Opus adversarial audit → **19
+  findings (4 critical)**. Scrapped because the audit proved it is NOT a small fix: **102 executable `Grid(` sites
+  across 5 subsystems** — incl. `cardiac_mcp/core.py` ×2 (the public `simulate(dx=…)` tool param AND the generated
+  `run.py` template), the `/sim-experiment` template, 3 Lab scripts + presets, tutorials, docs. **cm stays canonical.**
+  Plan file deleted; IDEALOG backlog + memory corrected to REJECTED. Two durable findings kept (below).
+- **Object Atlas `cardiac_core/API_OBJECTS.md`** (the nouns, companion to the cheatsheet's verbs) — every public
+  object with its full attribute + method surface, **verified by introspection** over each class MRO (regular/class/
+  static methods, properties, cached_properties), not from memory. Consistent tables throughout: `| Access | Meaning |`
+  for attrs, `| Call | Does |` for callables. Reflection caught real gaps my draft had wrong (`Video.bare/annotated`,
+  5 `Gradient` preset classmethods, TTP06's real `compute_*` methods, `SingleCellResult` fields).
+- **Markdown→PDF renderer `cardiac_core/_build/md_to_pdf.py`** (python-markdown + pygments → styled HTML → Playwright/
+  Chromium PDF; same approach as the textbook build). Rendered `API_OBJECTS.pdf` (8 pp) + `API_CHEATSHEET.pdf` (6 pp),
+  visually inspected via pdftoppm.
+- **BUG FIXED — `single_cell` export was shadowed by its own submodule.** `from cardiac_core import single_cell` gave
+  the MODULE (non-callable), and `cc.single_cell` was the function on 1st access, the module thereafter (PEP 562
+  `__getattr__` only fires when normal lookup FAILS; importing submodule `single_cell` binds it as a package attr).
+  Fix: renamed `single_cell.py`→`_single_cell.py` (matching `_monodomain`/`_bidomain`/`_lbm`), `_LAZY` updated, the 2
+  test files switched to the public `from cardiac_core import single_cell` form. Added
+  `test_public_exports_not_shadowed_by_submodules` guarding the WHOLE export map. 19 tests pass.
+**Durable findings (survive the Grid rejection, worth acting on independently)**:
+1. **The integrity goldens are structurally blind to the `Grid` construction path** — `tests/_integrity/make_goldens.py`
+   builds all 3 goldens via `create_cardiac_mesh(Lx, Ly, dx)`, NEVER a `Grid`. So the declarative `Grid`→factory path
+   (what the cheatsheet, tutorials, MCP, every Lab script use) has NO numerics drift-guard. Separately actionable.
+2. **Census-grep trap**: use `\bGrid\(`. `[^a-zA-Z_.]Grid\(` silently excludes every dotted `cc.Grid(`; `grep -v
+   "A|B|C"` is a BRE (the `|` is literal → filters nothing; use `-vE`). This combo hid 5 real call sites twice.
+3. **Never name a `_LAZY` submodule the same as a public export** — it gets shadowed (the single_cell bug). Guarded now.
+**Next**: nothing blocking. Candidate follow-ons: (a) close the goldens-blind-to-Grid gap (a `Grid`-path integrity
+golden); (b) build the IonicPreset object when un-gated; (c) the GPU test failures this session were CUDA OOM from an
+UNRELATED process holding 29.5 GB — not a cardiac_core regression (477 non-GPU tests pass).
