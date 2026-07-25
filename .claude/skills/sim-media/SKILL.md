@@ -1,6 +1,6 @@
 ---
 name: sim-media
-description: Produce standardized figures and videos from a simulation result — propagation video, APD map, activation isochrones — saved to convention-compliant media/ paths. Use to visualize a Lab experiment's output for a lab member.
+description: Produce standardized figures and videos from a simulation result — propagation video, map figures (snapshot/activation/APD/any field), series traces (action potential, restitution), multi-panel comparisons — saved to convention-compliant media/ paths. Use to visualize a Lab experiment's output for a lab member.
 argument-hint: "[Lab/{date}_{slug} folder | a result] (default: most recent experiment)"
 ---
 
@@ -13,12 +13,34 @@ that's the whole point of standardizing). See `cardiac_core/API_CHEATSHEET.md` �
 
 ```python
 result.video(slug, bulk=True)                     # -> media/lab/_sim_outputs/videos/{date}/{slug}_NN.mp4
-from cardiac_core import apd_map_figure, activation_isochrones
-apd_map_figure(result, slug, bulk=True)           # APD90 heatmap PNG
-activation_isochrones(result, slug, bulk=True)    # activation-time contours PNG
+result.image(slug, bulk=True)                     # -> .../images/{date}/{slug}_NN.png (a Vm snapshot)
+result.trace(slug, bulk=True)                     # -> .../images/{date}/{slug}_NN.png (Vm at a node)
 ```
 
-**Richer option** (`Video` + `Gradient` + `render`) when the default is not enough — colour control,
+**Figures — `r.image()` for maps, `r.trace()` for series.** Both follow the same rule as video:
+drawing displays, naming a destination saves. Annotated by default (axes, colorbar, units), because
+a still carries its meaning in the labels.
+
+```python
+result.image(slug, what="activation", bulk=True)   # LAT map + isochrone contours
+result.image(slug, what="apd", bulk=True)          # APD90 map (needs a run >= 1 action potential)
+result.image(slug, what="source_sink", bulk=True)  # ANY named field from result.fields
+result.image(slug, at=12.0, bulk=True)             # the voltage snapshot nearest 12 ms
+
+result.trace(slug, at={"edge": (0, 4), "centre": (20, 4)}, bulk=True)   # labelled series + legend
+result.trace(slug, hline=(-40.0, "threshold"), bulk=True)               # a reference line
+result.trace(slug, what="restitution", at=(20, 4), bulk=True)           # APD vs DI (multi-beat)
+cc.single_cell("ttp06", pre_pace=5).trace(slug, bulk=True)              # the 0-D action potential
+
+# Comparison: map panels sharing a Gradient AND a quantity share ONE colorbar.
+from cardiac_core import Image, draw
+draw([Image(r_ctrl, label="control"), Image(r_drug, label="knockdown")], slug, bulk=True)
+```
+- `at=` means a **TIME in ms** on `image()` and a **NODE** on `trace()`.
+- `svg`/`pdf` need an explicit `path=` (the `media/` convention accepts raster + svg only).
+- An APD map on a run shorter than one action potential is all-NaN and warns — use a longer run.
+
+**Richer video** (`Video` + `Gradient` + `render`) when the default is not enough — colour control,
 overlays, or a side-by-side comparison:
 
 ```python

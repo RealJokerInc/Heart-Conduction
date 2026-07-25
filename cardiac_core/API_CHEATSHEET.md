@@ -278,7 +278,32 @@ render([Video.annotated(r, gradient=Gradient.physiological(), label="control"),
 
 Video(r).preview(t_ms=10.0, bulk=True)           # ONE frame to PNG — check colours cheaply
 
-cc.apd_map_figure(r, "my-wave", bulk=True)       # APD90 heatmap PNG
+# ---- STILL FIGURES: the same contract, one verb, two spec types --------------------
+# Drawing DISPLAYS; naming a destination SAVES. Everything below is annotated by default,
+# because a still carries its meaning in the labels (a video carries it in the motion).
+r.image()                                        # displays inline; writes NO file
+r.image("wave", bulk=True)                       # -> media/lab/_sim_outputs/images/{date}/…
+#   r.image(path="fig.pdf")   -> exactly there, vector, for a paper
+#   r.image().save("keep.png")-> persist an unsaved figure after the fact
+
+r.image(what="activation")                       # LAT map + isochrone contours
+#   r.image(what="apd")   -> APD90 map (needs a run >= 1 full action potential, ~400 ms)
+r.image(what="source_sink")                      # ANY named field from r.fields
+r.image(at=12.0)                                 # the voltage snapshot nearest 12 ms
+r.image(style="bare")                            # full-frame pure data, no axes
+
+# Series — the figure kind this project is made of, and the one that had no route before.
+r.trace()                                                    # Vm(t) at the grid centre
+r.trace(at={"edge": (0, 4), "centre": (20, 4)})              # labelled series + legend
+r.trace(hline=(-40.0, "threshold"))                          # a labelled reference line
+#   r.trace(what="restitution", at=(20, 4))  -> APD vs DI (needs a MULTI-BEAT run)
+cc.single_cell("ttp06", n_beats=1, bcl=200.0).trace()        # the 0-D action potential
+#   pre_pace=5 first, in real use, to settle the cell toward steady state
+
+# Multi-panel: map panels sharing a Gradient AND a quantity share ONE colorbar.
+cc.draw([cc.Image(r, label="control"), cc.Image(r, label="drug")], "compare", bulk=True)
+
+cc.apd_map_figure(r, "my-wave", bulk=True)       # APD90 heatmap PNG (delegates to r.image)
 cc.activation_isochrones(r, "my-wave", bulk=True)  # activation-time contours PNG
 cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 600x300)
 ```
@@ -300,6 +325,14 @@ cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 
   media convention. The encoder used is reported on `info.backend`; a fallback always warns.
 - Figure-only knobs (`colorbar`, `title`, `figsize`/`dpi`, `label`, `front`, `isochrones`) RAISE
   on a bare clip rather than silently doing nothing — use `Video.annotated(...)`.
+- **Figures follow the same display-vs-save rule as video**, and the same `media/` keywords.
+  `r.image()` returns an `ImageInfo` (displays inline, `.path` is `None`, `.save('f.png')` persists
+  it); `r.trace()` returns one too. Formats: `png` (default), `jpg`, `webp`, and `svg`/`pdf` for
+  publication — the two vector formats need an explicit `path=`, since `media_path` accepts only
+  raster + svg.
+- **`at=` means a TIME in ms on `r.image()` and a NODE on `r.trace()`** — one keyword, two specs.
+- Masking uses the run's `domain_mask`, not `isfinite`: LBM leaves masked obstacle nodes finite, so
+  an isfinite rule would paint an obstacle as live tissue.
 - `from cardiac_core.media import media_path` — raw path helper, if you save your own.
 
 ## 11. Full example — measure conduction velocity in a strip (the smoke pattern)

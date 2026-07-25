@@ -17,6 +17,7 @@ import cardiac_core as cc
 | `Fields` / `VectorField` | spatial field calculus on a result | `r.fields` |
 | `SingleCellResult` | 0-D action potential | `cc.single_cell(...)` |
 | `Video` / `Gradient` / `VideoInfo` | render spec → rendered file | `cc.Video(r)` → `cc.render(...)` |
+| `Image` / `Trace` / `ImageInfo` | still-figure spec → rendered figure | `r.image()` / `r.trace()` / `cc.draw(...)` |
 | `CardiacMeshData` | the on-disk mesh (`.npz`) | `cc.create_cardiac_mesh(...)` |
 | `Distribution` | per-node random parameter spec | `cc.Distribution(...)` |
 | `SimulationSnapshot` | one frame from a generator run | `sim.snapshots(...)` |
@@ -478,7 +479,82 @@ also carries `.data`/`.saved`, a `.read()`/`.save(path)` pair, and displays the 
 
 ---
 
-## 10. `CardiacMeshData`
+## 10. `Image`, `Trace`, `ImageInfo`
+
+Still figures. Same contract as the video layer — **drawing displays; naming a destination saves** —
+and the same reusable `Gradient`. Two spec types, because a map and a series do not share a
+description. Verified by introspection over each class.
+
+### `Image` — one spatial map
+
+`Image` is **resolved at construction**: mutating a field afterwards has no effect (unlike `Video`,
+whose fields are live). Rebuild the spec instead.
+
+| Access | Meaning |
+|---|---|
+| `data` | a `SimulationResult`, or a bare `(Nx, Ny)` array |
+| `what` | `"snapshot"` (default) · `"activation"` · `"apd"` · `"frequency"` · any `r.fields` name |
+| `at` | a **TIME in ms** (on `Trace` the same keyword is a NODE). Raises on a static map |
+| `field` | `"Vm"` / `"phi_e"` — legal only with `what="snapshot"` |
+| `what_kwargs` | forwarded to the selector's own analysis function |
+| `gradient` | a `Gradient`; `None` → a per-`what` default (a map in ms is not put on a mV scale) |
+| `label` | panel title |
+| `front` | mV isoline drawn over the map |
+| `isochrones` | LAT contours; `None` → on for `what="activation"` unless `filled` |
+| `filled` | `contourf` bands instead of an image — the bands ARE the isochrones |
+| `contour_levels` | isoline count (NOT `Gradient.levels`, which is colormap quantization) |
+| `mask` | `None` → the run's `domain_mask` · an array · `False` → none |
+| `style` | `"annotated"` (default) or `"bare"` |
+| `aspect`, `units` | `"equal"`/`"auto"`; `"auto"`/`"cm"`/`"nodes"` |
+| `value_label` | colorbar label; an explicit value always wins over the derived one |
+
+| Call | Does |
+|---|---|
+| `display_values()` | the single frame with inactive tissue set to NaN, `(Nx, Ny)` |
+| `requires_figure()` | True when the spec needs the matplotlib producer |
+
+### `Trace` — one series panel
+
+| Access | Meaning |
+|---|---|
+| `data` | `SimulationResult` · `SingleCellResult` · `(x, y)` · `{label: (x, y)}` |
+| `what` | `"trace"` (default) · `"restitution"` · `"apd_per_beat"` |
+| `at` | a **NODE** `(ix, iy)`, a list, or `{label: node}` whose keys become the legend |
+| `series` | explicit `[(label, x, y), …]` override |
+| `label`, `xlabel`, `ylabel` | title and axis labels (derived from `what` when unset) |
+| `hline`, `vline` | reference lines: a scalar, a list, or `(value, label)` pairs |
+| `legend` | `None` → on when there is more than one series |
+| `marker`, `linestyle` | `None` → per-`what` defaults; restitution is marker-only |
+| `xlim`, `ylim`, `logx`, `logy`, `colors` | axis limits, log scales, explicit colours |
+| `what_kwargs` | forwarded to `restitution_curve` / `apd_per_beat` |
+
+### `ImageInfo` — what `draw()` produced
+
+| Access | Meaning |
+|---|---|
+| `path` | where it was written, or `None` when nothing was saved (the default) |
+| `data` | the encoded bytes — the sole copy when unsaved |
+| `format` | `png` · `svg` · `pdf` · `jpg` · `jpeg` · `webp` |
+| `width`, `height` | pixel size read back from the file; `None` for vector formats |
+| `n_panels` | 1, or the panel count for a layout |
+| `vmin`, `vmax` | the resolved colour range; `None` for a trace-only figure |
+| `size_bytes` | size of the encoded figure |
+| `saved` | property — `path is not None` |
+
+| Call | Does |
+|---|---|
+| `read()` | the bytes, from memory or from the saved file |
+| `save(path)` | write after the fact; returns the path |
+
+### `draw(spec, slug="figure", …)`
+
+Takes an `Image`, a `Trace`, a `Video`, or a **list** of `Image`/`Trace` for a multi-panel layout.
+Destination: `path=` or the `media/` keywords (`question=`/`bulk=`/`date=`/`root=`); with none of
+them the figure is returned in memory and displays inline. Also accepts `format`, `frame`
+(`Video` only), `figsize`, `dpi`, `tight`, `title`, `colorbar`, `show_time`, `units`,
+`transparent`, `resolution`/`fit` (bare producer only), and `labels`/`rows`/`cols` (lists only).
+
+## 11. `CardiacMeshData`
 
 ```python
 mesh = cc.create_cardiac_mesh(Lx, Ly, dx, D=1.4, chi=1400.0)   # lengths first, THEN spacing (cm)
@@ -508,7 +584,7 @@ sim  = cc.monodomain(mesh)
 
 ---
 
-## 11. `Distribution` and `SimulationSnapshot`
+## 12. `Distribution` and `SimulationSnapshot`
 
 ### `Distribution`
 
