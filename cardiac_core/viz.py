@@ -14,7 +14,7 @@ matplotlib.use("Agg")  # headless — viz is for scripts/CI, never a GUI
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .media import media_path
+from .media import media_path  # noqa: F401  (kept: part of this module's public surface)
 
 
 def _vm_numpy(result):
@@ -61,38 +61,41 @@ def propagation_video(result, slug, *, question="lab", fps=20, vmin=-90.0, vmax=
 
 def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, root=None,
                    **apd_kw) -> str:
-    """APD90 map (ms) as a heatmap PNG. Returns the path."""
-    from . import analysis
-    apd = analysis.apd_map(result.Vm, result.times, **apd_kw).detach().cpu().numpy()
-    apd = np.where(np.isfinite(apd), apd, np.nan)
+    """APD90 map (ms) as a heatmap PNG. Returns the path.
 
-    fig, ax = plt.subplots(figsize=(6, 3))
-    im = ax.imshow(apd.T, origin="lower", aspect="auto", cmap=cmap)
-    fig.colorbar(im, ax=ax, label="APD90 (ms)")
-    ax.set_title("APD map")
-    ax.set_xlabel("x (nodes)")
-    ax.set_ylabel("y (nodes)")
-    path = media_path(question, "images", f"{slug}-apd", ext="png", bulk=bulk, root=root)
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    return path
+    Delegates to :func:`cardiac_core.image.draw`, preserving this function's historical look:
+    ``figsize=(6, 3)``, ``aspect="auto"``, node-index axes, no masking, dpi 120, the ``"APD map"``
+    title and the ``str`` return. Two documented differences: the axes extent shifts by half a node
+    (``_extent_and_labels`` returns ``[0, Nx-1]`` where a bare ``imshow`` uses ``[-0.5, Nx-0.5]``),
+    and an all-NaN map now emits the colour-range warning that ``Gradient`` raises for empty data —
+    a silently blank APD map is worth saying out loud.
+    """
+    from .image import Image, draw
+    from .video import Gradient
+    info = draw(Image(result, what="apd", what_kwargs=apd_kw or None,
+                      gradient=Gradient(cmap=cmap, value_range="auto"),
+                      aspect="auto", units="nodes", mask=False, label="APD map"),
+                f"{slug}-apd", question=question, bulk=bulk, root=root,
+                figsize=(6.0, 3.0), dpi=120)
+    return info.path
 
 
 def activation_isochrones(result, slug, *, question="lab", levels=15, cmap="plasma",
                           bulk=False, root=None, **lat_kw) -> str:
-    """Local-activation-time isochrones (filled contours) PNG. Returns the path."""
-    from . import analysis
-    lat = analysis.activation_time(result.Vm, result.times, **lat_kw).detach().cpu().numpy()
-    lat = np.where(np.isfinite(lat), lat, np.nan)
+    """Local-activation-time isochrones (filled contours) PNG. Returns the path.
 
-    fig, ax = plt.subplots(figsize=(6, 3))
-    if np.isfinite(lat).any():
-        cs = ax.contourf(lat.T, levels=levels, cmap=cmap)
-        fig.colorbar(cs, ax=ax, label="activation time (ms)")
-    ax.set_title("Activation isochrones")
-    ax.set_xlabel("x (nodes)")
-    ax.set_ylabel("y (nodes)")
-    path = media_path(question, "images", f"{slug}-isochrones", ext="png", bulk=bulk, root=root)
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    return path
+    Delegates to :func:`cardiac_core.image.draw` with ``filled=True``, which is what preserves this
+    function's composition: filled ``contourf`` bands with the colorbar sourced from the contour
+    set, and NO line contours on top. ``isochrones=False`` is explicit for the same reason — filled
+    bands ARE the isochrones, so letting the automatic overlay fire would double-draw.
+    """
+    from .image import Image, draw
+    from .video import Gradient
+    info = draw(Image(result, what="activation", what_kwargs=lat_kw or None,
+                      gradient=Gradient(cmap=cmap, value_range="auto"),
+                      aspect="auto", units="nodes", mask=False,
+                      filled=True, contour_levels=levels, isochrones=False,
+                      label="Activation isochrones"),
+                f"{slug}-isochrones", question=question, bulk=bulk, root=root,
+                figsize=(6.0, 3.0), dpi=120)
+    return info.path

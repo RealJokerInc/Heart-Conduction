@@ -431,12 +431,15 @@ def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional
 
     Displays inline; writes a file only when a destination is named (``path=`` or the ``media/``
     convention keywords). The return value is still the path string when one was written.
+
+    Delegates to :func:`cardiac_core.image.draw`. Three arguments are load-bearing for keeping the
+    output pixel-identical: ``resolution=None`` (the image layer's default upscales a bare still),
+    ``dpi`` passed RAW so ``enforce_capabilities`` still sees the caller's ``None`` on a bare clip
+    and ``draw`` applies the historical ``dpi or 100`` afterwards, and ``format="png"`` because
+    this function is documented to produce PNG.
     """
     if t_ms is not None and frame is not None:
         raise ValueError("pass t_ms= or frame=, not both")
-    # Same gate as render(), or preview would accept clips render() rejects.
-    enforce_capabilities(video, colorbar=None, show_time=None,
-                         figsize=figsize, dpi=dpi, title=title)
 
     if frame is not None:
         t = int(frame)
@@ -447,24 +450,11 @@ def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional
     if not (0 <= t < len(video.frames)):
         raise IndexError(f"frame {t} out of range for {len(video.frames)} frames")
 
-    cmap, norm, _lo, _hi = video.gradient.resolve(video.masked_iter([t]), field=video.field)
-    out_path, is_temp = _resolve_destination(slug, "images", "png", path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
-
-    if video.requires_figure():
-        st = _build_figure(video, cmap, norm, colorbar_on=(video.style == "annotated"),
-                           title=title, figsize=figsize, dpi=dpi, units=units, idx=[t])
-        try:
-            _produce_figure(st, video, t, show_time=True, title=title)
-            st.fig.savefig(out_path, dpi=(dpi or 100), bbox_inches="tight")
-        finally:
-            plt.close(st.fig)
-    else:
-        from PIL import Image
-        rgb = _produce_bare(video, t, cmap, norm)
-        rgb = burn_timestamp(rgb, f"t = {video.times[t]:.1f} ms")
-        Image.fromarray(rgb).save(out_path)
-    return ImagePath(*_finalize(out_path, is_temp))
+    from ..image._draw import draw          # function-local: image/ imports video/ at module scope
+    info = draw(video, slug, frame=t, show_time=True, resolution=None, format="png",
+                path=path, question=question, bulk=bulk, date=date, root=root,
+                units=units, title=title, figsize=figsize, dpi=dpi)
+    return ImagePath(info.path, info.data)
 
 
 def _default_layout(n: int):

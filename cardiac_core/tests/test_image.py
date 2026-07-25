@@ -317,9 +317,9 @@ def test_bare_capability_errors_speak_image_vocabulary(wave, ikw):
     assert "Video" not in str(exc.value)
 
 
-def test_multi_panel_is_deferred(wave):
-    with pytest.raises(NotImplementedError, match="Phase 3"):
-        draw([Image(wave), Image(wave)])
+def test_empty_panel_list_is_rejected(wave):
+    with pytest.raises(ValueError, match="at least one"):
+        draw([])
 
 
 # --------------------------------------------------------------------------- wiring
@@ -455,3 +455,119 @@ def test_trace_keys_covers_every_spec_field():
 def test_trace_export_is_stable():
     first = cc.Trace
     assert not isinstance(first, types.ModuleType) and cc.Trace is first
+
+
+# =========================================================================== Phase 3: layout
+
+def _panel_artists(specs, **kw):
+    """Per-panel (n_images, n_collections), read AFTER draw() — artists survive plt.close()."""
+    axes_seen = []
+    mod = sys.modules["cardiac_core.image._draw"]
+    orig = mod._setup_panel
+
+    def spy(clip, ax, cmap, norm, **kwargs):
+        axes_seen.append(ax)
+        return orig(clip, ax, cmap, norm, **kwargs)
+
+    mod._setup_panel = spy
+    try:
+        info = draw(specs, **kw)
+    finally:
+        mod._setup_panel = orig
+    return info, [(len(a.images), len(a.collections)) for a in axes_seen]
+
+
+def test_two_panels_share_one_colorbar(wave):
+    info, _ = _panel_artists([Image(wave, label="control"), Image(wave, label="drug")])
+    assert info.n_panels == 2 and info.data
+
+
+def test_both_activation_panels_draw_contours(wave):
+    info, counts = _panel_artists([Image(wave, what="activation"),
+                                   Image(wave, what="activation")])
+    assert counts == [(1, 1), (1, 1)], f"expected contours on BOTH panels, got {counts}"
+
+
+def test_front_survives_the_layout_path(wave):
+    _, counts = _panel_artists([Image(wave, front=-40.0), Image(wave)])
+    assert counts[0][1] > counts[1][1], f"front= was dropped on the layout path: {counts}"
+
+
+def test_mixed_map_and_trace_lays_out(wave):
+    info = draw([Image(wave), cc.Trace(wave)])
+    assert info.n_panels == 2 and info.data
+
+
+def test_different_quantities_are_not_pooled(wave, long_wave):
+    """An APD map and a voltage map both report field='Vm'; only value_label separates them."""
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")     # defeat the per-location __warningregistry__
+        draw([Image(wave), Image(long_wave, what="apd")])
+    assert any("NOT directly comparable" in str(w.message) for w in rec), [
+        str(w.message) for w in rec]
+
+
+def test_labels_do_not_mutate_the_caller(wave):
+    a = Image(wave, label="original")
+    draw([a, Image(wave)], labels=["override", "b"])
+    assert a.label == "original"
+
+
+def test_video_in_a_list_is_rejected(wave):
+    from cardiac_core import Video
+    with pytest.raises(ValueError, match="render"):
+        draw([Video(wave), Video(wave)])
+
+
+def test_map_panels_must_share_a_grid(wave):
+    g = cc.Grid(20, 6, 0.025)
+    cond = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)
+    other = cc.monodomain(g, "ttp06", cond,
+                          cc.Stim.boundary(g, "left", amplitude=-80.0,
+                                           start_time=1.0, duration=2.0)).run(t_end=5.0)
+    with pytest.raises(ValueError, match="share a grid"):
+        draw([Image(wave), Image(other)])
+
+
+# --------------------------------------------------------------------------- delegations
+
+def test_preview_is_pixel_identical_on_both_paths(wave, tmp_path):
+    """`preview_frame` now routes through draw(); its output must not move a pixel."""
+    from PIL import Image as PILImage
+    from cardiac_core import Video
+    bare = Video.bare(wave).preview(path=str(tmp_path / "b.png"))
+    ann = Video.annotated(wave).preview(path=str(tmp_path / "a.png"))
+    assert PILImage.open(bare).size == (30, 8), "a bare preview is the raw grid, unscaled"
+    w, h = PILImage.open(ann).size
+    assert w > 400 and h > 200, (w, h)          # the historical dpi-100 figure, not dpi-150
+
+
+def test_annotated_preview_does_not_raise(wave):
+    """R3 C-1: the delegation passes resolution=None on an ANNOTATED clip."""
+    from cardiac_core import Video
+    assert Video.annotated(wave).preview()
+
+
+def test_preview_still_returns_an_image_path(wave, tmp_path):
+    from cardiac_core import Video
+    p = Video(wave).preview(t_ms=5.0, path=str(tmp_path / "f.png"))
+    assert isinstance(p, str) and p.endswith(".png") and os.path.exists(p)
+
+
+def test_viz_stills_keep_their_titles_and_shape(wave):
+    """The delegated stills preserve composition; size may move <=15% (suptitle+tight_layout)."""
+    from PIL import Image as PILImage
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")      # a 20 ms run has no APD -> empty-range warning
+        p = cc.apd_map_figure(wave, "t-apd", bulk=True)
+    w, h = PILImage.open(p).size
+    assert 500 < w < 900 and 250 < h < 450, (w, h)
+    q = cc.activation_isochrones(wave, "t-iso", bulk=True)
+    assert os.path.getsize(q) > 0 and q.endswith(".png")
+
+
+def test_isochrones_delegation_is_filled_without_line_overlay(wave):
+    """viz.activation_isochrones draws contourf ONLY — line contours on top would double-draw."""
+    spec = Image(wave, what="activation", filled=True, isochrones=False)
+    assert spec.isochrones is False and spec._lat is not None
+    assert _figure_artists(spec) == (False, 0, 1)

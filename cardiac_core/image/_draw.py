@@ -31,8 +31,8 @@ import numpy as np                  # noqa: E402
 from ..video.clip import Video, _to_numpy                        # noqa: E402
 from ..video.encoders import ImagePath, burn_timestamp, fit_frame, resolve_canvas  # noqa: E402
 from ..video.render import (                                     # noqa: E402
-    _LEGAL_FIT, _PAD_BLACK, _build_figure, _finalize, _named_destination,
-    _produce_bare, _produce_figure, _resolve_destination, enforce_capabilities,
+    _LEGAL_FIT, _PAD_BLACK, _build_figure, _default_layout, _finalize, _named_destination,
+    _produce_bare, _produce_figure, _resolve_destination, _setup_panel, enforce_capabilities,
 )
 from .info import ImageInfo                                      # noqa: E402
 from .panel import Image, Trace                                  # noqa: E402
@@ -140,7 +140,11 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
     ``format`` follows ``path``'s extension when not given explicitly, and a disagreement raises.
     """
     if isinstance(spec, (list, tuple)):
-        raise NotImplementedError("multi-panel lands in Phase 3")
+        return _draw_panels(list(spec), slug, path=path, question=question, bulk=bulk,
+                            date=date, root=root, fmt=_resolve_format(format, path),
+                            figsize=figsize, dpi=dpi, tight=tight, title=title,
+                            colorbar=colorbar, show_time=show_time, units=units,
+                            transparent=transparent, labels=labels, rows=rows, cols=cols)
     is_image = isinstance(spec, Image)
     is_trace = isinstance(spec, Trace)
     if not is_image and not is_trace and not isinstance(spec, Video):
@@ -393,3 +397,159 @@ def _draw_trace(spec: Trace, slug: str, *, path, question, bulk, date, root, fmt
     # A trace has no colour range — vmin/vmax stay None rather than being invented.
     return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
                      n_panels=1, vmin=None, vmax=None, size_bytes=size)
+
+
+def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize, dpi, tight,
+                 title, colorbar, show_time, units, transparent, labels, rows, cols) -> ImageInfo:
+    """N panels in a grid. Map panels sharing a gradient AND a label share ONE colorbar."""
+    import math as _math
+    import warnings
+
+    if not specs:
+        raise ValueError("draw() needs at least one spec")
+    for sp in specs:
+        if isinstance(sp, Video):
+            raise ValueError(
+                "a Video belongs to the video layer's multi-panel path — use render([...]).")
+        if not isinstance(sp, (Image, Trace)):
+            raise TypeError(f"draw() takes Image/Trace specs; got {type(sp).__name__}.")
+
+    maps = [sp for sp in specs if isinstance(sp, Image)]
+    shapes = {sp._clip.frames.shape[1:] for sp in maps}
+    if len(shapes) > 1:
+        raise ValueError(
+            f"all map panels must share a grid; got {sorted(shapes)}. Panels are compared "
+            f"side by side, so differing grids cannot be.")
+    if any(sp.style == "bare" for sp in maps):
+        warnings.warn(
+            "multi-panel rendering always uses the figure producer; bare panels were promoted to "
+            "annotated for layout (they gain axes and a shared colorbar).",
+            UserWarning, stacklevel=3)
+
+    # Never mutate the caller's specs: `labels=` is a draw-time override.
+    panel_labels = [(labels[i] if (labels and i < len(labels)) else getattr(sp, "label", None))
+                    for i, sp in enumerate(specs)]
+
+    if fmt in ("pdf", "webp") and path is None and _named_destination(
+            None, question, bulk, date, root):
+        raise ValueError(
+            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
+            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+
+    # Colour: pooled only when every map panel agrees on BOTH the gradient and the quantity.
+    # `_clip.field` is 'Vm' for every Image, so it cannot distinguish an APD map from a voltage one.
+    shared = bool(maps) and all(
+        sp.gradient.key() == maps[0].gradient.key()
+        and sp._clip.value_label == maps[0]._clip.value_label for sp in maps)
+    lo = hi = None
+    per_panel = {}
+    if maps:
+        if shared:
+            def _pooled():
+                for sp in maps:
+                    yield from sp._clip.masked_iter([0])
+            cmap, norm, lo, hi = maps[0].gradient.resolve(_pooled(), field=maps[0]._clip.field)
+            per_panel = {id(sp): (cmap, norm) for sp in maps}
+        else:
+            warnings.warn(
+                "panels use different gradients or show different quantities and are NOT directly "
+                "comparable; drawing a colorbar per panel instead of one shared scale.",
+                UserWarning, stacklevel=3)
+            for sp in maps:
+                c, n, l0, h0 = sp.gradient.resolve(sp._clip.masked_iter([0]),
+                                                   field=sp._clip.field)
+                per_panel[id(sp)] = (c, n)
+                if lo is None:
+                    lo, hi = l0, h0
+
+    nrows, ncols = (rows, cols) if (rows and cols) else _default_layout(len(specs))
+    if rows and not cols:
+        nrows, ncols = rows, _math.ceil(len(specs) / rows)
+    elif cols and not rows:
+        ncols, nrows = cols, _math.ceil(len(specs) / cols)
+    if figsize is None:
+        figsize = (min(6.5 * ncols, 19.0), min(3.6 * nrows, 10.0))
+    dpi_resolved = dpi if dpi is not None else 150
+    tight_resolved = True if tight is None else bool(tight)
+    colorbar_resolved = True if colorbar is None else bool(colorbar)
+
+    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
+    fig = None
+    try:
+        fig, axes = plt.subplots(nrows, ncols, figsize=tuple(figsize), dpi=dpi_resolved,
+                                 constrained_layout=True, squeeze=False)
+        flat = [ax for row in axes for ax in row]
+        for ax in flat[len(specs):]:
+            ax.set_axis_off()
+
+        states = []
+        for sp, ax, lab in zip(specs, flat, panel_labels):
+            if isinstance(sp, Trace):
+                _draw_trace_on(sp, ax)
+                if lab:
+                    ax.set_title(lab, fontsize=10)
+                states.append(None)
+                continue
+            cmap, norm = per_panel[id(sp)]
+            lat = sp._lat if sp.isochrones else None
+            if lat is None and sp.isochrones:
+                lat = _lat_from_result(sp)
+            if lat is not None and sp._clip.active_mask is not None:
+                lat = np.where(sp._clip.active_mask, lat, np.nan)
+            st = _setup_panel(sp._clip, ax, cmap, norm, units=units, idx=[0], label=lab,
+                              lat=lat, contour_levels=sp.contour_levels, filled=sp.filled)
+            st.fig = fig
+            states.append(st)
+
+        if colorbar_resolved and maps:
+            mappables = [(sp, st) for sp, st in zip(specs, states)
+                         if isinstance(sp, Image) and st is not None and st.im is not None]
+            if mappables and shared:
+                fig.colorbar(mappables[0][1].im,
+                             ax=[st.ax for _, st in mappables],
+                             label=maps[0]._clip.value_label, shrink=0.75)
+            else:
+                for sp, st in mappables:
+                    fig.colorbar(st.im, ax=st.ax, label=sp._clip.value_label, shrink=0.75)
+
+        # ONE suptitle for the whole figure; `_setup_panel` leaves suptitle=None, so calling
+        # _produce_figure here would raise on it (and would overwrite the shared stamp per panel).
+        sup = fig.suptitle(title or "")
+        for st in states:
+            if st is not None:
+                st.suptitle = sup
+
+        # `front` is the one thing _setup_panel omits — draw it per map panel.
+        for sp, st in zip(specs, states):
+            if isinstance(sp, Image) and sp.front is not None and st is not None:
+                st.contour = st.ax.contour(st.Xc, st.Yc, sp._clip.display_values(0),
+                                           levels=[sp.front], colors="white", linewidths=1.4)
+
+        # The stamp comes from the FIRST MAP panel; a Trace has no clip and no times.
+        if maps:
+            t0 = float(maps[0]._clip.times[0])
+            stamp_on = show_time if show_time is not None else bool(np.isfinite(t0))
+            if stamp_on:
+                text = f"t = {t0:.1f} ms"
+                sup.set_text(f"{title} — {text}" if title else text)
+
+        fig.savefig(out_path, dpi=dpi_resolved,
+                    bbox_inches=("tight" if tight_resolved else None), transparent=transparent)
+    except BaseException:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        raise
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    width = height = None
+    if fmt not in _VECTOR:
+        from PIL import Image as PILImage
+        with PILImage.open(out_path) as probe:
+            width, height = probe.size
+    final_path, data = _finalize(out_path, is_temp)
+    return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
+                     n_panels=len(specs), vmin=lo, vmax=hi, size_bytes=size)

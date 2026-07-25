@@ -975,3 +975,51 @@ def test_preview_saved_is_still_a_plain_path_string(wave, tmp_path):
     p = Video((times, V)).preview(t_ms=5.0, path=str(tmp_path / "frame.png"))
     assert isinstance(p, str) and p.endswith(".png") and _ok(p)
     assert os.path.basename(p) == "frame.png"
+
+
+def test_path_extension_follows_the_encoder(wave, tmp_path, monkeypatch):
+    """A backend downgrade must not leave the caller's extension describing the wrong bytes.
+
+    media_path self-corrects because it derives ext from the backend; `path=` is taken verbatim,
+    so without this the writer either mislabels the file or (for PIL) dies on an extension it
+    does not know.
+    """
+    times, V = wave
+    real = enc._importable
+    monkeypatch.setattr(enc, "_importable",
+                        lambda n: False if n == "imageio_ffmpeg" else real(n))
+
+    with pytest.warns(UserWarning, match="describes its own contents"):
+        info = render(Video((times, V)), path=str(tmp_path / "out.webm"), max_frames=3)
+
+    assert info.path.endswith(".gif"), "extension must follow the encoder, not the request"
+    assert not (tmp_path / "out.webm").exists()
+    with open(info.path, "rb") as fh:
+        assert fh.read(6) in (b"GIF87a", b"GIF89a")
+
+
+def test_path_without_extension_gets_one(wave, tmp_path):
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "noext"), max_frames=3)
+    assert info.path.endswith(".mp4") and _is_mp4(info.path)
+
+
+def test_close_failure_removes_the_partial_file(wave, tmp_path, monkeypatch):
+    """The pillow-gif backend writes the WHOLE file in close(), so close must be inside the
+    cleanup guard — otherwise a failed finalize leaves a partial file and burns the NN slot."""
+    times, V = wave
+    dest = tmp_path / "boom.mp4"
+    real_close = enc._Writer.close
+    calls = {"n": 0}
+
+    def boom(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            self._closed = True          # real close() sets this before writing, too
+            raise OSError("disk full during finalize")
+        return real_close(self)
+
+    monkeypatch.setattr(enc._Writer, "close", boom)
+    with pytest.raises(OSError, match="disk full"):
+        render(Video((times, V)), path=str(dest), max_frames=3)
+    assert not dest.exists(), "a failed finalize must not leave a partial file behind"
