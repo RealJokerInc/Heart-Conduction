@@ -64,7 +64,7 @@ if importlib.util.find_spec("cardiac_core") is None:
     print("Installing cardiac_core — this takes about a minute, please wait...")
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "-q",
-         "git+https://github.com/RealJokerInc/cardiac-core.git"],
+         "cardiac-core[viz] @ git+https://github.com/RealJokerInc/cardiac-core.git"],
         check=True,
     )
     print("Installed.")

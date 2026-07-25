@@ -35,8 +35,14 @@ render([Video.annotated(r_ctrl, gradient=g, label="control"),
   few-mV artifact visible) · `diverging()` · `autoscale()`.
 - Figure-only knobs raise on a bare clip instead of silently doing nothing — use `style="annotated"`.
 - `Video(result).preview(t_ms=...)` renders ONE frame to PNG: check colours before a long encode.
+- **A file is written only when a destination is named.** `bulk=`/`question=`/`root=`/`date=`
+  (the `media/` convention) and `path=` all count; with none of them the render is returned in
+  memory and only displays inline. For a Lab experiment ALWAYS pass `bulk=True` — the notebook
+  record needs the file on disk.
 - `bulk=True` → gitignored `media/lab/_sim_outputs/...` (regenerable; the normal case).
 - `bulk=False` → committed `media/lab/...` — use only for a curated figure worth keeping in git.
+- `path="somewhere.mp4"` → written exactly there, no `media/` tree. Use for one-off exports only,
+  never for a recorded experiment.
 
 ## Steps
 

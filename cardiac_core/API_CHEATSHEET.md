@@ -249,8 +249,14 @@ sim  = cc.monodomain(g, "ttp06", cond, cc.Stim.boundary(g, "left", amplitude=-80
                                                         start_time=1.0, duration=2.0))
 r    = sim.run(t_end=20.0, save_every=1.0)
 
+# Rendering DISPLAYS; naming a destination SAVES — the same contract as matplotlib.
+r.video()                                        # plays inline in Jupyter/Colab; writes NO file
 info = r.video("my-wave", bulk=True)             # -> media/lab/_sim_outputs/videos/{date}/my-wave_01.mp4
 print(info.backend, info.width, info.height, info.vmin, info.vmax)
+#   r.video(path="my-wave.mp4")     -> writes ./my-wave.mp4, exactly there (no media/ tree)
+#   r.video().save("keep-this.mp4") -> persist an unsaved render after the fact
+# (both are exercised by tests/test_video.py; kept out of this block so the doc canary
+#  does not litter the working directory)
 
 # Colour is a reusable object. The RANGE is a scientific choice, not decoration:
 # a 7.5 mV artifact spans 5.8% of the default -90..40 scale but 90.4% of the zoom window.
@@ -277,9 +283,19 @@ cc.activation_isochrones(r, "my-wave", bulk=True)  # activation-time contours PN
 cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 600x300)
 ```
 
+- **A file is written only when you name a destination** — `path=`, or any of the `media/`
+  convention keywords (`question=`/`bulk=`/`root=`/`date=`). With none of them the render is
+  returned in memory and displays inline; `info.path` is `None` and `info.saved` is `False`.
+  This is why a notebook needs no folder and Colab needs no persistent disk.
+- `path=` is obeyed literally (no `media/` tree, no date folder, no `_NN`), and `format=` is
+  taken from its extension (`.mp4`/`.webm`/`.gif`) unless given explicitly.
 - `bulk=True` → gitignored `media/lab/_sim_outputs/...` (regenerable; the normal case).
   `bulk=False` → committed `media/{question}/...` (a curated figure worth keeping).
-- `question=` names the owning research question; defaults to `"lab"`.
+- `question=` names the owning topic; defaults to `"lab"` once any convention keyword is used.
+- Inline playback embeds the bytes as a data URI (capped at 16 MB — above that the size is
+  reported instead). H.264 is required: without `imageio-ffmpeg` the OpenCV `mp4v` fallback
+  writes a file browsers cannot decode, and says so rather than showing a dead player.
+  Install with `pip install cardiac-core[viz]`.
 - `format=` is `"mp4"` (default), `"webm"` or `"gif"` — a GIF is filed under `images/` per the
   media convention. The encoder used is reported on `info.backend`; a fallback always warns.
 - Figure-only knobs (`colorbar`, `title`, `figsize`/`dpi`, `label`, `front`, `isochrones`) RAISE
