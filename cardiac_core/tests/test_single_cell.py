@@ -3,10 +3,44 @@
 The companion safety_factor tests live in test_safety_factor.py.
 """
 
+import types
+
 import pytest
 import torch
 
-from cardiac_core.single_cell import single_cell
+from cardiac_core import single_cell
+
+
+def test_public_exports_not_shadowed_by_submodules():
+    """Regression: a `_LAZY` export whose NAME equals its submodule name gets shadowed.
+
+    PEP 562 `__getattr__` only fires when normal attribute lookup FAILS. Importing submodule
+    `cardiac_core.X` binds it as a package attribute, so a lazy export also named `X` silently
+    becomes the MODULE from then on — `cc.single_cell` was a function on first access and a
+    (non-callable) module on every access after. Fixed by making the module private
+    (`_single_cell`). This guards the WHOLE export map so no future export can regress the same way.
+    """
+    import cardiac_core as cc
+    from cardiac_core import _LAZY
+
+    collisions = sorted(n for n, mod in _LAZY.items() if n == mod)
+    assert collisions == [], (
+        f"export name(s) collide with their own submodule and will be shadowed: {collisions}. "
+        f"Rename the submodule private (e.g. '_{collisions[0] if collisions else 'x'}.py')."
+    )
+
+    for name in _LAZY:
+        first = getattr(cc, name)
+        assert not isinstance(first, types.ModuleType), f"cc.{name} resolved to a module, not an object"
+        assert getattr(cc, name) is first, f"cc.{name} changed identity on repeated access (shadowed)"
+
+
+def test_single_cell_public_export_is_callable():
+    """Both public import forms must give the FUNCTION (this is what was broken)."""
+    import cardiac_core as cc
+    from cardiac_core import single_cell as fn
+    assert callable(fn) and callable(cc.single_cell)
+    assert cc.single_cell is fn
 
 
 def test_ttp06_ap():

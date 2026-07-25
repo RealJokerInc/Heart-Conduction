@@ -17,6 +17,14 @@ from .file_format import CardiacMeshData
 from .api import monodomain, bidomain, lbm
 
 
+# Image spec fields that `SimulationResult.image()` forwards to the spec rather than to draw().
+# Module-level so a test can assert every Image field except `data` is reachable from the
+# headline API — a new field must not silently become a TypeError.
+_IMAGE_KEYS = {"what", "at", "field", "what_kwargs", "gradient", "label", "front",
+               "isochrones", "filled", "contour_levels", "mask", "style", "aspect",
+               "units", "value_label"}
+
+
 @dataclass
 class SimulationResult:
     """Plain tensor output from a one-shot simulation run.
@@ -131,6 +139,32 @@ class SimulationResult:
         return analysis.restitution_slope(DI, APD)
 
     # --- media ---
+    def image(self, slug: str = "figure", **kw):
+        """Draw this run as a still figure — annotated, cm axes, colorbar, standard colours.
+
+        **Drawing displays; naming a destination saves**, following matplotlib::
+
+            r.image()                                  # displays inline in a notebook, no file
+            r.image(path="wave.png")                   # writes ./wave.png
+            r.image("wave", bulk=True)                 # media/lab/_sim_outputs/images/{date}/…
+
+        The content is chosen with ``what=``::
+
+            r.image(what="activation")     # local activation times + isochrone contours
+            r.image(what="apd")            # APD90 map
+            r.image(what="source_sink")    # any named field from ``r.fields``
+            r.image(at=12.0)               # the voltage snapshot nearest 12 ms
+
+        Grid spacing, masked (``domain_mask``) tissue and the run's own units are applied
+        automatically. Returns a :class:`cardiac_core.image.ImageInfo`, which displays itself in a
+        notebook.
+        """
+        from .image import Image, draw
+        # Split spec-level knobs from verb-level ones, so `what=`/`gradient=`/`style=` are not a
+        # TypeError from the headline API.
+        ikw = {k: kw.pop(k) for k in list(kw) if k in _IMAGE_KEYS}
+        return draw(Image(self, **ikw), slug, **kw)
+
     def video(self, slug: str = "video", **kw):
         """Render this run to a video — full-frame, unlabelled, 1080p, standard colour preset.
 

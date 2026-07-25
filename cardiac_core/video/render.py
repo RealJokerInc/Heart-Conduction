@@ -79,6 +79,19 @@ def _resolve_destination(slug: str, kind: str, ext: str, *, path, question, bulk
     """
     if path is not None:
         p = os.path.abspath(os.path.expanduser(str(path)))
+        stem, given = os.path.splitext(p)
+        # The backend can DOWNGRADE (no ffmpeg -> GIF), so the encoder's extension is the only
+        # one that describes the bytes. Writing GIF data into a .webm is the silent-format-
+        # downgrade defect this subsystem exists to prevent; PIL also refuses the write outright.
+        if given and given.lower() != f".{ext}":
+            warnings.warn(
+                f"the encoder produced {ext.upper()} but path= asked for '{given}' — writing "
+                f"'{os.path.basename(stem)}.{ext}' instead so the file describes its own "
+                f"contents. This follows a backend downgrade (see the preceding warning) or a "
+                f"format= that disagrees with the path.",
+                UserWarning, stacklevel=3)
+        if given.lower() != f".{ext}":
+            p = f"{stem}.{ext}"
         parent = os.path.dirname(p)
         if parent:
             os.makedirs(parent, exist_ok=True)
@@ -173,7 +186,20 @@ def _extent_and_labels(clip: Video, units_resolved: str):
 
 
 def _build_figure(clip: Video, cmap, norm, *, colorbar_on: bool, title: Optional[str],
-                  figsize, dpi, units, idx) -> _FigState:
+                  figsize, dpi, units, idx,
+                  lat=None, contour_levels: int = 12, filled: bool = False) -> _FigState:
+    """Build the annotated figure once; the caller swaps data per frame.
+
+    ``lat``/``contour_levels``/``filled`` are additive and default to the historical behaviour:
+
+    * ``lat`` — a precomputed ``(Nx, Ny)`` activation map. When given it is used directly and
+      ``isochrone_lat`` is NOT called, which is what lets a one-frame clip draw isochrones at all
+      (``isochrone_lat`` refuses fewer than 2 frames).
+    * ``contour_levels`` — replaces the previously hard-coded ``levels=12``.
+    * ``filled`` — draw ``contourf`` bands instead of an image. The ``QuadContourSet`` is stored on
+      ``_FigState.im`` because it IS the colorbar mappable; ``fig.colorbar(None, ...)`` does not
+      raise, it silently fabricates a meaningless 0..1 scale.
+    """
     units_resolved = units or clip.units
     if units_resolved == "auto":
         units_resolved = "cm" if (clip.dx and clip.dy) else "nodes"
@@ -187,30 +213,39 @@ def _build_figure(clip: Video, cmap, norm, *, colorbar_on: bool, title: Optional
         figsize = (6.0 + 1.6, h + 1.2)
     fig, ax = plt.subplots(figsize=tuple(figsize), dpi=(dpi or 100))
 
-    im = ax.imshow(
-        np.ma.masked_invalid(clip.display_values(idx[0]).T),
-        origin="lower",              # MUST be explicit: the bare producer's flipud(.T) is pinned
-                                     # by a test, and a mismatch here would flip one producer only
-        extent=extent, aspect=clip.aspect, cmap=cmap, norm=norm,
-        interpolation=clip.gradient.interpolation,
-    )
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
-    if colorbar_on:
-        fig.colorbar(im, ax=ax, label=clip.value_label)
-    if clip.label:
-        ax.set_title(clip.label)
-
     # Contour coordinates MUST come from the SAME extent, or a cm-space contour lands on a
     # node-index axis (every .npz/array clip defaults to "nodes").
     x = np.linspace(extent[0], extent[1], Nx)
     y = np.linspace(extent[2], extent[3], Ny)
     Xc, Yc = np.meshgrid(x, y, indexing="ij")     # pairs with the UNtransposed array
 
-    if clip.isochrones:
-        lat = isochrone_lat(clip, idx)
-        if np.isfinite(lat).any():                # mirrors viz.activation_isochrones
-            ax.contour(Xc, Yc, np.ma.masked_invalid(lat), levels=12,
+    if filled:
+        # Filled bands ARE the map: no image beneath, and the contour set is the mappable.
+        vals = clip.display_values(idx[0])
+        im = None
+        if np.isfinite(vals).any():               # mirrors viz.activation_isochrones' guard
+            im = ax.contourf(Xc, Yc, np.ma.masked_invalid(vals),
+                             levels=contour_levels, cmap=cmap, norm=norm)
+        ax.set_aspect(clip.aspect)                # `aspect` otherwise only reaches mpl via imshow
+    else:
+        im = ax.imshow(
+            np.ma.masked_invalid(clip.display_values(idx[0]).T),
+            origin="lower",          # MUST be explicit: the bare producer's flipud(.T) is pinned
+                                     # by a test, and a mismatch here would flip one producer only
+            extent=extent, aspect=clip.aspect, cmap=cmap, norm=norm,
+            interpolation=clip.gradient.interpolation,
+        )
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    if colorbar_on and im is not None:
+        fig.colorbar(im, ax=ax, label=clip.value_label)
+    if clip.label:
+        ax.set_title(clip.label)
+
+    if lat is not None or clip.isochrones:
+        lat_arr = lat if lat is not None else isochrone_lat(clip, idx)
+        if np.isfinite(lat_arr).any():            # mirrors viz.activation_isochrones
+            ax.contour(Xc, Yc, np.ma.masked_invalid(lat_arr), levels=contour_levels,
                        colors="white", linewidths=0.6, alpha=0.55)
 
     sup = fig.suptitle(title or "")
@@ -227,7 +262,10 @@ def _produce_bare(clip: Video, t: int, cmap, norm) -> np.ndarray:
 
 def _produce_figure(st: _FigState, clip: Video, t: int, *, show_time: bool,
                     title: Optional[str]) -> np.ndarray:
-    st.im.set_data(np.ma.masked_invalid(clip.display_values(t).T))
+    # `hasattr`, not `is not None`: in filled mode `st.im` holds a QuadContourSet, which is the
+    # colorbar mappable but has no set_data. Video always sets a real AxesImage.
+    if hasattr(st.im, "set_data"):
+        st.im.set_data(np.ma.masked_invalid(clip.display_values(t).T))
 
     if clip.front is not None:
         if st.contour is not None:
@@ -360,16 +398,18 @@ def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
             n += 1
             if progress and k % 50 == 0:
                 print(f"  ... {k}/{len(idx)} frames", flush=True)
+        # INSIDE the guard: the pillow-gif backend writes the ENTIRE file here, so a failure at
+        # close would otherwise leave a partial file behind and consume the media_path NN slot.
+        writer.close()
     except BaseException:
         if writer is not None:
-            writer.close()
+            writer.close()      # idempotent — _Writer.close() short-circuits when already closed
         if os.path.exists(out_path):
             os.remove(out_path)  # a truncated file would otherwise keep the media_path NN slot
         raise
     finally:
         if st is not None:
             plt.close(st.fig)   # else the suite leaks a figure per render()
-    writer.close()
 
     size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
     final_path, data = _finalize(writer.path, is_temp)
@@ -443,32 +483,46 @@ def _default_layout(n: int):
     return n, 1
 
 
-def _setup_panel(clip: Video, ax, cmap, norm, *, units, idx, label=None) -> _FigState:
-    """Configure ONE axes for a panel and return its per-frame state carrier."""
+def _setup_panel(clip: Video, ax, cmap, norm, *, units, idx, label=None,
+                 lat=None, contour_levels: int = 12, filled: bool = False) -> _FigState:
+    """Configure ONE axes for a panel and return its per-frame state carrier.
+
+    ``lat``/``contour_levels``/``filled`` mirror :func:`_build_figure` exactly — the multi-panel
+    path draws through here, so stopping the seam at ``_build_figure`` would leave a panelled
+    activation map contour-free with no warning.
+    """
     units_resolved = units or clip.units
     if units_resolved == "auto":
         units_resolved = "cm" if (clip.dx and clip.dy) else "nodes"
     extent, xlab, ylab = _extent_and_labels(clip, units_resolved)
     Nx, Ny = clip.frames.shape[1], clip.frames.shape[2]
 
-    im = ax.imshow(
-        np.ma.masked_invalid(clip.display_values(idx[0]).T),
-        origin="lower", extent=extent, aspect=clip.aspect, cmap=cmap, norm=norm,
-        interpolation=clip.gradient.interpolation,
-    )
+    x = np.linspace(extent[0], extent[1], Nx)
+    y = np.linspace(extent[2], extent[3], Ny)
+    Xc, Yc = np.meshgrid(x, y, indexing="ij")
+
+    if filled:
+        vals = clip.display_values(idx[0])
+        im = None
+        if np.isfinite(vals).any():
+            im = ax.contourf(Xc, Yc, np.ma.masked_invalid(vals),
+                             levels=contour_levels, cmap=cmap, norm=norm)
+        ax.set_aspect(clip.aspect)
+    else:
+        im = ax.imshow(
+            np.ma.masked_invalid(clip.display_values(idx[0]).T),
+            origin="lower", extent=extent, aspect=clip.aspect, cmap=cmap, norm=norm,
+            interpolation=clip.gradient.interpolation,
+        )
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
     if label:
         ax.set_title(label, fontsize=10)
 
-    x = np.linspace(extent[0], extent[1], Nx)
-    y = np.linspace(extent[2], extent[3], Ny)
-    Xc, Yc = np.meshgrid(x, y, indexing="ij")
-
-    if clip.isochrones:
-        lat = isochrone_lat(clip, idx)
-        if np.isfinite(lat).any():
-            ax.contour(Xc, Yc, np.ma.masked_invalid(lat), levels=12,
+    if lat is not None or clip.isochrones:
+        lat_arr = lat if lat is not None else isochrone_lat(clip, idx)
+        if np.isfinite(lat_arr).any():
+            ax.contour(Xc, Yc, np.ma.masked_invalid(lat_arr), levels=contour_levels,
                        colors="white", linewidths=0.6, alpha=0.55)
 
     return _FigState(fig=None, ax=ax, im=im, Xc=Xc, Yc=Yc, contour=None, suptitle=None)
@@ -595,7 +649,8 @@ def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resol
 
         for k, t in enumerate(idx):
             for c, st in zip(clips, states):
-                st.im.set_data(np.ma.masked_invalid(c.display_values(t).T))
+                if hasattr(st.im, "set_data"):
+                    st.im.set_data(np.ma.masked_invalid(c.display_values(t).T))
                 if c.front is not None:
                     if st.contour is not None:
                         try:
@@ -619,6 +674,7 @@ def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resol
             n += 1
             if progress and k % 50 == 0:
                 print(f"  ... {k}/{len(idx)} frames", flush=True)
+        writer.close()          # inside the guard — see the single-panel path
     except BaseException:
         if writer is not None:
             writer.close()
@@ -628,7 +684,6 @@ def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resol
     finally:
         if fig is not None:
             plt.close(fig)
-    writer.close()
 
     size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
     final_path, data = _finalize(writer.path, is_temp)

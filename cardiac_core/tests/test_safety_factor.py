@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from cardiac_core import monodomain, bidomain, Grid, ConductivityConfig, Stim
-from cardiac_core.single_cell import safety_factor
+from cardiac_core import safety_factor
 
 
 def _cond():

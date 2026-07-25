@@ -41,8 +41,12 @@ _LAZY = {
     'wavelength': 'analysis', 'di': 'analysis',
     # protocols (run simulations)
     'erp': 'protocols', 'erp_proxy': 'protocols', 'post_repol_refractoriness': 'protocols',
-    # single-cell (0-D) + safety factor
-    'single_cell': 'single_cell', 'safety_factor': 'single_cell', 'threshold_charge': 'single_cell',
+    # single-cell (0-D) + safety factor.
+    # The module is PRIVATE (`_single_cell`) on purpose: a submodule named `single_cell` would be
+    # bound as a package attribute on import and shadow this lazy `single_cell` function export
+    # (PEP 562 __getattr__ only fires when normal lookup fails), so `cc.single_cell` would silently
+    # become the MODULE. Never name a submodule the same as a public export here.
+    'single_cell': '_single_cell', 'safety_factor': '_single_cell', 'threshold_charge': '_single_cell',
     # stimulus object
     'Stim': 'stimulus.stim',
     # geometry
@@ -57,7 +61,10 @@ _LAZY = {
     'propagation_video': 'viz', 'apd_map_figure': 'viz', 'activation_isochrones': 'viz',
     # video (spec-first rendering: Video + Gradient + render)
     'Video': 'video', 'Gradient': 'video', 'render': 'video',
-    'render_video': 'video', 'VideoInfo': 'video',
+    'render_video': 'video', 'VideoInfo': 'video', 'ImagePath': 'video',
+    # image (spec-first still figures: Image + draw). The submodule holding `draw` is `_draw`,
+    # not `draw`, for the same shadowing reason `_single_cell` is private.
+    'Image': 'image', 'draw': 'image', 'ImageInfo': 'image',
 }
 
 

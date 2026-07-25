@@ -1,0 +1,310 @@
+"""``draw()`` — turn an :class:`Image` (or a :class:`~cardiac_core.video.Video`) into a figure.
+
+The ordered sequence is load-bearing and must not be reordered::
+
+    dispatch -> frame_resolved -> format vs path -> media guard -> enforce_capabilities (RAW
+    figsize/dpi) -> spec-type defaults -> resolve gradient over MASKED values -> destination
+    -> produce + save -> read back (w,h) + getsize -> _finalize -> ImageInfo
+
+``enforce_capabilities`` must see exactly what the caller passed: it rejects a non-``None``
+``figsize``/``dpi`` on a bare clip, so substituting a default before the gate would make every bare
+draw raise. The pixel size and byte count must be read BEFORE ``_finalize``, which deletes the temp
+file of an unsaved render.
+
+The module is ``_draw`` rather than ``draw`` because a submodule whose name matches a public export
+shadows it under PEP 562 — ``cardiac_core.draw`` would become a module instead of the function.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from typing import Any, Optional, Sequence
+
+import matplotlib
+
+matplotlib.use("Agg")     # headless — figure rendering is for scripts/CI, never a GUI
+
+import matplotlib.pyplot as plt     # noqa: E402
+import numpy as np                  # noqa: E402
+
+from ..video.clip import Video, _to_numpy                        # noqa: E402
+from ..video.encoders import ImagePath, burn_timestamp, fit_frame, resolve_canvas  # noqa: E402
+from ..video.render import (                                     # noqa: E402
+    _LEGAL_FIT, _PAD_BLACK, _build_figure, _finalize, _named_destination,
+    _produce_bare, _produce_figure, _resolve_destination, enforce_capabilities,
+)
+from .info import ImageInfo                                      # noqa: E402
+from .panel import Image                                         # noqa: E402
+
+__all__ = ["draw"]
+
+
+class _Unset:
+    """Sentinel: 'the caller passed nothing'.
+
+    A literal default cannot express this, because ``resolution``/``fit`` have DIFFERENT defaults
+    per spec type. Without the sentinel, either a plain ``draw(Video.annotated(v))`` raises, or an
+    explicit ``resolution="auto"`` becomes a silent no-op.
+    """
+
+    def __repr__(self) -> str:                                   # pragma: no cover - cosmetic
+        return "<unset>"
+
+
+_UNSET = _Unset()
+
+_LEGAL_EXT = ("png", "svg", "pdf", "jpg", "jpeg", "webp")
+_VECTOR = ("svg", "pdf")
+_MEDIA_ONLY_EXT = ("png", "jpg", "jpeg", "svg", "gif")   # what media_path accepts
+_MIN_BARE_EDGE = 512                                     # a bare still must not be a postage stamp
+
+
+def _resolve_format(fmt: Optional[str], path: Optional[str]) -> str:
+    """An explicit ``format=`` wins; otherwise take it from ``path``'s extension.
+
+    A disagreement RAISES rather than silently rewriting the path, which is what the video layer's
+    ``_resolve_destination`` would otherwise do (with an explanation about encoder downgrades that
+    is meaningless here).
+    """
+    path_ext = None
+    if path is not None:
+        ext = os.path.splitext(str(path))[1].lower().lstrip(".")
+        if ext:
+            if ext not in _LEGAL_EXT:
+                raise ValueError(
+                    f"cannot infer a figure format from '.{ext}' (path={path!r}); "
+                    f"use one of {_LEGAL_EXT} or pass format= explicitly")
+            path_ext = ext
+    if fmt is not None:
+        fmt = str(fmt).lower().lstrip(".")
+        if fmt not in _LEGAL_EXT:
+            raise ValueError(f"format must be one of {_LEGAL_EXT}, got {fmt!r}")
+        if path_ext is not None and path_ext != fmt:
+            raise ValueError(
+                f"format={fmt!r} disagrees with path={path!r} — pass one or the other.")
+        return fmt
+    return path_ext if path_ext is not None else "png"
+
+
+def _reraise_for_image(exc: ValueError) -> ValueError:
+    """Restate a ``Video``-flavoured capability error in ``Image`` vocabulary.
+
+    The premise of this layer is that the caller does not know the video/clip API; naming it in an
+    error message is the one place that premise leaks.
+    """
+    msg = (str(exc)
+           .replace("Use Video.annotated(...) — the bare producer",
+                    'Use style="annotated" — the bare producer')
+           .replace("a bare clip", 'style="bare"'))
+    return ValueError(msg)
+
+
+def _bare_canvas(rgb: np.ndarray, resolution) -> Optional[tuple]:
+    """Target canvas for the bare producer, or None for 'leave the pixels alone'.
+
+    ``"auto"`` upscales by an integer factor to a long edge of at least 512 px with NO padding: an
+    exact multiple preserves the aspect exactly, so ``fit_frame`` adds no bars. A fixed
+    ``resolution`` letterboxes instead, which is right for video and wrong for a still that someone
+    will crop into a slide.
+    """
+    if resolution is None:
+        return None
+    h, w = rgb.shape[:2]
+    if resolution == "auto":
+        k = max(1, math.ceil(_MIN_BARE_EDGE / max(w, h)))
+        return (w * k, h * k)
+    return resolve_canvas(resolution)
+
+
+def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
+         question: Optional[str] = None, bulk: Optional[bool] = None,
+         date: Optional[str] = None, root: Optional[str] = None,
+         format: Optional[str] = None, frame: Optional[int] = None,
+         figsize: Optional[Sequence[float]] = None, dpi: Optional[int] = None,
+         tight: Optional[bool] = None, title: Optional[str] = None,
+         colorbar: Optional[bool] = None, show_time: Optional[bool] = None,
+         units: Optional[str] = None, transparent: bool = False,
+         resolution: Any = _UNSET, fit: Any = _UNSET,
+         labels: Optional[Sequence[str]] = None,
+         rows: Optional[int] = None, cols: Optional[int] = None) -> ImageInfo:
+    """Draw a spec and return a displayable :class:`ImageInfo`.
+
+    **Drawing displays; naming a destination saves** — the matplotlib contract. With no destination
+    the figure comes back in memory and shows inline; a file is written when you say where::
+
+        draw(Image(r))                              # displays; nothing on disk
+        draw(Image(r), path="fig.png")              # writes ./fig.png
+        draw(Image(r), "wave", question="lab")      # media/lab/images/{date}/wave_01.png
+
+    ``format`` follows ``path``'s extension when not given explicitly, and a disagreement raises.
+    """
+    if isinstance(spec, (list, tuple)):
+        raise NotImplementedError("multi-panel lands in Phase 3")
+    is_image = isinstance(spec, Image)
+    if not is_image and not isinstance(spec, Video):
+        raise TypeError(
+            f"draw() takes an Image, a Trace or a Video spec; got {type(spec).__name__}.")
+
+    for name, val in (("labels", labels), ("rows", rows), ("cols", cols)):
+        if val is not None:
+            raise ValueError(
+                f"{name}= applies to multi-panel rendering; pass a list of specs.")
+
+    clip = spec._clip if is_image else spec
+
+    # --- frame_resolved: ONE name for "which frame", bound first ---------------------
+    if is_image:
+        if frame is not None:
+            raise ValueError(
+                "frame= selects a frame of a Video; an Image selects with at= (a TIME in ms).")
+        frame_resolved = 0                       # an Image clip always holds exactly one frame
+    else:
+        frame_resolved = int(frame) if frame is not None else len(clip.frames) // 2
+        if not (0 <= frame_resolved < len(clip.frames)):
+            raise IndexError(
+                f"frame {frame_resolved} out of range for {len(clip.frames)} frames")
+
+    # --- format, and the media-convention guard --------------------------------------
+    fmt = _resolve_format(format, path)
+    if fmt in ("pdf", "webp") and path is None and _named_destination(
+            None, question, bulk, date, root):
+        raise ValueError(
+            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
+            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+
+    # --- capability gate: the RAW figsize/dpi, before any default is applied ----------
+    try:
+        enforce_capabilities(clip, colorbar=colorbar, show_time=show_time,
+                             figsize=figsize, dpi=dpi, title=title)
+    except ValueError as exc:
+        raise (_reraise_for_image(exc) if is_image else exc) from None
+
+    bare = clip.style == "bare"
+    if bare:
+        for name, val in (("tight", tight), ("transparent", transparent or None)):
+            if val is not None and val is not False:
+                raise ValueError(
+                    f"{name}= applies to the matplotlib figure only, not a bare spec. "
+                    f'Use style="annotated".')
+        if is_image and units is not None:
+            raise ValueError(
+                'units= draws axis labels and needs a figure. Use style="annotated".')
+        if colorbar is False:
+            raise ValueError(
+                'colorbar= applies to the matplotlib figure only, not a bare spec. '
+                'Use style="annotated".')
+
+    # --- spec-type defaults, applied AFTER the gate ----------------------------------
+    # Compare against the SENTINEL, never against "the default": an annotated Image's default
+    # reads as "auto", so a `!= default` test would let `resolution="auto"` through as a silent
+    # no-op. A Video keeps its default exempt so the preview delegation's explicit None passes.
+    default_resolution = ("auto" if is_image else None)
+    if resolution is _UNSET:
+        resolution = default_resolution
+    elif not bare and (is_image or resolution != default_resolution):
+        raise ValueError(
+            "resolution= scales the bare producer's pixels; an annotated figure is sized by "
+            "figsize=/dpi=.")
+    if fit is _UNSET:
+        fit = "contain"
+    elif not bare and (is_image or fit != "contain"):
+        raise ValueError(
+            "fit= scales the bare producer's pixels; an annotated figure is sized by figsize=/dpi=.")
+    if fit not in _LEGAL_FIT:
+        raise ValueError(f"fit must be one of {_LEGAL_FIT}, got {fit!r}")
+
+    dpi_resolved = dpi if dpi is not None else (150 if is_image else (dpi or 100))
+    tight_resolved = True if tight is None else bool(tight)
+    colorbar_resolved = colorbar if colorbar is not None else (clip.style == "annotated")
+
+    # --- show_time: ONE formula, keyed on the TIME, not the selector -----------------
+    t0 = float(clip.times[frame_resolved])
+    if show_time is True and not np.isfinite(t0):
+        raise ValueError(
+            "show_time=True needs a real time; this map has none (use what='snapshot').")
+    show_time_resolved = show_time if show_time is not None else bool(np.isfinite(t0))
+
+    # --- colour, over MASKED values, at the frame being drawn ------------------------
+    cmap, norm, lo, hi = clip.gradient.resolve(
+        clip.masked_iter([frame_resolved]), field=clip.field)
+
+    # --- the isochrone overlay: gated SOLELY by the resolved `isochrones` -------------
+    lat = None
+    if is_image and spec.isochrones:
+        lat = spec._lat
+        if lat is None:
+            lat = _lat_from_result(spec)
+        if lat is not None and clip.active_mask is not None:
+            lat = np.where(clip.active_mask, lat, np.nan)
+
+    # --- destination ------------------------------------------------------------------
+    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
+
+    st = None
+    try:
+        if bare:
+            if fmt == "svg":
+                raise ValueError(
+                    'a bare spec is written with PIL, which cannot produce SVG. '
+                    'Use style="annotated".')
+            from PIL import Image as PILImage
+            rgb = _produce_bare(clip, frame_resolved, cmap, norm)
+            canvas = _bare_canvas(rgb, resolution)
+            if canvas is not None:
+                rgb = fit_frame(rgb, canvas, fit, clip.gradient.interpolation, _PAD_BLACK)
+            if show_time_resolved:
+                # AFTER the resize, or the stamp is drawn at grid scale and blown up with it.
+                rgb = burn_timestamp(rgb, f"t = {t0:.1f} ms")
+            PILImage.fromarray(rgb).save(out_path)
+        else:
+            st = _build_figure(
+                clip, cmap, norm, colorbar_on=colorbar_resolved, title=title,
+                figsize=figsize, dpi=dpi_resolved, units=units, idx=[frame_resolved],
+                lat=lat,
+                contour_levels=getattr(spec, "contour_levels", 12),
+                filled=getattr(spec, "filled", False),
+            )
+            _produce_figure(st, clip, frame_resolved, show_time=show_time_resolved, title=title)
+            st.fig.savefig(out_path, dpi=dpi_resolved,
+                           bbox_inches=("tight" if tight_resolved else None),
+                           transparent=transparent)
+    except BaseException:
+        if os.path.exists(out_path):
+            os.remove(out_path)   # a truncated file would keep the media_path NN slot
+        raise
+    finally:
+        if st is not None:
+            plt.close(st.fig)     # else the suite leaks a figure per draw()
+
+    # --- measure BEFORE _finalize, which deletes an unsaved render's temp file --------
+    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    width = height = None
+    if fmt not in _VECTOR:
+        from PIL import Image as PILImage
+        with PILImage.open(out_path) as probe:
+            width, height = probe.size
+    final_path, data = _finalize(out_path, is_temp)
+    return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
+                     n_panels=1, vmin=lo, vmax=hi, size_bytes=size)
+
+
+def _lat_from_result(spec: Image):
+    """Activation map for the overlay, computed from the SOURCE result (torch), or None.
+
+    No ``what_kwargs``: those belong to the selector's own analysis function, and forwarding them
+    here is either a ``TypeError`` or a silently different LAT drawn over the map.
+    """
+    import warnings
+
+    from .. import analysis
+
+    result = spec._clip.result
+    if result is None:
+        warnings.warn(
+            "isochrones need a SimulationResult to compute activation times; skipping the overlay",
+            UserWarning, stacklevel=3)
+        return None
+    return np.asarray(
+        _to_numpy(analysis.activation_time(result.Vm, result.times)), dtype=np.float64)
