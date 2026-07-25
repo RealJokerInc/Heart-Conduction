@@ -195,8 +195,13 @@ class Video:
                 or self.front is not None or bool(self.isochrones))
 
     def preview(self, t_ms: Optional[float] = None, *, frame: Optional[int] = None,
-                slug: str = "preview", question: str = "lab", bulk: bool = True, **kw) -> str:
-        """Render ONE frame to PNG through this clip's OWN producer. Returns the path."""
+                slug: str = "preview", question: Optional[str] = None,
+                bulk: Optional[bool] = None, **kw):
+        """Render ONE frame to PNG through this clip's OWN producer.
+
+        Displays inline; writes a file only when a destination is named (``path=`` or the
+        ``media/`` convention keywords).
+        """
         from .render import preview_frame          # local import: clip.py must not import render
         return preview_frame(self, t_ms=t_ms, frame=frame, slug=slug,
                              question=question, bulk=bulk, **kw)

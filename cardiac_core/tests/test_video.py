@@ -7,6 +7,7 @@ advertised toggle either works or raises — none is a silent no-op.
 """
 
 import os
+import tempfile
 import warnings
 
 import numpy as np
@@ -838,3 +839,139 @@ def test_labels_do_not_mutate_the_caller(wave):
     assert a.label is None and b.label is None, "render(labels=...) mutated the caller's clips"
     # ...and the clip is still renderable as a bare single panel (a leaked label would raise)
     assert _ok(render(a, "tv-2p-after", question=QUESTION, bulk=True, max_frames=1).path)
+
+
+# ------------------------------------------------- destination: display vs save
+# Rendering displays; naming a destination saves — the matplotlib contract. These guard the
+# rule itself, the three ways to name a destination, and that nothing leaks when none is named.
+
+def test_bare_render_writes_no_file(wave, tmp_path, monkeypatch):
+    """No destination named -> bytes in memory, nothing on disk, nothing left in cwd."""
+    times, V = wave
+    monkeypatch.chdir(tmp_path)
+    before = set(os.listdir(tempfile.gettempdir()))
+
+    info = render(Video((times, V)), max_frames=3)
+
+    assert info.path is None and info.saved is False
+    assert info.data and info.data[4:8] == b"ftyp", "encoded bytes should be a real MP4"
+    assert info.size_bytes > 0
+    assert list(tmp_path.iterdir()) == [], "a bare render must not write into the working dir"
+    leaked = [f for f in set(os.listdir(tempfile.gettempdir())) - before if "video" in f]
+    assert not leaked, f"temp file was not cleaned up: {leaked}"
+
+
+def test_path_writes_exactly_there(wave, tmp_path):
+    """`path=` is obeyed literally — no media/ tree, no date folder, no _NN suffix."""
+    times, V = wave
+    dest = tmp_path / "nested" / "my-wave.mp4"
+
+    info = render(Video((times, V)), path=str(dest), max_frames=3)
+
+    assert info.path == str(dest) and info.saved is True
+    assert _ok(info.path) and _is_mp4(info.path)
+    assert info.data is None, "a saved render keeps its bytes on disk, not in memory"
+    assert os.fspath(info) == str(dest)
+
+
+def test_convention_keywords_still_save(wave):
+    """Regression guard for the live consumers (Lab/, cardiac_mcp, run-template): each passes
+    bulk=True and no path=, and must keep getting a real file at the media/ convention path."""
+    times, V = wave
+    info = render(Video((times, V)), "tv-conv", question=QUESTION, bulk=True, max_frames=3)
+
+    assert info.saved and _ok(info.path)
+    assert "/media/" in info.path and "/_sim_outputs/" in info.path
+    assert info.path.endswith(".mp4")
+
+
+def test_bulk_alone_names_a_destination(wave):
+    """`bulk=` with no question= still saves — the exact shape every consumer call site uses."""
+    times, V = wave
+    info = render(Video((times, V)), "tv-bulkonly", bulk=True, max_frames=3)
+    assert info.saved and _ok(info.path) and "/media/lab/" in info.path
+
+
+def test_format_inferred_from_path_extension(wave, tmp_path):
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "anim.gif"), max_frames=3)
+    assert info.backend == "pillow-gif" and info.codec == "gif" and _ok(info.path)
+
+
+def test_unknown_path_extension_raises(wave, tmp_path):
+    times, V = wave
+    with pytest.raises(ValueError, match="cannot infer a video format"):
+        render(Video((times, V)), path=str(tmp_path / "anim.mkv"), max_frames=3)
+
+
+def test_save_after_the_fact(wave, tmp_path):
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    dest = info.save(tmp_path / "later.mp4")
+    assert _ok(dest) and _is_mp4(dest)
+    assert info.read() == open(dest, "rb").read()
+
+
+def test_fspath_raises_with_guidance_when_unsaved(wave):
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    with pytest.raises(TypeError, match=r"path=|\.save\("):
+        os.fspath(info)
+    assert "not saved" in str(info)
+
+
+# ------------------------------------------------------------- notebook display
+
+def test_repr_html_embeds_a_playable_video(wave):
+    times, V = wave
+    html = render(Video((times, V)), max_frames=3)._repr_html_()
+    assert "<video" in html and "controls" in html
+    assert "data:video/mp4;base64," in html
+
+
+def test_repr_html_gif_uses_img_tag(wave, tmp_path):
+    times, V = wave
+    html = render(Video((times, V)), path=str(tmp_path / "a.gif"), max_frames=3)._repr_html_()
+    assert "<img" in html and "data:image/gif;base64," in html
+
+
+def test_repr_html_works_for_a_saved_render(wave, tmp_path):
+    """Display must not depend on retaining bytes — a saved render reads them back."""
+    times, V = wave
+    html = render(Video((times, V)), path=str(tmp_path / "b.mp4"), max_frames=3)._repr_html_()
+    assert "data:video/mp4;base64," in html
+
+
+def test_repr_html_reports_an_unplayable_codec():
+    """OpenCV's mp4v writes a valid .mp4 no browser can decode — say so instead of embedding."""
+    info = VideoInfo(path=None, n_frames=1, fps=20.0, backend="opencv", codec="mp4v",
+                     width=64, height=64, duration_s=0.05, vmin=-90.0, vmax=40.0,
+                     stride=1, size_bytes=10, data=b"x" * 10)
+    html = info._repr_html_()
+    assert "cannot play" in html and "imageio-ffmpeg" in html
+    assert "base64" not in html
+
+
+def test_repr_html_size_cap(wave, monkeypatch):
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    monkeypatch.setattr(enc, "INLINE_MAX_BYTES", 8)
+    html = info._repr_html_()
+    assert "too large to embed" in html and "base64" not in html
+
+
+def test_preview_unsaved_displays_but_writes_nothing(wave, tmp_path, monkeypatch):
+    times, V = wave
+    monkeypatch.chdir(tmp_path)
+    p = Video((times, V)).preview(t_ms=5.0)
+    assert p.saved is False and p.data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert "<img" in p._repr_html_() and "data:image/png;base64," in p._repr_html_()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_preview_saved_is_still_a_plain_path_string(wave, tmp_path):
+    """ImagePath subclasses str, so every existing caller keeps working."""
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0, path=str(tmp_path / "frame.png"))
+    assert isinstance(p, str) and p.endswith(".png") and _ok(p)
+    assert os.path.basename(p) == "frame.png"

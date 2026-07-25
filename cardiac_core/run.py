@@ -131,18 +131,23 @@ class SimulationResult:
         return analysis.restitution_slope(DI, APD)
 
     # --- media ---
-    def video(self, slug: str, **kw):
-        """Render this run to a video at a convention-compliant ``media/`` path.
+    def video(self, slug: str = "video", **kw):
+        """Render this run to a video — full-frame, unlabelled, 1080p, standard colour preset.
 
-        ``r.video("spiral-wave")`` -> ``media/lab/_sim_outputs/videos/{date}/spiral-wave_01.mp4``
-        — full-frame, unlabelled, 1080p, standard colour preset. Everything else is opt-in::
+        **Rendering displays; naming a destination saves**, following matplotlib::
 
-            r.video("wave", gradient=cc.Gradient.zoom(), style="annotated", isochrones=True)
-            r.video("slow", speed=20.0, bulk=False)      # 20 ms of sim per second of video
+            r.video()                                  # plays inline in a notebook, no file
+            r.video(path="wave.mp4")                   # writes ./wave.mp4
+            r.video("wave", bulk=True)                 # media/lab/_sim_outputs/videos/{date}/…
+
+        Everything else is opt-in::
+
+            r.video(gradient=cc.Gradient.zoom(), style="annotated", isochrones=True)
+            r.video(speed=20.0)                        # 20 ms of sim per second of video
 
         Grid spacing, masked (NaN / ``domain_mask``) tissue and the model identity carried on this
-        result are applied automatically. Returns a :class:`cardiac_core.video.VideoInfo` — a
-        str-like path that also reports the encoder used, frame count, fps and colour range.
+        result are applied automatically. Returns a :class:`cardiac_core.video.VideoInfo`, which
+        displays itself in a notebook and reports the encoder, frame count, fps and colour range.
         """
         from .video import render, Video
         # Split Video-level knobs from render-level ones: forwarding everything to render()

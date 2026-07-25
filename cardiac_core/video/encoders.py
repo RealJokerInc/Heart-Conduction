@@ -18,9 +18,50 @@ from typing import Optional, Tuple
 import numpy as np
 
 __all__ = [
-    "VideoInfo", "RESOLUTIONS", "CODECS",
+    "VideoInfo", "ImagePath", "RESOLUTIONS", "CODECS",
     "select_backend", "resolve_canvas", "fit_frame", "burn_timestamp", "open_writer",
 ]
+
+
+class ImagePath(str):
+    """A rendered still. Behaves exactly like the path string it always was, and displays inline.
+
+    Subclassing ``str`` keeps every existing caller working (``p.endswith('.png')``,
+    ``open(p)``, path joins) while adding notebook display. When nothing was saved the string
+    value is a short summary instead of a path, and the PNG lives in ``.data``.
+    """
+
+    data: Optional[bytes]
+    saved: bool
+
+    def __new__(cls, path: Optional[str], data: Optional[bytes] = None) -> "ImagePath":
+        text = path if path is not None else "<image — not saved (pass path= to write a file)>"
+        obj = super().__new__(cls, text)
+        obj.data = data
+        obj.saved = path is not None
+        return obj
+
+    def read(self) -> bytes:
+        """The PNG bytes, from memory or from the saved file."""
+        if self.data is not None:
+            return self.data
+        with open(str(self), "rb") as fh:
+            return fh.read()
+
+    def save(self, path: str) -> str:
+        """Write to ``path`` after the fact. Returns the path."""
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(self.read())
+        return path
+
+    def _repr_html_(self) -> str:
+        import base64
+        b64 = base64.b64encode(self.read()).decode("ascii")
+        return f'<img src="data:image/png;base64,{b64}" style="max-width:100%" alt="preview frame">'
 
 RESOLUTIONS = {
     "720p": (1280, 720),
@@ -43,16 +84,29 @@ SUPPORTED_FORMATS = ("mp4", "webm", "gif")
 # GIF must hold every frame for the palette, so that backend alone accumulates. Cap it.
 GIF_MAX_FRAMES = 200
 
+# Ceiling on inline notebook display. The bytes are base64'd into the .ipynb itself (+33%), so an
+# uncapped embed would commit a multi-megabyte payload to git every time a cell is re-run.
+INLINE_MAX_BYTES = 16 * 1024 * 1024
+
+# Browser MIME by codec. mp4v (OpenCV's MPEG-4 Part 2) is deliberately absent: it writes a valid
+# .mp4 that no browser will decode, which is reported rather than embedded.
+_MIME = {"libx264": "video/mp4", "libvpx-vp9": "video/webm", "gif": "image/gif"}
+
 
 @dataclass
 class VideoInfo:
     """What :func:`cardiac_core.video.render` produced.
 
-    Str-like: ``str(info)`` and ``os.fspath(info)`` give the path, so it can be passed straight to
-    anything taking a filename while still carrying the metadata.
+    Displays itself: in Jupyter/Colab the bare expression plays the video inline, with the bytes
+    embedded as a data URI. That is the same mechanism matplotlib uses for a figure, so it needs
+    no file server and survives an ephemeral runtime.
+
+    ``path`` is ``None`` unless a destination was named (``path=`` or the ``media/`` convention
+    keywords). Following matplotlib: displaying is not saving. When a path IS set, ``str(info)``
+    and ``os.fspath(info)`` give it, so it can be passed to anything taking a filename.
     """
 
-    path: str
+    path: Optional[str]
     n_frames: int
     fps: float
     backend: str            # "imageio-ffmpeg" | "opencv" | "pillow-gif"
@@ -69,12 +123,72 @@ class VideoInfo:
     # the ffmpeg SUBPROCESS and imageio sets ffmpeg_log_level="quiet", so neither pytest.warns
     # nor capfd can observe it.
     bitrate: Optional[str] = None
+    # Encoded bytes, retained only when nothing was written to disk — they are the sole copy.
+    data: Optional[bytes] = None
+
+    @property
+    def saved(self) -> bool:
+        """True when the render was written to a file the caller asked for."""
+        return self.path is not None
+
+    def read(self) -> bytes:
+        """The encoded bytes, from memory or from the saved file."""
+        if self.data is not None:
+            return self.data
+        with open(self.path, "rb") as fh:
+            return fh.read()
+
+    def save(self, path: str) -> str:
+        """Write to ``path`` after the fact. Returns the path."""
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(self.read())
+        return path
 
     def __fspath__(self) -> str:
+        if self.path is None:
+            raise TypeError(
+                "this render was not written to a file, so it has no path — pass `path=...` to "
+                "save it, or call `.save('out.mp4')` on the result."
+            )
         return self.path
 
     def __str__(self) -> str:
+        if self.path is None:
+            return (f"<video {self.width}x{self.height}, {self.n_frames} frames, "
+                    f"{self.duration_s:.1f}s — not saved (pass path= to write a file)>")
         return self.path
+
+    def _repr_html_(self) -> str:
+        mime = _MIME.get(self.codec)
+        if mime is None:                       # mp4v — a real file no browser will decode
+            return (
+                f"<pre>{self.width}x{self.height}, {self.n_frames} frames — encoded with "
+                f"<b>{self.codec}</b> ({self.backend}), which browsers cannot play inline.\n"
+                f"Install an H.264 encoder for inline playback:  "
+                f"<code>pip install imageio-ffmpeg</code></pre>"
+            )
+        payload = self.read()
+        if len(payload) > INLINE_MAX_BYTES:
+            where = self.path or "(not saved)"
+            return (
+                f"<pre>{self.width}x{self.height}, {self.n_frames} frames, "
+                f"{len(payload) / 1e6:.1f} MB — too large to embed in a notebook "
+                f"(limit {INLINE_MAX_BYTES / 1e6:.0f} MB).\nSaved at: {where}\n"
+                f"Reduce with max_frames= or resolution=.</pre>"
+            )
+        import base64
+        b64 = base64.b64encode(payload).decode("ascii")
+        if mime == "image/gif":
+            return f'<img src="data:{mime};base64,{b64}" alt="simulation animation">'
+        return (
+            f'<video controls loop muted playsinline style="max-width:100%">'
+            f'<source src="data:{mime};base64,{b64}" type="{mime}">'
+            f'</video>'
+        )
 
 
 def _importable(name: str) -> bool:
@@ -112,7 +226,10 @@ def select_backend(fmt: str) -> Tuple[str, str, str]:
 
     if _importable("cv2"):
         warnings.warn(
-            "imageio-ffmpeg unavailable; falling back to the OpenCV 'mp4v' encoder.",
+            "imageio-ffmpeg unavailable; falling back to the OpenCV 'mp4v' encoder. The .mp4 is "
+            "valid but uses MPEG-4 Part 2, which browsers CANNOT play — it will not display "
+            "inline in Jupyter/Colab and may not open in a web player. Install an H.264 encoder "
+            "with `pip install imageio-ffmpeg` (or `pip install cardiac-core[viz]`).",
             UserWarning, stacklevel=2,
         )
         return "opencv", "mp4", "videos"

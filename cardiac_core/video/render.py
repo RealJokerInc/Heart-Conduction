@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import math
 import os
+import tempfile
 import warnings
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import matplotlib
 
@@ -27,10 +28,10 @@ matplotlib.use("Agg")     # headless — video rendering is for scripts/CI, neve
 import matplotlib.pyplot as plt     # noqa: E402
 import numpy as np                  # noqa: E402
 
-from ..media import media_path      # noqa: E402
-from .clip import Video, _to_numpy  # noqa: E402
+from ..media import media_path, slugify   # noqa: E402
+from .clip import Video, _to_numpy        # noqa: E402
 from .encoders import (             # noqa: E402
-    GIF_MAX_FRAMES, VideoInfo, fit_frame, burn_timestamp, open_writer,
+    GIF_MAX_FRAMES, ImagePath, VideoInfo, fit_frame, burn_timestamp, open_writer,
     resolve_canvas, select_backend,
 )
 
@@ -38,6 +39,72 @@ __all__ = ["render", "render_video", "preview_frame"]
 
 _PAD_BLACK = (0, 0, 0)    # not the masked grey — padding must not read as inactive tissue
 _LEGAL_FIT = ("contain", "stretch", "cover")
+
+# Extension -> render format, for deriving `format` from an explicit `path=`.
+_EXT_FORMAT = {".mp4": "mp4", ".webm": "webm", ".gif": "gif"}
+
+
+def _resolve_format(fmt: Optional[str], path: Optional[str]) -> str:
+    """An explicit ``format=`` wins; otherwise take it from ``path=``'s extension."""
+    if fmt is not None:
+        return fmt
+    if path is not None:
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext in _EXT_FORMAT:
+            return _EXT_FORMAT[ext]
+        if ext:
+            raise ValueError(
+                f"cannot infer a video format from {ext!r} (path={path!r}); "
+                f"use .mp4/.webm/.gif or pass format= explicitly"
+            )
+    return "mp4"
+
+
+def _named_destination(path, question, bulk, date, root) -> bool:
+    """Did the caller say where the output should go?
+
+    Saving follows matplotlib: rendering displays, ``path=`` (or the ``media/`` convention
+    keywords, which name a destination just as explicitly) writes a file.
+    """
+    return any(x is not None for x in (path, question, bulk, date, root))
+
+
+def _resolve_destination(slug: str, kind: str, ext: str, *, path, question, bulk, date, root,
+                         bulk_default: bool = True) -> Tuple[str, bool]:
+    """Return ``(filesystem_path, is_temporary)``.
+
+    Every backend writes through a real filename (ffmpeg is a subprocess, OpenCV a C writer), so
+    an unsaved render still needs a file — it just goes to a temp path that is deleted once the
+    bytes have been read back.
+    """
+    if path is not None:
+        p = os.path.abspath(os.path.expanduser(str(path)))
+        parent = os.path.dirname(p)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        return p, False
+
+    if _named_destination(None, question, bulk, date, root):
+        return media_path(question if question is not None else "lab", kind, slug, ext=ext,
+                          bulk=bulk_default if bulk is None else bulk,
+                          date=date, root=root), False
+
+    fd, p = tempfile.mkstemp(prefix=f"{slugify(slug)}_", suffix=f".{ext}")
+    os.close(fd)
+    return p, True
+
+
+def _finalize(out_path: str, is_temp: bool) -> Tuple[Optional[str], Optional[bytes]]:
+    """Return ``(path, data)`` — a temp render is read into memory and its file removed."""
+    if not is_temp:
+        return out_path, None
+    try:
+        with open(out_path, "rb") as fh:
+            data = fh.read()
+    finally:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+    return None, data
 
 
 @dataclass
@@ -183,11 +250,12 @@ def _produce_figure(st: _FigState, clip: Video, t: int, *, show_time: bool,
     return np.asarray(st.fig.canvas.buffer_rgba())[..., :3].copy()
 
 
-def render(video: Union[Video, Sequence[Video]], slug: str, *,
-           question: str = "lab", bulk: bool = True,
+def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
+           path: Optional[str] = None,
+           question: Optional[str] = None, bulk: Optional[bool] = None,
            resolution: Any = "1080p", fit: str = "contain",
            fps: float = 20.0, speed: Optional[float] = None,
-           max_frames: Optional[int] = 300, format: str = "mp4",
+           max_frames: Optional[int] = 300, format: Optional[str] = None,
            bitrate: Optional[str] = None,
            show_time: Optional[bool] = None, colorbar: Optional[bool] = None,
            title: Optional[str] = None,
@@ -196,7 +264,17 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
            labels: Optional[Sequence[str]] = None,
            rows: Optional[int] = None, cols: Optional[int] = None,
            date: Optional[str] = None, root: Optional[str] = None) -> VideoInfo:
-    """Render a :class:`Video` (or a LIST of them) to a file at a convention ``media/`` path.
+    """Render a :class:`Video` (or a LIST of them) and return a displayable :class:`VideoInfo`.
+
+    **Rendering displays; naming a destination saves** — the matplotlib contract. With no
+    destination the result plays inline in a notebook and no file is left behind. A file is
+    written when you say where it goes::
+
+        render(Video(r))                            # displays; nothing on disk
+        render(Video(r), path="out.mp4")            # writes ./out.mp4
+        render(Video(r), "wave", question="lab")    # media/lab/videos/{date}/wave_01.mp4
+
+    ``format`` follows ``path``'s extension when not given explicitly.
 
     ``speed`` is in SIMULATION MILLISECONDS PER REAL SECOND and overrides ``fps``.
 
@@ -205,14 +283,15 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
     the frame count truncates to the shortest clip. Bare clips are promoted to the figure
     producer (with a warning) because a shared colorbar needs axes.
     """
-    fmt = format                       # `format` shadows the builtin; bind locally
+    fmt = _resolve_format(format, path)    # `format` shadows the builtin; bind locally
     if fit not in _LEGAL_FIT:
         raise ValueError(f"fit must be one of {_LEGAL_FIT}, got {fit!r}")
 
     # 1. validate + capability gate ------------------------------------------------
     if isinstance(video, (list, tuple)):
         return _render_panels(
-            list(video), slug, question=question, bulk=bulk, resolution=resolution, fit=fit,
+            list(video), slug, path=path, question=question, bulk=bulk,
+            resolution=resolution, fit=fit,
             fps=fps, speed=speed, max_frames=max_frames, fmt=fmt, bitrate=bitrate,
             show_time=show_time, colorbar=colorbar, title=title, figsize=figsize, dpi=dpi,
             units=units, progress=progress, date=date, root=root,
@@ -250,7 +329,8 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
     fps = float(max(1.0, fps))
 
     # 6. path (consumes the NN slot) + canvas + rate --------------------------------
-    path = media_path(question, kind, slug, ext=ext, bulk=bulk, date=date, root=root)
+    out_path, is_temp = _resolve_destination(slug, kind, ext, path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
     canvas = resolve_canvas(resolution) if (figsize is None and dpi is None) else None
     if fmt == "webm" and bitrate is None:
         bitrate = "2M"     # VP9 has no `quality` mapping; without a rate ffmpeg silently uses CRF 32
@@ -261,7 +341,7 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
     writer = None
     st = None
     try:
-        writer = open_writer(path, fps, backend, fmt, quality=8, bitrate=bitrate)
+        writer = open_writer(out_path, fps, backend, fmt, quality=8, bitrate=bitrate)
         st = (_build_figure(clip, cmap, norm, colorbar_on=colorbar_resolved, title=title,
                             figsize=figsize, dpi=dpi, units=units, idx=idx)
               if use_figure else None)
@@ -283,8 +363,8 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
     except BaseException:
         if writer is not None:
             writer.close()
-        if os.path.exists(path):
-            os.remove(path)     # a truncated file would otherwise keep the media_path NN slot
+        if os.path.exists(out_path):
+            os.remove(out_path)  # a truncated file would otherwise keep the media_path NN slot
         raise
     finally:
         if st is not None:
@@ -292,20 +372,26 @@ def render(video: Union[Video, Sequence[Video]], slug: str, *,
     writer.close()
 
     size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
-    return VideoInfo(path=writer.path, n_frames=n, fps=fps, backend=writer.backend,
+    final_path, data = _finalize(writer.path, is_temp)
+    return VideoInfo(path=final_path, n_frames=n, fps=fps, backend=writer.backend,
                      codec=writer.codec, width=writer.width, height=writer.height,
                      duration_s=(n / fps if fps else 0.0), vmin=lo, vmax=hi, stride=stride,
-                     size_bytes=size, bitrate=writer.bitrate)
+                     size_bytes=size, bitrate=writer.bitrate, data=data)
 
 
 render_video = render      # alias so the _LAZY export name resolves
 
 
 def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional[int] = None,
-                  slug: str = "preview", question: str = "lab", bulk: bool = True,
+                  slug: str = "preview", path: Optional[str] = None,
+                  question: Optional[str] = None, bulk: Optional[bool] = None,
                   units: Optional[str] = None, title: Optional[str] = None,
-                  figsize=None, dpi=None, date=None, root=None) -> str:
-    """Render ONE frame to PNG through the clip's OWN producer. Returns the path."""
+                  figsize=None, dpi=None, date=None, root=None) -> ImagePath:
+    """Render ONE frame to PNG through the clip's OWN producer.
+
+    Displays inline; writes a file only when a destination is named (``path=`` or the ``media/``
+    convention keywords). The return value is still the path string when one was written.
+    """
     if t_ms is not None and frame is not None:
         raise ValueError("pass t_ms= or frame=, not both")
     # Same gate as render(), or preview would accept clips render() rejects.
@@ -322,22 +408,23 @@ def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional
         raise IndexError(f"frame {t} out of range for {len(video.frames)} frames")
 
     cmap, norm, _lo, _hi = video.gradient.resolve(video.masked_iter([t]), field=video.field)
-    path = media_path(question, "images", slug, ext="png", bulk=bulk, date=date, root=root)
+    out_path, is_temp = _resolve_destination(slug, "images", "png", path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
 
     if video.requires_figure():
         st = _build_figure(video, cmap, norm, colorbar_on=(video.style == "annotated"),
                            title=title, figsize=figsize, dpi=dpi, units=units, idx=[t])
         try:
             _produce_figure(st, video, t, show_time=True, title=title)
-            st.fig.savefig(path, dpi=(dpi or 100), bbox_inches="tight")
+            st.fig.savefig(out_path, dpi=(dpi or 100), bbox_inches="tight")
         finally:
             plt.close(st.fig)
     else:
         from PIL import Image
         rgb = _produce_bare(video, t, cmap, norm)
         rgb = burn_timestamp(rgb, f"t = {video.times[t]:.1f} ms")
-        Image.fromarray(rgb).save(path)
-    return path
+        Image.fromarray(rgb).save(out_path)
+    return ImagePath(*_finalize(out_path, is_temp))
 
 
 def _default_layout(n: int):
@@ -387,9 +474,9 @@ def _setup_panel(clip: Video, ax, cmap, norm, *, units, idx, label=None) -> _Fig
     return _FigState(fig=None, ax=ax, im=im, Xc=Xc, Yc=Yc, contour=None, suptitle=None)
 
 
-def _render_panels(clips: List[Video], slug: str, *, question, bulk, resolution, fit, fps, speed,
-                   max_frames, fmt, bitrate, show_time, colorbar, title, figsize, dpi, units,
-                   progress, date, root, labels=None, rows=None, cols=None) -> VideoInfo:
+def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resolution, fit, fps,
+                   speed, max_frames, fmt, bitrate, show_time, colorbar, title, figsize, dpi,
+                   units, progress, date, root, labels=None, rows=None, cols=None) -> VideoInfo:
     """N panels sharing ONE colorbar and ONE time stamp."""
     if not clips:
         raise ValueError("render() needs at least one Video")
@@ -463,7 +550,8 @@ def _render_panels(clips: List[Video], slug: str, *, question, bulk, resolution,
         raw = float(speed) / max(dt, 1e-12)
         fps = min(max(raw, 1.0), 240.0)
     fps = float(max(1.0, fps))
-    path = media_path(question, kind, slug, ext=ext, bulk=bulk, date=date, root=root)
+    out_path, is_temp = _resolve_destination(slug, kind, ext, path=path, question=question,
+                                             bulk=bulk, date=date, root=root)
     canvas = resolve_canvas(resolution) if (figsize is None and dpi is None) else None
     if fmt == "webm" and bitrate is None:
         bitrate = "2M"
@@ -480,7 +568,7 @@ def _render_panels(clips: List[Video], slug: str, *, question, bulk, resolution,
     writer = None
     fig = None
     try:
-        writer = open_writer(path, fps, backend, fmt, quality=8, bitrate=bitrate)
+        writer = open_writer(out_path, fps, backend, fmt, quality=8, bitrate=bitrate)
         fig, axes = plt.subplots(nrows, ncols, figsize=tuple(figsize), dpi=(dpi or 100),
                                  constrained_layout=True, squeeze=False)
         flat = [ax for row in axes for ax in row]
@@ -534,8 +622,8 @@ def _render_panels(clips: List[Video], slug: str, *, question, bulk, resolution,
     except BaseException:
         if writer is not None:
             writer.close()
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(out_path):
+            os.remove(out_path)
         raise
     finally:
         if fig is not None:
@@ -543,7 +631,8 @@ def _render_panels(clips: List[Video], slug: str, *, question, bulk, resolution,
     writer.close()
 
     size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
-    return VideoInfo(path=writer.path, n_frames=n, fps=fps, backend=writer.backend,
+    final_path, data = _finalize(writer.path, is_temp)
+    return VideoInfo(path=final_path, n_frames=n, fps=fps, backend=writer.backend,
                      codec=writer.codec, width=writer.width, height=writer.height,
                      duration_s=(n / fps if fps else 0.0), vmin=lo, vmax=hi, stride=stride,
-                     size_bytes=size, bitrate=writer.bitrate)
+                     size_bytes=size, bitrate=writer.bitrate, data=data)
