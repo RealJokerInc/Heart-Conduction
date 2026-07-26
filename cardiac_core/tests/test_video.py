@@ -25,6 +25,13 @@ QUESTION = "lab"          # matches every other cardiac_core test; bulk=True kee
 
 # --------------------------------------------------------------------------- fixtures
 
+@pytest.fixture(autouse=True)
+def _isolate_show_cache(tmp_path, monkeypatch):
+    """Point .show()'s materialise-cache at a per-test tmp dir, so terminal-branch show tests never
+    write into the developer's real ~/.cache/cardiac_core/show."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "_show_cache"))
+
+
 def _wave(T=30, Nx=80, Ny=40, v_rest=-85.0):
     """Synthetic travelling wave (times, V)."""
     x = np.arange(Nx)[None, :, None]
@@ -1493,20 +1500,25 @@ def test_imagepath_saving_onto_itself_does_not_destroy_the_file(wave, tmp_path):
 def test_show_displays_inline_in_a_notebook(wave, monkeypatch):
     times, V = wave
     info = render(Video((times, V)), max_frames=3)
-    monkeypatch.setattr(enc, "_in_notebook", lambda: True)
-    shown = {}
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: True)
+    shown = []
     import IPython.display as ipd
-    monkeypatch.setattr(ipd, "display", lambda obj: shown.setdefault("html", obj._repr_html_()))
-    assert info.show() is info, "show() should chain"
-    assert "<video" in shown["html"]
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj))
+    assert info.show() is None, "show() must return None — returning self would double-embed"
+    # display() called EXACTLY ONCE is the real double-embed guard: the harm is display() PLUS a
+    # trailing-expression _repr_html_ when show() returns self.
+    assert len(shown) == 1, "display must be called exactly once"
+    assert "<video" in shown[0]._repr_html_()
 
 
 def test_show_hands_a_file_to_the_os_player_in_a_terminal(wave, tmp_path, monkeypatch):
     times, V = wave
     info = render(Video((times, V)), max_frames=3)
-    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
     opened = {}
-    monkeypatch.setattr(enc, "_open_externally", lambda p: (opened.setdefault("p", p), True)[1])
+    monkeypatch.setattr(disp, "open_externally", lambda p: (opened.setdefault("p", p), True)[1])
     info.show()
     assert opened["p"].endswith(".mp4") and os.path.getsize(opened["p"]) > 0, \
         "an unsaved render must be materialised before a player can open it"
@@ -1516,8 +1528,9 @@ def test_show_reports_the_path_when_nothing_can_be_opened(wave, monkeypatch, cap
     """Headless / SSH: degrade to telling the user where the file is, never crash."""
     times, V = wave
     info = render(Video((times, V)), max_frames=3)
-    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
-    monkeypatch.setattr(enc, "_open_externally", lambda p: False)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    monkeypatch.setattr(disp, "open_externally", lambda p: False)
     info.show()
     out = capsys.readouterr().out
     assert "No video player" in out and ".mp4" in out
@@ -1526,15 +1539,80 @@ def test_show_reports_the_path_when_nothing_can_be_opened(wave, monkeypatch, cap
 def test_show_reuses_an_already_saved_file(wave, tmp_path, monkeypatch):
     times, V = wave
     info = render(Video((times, V)), path=str(tmp_path / "kept.mp4"), max_frames=3)
-    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
     opened = {}
-    monkeypatch.setattr(enc, "_open_externally", lambda p: (opened.setdefault("p", p), True)[1])
+    monkeypatch.setattr(disp, "open_externally", lambda p: (opened.setdefault("p", p), True)[1])
     info.show()
     assert opened["p"] == info.path, "a saved render must not be copied to a temp file"
 
 
-def test_open_externally_declines_on_a_headless_box(monkeypatch):
-    monkeypatch.delenv("DISPLAY", raising=False)
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr("sys.platform", "linux")
-    assert enc._open_externally("/tmp/whatever.mp4") is False
+def test_show_does_not_mark_the_result_saved(wave, monkeypatch):
+    """A scratch file materialised for the player is not a destination — .show() must not flip
+    saved/path, or a later Lab record would think this render was written where the user asked."""
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    monkeypatch.setattr(disp, "open_externally", lambda p: True)
+    info.show()
+    assert info.saved is False and info.path is None
+
+
+def test_show_after_the_saved_file_was_deleted(wave, tmp_path, monkeypatch, capsys):
+    """The new code re-reads (unlike the draft, which passed a stale path straight to the opener),
+    so a saved-then-deleted file must degrade to a message, never raise."""
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "gone.mp4"), max_frames=3)
+    os.remove(info.path)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    monkeypatch.setattr(disp, "open_externally", lambda p: True)
+    info.show()          # must not raise
+    assert "video unavailable" in capsys.readouterr().out
+
+
+def test_show_suffix_follows_the_codec(wave, monkeypatch):
+    """The materialised temp file's extension must follow the codec, not hardcode .mp4 — else a
+    GIF or VP9 payload opens in the wrong app."""
+    times, V = wave
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    for fmt in ("gif", "webm"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")      # webm may DOWNGRADE to gif without ffmpeg
+            info = render(Video((times, V)), format=fmt, max_frames=3)
+        opened = {}
+        monkeypatch.setattr(disp, "open_externally",
+                            lambda p: (opened.setdefault("p", p), True)[1])
+        info.show()
+        expected = "." + enc._EXT_FOR_CODEC[info.codec]
+        assert opened["p"].endswith(expected), \
+            f"format={fmt} codec={info.codec}: opener got {opened['p']}, expected {expected}"
+
+
+def test_imagepath_show_never_passes_the_unsaved_sentinel(wave, monkeypatch):
+    """An unsaved ImagePath's string value is a human sentence, not a path — .show() must
+    materialise from bytes and hand the opener a real file, never UNSAVED_TEXT."""
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0)          # unsaved → str(p) is UNSAVED_TEXT
+    assert not p.saved
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    opened = {}
+    monkeypatch.setattr(disp, "open_externally", lambda q: (opened.setdefault("p", q), True)[1])
+    p.show()
+    assert opened["p"] != enc.ImagePath.UNSAVED_TEXT
+    assert opened["p"].endswith(".png") and os.path.exists(opened["p"])
+
+
+def test_imagepath_show_uses_the_saved_file(wave, tmp_path, monkeypatch):
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0, path=str(tmp_path / "frame.png"))
+    assert p.saved
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    opened = {}
+    monkeypatch.setattr(disp, "open_externally", lambda q: (opened.setdefault("p", q), True)[1])
+    assert p.show() is None
+    assert opened["p"] == str(p)

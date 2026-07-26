@@ -251,6 +251,8 @@ r    = sim.run(t_end=20.0, save_every=1.0)
 
 # Rendering DISPLAYS; naming a destination SAVES — the same contract as matplotlib.
 r.video()                                        # plays inline in Jupyter/Colab; writes NO file
+#   r.video().show()  -> explicit display: inline in a notebook, else the OS player from a
+#                        terminal (a headless/SSH box prints the file path, never raises)
 info = r.video("my-wave", bulk=True)             # -> media/lab/_sim_outputs/videos/{date}/my-wave_01.mp4
 print(info.backend, info.width, info.height, info.vmin, info.vmax)
 #   r.video(path="my-wave.mp4")     -> writes ./my-wave.mp4, exactly there (no media/ tree)
@@ -285,6 +287,7 @@ r.image()                                        # displays inline; writes NO fi
 r.image("wave", bulk=True)                       # -> media/lab/_sim_outputs/images/{date}/…
 #   r.image(path="fig.pdf")   -> exactly there, vector, for a paper
 #   r.image().save("keep.png")-> persist an unsaved figure after the fact
+#   r.image().show()          -> explicit display (same rule; also r.trace(), Video(...).preview())
 
 r.image(what="activation")                       # LAT map + isochrone contours
 #   r.image(what="apd")   -> APD90 map (needs a run >= 1 full action potential, ~400 ms)
@@ -316,6 +319,11 @@ cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 
   convention keywords (`question=`/`bulk=`/`root=`/`date=`). With none of them the render is
   returned in memory and displays inline; `info.path` is `None` and `info.saved` is `False`.
   This is why a notebook needs no folder and Colab needs no persistent disk.
+- **`.show()` displays the media explicitly**, like `plt.show()`. `r.video().show()` /
+  `r.image().show()` / `r.trace().show()` / `Video(r).preview(...).show()` play inline in a
+  notebook and open the OS player from a terminal; a headless/SSH session prints the file path
+  and never raises. `.show()` returns `None` and does NOT save — pass `path=` (or `.save(...)`)
+  to keep a file.
 - `path=` is obeyed literally (no `media/` tree, no date folder, no `_NN`), and `format=` is
   taken from its extension (`.mp4`/`.webm`/`.gif`) unless given explicitly.
 - `bulk=True` → gitignored `media/lab/_sim_outputs/...` (regenerable; the normal case).

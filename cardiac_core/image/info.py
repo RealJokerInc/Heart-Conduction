@@ -109,30 +109,17 @@ class ImageInfo:
                     f"not saved (pass path= to write a file)>")
         return self.path
 
-    def show(self) -> "ImageInfo":
+    def show(self) -> None:
         """Show the figure — inline in a notebook, or in an image viewer from a terminal.
 
-        Mirrors :meth:`cardiac_core.video.VideoInfo.show`; see it for the rationale.
+        Returns None, like ``plt.show()``; see :meth:`cardiac_core.video.VideoInfo.show` for why
+        returning self would double-embed in a notebook. Delegates to the stdlib-only
+        ``cardiac_core._display`` leaf module so this method never imports ``video.encoders``
+        (which would drag in matplotlib's Agg backend process-wide).
         """
-        import os as _os
-        import tempfile as _tempfile
-        from ..video.encoders import _in_notebook, _open_externally
-
-        if _in_notebook():
-            from IPython.display import display
-            display(self)
-            return self
-
-        path = self.path
-        if path is None:
-            fd, path = _tempfile.mkstemp(prefix="cardiac_", suffix=f".{self.format}")
-            _os.close(fd)
-            with open(path, "wb") as fh:
-                fh.write(self.read())
-        if not _open_externally(path):
-            print(f"No image viewer could be opened (headless or remote session?).\n"
-                  f"The figure is at: {path}")
-        return self
+        from .._display import show_payload
+        show_payload(read=self.read, path=self.path, suffix=self.format,
+                     noun="figure", label="image viewer", rich=self)
 
     def __fspath__(self) -> str:
         if self.path is None:

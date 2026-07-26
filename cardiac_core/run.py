@@ -154,6 +154,7 @@ class SimulationResult:
         **Drawing displays; naming a destination saves**, following matplotlib::
 
             r.image()                                  # displays inline in a notebook, no file
+            r.image().show()                           # display explicitly: notebook inline, or the OS viewer
             r.image(path="wave.png")                   # writes ./wave.png
             r.image("wave", bulk=True)                 # media/lab/_sim_outputs/images/{date}/…
 
@@ -180,6 +181,7 @@ class SimulationResult:
         **Drawing displays; naming a destination saves**, as with :meth:`image`::
 
             r.trace()                                        # Vm(t) at the grid centre
+            r.trace().show()                                 # display explicitly (notebook inline, or the OS viewer)
             r.trace(at={"edge": (0, 4), "centre": (20, 4)})   # two labelled series + a legend
             r.trace(what="restitution", at=(20, 4))           # APD vs DI, marker-only
             r.trace(hline=(-40.0, "threshold"))               # a labelled reference line
@@ -201,6 +203,7 @@ class SimulationResult:
         **Rendering displays; naming a destination saves**, following matplotlib::
 
             r.video()                                  # plays inline in a notebook, no file
+            r.video().show()                           # display explicitly: notebook inline, or the OS player
             r.video(path="wave.mp4")                   # writes ./wave.mp4
             r.video("wave", bulk=True)                 # media/lab/_sim_outputs/videos/{date}/…
 

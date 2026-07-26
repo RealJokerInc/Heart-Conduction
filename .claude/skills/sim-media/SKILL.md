@@ -64,6 +64,10 @@ render([Video.annotated(r_ctrl, gradient=g, label="control"),
   (the `media/` convention) and `path=` all count; with none of them the render is returned in
   memory and only displays inline. For a Lab experiment ALWAYS pass `bulk=True` — the notebook
   record needs the file on disk.
+- **`.show()` is for a HUMAN at a terminal, not for the record.** `result.video().show()` /
+  `.image().show()` / `.trace().show()` pop the media up explicitly (inline in a notebook, else the
+  OS player/viewer; a headless box prints the path). It returns `None` and writes no durable file —
+  so it does NOT substitute for `bulk=True`. A recorded experiment still needs a named destination.
 - `bulk=True` → gitignored `media/lab/_sim_outputs/...` (regenerable; the normal case).
 - `bulk=False` → committed `media/lab/...` — use only for a curated figure worth keeping in git.
 - `path="somewhere.mp4"` → written exactly there, no `media/` tree. Use for one-off exports only,

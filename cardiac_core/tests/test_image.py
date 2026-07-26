@@ -6,6 +6,7 @@ asserting on APD needs `long_wave`, which costs ~44 s — so only APD uses it.
 """
 
 import os
+import subprocess
 import tempfile
 import sys
 import types
@@ -18,6 +19,13 @@ import torch
 import cardiac_core as cc
 from cardiac_core import Image, ImageInfo, Trace, draw
 from cardiac_core.image._draw import _UNSET
+
+
+@pytest.fixture(autouse=True)
+def _isolate_show_cache(tmp_path, monkeypatch):
+    """Point .show()'s materialise-cache at a per-test tmp dir, so terminal-branch show tests never
+    write into the developer's real ~/.cache/cardiac_core/show."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "_show_cache"))
 
 
 @pytest.fixture(scope="module")
@@ -894,3 +902,67 @@ def test_imageinfo_saving_onto_itself_does_not_destroy_the_file(wave, tmp_path):
     assert len(original) > 0 and info.data is None
     info.save(info.path)
     assert open(info.path, "rb").read() == original, "save-onto-self destroyed the figure"
+
+
+# ------------------------------------- show(): the matplotlib contract
+
+def test_imageinfo_show_displays_inline(wave, monkeypatch):
+    info = draw(Image(wave), "fig")
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: True)
+    shown = []
+    import IPython.display as ipd
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.append(obj))
+    assert info.show() is None, "show() must return None — returning self would double-embed"
+    assert len(shown) == 1, "display must be called exactly once"
+    assert shown[0] is info
+
+
+def test_imageinfo_show_opens_a_viewer(wave, monkeypatch):
+    info = draw(Image(wave), "fig")            # unsaved → materialised for the viewer
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    opened = {}
+    monkeypatch.setattr(disp, "open_externally", lambda p: (opened.setdefault("p", p), True)[1])
+    info.show()
+    assert opened["p"].endswith(".png") and os.path.exists(opened["p"])
+
+
+def test_imageinfo_show_reports_the_path_when_nothing_opens(wave, monkeypatch, capsys):
+    info = draw(Image(wave), "fig")
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    monkeypatch.setattr(disp, "open_externally", lambda p: False)
+    info.show()
+    assert "No image viewer" in capsys.readouterr().out
+
+
+def test_imageinfo_show_after_the_file_was_deleted(wave, tmp_path, monkeypatch, capsys):
+    info = draw(Image(wave), "fig", path=str(tmp_path / "gone.png"))
+    os.remove(info.path)
+    import cardiac_core._display as disp
+    monkeypatch.setattr(disp, "in_notebook", lambda: False)
+    monkeypatch.setattr(disp, "open_externally", lambda p: True)
+    info.show()                                # must not raise
+    assert "figure unavailable" in capsys.readouterr().out
+
+
+def test_calling_imageinfo_show_does_not_import_matplotlib(tmp_path):
+    """The durable guard the import-time test cannot give: CALLING .show() must not pull in
+    matplotlib. ImageInfo is hand-constructed (NOT via draw(), which imports matplotlib and would
+    make this vacuous)."""
+    code = (
+        "import sys\n"
+        "from cardiac_core import ImageInfo\n"
+        "from cardiac_core import _display\n"
+        "_display.in_notebook = lambda: False\n"
+        "_display.open_externally = lambda p: True\n"
+        "info = ImageInfo(path=None, data=b'\\x89PNG not-real', format='png', width=4, height=4,"
+        " n_panels=1, vmin=None, vmax=None, size_bytes=12)\n"
+        "info.show()\n"
+        "print('matplotlib' in sys.modules)\n"
+    )
+    env = {**os.environ, "XDG_CACHE_HOME": str(tmp_path)}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "False", f"matplotlib was imported by .show(): {out.stdout!r}\n{out.stderr}"

@@ -463,6 +463,7 @@ What `render` produced. Displays itself in a notebook; str-like when a file was 
 |---|---|
 | `info.read()` | the encoded bytes, from memory or from the saved file |
 | `info.save(path)` | write it out after the fact and mark this object saved (releases `data`); returns the path |
+| `info.show()` | display it explicitly, like `plt.show()` — inline in a notebook, else the OS player from a terminal; prints the path on a headless box, never raises. Returns `None`; does NOT save |
 | `info._repr_html_()` | the inline `<video>` (called by Jupyter/Colab, not by you) |
 
 `os.fspath(info)` and `str(info)` give the path when one exists; `os.fspath` raises a
@@ -478,7 +479,9 @@ Returned by `Video.preview(...)`. A `str` subclass — every existing path use k
 also carries `.data`/`.saved`/`.format`, a `.read()`/`.save(path)` pair, and displays inline
 (the format follows `path=`'s extension, so it is not always PNG). `.save()` returns the path
 `str` like the other two objects; a `str` cannot change its own value, so the ORIGINAL stays
-unsaved — use the return value.
+unsaved — use the return value. `.show()` displays it explicitly (inline in a notebook, else the
+OS image viewer; returns `None`) — and when unsaved it materialises from the in-memory bytes, so
+the human-sentence string value is never handed to the opener as a path.
 
 ---
 
@@ -548,6 +551,7 @@ whose fields are live). Rebuild the spec instead.
 |---|---|
 | `read()` | the bytes, from memory or from the saved file |
 | `save(path)` | write after the fact; returns the path |
+| `show()` | display it explicitly, like `plt.show()` — inline in a notebook, else the OS image viewer; prints the path on a headless box, never raises. Returns `None`; does NOT save |
 
 ### `draw(spec, slug="figure", …)`
 

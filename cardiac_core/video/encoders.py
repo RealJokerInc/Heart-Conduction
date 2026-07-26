@@ -11,7 +11,6 @@ and the choice is reported on ``VideoInfo.backend``.
 from __future__ import annotations
 
 import os
-import tempfile
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
@@ -25,52 +24,6 @@ __all__ = [
 
 # File extension per encoder codec, for naming a temp file a player can open.
 _EXT_FOR_CODEC = {"libx264": "mp4", "mp4v": "mp4", "libvpx-vp9": "webm", "gif": "gif"}
-
-
-def _in_notebook() -> bool:
-    """True inside a Jupyter/Colab kernel — i.e. somewhere that can render HTML.
-
-    Terminal IPython has no ``kernel`` attribute, so it correctly falls through to the external
-    player: it can echo a repr but cannot show a video.
-    """
-    try:
-        from IPython import get_ipython
-    except Exception:
-        return False
-    ip = get_ipython()
-    return ip is not None and hasattr(ip, "kernel")
-
-
-def _open_externally(path: str) -> bool:
-    """Hand a file to the OS's default application. True if something was launched.
-
-    Returns False rather than raising on a headless box (no DISPLAY, an SSH session, a container),
-    so the caller can report the path instead of failing.
-    """
-    import shutil
-    import subprocess
-    import sys
-
-    if sys.platform == "win32":                              # pragma: no cover - platform
-        try:
-            os.startfile(path)                               # type: ignore[attr-defined]
-            return True
-        except OSError:
-            return False
-
-    opener = "open" if sys.platform == "darwin" else "xdg-open"
-    if shutil.which(opener) is None:
-        return False
-    if sys.platform != "darwin" and not (os.environ.get("DISPLAY")
-                                         or os.environ.get("WAYLAND_DISPLAY")):
-        return False                                         # xdg-open with no GUI just fails
-    try:
-        subprocess.Popen([opener, path],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
-        return True
-    except OSError:
-        return False
 
 
 class ImagePath(str):
@@ -143,6 +96,18 @@ class ImagePath(str):
             return os.path.getsize(str(self))
         except OSError:
             return 0
+
+    def show(self) -> None:
+        """Show the still — inline in a notebook, or in an image viewer from a terminal.
+
+        Returns None, like ``plt.show()``. The ``saved`` guard matters here: an UNSAVED
+        ``ImagePath``'s string value is a human sentence (``UNSAVED_TEXT``), NOT a path — passing
+        it as ``path=`` would hand that sentence to the OS opener. When unsaved, ``path=None`` so
+        ``show_payload`` materialises from the in-memory bytes instead.
+        """
+        from .._display import show_payload
+        show_payload(read=self.read, path=(str(self) if self.saved else None),
+                     suffix=self.format, noun="image", label="image viewer", rich=self)
 
     def _repr_html_(self) -> str:
         import base64
@@ -260,31 +225,18 @@ class VideoInfo:
         self.data = None
         return path
 
-    def show(self) -> "VideoInfo":
+    def show(self) -> None:
         """Show the video — inline in a notebook, or in a player from a terminal.
 
-        The matplotlib contract: a figure appears inline in a notebook, and ``plt.show()`` opens
-        a window from a script. Same idea, so ``r.video().show()`` works everywhere.
-
-        A terminal needs a real file, so an unsaved render is written to a temp file first (the
-        path is reported). Returns self, so it chains.
+        Returns None, like ``plt.show()``. Returning self would make ``r.video().show()`` the
+        cell's trailing expression, so IPython would call ``_repr_html_`` on top of the
+        ``display()`` we just did — two <video> elements and up to 2x INLINE_MAX_BYTES base64'd
+        into the .ipynb.
         """
-        if _in_notebook():
-            from IPython.display import display
-            display(self)
-            return self
-
-        path = self.path
-        if path is None:                       # a player needs something on disk
-            fd, path = tempfile.mkstemp(prefix="cardiac_", suffix=f".{_EXT_FOR_CODEC.get(self.codec, 'mp4')}")
-            os.close(fd)
-            with open(path, "wb") as fh:
-                fh.write(self.read())
-
-        if not _open_externally(path):
-            print(f"No video player could be opened (headless or remote session?).\n"
-                  f"The video is at: {path}")
-        return self
+        from .._display import show_payload
+        show_payload(read=self.read, path=self.path,
+                     suffix=_EXT_FOR_CODEC.get(self.codec, "mp4"),
+                     noun="video", label="video player", rich=self)
 
     def __fspath__(self) -> str:
         if self.path is None:
