@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import os
+import warnings
 from typing import Any, Optional, Sequence
 
 import matplotlib
@@ -29,10 +30,11 @@ import matplotlib.pyplot as plt     # noqa: E402
 import numpy as np                  # noqa: E402
 
 from ..video.clip import Video, _to_numpy                        # noqa: E402
-from ..video.encoders import ImagePath, burn_timestamp, fit_frame, resolve_canvas  # noqa: E402
+from ..video.encoders import burn_timestamp, fit_frame, resolve_canvas  # noqa: E402
 from ..video.render import (                                     # noqa: E402
     _LEGAL_FIT, _PAD_BLACK, _build_figure, _default_layout, _finalize, _named_destination,
-    _produce_bare, _produce_figure, _resolve_destination, _setup_panel, enforce_capabilities,
+    _produce_bare, _produce_figure, _resolve_destination, _setup_panel, discard_partial,
+    enforce_capabilities,
 )
 from .info import ImageInfo                                      # noqa: E402
 from .panel import Image, Trace                                  # noqa: E402
@@ -98,6 +100,39 @@ def _reraise_for_image(exc: ValueError) -> ValueError:
                     'Use style="annotated" — the bare producer')
            .replace("a bare clip", 'style="bare"'))
     return ValueError(msg)
+
+
+def _measure(out_path: str, fmt: str):
+    """``(size, width, height)`` — NEVER raises.
+
+    This runs inside the cleanup guard, so a failure here would send a SUCCESSFULLY written
+    figure to ``discard_partial`` and delete it. A probe that cannot read the file costs us the
+    dimensions, not the output.
+    """
+    try:
+        size = os.path.getsize(out_path)
+    except OSError:
+        size = 0
+    width = height = None
+    if fmt not in _VECTOR:
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(out_path) as probe:
+                width, height = probe.size
+        except BaseException as exc:
+            # Dimensions are informational; the bytes are what matter, so the file SURVIVES.
+            # Say so — silence would report a zero-byte or undecodable raster as a clean
+            # success — but the warn MUST NOT escape: this runs inside the caller's cleanup
+            # guard, and under `-W error` a raised UserWarning would reach discard_partial()
+            # and delete the figure we just wrote successfully. Same hazard discard_partial
+            # documents and defends against.
+            try:
+                warnings.warn(
+                    f"wrote {out_path!r} but could not read its dimensions ({exc}); the file "
+                    f"is kept and width/height are None.", UserWarning, stacklevel=3)
+            except BaseException:
+                pass
+    return size, width, height
 
 
 def _bare_canvas(rgb: np.ndarray, resolution) -> Optional[tuple]:
@@ -189,7 +224,7 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
     # --- format, and the media-convention guard --------------------------------------
     fmt = _resolve_format(format, path)
     if fmt in ("pdf", "webp") and path is None and _named_destination(
-            None, question, bulk, date, root):
+            question, bulk, date, root):
         raise ValueError(
             f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
             f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
@@ -259,25 +294,35 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
         if lat is not None and clip.active_mask is not None:
             lat = np.where(clip.active_mask, lat, np.nan)
 
+    # --- everything that can RAISE, before we own a file ------------------------------
+    # Acquiring the destination has side effects (a temp file; a caller's existing file becomes
+    # ours to protect). A raise afterwards means the cleanup guard runs for a render that never
+    # wrote a byte, which orphans temp files and warns about untouched files.
+    rgb = None
+    if bare:
+        if fmt == "svg":
+            raise ValueError(
+                'a bare spec is written with PIL, which cannot produce SVG. '
+                'Use style="annotated".')
+        rgb = _produce_bare(clip, frame_resolved, cmap, norm)
+        canvas = _bare_canvas(rgb, resolution)          # raises on a bad resolution=
+        if canvas is not None:
+            rgb = fit_frame(rgb, canvas, fit, clip.gradient.interpolation, _PAD_BLACK)
+
     # --- destination ------------------------------------------------------------------
-    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
+    out_path, is_temp, owned = _resolve_destination(slug, "images", fmt, path=path,
+                                                    question=question, bulk=bulk,
+                                                    date=date, root=root)
 
     st = None
+    opened = False
     try:
         if bare:
-            if fmt == "svg":
-                raise ValueError(
-                    'a bare spec is written with PIL, which cannot produce SVG. '
-                    'Use style="annotated".')
             from PIL import Image as PILImage
-            rgb = _produce_bare(clip, frame_resolved, cmap, norm)
-            canvas = _bare_canvas(rgb, resolution)
-            if canvas is not None:
-                rgb = fit_frame(rgb, canvas, fit, clip.gradient.interpolation, _PAD_BLACK)
             if show_time_resolved:
                 # AFTER the resize, or the stamp is drawn at grid scale and blown up with it.
                 rgb = burn_timestamp(rgb, f"t = {t0:.1f} ms")
+            opened = True
             PILImage.fromarray(rgb).save(out_path)
         else:
             st = _build_figure(
@@ -288,24 +333,19 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
                 filled=getattr(spec, "filled", False),
             )
             _produce_figure(st, clip, frame_resolved, show_time=show_time_resolved, title=title)
+            opened = True
             st.fig.savefig(out_path, dpi=dpi_resolved,
                            bbox_inches=("tight" if tight_resolved else None),
                            transparent=transparent)
+        # Non-raising: a probe failure must not destroy a successfully written figure.
+        size, width, height = _measure(out_path, fmt)
     except BaseException:
-        if os.path.exists(out_path):
-            os.remove(out_path)   # a truncated file would keep the media_path NN slot
+        discard_partial(out_path, owned, opened=opened)
         raise
     finally:
         if st is not None:
             plt.close(st.fig)     # else the suite leaks a figure per draw()
 
-    # --- measure BEFORE _finalize, which deletes an unsaved render's temp file --------
-    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
-    width = height = None
-    if fmt not in _VECTOR:
-        from PIL import Image as PILImage
-        with PILImage.open(out_path) as probe:
-            width, height = probe.size
     final_path, data = _finalize(out_path, is_temp)
     return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
                      n_panels=1, vmin=lo, vmax=hi, size_bytes=size)
@@ -365,34 +405,37 @@ def _draw_trace(spec: Trace, slug: str, *, path, question, bulk, date, root, fmt
                 figsize, dpi, tight, title, transparent) -> ImageInfo:
     """Single-panel wrapper: owns the figure, delegates the drawing, shares the delivery path."""
     if fmt in ("pdf", "webp") and path is None and _named_destination(
-            None, question, bulk, date, root):
+            question, bulk, date, root):
         raise ValueError(
             f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
             f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
-    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
-    fig = None
+    # Fallible setup BEFORE the destination — acquiring it creates a temp file and makes a
+    # caller's existing file ours to protect. (Same rule as draw()/render().)
+    fig, ax = plt.subplots(figsize=tuple(figsize) if figsize else (6.4, 3.6), dpi=dpi)
     try:
-        fig, ax = plt.subplots(figsize=tuple(figsize) if figsize else (6.4, 3.6), dpi=dpi)
+        out_path, is_temp, owned = _resolve_destination(slug, "images", fmt, path=path,
+                                                        question=question, bulk=bulk,
+                                                        date=date, root=root)
+    except BaseException:
+        plt.close(fig)                 # the figure exists already; do not leak it
+        raise
+    opened = False
+    try:
         _draw_trace_on(spec, ax)
         if title:
             fig.suptitle(title)
+        opened = True
         fig.savefig(out_path, dpi=dpi, bbox_inches=("tight" if tight else None),
                     transparent=transparent)
+        # Non-raising: a probe failure must not destroy a successfully written figure.
+        size, width, height = _measure(out_path, fmt)
     except BaseException:
-        if os.path.exists(out_path):
-            os.remove(out_path)
+        discard_partial(out_path, owned, opened=opened)
         raise
     finally:
         if fig is not None:
             plt.close(fig)
 
-    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
-    width = height = None
-    if fmt not in _VECTOR:
-        from PIL import Image as PILImage
-        with PILImage.open(out_path) as probe:
-            width, height = probe.size
     final_path, data = _finalize(out_path, is_temp)
     # A trace has no colour range — vmin/vmax stay None rather than being invented.
     return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
@@ -431,7 +474,7 @@ def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize,
                     for i, sp in enumerate(specs)]
 
     if fmt in ("pdf", "webp") and path is None and _named_destination(
-            None, question, bulk, date, root):
+            question, bulk, date, root):
         raise ValueError(
             f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
             f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
@@ -473,12 +516,17 @@ def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize,
     tight_resolved = True if tight is None else bool(tight)
     colorbar_resolved = True if colorbar is None else bool(colorbar)
 
-    out_path, is_temp = _resolve_destination(slug, "images", fmt, path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
-    fig = None
+    fig, axes = plt.subplots(nrows, ncols, figsize=tuple(figsize), dpi=dpi_resolved,
+                             constrained_layout=True, squeeze=False)
     try:
-        fig, axes = plt.subplots(nrows, ncols, figsize=tuple(figsize), dpi=dpi_resolved,
-                                 constrained_layout=True, squeeze=False)
+        out_path, is_temp, owned = _resolve_destination(slug, "images", fmt, path=path,
+                                                        question=question, bulk=bulk,
+                                                        date=date, root=root)
+    except BaseException:
+        plt.close(fig)
+        raise
+    opened = False
+    try:
         flat = [ax for row in axes for ax in row]
         for ax in flat[len(specs):]:
             ax.set_axis_off()
@@ -534,22 +582,18 @@ def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize,
                 text = f"t = {t0:.1f} ms"
                 sup.set_text(f"{title} — {text}" if title else text)
 
+        opened = True
         fig.savefig(out_path, dpi=dpi_resolved,
                     bbox_inches=("tight" if tight_resolved else None), transparent=transparent)
+        # Non-raising: a probe failure must not destroy a successfully written figure.
+        size, width, height = _measure(out_path, fmt)
     except BaseException:
-        if os.path.exists(out_path):
-            os.remove(out_path)
+        discard_partial(out_path, owned, opened=opened)
         raise
     finally:
         if fig is not None:
             plt.close(fig)
 
-    size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
-    width = height = None
-    if fmt not in _VECTOR:
-        from PIL import Image as PILImage
-        with PILImage.open(out_path) as probe:
-            width, height = probe.size
     final_path, data = _finalize(out_path, is_temp)
     return ImageInfo(path=final_path, data=data, format=fmt, width=width, height=height,
                      n_panels=len(specs), vmin=lo, vmax=hi, size_bytes=size)

@@ -10,6 +10,9 @@ import os
 import tempfile
 import warnings
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
@@ -44,6 +47,44 @@ def small_result():
             "amplitude": -80.0}
     sim = cc.monodomain(g, "ttp06", cond, stim)
     return sim.run(t_end=20.0, save_every=1.0)
+
+
+def _media_tree():
+    """Every file under the session media root (conftest points it at a tmpdir).
+
+    The 'writes nothing' tests need this: asserting only on cwd would still pass if a regression
+    started writing to media_path(), because that root is elsewhere.
+    """
+    root = os.environ.get("CARDIAC_MEDIA_ROOT")
+    assert root and os.path.isdir(root), \
+        "conftest's media-root fixture is not active; this check would be vacuous"
+    return frozenset(
+        os.path.join(dirpath, f)
+        for dirpath, _dirs, files in os.walk(root) for f in files
+    )
+
+
+def _render_module():
+    """The render MODULE. `import cardiac_core.video.render` yields the re-exported FUNCTION."""
+    import sys
+    return sys.modules["cardiac_core.video.render"]
+
+
+def _throw_on_frame(n, exc):
+    """A _produce_bare stand-in that renders normally until frame ``n``, then raises.
+
+    Failing on frame 1 leaves the buffered backend with nothing to flush, which hides any bug in
+    the recovery path — several of these tests are only meaningful past the first frame.
+    """
+    real = _render_module()._produce_bare
+    seen = {"n": 0}
+
+    def _inner(*a, **kw):
+        seen["n"] += 1
+        if seen["n"] >= n:
+            raise exc("simulated failure")
+        return real(*a, **kw)
+    return _inner
 
 
 def _ok(path):
@@ -363,7 +404,10 @@ def test_lbm_finite_obstacle_is_masked(wave):
 def test_mask_false_disables_masking(small_result):
     """`mask=False` is what the legacy delegation relies on to stay visually unchanged."""
     d = Video(small_result, mask=False).display_values(0)
-    assert np.isfinite(d).all() or True     # no mask applied -> no NEW NaNs introduced by us
+    raw = small_result.Vm[0].detach().cpu().numpy()
+    # `or True` made the old assertion unfalsifiable. The real claim is that mask=False introduces
+    # no NaN the raw data did not already have.
+    assert np.array_equal(np.isnan(d), np.isnan(raw)), "mask=False introduced NaNs of its own"
     assert Video(small_result, mask=False).active_mask is None
 
 
@@ -849,7 +893,8 @@ def test_bare_render_writes_no_file(wave, tmp_path, monkeypatch):
     """No destination named -> bytes in memory, nothing on disk, nothing left in cwd."""
     times, V = wave
     monkeypatch.chdir(tmp_path)
-    before = set(os.listdir(tempfile.gettempdir()))
+    before_tmp = set(os.listdir(tempfile.gettempdir()))
+    before_media = _media_tree()
 
     info = render(Video((times, V)), max_frames=3)
 
@@ -857,8 +902,11 @@ def test_bare_render_writes_no_file(wave, tmp_path, monkeypatch):
     assert info.data and info.data[4:8] == b"ftyp", "encoded bytes should be a real MP4"
     assert info.size_bytes > 0
     assert list(tmp_path.iterdir()) == [], "a bare render must not write into the working dir"
-    leaked = [f for f in set(os.listdir(tempfile.gettempdir())) - before if "video" in f]
-    assert not leaked, f"temp file was not cleaned up: {leaked}"
+    # The cwd check alone is decorative: conftest points CARDIAC_MEDIA_ROOT at a temp dir, so a
+    # regression to media_path() would write THERE and still leave tmp_path empty.
+    assert _media_tree() == before_media, "a bare render must not write under the media root"
+    leaked = set(os.listdir(tempfile.gettempdir())) - before_tmp
+    assert not leaked, f"temp file was not cleaned up: {sorted(leaked)}"
 
 
 def test_path_writes_exactly_there(wave, tmp_path):
@@ -963,10 +1011,12 @@ def test_repr_html_size_cap(wave, monkeypatch):
 def test_preview_unsaved_displays_but_writes_nothing(wave, tmp_path, monkeypatch):
     times, V = wave
     monkeypatch.chdir(tmp_path)
+    before_media = _media_tree()
     p = Video((times, V)).preview(t_ms=5.0)
     assert p.saved is False and p.data[:8] == b"\x89PNG\r\n\x1a\n"
     assert "<img" in p._repr_html_() and "data:image/png;base64," in p._repr_html_()
     assert list(tmp_path.iterdir()) == []
+    assert _media_tree() == before_media, "an unsaved preview must not write under the media root"
 
 
 def test_preview_saved_is_still_a_plain_path_string(wave, tmp_path):
@@ -1023,3 +1073,468 @@ def test_close_failure_removes_the_partial_file(wave, tmp_path, monkeypatch):
     with pytest.raises(OSError, match="disk full"):
         render(Video((times, V)), path=str(dest), max_frames=3)
     assert not dest.exists(), "a failed finalize must not leave a partial file behind"
+
+
+# ------------------------------------- audit round 1: gaps the first pass missed
+
+def test_repr_does_not_dump_the_payload(wave):
+    """`data` must be repr=False — otherwise a REPL echo, a log line or a failing assertion
+    prints the entire encoded video as an escaped bytes literal."""
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    text = repr(info)
+    assert len(text) < 500, f"repr is {len(text)} chars — the payload is leaking into it"
+    assert "data=" not in text and b"ftyp".decode() not in text
+
+
+def test_save_makes_the_result_saved(wave, tmp_path):
+    """`.save()` must update the object, not just write bytes: `.saved`, `os.fspath()` and the
+    over-cap display all read `path`, and a Lab record gated on `.saved` would report no file."""
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    assert info.saved is False
+
+    dest = info.save(tmp_path / "kept.mp4")
+
+    assert info.saved is True and info.path == str(dest)
+    assert os.fspath(info) == str(dest) and str(info) == str(dest)
+    assert _ok(dest) and _is_mp4(dest)
+
+
+def test_multipanel_unsaved_returns_bytes_and_writes_nothing(wave, tmp_path, monkeypatch):
+    """The panel path has its own destination/finalize code — cover it, not just the single clip."""
+    times, V = wave
+    monkeypatch.chdir(tmp_path)
+    before_media = _media_tree()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")     # bare clips are promoted for a shared colorbar
+        info = render([Video((times, V)), Video((times, V))], max_frames=2)
+    assert info.path is None and info.saved is False
+    assert info.data and info.data[4:8] == b"ftyp"
+    assert list(tmp_path.iterdir()) == [] and _media_tree() == before_media
+
+
+def test_bulk_defaults_to_true_with_only_question(wave):
+    """Documented rule: any convention keyword implies the gitignored bulk subtree unless the
+    caller says otherwise. The docstring claimed the opposite before the audit."""
+    times, V = wave
+    a = render(Video((times, V)), "tv-bulkdefault", question=QUESTION, max_frames=2)
+    assert "/_sim_outputs/" in a.path
+    b = render(Video((times, V)), "tv-curated", question=QUESTION, bulk=False, max_frames=2)
+    assert "/_sim_outputs/" not in b.path and "/media/lab/" in b.path
+
+
+def test_path_plus_convention_keywords_warns(wave, tmp_path):
+    """Both name a destination; path= wins. Silently dropping bulk=True would break the Lab
+    record for an agent that followed sim-media's 'ALWAYS pass bulk=True'."""
+    times, V = wave
+    with pytest.warns(UserWarning, match="path= wins"):
+        info = render(Video((times, V)), "x", path=str(tmp_path / "p.mp4"),
+                      question=QUESTION, bulk=True, max_frames=2)
+    assert info.path == str(tmp_path / "p.mp4")
+
+
+def test_path_that_is_a_directory_raises(wave, tmp_path):
+    times, V = wave
+    with pytest.raises(IsADirectoryError, match="pass a FILE path"):
+        render(Video((times, V)), path=str(tmp_path), max_frames=2)
+
+
+def test_failure_before_the_writer_leaves_no_temp_file(wave, tmp_path, monkeypatch):
+    """_resolve_destination has side effects (mkstemp / NN slot). Everything that can raise must
+    raise BEFORE it, or a bad resolution= orphans a temp file on every call."""
+    times, V = wave
+    monkeypatch.chdir(tmp_path)
+    before = set(os.listdir(tempfile.gettempdir()))
+    with pytest.raises(ValueError):
+        render(Video((times, V)), resolution="9000p", max_frames=2)
+    assert not (set(os.listdir(tempfile.gettempdir())) - before), "orphaned a temp file"
+
+
+def test_repr_html_degrades_when_the_saved_file_is_gone(wave, tmp_path):
+    """Re-running a cell after a media/ clean must not raise out of IPython's formatter."""
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "gone.mp4"), max_frames=2)
+    os.remove(info.path)
+    html = info._repr_html_()
+    assert "unavailable" in html and "<video" not in html
+
+
+def test_imagepath_survives_pickling(wave):
+    """str.__getnewargs__ would rebuild an UNSAVED ImagePath from its human summary, silently
+    turning it into a 'saved' object whose path is a sentence."""
+    import pickle
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0)
+    assert p.saved is False
+    back = pickle.loads(pickle.dumps(p))
+    assert back.saved is False and back.data == p.data and str(back) == str(p)
+    assert back.format == p.format, "__reduce__ dropped `format`"
+
+
+def test_imagepath_save_writes_and_returns_the_path(wave, tmp_path):
+    """All three payload objects agree: save() writes and returns the path str."""
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0)
+    dest = p.save(tmp_path / "frame.png")
+    assert isinstance(dest, str) and _ok(dest) and dest.endswith("frame.png")
+    assert p.saved is False, "a str cannot change its own value; the original stays unsaved"
+
+
+# ------------------------------------- audit round 2: data loss + layer consistency
+
+def test_failed_render_never_deletes_a_preexisting_file(wave, tmp_path, monkeypatch):
+    """CRITICAL regression. The cleanup guard used to `os.remove(out_path)` unconditionally — but
+    for a path= render that is the CALLER'S file, and a render can raise before writing a byte."""
+    times, V = wave
+    victim = tmp_path / "irreplaceable.gif"
+    victim.write_bytes(b"GIF89a" + b"-five-years-of-work" * 20)
+    original = victim.read_bytes()
+
+    # Fail on the SECOND frame, not the first. pillow-gif buffers every frame and writes the
+    # whole file in close(); with nothing buffered the recovery path writes nothing and this
+    # test would pass even with the bug present.
+    monkeypatch.setattr(_render_module(), "_produce_bare", _throw_on_frame(2, KeyboardInterrupt))
+    with pytest.raises(KeyboardInterrupt):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            render(Video((times, V)), path=str(victim), format="gif", max_frames=5)
+
+    assert victim.exists(), "a failed render DELETED the caller's pre-existing file"
+    assert victim.read_bytes() == original, "a failed render OVERWROTE the caller's file"
+
+
+def test_failed_render_warns_rather_than_silently_leaving_a_clobbered_file(wave, tmp_path,
+                                                                          monkeypatch):
+    times, V = wave
+    victim = tmp_path / "existing.gif"
+    victim.write_bytes(b"GIF89a-old")
+    original = victim.read_bytes()
+    monkeypatch.setattr(_render_module(), "_produce_bare", _throw_on_frame(2, RuntimeError))
+    with pytest.warns(UserWarning, match="already existed"):
+        with pytest.raises(RuntimeError):
+            render(Video((times, V)), path=str(victim), format="gif", max_frames=5)
+    assert victim.read_bytes() == original, "warned, but the bytes were clobbered anyway"
+
+
+def test_failed_render_still_cleans_up_a_file_it_created(wave, tmp_path, monkeypatch):
+    """The guard must still remove OUR partial output — only the caller's pre-existing file is spared."""
+    times, V = wave
+    dest = tmp_path / "ours.mp4"        # mp4 streams to disk, so a real partial file exists
+    monkeypatch.setattr(_render_module(), "_produce_bare", _throw_on_frame(3, RuntimeError))
+    with pytest.raises(RuntimeError):
+        render(Video((times, V)), path=str(dest), max_frames=5)
+    assert not dest.exists(), "a partial file WE created must be removed"
+
+
+def test_multipanel_failure_before_the_writer_leaves_no_temp_file(wave, tmp_path, monkeypatch):
+    """Round 1 hoisted the fallible work in render() but missed _render_panels()."""
+    times, V = wave
+    monkeypatch.chdir(tmp_path)
+    before = set(os.listdir(tempfile.gettempdir()))
+    with pytest.raises(ValueError):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            render([Video((times, V)), Video((times, V))], resolution="9000p", max_frames=2)
+    assert not (set(os.listdir(tempfile.gettempdir())) - before), "panel path orphaned a temp file"
+
+
+def test_save_releases_the_in_memory_payload(wave, tmp_path):
+    """The documented invariant is that bytes are held ONLY while unsaved — otherwise read()
+    keeps returning a stale copy of a file that may since have changed."""
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    assert info.data is not None
+    info.save(tmp_path / "kept.mp4")
+    assert info.data is None and info.saved
+    assert info.read() == open(info.path, "rb").read()
+
+
+def test_preview_mime_follows_the_actual_format(wave, tmp_path):
+    """preview() follows path='s extension now, so the inline <img> must not hardcode PNG."""
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0, path=str(tmp_path / "f.jpg"))
+    assert p.format in ("jpg", "jpeg") and "data:image/jpeg;base64," in p._repr_html_()
+
+
+def test_size_cap_does_not_read_the_payload(wave, tmp_path, monkeypatch):
+    """The cap must be decided from size_bytes. Reading first would pull a huge file into RAM
+    only to decline to embed it — which is what the cap exists to avoid."""
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "big.mp4"), max_frames=3)
+    monkeypatch.setattr(enc, "INLINE_MAX_BYTES", 8)
+
+    def explode():
+        raise AssertionError("_repr_html_ read the payload before checking the size cap")
+
+    monkeypatch.setattr(info, "read", explode)
+    assert "too large to embed" in info._repr_html_()
+
+
+def test_writer_releases_its_handle_when_close_fails():
+    """A failing close() cannot be retried (_closed is already set), so it must drop the encoder
+    handle rather than leak the ffmpeg subprocess for the life of the process."""
+    w = enc._Writer.__new__(enc._Writer)
+    w.path, w.fps, w.backend, w.bitrate = "/nonexistent/x.gif", 20.0, "pillow-gif", None
+    w.width = w.height = 0
+    w._closed = False
+    w.codec = "gif"
+    w._impl = None
+
+    class _Boom:
+        def save(self, *a, **k):
+            raise OSError("no such directory")
+
+    w._frames = [_Boom()]
+    with pytest.raises(OSError):
+        w.close()
+    assert w._frames is None and w._impl is None, "handles were not released"
+
+
+def test_imagepath_size_cap_without_reading(wave, monkeypatch):
+    """ImagePath had no inline cap at all — the anti-pattern the other two objects fixed."""
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0)
+    monkeypatch.setattr(enc, "INLINE_MAX_BYTES", 8)
+
+    def explode():
+        raise AssertionError("read the payload before checking the size cap")
+
+    monkeypatch.setattr(p, "read", explode)
+    assert "too large to display inline" in p._repr_html_()
+
+
+# ------------------------------------- audit round 4
+
+def test_build_figure_closes_its_figure_when_it_raises():
+    """_build_figure creates the figure, then does a lot of fallible work. The caller only closes
+    the _FigState it RECEIVES, so a raise mid-build would leak the figure into pyplot's Gcf."""
+    import matplotlib.axes
+    times, V = _wave()
+    clip = Video.annotated((times, V))
+    cmap, norm, _, _ = clip.gradient.resolve(clip.masked_iter([0, 1]), field=clip.field)
+    before = len(plt.get_fignums())
+
+    # imshow runs AFTER plt.subplots, i.e. exactly the window where the figure exists but the
+    # caller has not received it yet.
+    real_imshow = matplotlib.axes.Axes.imshow
+
+    def boom(self, *a, **k):
+        raise RuntimeError("simulated failure inside the figure build")
+
+    matplotlib.axes.Axes.imshow = boom
+    try:
+        with pytest.raises(RuntimeError):
+            _render_module()._build_figure(
+                clip, cmap, norm, colorbar_on=True, title=None, figsize=None, dpi=100,
+                units=None, idx=[0, 1])
+    finally:
+        matplotlib.axes.Axes.imshow = real_imshow
+
+    assert len(plt.get_fignums()) == before, "a failed _build_figure leaked a matplotlib figure"
+
+
+def test_abort_drops_buffered_frames_without_writing(tmp_path):
+    """abort() is the round-3 fix and was only reached transitively. Pin it directly."""
+    dest = tmp_path / "never.gif"
+    w = enc.open_writer(str(dest), 20.0, "pillow-gif", "gif")
+    w.append(np.zeros((8, 8, 3), dtype=np.uint8))
+    w.abort()
+    assert not dest.exists(), "abort() wrote the file it was supposed to discard"
+    assert w._frames is None and w._impl is None
+    w.abort()                      # idempotent, and must not raise
+
+
+def test_abort_never_raises_even_on_a_broken_backend():
+    w = enc._Writer.__new__(enc._Writer)
+    w.path, w.fps, w.backend, w.bitrate, w.codec = "/x.mp4", 20.0, "imageio-ffmpeg", None, "libx264"
+    w.width = w.height = 0
+    w._closed = False
+    w._frames = None
+
+    class _Boom:
+        def close(self):
+            raise OSError("subprocess already gone")
+
+    w._impl = _Boom()
+    w.abort()                      # must swallow: it runs inside an except block
+    assert w._impl is None, "the handle was not released"
+
+
+def test_isochrones_on_a_single_drawn_frame_warns_instead_of_lying(wave):
+    """A 1-index draw of a multi-frame clip used to pass the `< 2 frames` guard and produce a
+    constant LAT — an invisible, wrong overlay rather than an absent one."""
+    times, V = wave
+    clip = Video.annotated((times, V), isochrones=True)
+    with pytest.warns(UserWarning, match="isochrones need >= 2 drawn frames"):
+        lat = _render_module().isochrone_lat(clip, [3])
+    assert np.isnan(lat).all()
+
+
+# ------------------------------------- audit round 5
+
+def test_isochrones_survive_a_single_drawn_frame_on_a_result(small_result):
+    """The result-backed LAT comes from the FULL torch history, so it does NOT depend on how
+    many frames are drawn. Round 4's guard was hoisted above this branch and silently dropped a
+    computable overlay while warning that it was uncomputable."""
+    clip = Video.annotated(small_result, isochrones=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")          # any "needs >= 2 frames" warning fails the test
+        lat = _render_module().isochrone_lat(clip, [3])
+    assert np.isfinite(lat).any(), "a computable isochrone overlay was dropped"
+
+
+def test_preview_with_isochrones_keeps_the_overlay(small_result, tmp_path):
+    """The end-to-end shape of the regression: the documented 'check before a long encode' call."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        p = Video.annotated(small_result, isochrones=True).preview(
+            t_ms=5.0, path=str(tmp_path / "prev.png"))
+    assert _ok(p)
+
+
+def test_multipanel_failure_after_the_writer_cleans_up_what_it_created(wave, tmp_path,
+                                                                      monkeypatch):
+    """The multi-panel copy of the cleanup guard had NO test entering its body — and this exact
+    logic produced two separate data-loss defects in its single-clip sibling."""
+    times, V = wave
+    dest = tmp_path / "panels.mp4"
+    # _setup_panel runs AFTER open_writer, so the guard body is genuinely entered.
+    monkeypatch.setattr(_render_module(), "_setup_panel",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            render([Video((times, V)), Video((times, V))], path=str(dest), max_frames=3)
+    assert not dest.exists(), "the multi-panel guard left a partial file behind"
+
+
+def test_multipanel_failure_never_deletes_a_preexisting_file(wave, tmp_path, monkeypatch):
+    times, V = wave
+    victim = tmp_path / "keep.mp4"
+    victim.write_bytes(b"\x00\x00\x00\x18ftypmp42-original")
+    original = victim.read_bytes()
+    monkeypatch.setattr(_render_module(), "_setup_panel",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            render([Video((times, V)), Video((times, V))], path=str(victim), max_frames=3)
+    assert victim.exists() and victim.read_bytes() == original
+
+
+@pytest.mark.parametrize("kw", [{"date": "2020-01-02"}, {"root": None}])
+def test_date_and_root_are_save_triggers(wave, tmp_path, kw):
+    """Both are documented destination keywords but neither had a single test."""
+    times, V = wave
+    if "root" in kw:
+        kw = {"root": str(tmp_path)}
+    info = render(Video((times, V)), "tv-trigger", max_frames=2, **kw)
+    assert info.saved and _ok(info.path)
+    if "date" in kw:
+        assert "/2020-01-02/" in info.path
+    else:
+        assert info.path.startswith(str(tmp_path))
+
+
+# ------------------------------------- audit round 6
+
+def test_untouched_and_clobbered_warnings_are_distinct(wave, tmp_path, monkeypatch):
+    """`opened` must reflect whether bytes actually reached the path — not merely that a writer
+    object exists. pillow-gif writes only in close(), which abort() prevents, so a failed GIF
+    render to an existing file must report it UNTOUCHED."""
+    times, V = wave
+    victim = tmp_path / "existing.gif"
+    victim.write_bytes(b"GIF89a-original")
+    monkeypatch.setattr(_render_module(), "_produce_bare", _throw_on_frame(2, RuntimeError))
+    with pytest.warns(UserWarning, match="untouched"):
+        with pytest.raises(RuntimeError):
+            render(Video((times, V)), path=str(victim), format="gif", max_frames=5)
+    assert victim.read_bytes() == b"GIF89a-original"
+
+
+def test_streaming_failure_reports_the_file_as_opened(wave, tmp_path, monkeypatch):
+    """The other side of the same predicate: mp4 streams, so bytes really do land mid-render."""
+    times, V = wave
+    victim = tmp_path / "existing.mp4"
+    victim.write_bytes(b"\x00\x00\x00\x18ftypmp42-original")
+    monkeypatch.setattr(_render_module(), "_produce_bare", _throw_on_frame(3, RuntimeError))
+    with pytest.warns(UserWarning, match="after opening"):
+        with pytest.raises(RuntimeError):
+            render(Video((times, V)), path=str(victim), max_frames=5)
+
+
+# ------------------------------------- audit round 7
+
+def test_saving_onto_the_same_path_does_not_destroy_the_file(wave, tmp_path):
+    """CRITICAL regression. open(path,"wb") truncates on open, so a saved result whose bytes live
+    on disk would read back b"" and zero its own file — while still reporting saved=True."""
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "wave.mp4"), max_frames=4)
+    original = open(info.path, "rb").read()
+    assert len(original) > 0 and info.data is None, "precondition: bytes live on disk"
+
+    info.save(info.path)
+
+    assert open(info.path, "rb").read() == original, "save-onto-self destroyed the video"
+
+
+def test_imagepath_saving_onto_itself_does_not_destroy_the_file(wave, tmp_path):
+    times, V = wave
+    p = Video((times, V)).preview(t_ms=5.0, path=str(tmp_path / "frame.png"))
+    original = open(str(p), "rb").read()
+    assert len(original) > 0
+    p.save(str(p))
+    assert open(str(p), "rb").read() == original, "save-onto-self destroyed the still"
+
+
+# ------------------------------------- show(): the matplotlib contract
+
+def test_show_displays_inline_in_a_notebook(wave, monkeypatch):
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    monkeypatch.setattr(enc, "_in_notebook", lambda: True)
+    shown = {}
+    import IPython.display as ipd
+    monkeypatch.setattr(ipd, "display", lambda obj: shown.setdefault("html", obj._repr_html_()))
+    assert info.show() is info, "show() should chain"
+    assert "<video" in shown["html"]
+
+
+def test_show_hands_a_file_to_the_os_player_in_a_terminal(wave, tmp_path, monkeypatch):
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
+    opened = {}
+    monkeypatch.setattr(enc, "_open_externally", lambda p: (opened.setdefault("p", p), True)[1])
+    info.show()
+    assert opened["p"].endswith(".mp4") and os.path.getsize(opened["p"]) > 0, \
+        "an unsaved render must be materialised before a player can open it"
+
+
+def test_show_reports_the_path_when_nothing_can_be_opened(wave, monkeypatch, capsys):
+    """Headless / SSH: degrade to telling the user where the file is, never crash."""
+    times, V = wave
+    info = render(Video((times, V)), max_frames=3)
+    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
+    monkeypatch.setattr(enc, "_open_externally", lambda p: False)
+    info.show()
+    out = capsys.readouterr().out
+    assert "No video player" in out and ".mp4" in out
+
+
+def test_show_reuses_an_already_saved_file(wave, tmp_path, monkeypatch):
+    times, V = wave
+    info = render(Video((times, V)), path=str(tmp_path / "kept.mp4"), max_frames=3)
+    monkeypatch.setattr(enc, "_in_notebook", lambda: False)
+    opened = {}
+    monkeypatch.setattr(enc, "_open_externally", lambda p: (opened.setdefault("p", p), True)[1])
+    info.show()
+    assert opened["p"] == info.path, "a saved render must not be copied to a temp file"
+
+
+def test_open_externally_declines_on_a_headless_box(monkeypatch):
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr("sys.platform", "linux")
+    assert enc._open_externally("/tmp/whatever.mp4") is False

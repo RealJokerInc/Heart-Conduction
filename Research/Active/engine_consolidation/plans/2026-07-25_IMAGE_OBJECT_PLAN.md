@@ -864,7 +864,7 @@ def draw(spec, slug="figure", *, path=None, question=None, bulk=None, date=None,
   normalise `jpeg→jpg` (M-13), or the in-flight rewrite warns about a nonexistent "backend downgrade" and
   silently renames the file.
 - **Media-convention guard** — if the resolved format is `pdf`/`webp` **and `path is None`** and
-  `_named_destination(None, question, bulk, date, root)` (L-35), raise:
+  `_named_destination(question, bulk, date, root)` (L-35; the leading `None` was dropped when the helper lost its `path` argument), raise:
   `"format='pdf' cannot be written to a media/ path — media_path accepts png/jpg/jpeg/svg/gif. Pass path='fig.pdf' instead."`
 - **Re-wrap `enforce_capabilities`' message for an `Image` spec (R7 H-4 — the decision existed in the gotchas
   but had no implementation site, so it would simply not have been built):**

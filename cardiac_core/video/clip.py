@@ -197,7 +197,7 @@ class Video:
     def preview(self, t_ms: Optional[float] = None, *, frame: Optional[int] = None,
                 slug: str = "preview", question: Optional[str] = None,
                 bulk: Optional[bool] = None, **kw):
-        """Render ONE frame to PNG through this clip's OWN producer.
+        """Render ONE frame through this clip's OWN producer (PNG unless ``path=`` says otherwise).
 
         Displays inline; writes a file only when a destination is named (``path=`` or the
         ``media/`` convention keywords).

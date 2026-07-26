@@ -37,7 +37,7 @@ from cardiac_core import Image, draw
 draw([Image(r_ctrl, label="control"), Image(r_drug, label="knockdown")], slug, bulk=True)
 ```
 - `at=` means a **TIME in ms** on `image()` and a **NODE** on `trace()`.
-- `svg`/`pdf` need an explicit `path=` (the `media/` convention accepts raster + svg only).
+- `pdf`/`webp` need an explicit `path=` (the `media/` convention accepts png/jpg/jpeg/svg/gif).
 - An APD map on a run shorter than one action potential is all-NaN and warns — use a longer run.
 
 **Richer video** (`Video` + `Gradient` + `render`) when the default is not enough — colour control,
@@ -57,6 +57,9 @@ render([Video.annotated(r_ctrl, gradient=g, label="control"),
   few-mV artifact visible) · `diverging()` · `autoscale()`.
 - Figure-only knobs raise on a bare clip instead of silently doing nothing — use `style="annotated"`.
 - `Video(result).preview(t_ms=...)` renders ONE frame to PNG: check colours before a long encode.
+  Like every renderer here it writes NOTHING unless a destination is named — add `bulk=True` if the
+  frame is meant to go in the notebook record. Without it the return value is a `str` reading
+  `<image — not saved …>`, which must never be reported as a path.
 - **A file is written only when a destination is named.** `bulk=`/`question=`/`root=`/`date=`
   (the `media/` convention) and `path=` all count; with none of them the render is returned in
   memory and only displays inline. For a Lab experiment ALWAYS pass `bulk=True` — the notebook

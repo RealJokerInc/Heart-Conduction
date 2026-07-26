@@ -308,6 +308,10 @@ cc.activation_isochrones(r, "my-wave", bulk=True)  # activation-time contours PN
 cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 600x300)
 ```
 
+- ⚠️ **The three `cc.*` legacy one-liners above are the exception**: `propagation_video`,
+  `apd_map_figure` and `activation_isochrones` pass `question="lab"` internally, so they **always
+  write a file** and always return a path string, whatever you pass. The display-vs-save rule
+  below governs `r.video()` / `r.image()` / `r.trace()` / `render()` / `draw()` / `preview()`.
 - **A file is written only when you name a destination** — `path=`, or any of the `media/`
   convention keywords (`question=`/`bulk=`/`root=`/`date=`). With none of them the render is
   returned in memory and displays inline; `info.path` is `None` and `info.saved` is `False`.
@@ -328,8 +332,8 @@ cc.propagation_video(r, "my-wave", bulk=True)    # legacy one-liner (annotated, 
 - **Figures follow the same display-vs-save rule as video**, and the same `media/` keywords.
   `r.image()` returns an `ImageInfo` (displays inline, `.path` is `None`, `.save('f.png')` persists
   it); `r.trace()` returns one too. Formats: `png` (default), `jpg`, `webp`, and `svg`/`pdf` for
-  publication — the two vector formats need an explicit `path=`, since `media_path` accepts only
-  raster + svg.
+  publication — `pdf` and `webp` need an explicit `path=`, since `media_path` accepts
+  png/jpg/jpeg/svg/gif (**`svg` is fine on a `media/` path**).
 - **`at=` means a TIME in ms on `r.image()` and a NODE on `r.trace()`** — one keyword, two specs.
 - Masking uses the run's `domain_mask`, not `isfinite`: LBM leaves masked obstacle nodes finite, so
   an isfinite rule would paint an obstacle as live tissue.

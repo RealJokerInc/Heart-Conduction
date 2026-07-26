@@ -17,6 +17,18 @@ import matplotlib.pyplot as plt
 from .media import media_path  # noqa: F401  (kept: part of this module's public surface)
 
 
+def _pin_always_saves(question, bulk):
+    """Force the destination keywords these legacy one-liners depend on.
+
+    They are documented to ALWAYS write a file and to return a path ``str``. Their defaults
+    already do that, but an explicit ``question=None``/``bulk=None`` — easy for a wrapper that
+    forwards ``**kwargs`` — would make ``_named_destination`` false, silently turning them
+    display-only and returning ``None`` from a ``-> str`` signature.
+    """
+    return ("lab" if question is None else question,
+            False if bulk is None else bulk)
+
+
 def _vm_numpy(result):
     """(T, Nx, Ny) float64 numpy from a SimulationResult."""
     return result.Vm.detach().cpu().numpy()
@@ -44,6 +56,7 @@ def propagation_video(result, slug, *, question="lab", fps=20, vmin=-90.0, vmax=
     ``ax.set_title`` to ``fig.suptitle``; and a GIF fallback is now named ``{slug}.gif`` rather
     than ``{slug}-propagation.gif`` (the fallback is announced by a warning instead).
     """
+    question, bulk = _pin_always_saves(question, bulk)
     from .video import render, Video, Gradient
     info = render(
         Video(result,
@@ -70,6 +83,7 @@ def apd_map_figure(result, slug, *, question="lab", cmap="viridis", bulk=False, 
     and an all-NaN map now emits the colour-range warning that ``Gradient`` raises for empty data —
     a silently blank APD map is worth saying out loud.
     """
+    question, bulk = _pin_always_saves(question, bulk)
     from .image import Image, draw
     from .video import Gradient
     info = draw(Image(result, what="apd", what_kwargs=apd_kw or None,
@@ -89,6 +103,7 @@ def activation_isochrones(result, slug, *, question="lab", levels=15, cmap="plas
     set, and NO line contours on top. ``isochrones=False`` is explicit for the same reason — filled
     bands ARE the isochrones, so letting the automatic overlay fire would double-draw.
     """
+    question, bulk = _pin_always_saves(question, bulk)
     from .image import Image, draw
     from .video import Gradient
     info = draw(Image(result, what="activation", what_kwargs=lat_kw or None,

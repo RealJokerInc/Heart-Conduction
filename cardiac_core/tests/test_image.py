@@ -6,6 +6,7 @@ asserting on APD needs `long_wave`, which costs ~44 s — so only APD uses it.
 """
 
 import os
+import tempfile
 import sys
 import types
 import warnings
@@ -15,7 +16,7 @@ import pytest
 import torch
 
 import cardiac_core as cc
-from cardiac_core import Image, ImageInfo, draw
+from cardiac_core import Image, ImageInfo, Trace, draw
 from cardiac_core.image._draw import _UNSET
 
 
@@ -163,6 +164,28 @@ def test_explicit_value_label_wins(wave):
 
 
 # --------------------------------------------------------------------------- the overlay
+
+def _axes_at_savefig(draw_call) -> int:
+    """How many axes the figure carried when it was written.
+
+    N panels sharing ONE colorbar gives N+1; a per-panel-colorbar regression gives 2N. Counting
+    axes is robust where a pixel heuristic is not.
+    """
+    import matplotlib.figure as mfig
+    seen = {}
+    real = mfig.Figure.savefig
+
+    def spy(self, *a, **k):
+        seen["n"] = len(self.axes)
+        return real(self, *a, **k)
+
+    mfig.Figure.savefig = spy
+    try:
+        draw_call()
+    finally:
+        mfig.Figure.savefig = real
+    return seen["n"]
+
 
 def _figure_artists(spec):
     """(lat_was_passed, n_images, n_collections) as the real draw() call produced them."""
@@ -340,7 +363,27 @@ def test_public_exports_are_stable_and_callable():
 
 
 def test_import_chain_stays_free_of_encoder_backends():
-    assert "imageio" not in sys.modules and "cv2" not in sys.modules
+    """Drawing a still must not drag in a VIDEO encoder backend.
+
+    Checked in a SUBPROCESS: asserting on this process's ``sys.modules`` only held because
+    ``test_image.py`` happens to sort before ``test_video.py``, which imports imageio via
+    ``_Writer``. Any ``-k`` subset, ``-p xdist`` split or random-order plugin flipped it.
+    """
+    import subprocess
+    probe = (
+        "import sys; import cardiac_core as cc;"
+        "g = cc.Grid(8, 4, 0.025);"
+        "cond = cc.ConductivityConfig.isotropic(1.0);"
+        "sim = cc.monodomain(g, 'ttp06', cond, cc.Stim.boundary(g, 'left'));"
+        "r = sim.run(t_end=1.0, save_every=0.5);"
+        "cc.draw(cc.Image(r));"
+        "leaked = [m for m in ('imageio', 'cv2') if m in sys.modules];"
+        "print('LEAKED:' + ','.join(leaked))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert "LEAKED:\n" in out.stdout or out.stdout.strip().endswith("LEAKED:"), \
+        f"a still-image draw imported a video encoder backend: {out.stdout.strip()}"
 
 
 def test_video_behaviour_is_unchanged_by_the_new_params(wave):
@@ -480,6 +523,11 @@ def _panel_artists(specs, **kw):
 def test_two_panels_share_one_colorbar(wave):
     info, _ = _panel_artists([Image(wave, label="control"), Image(wave, label="drug")])
     assert info.n_panels == 2 and info.data
+    # The NAME of this test is the claim, so assert it: 2 panels + ONE shared colorbar = 3 axes.
+    # Previously this only checked n_panels, which a per-panel-colorbar regression also satisfies.
+    n_axes = _axes_at_savefig(
+        lambda: draw([Image(wave, label="control"), Image(wave, label="drug")]))
+    assert n_axes == 3, f"expected 2 panels + 1 shared colorbar = 3 axes, got {n_axes}"
 
 
 def test_both_activation_panels_draw_contours(wave):
@@ -571,3 +619,278 @@ def test_isochrones_delegation_is_filled_without_line_overlay(wave):
     spec = Image(wave, what="activation", filled=True, isochrones=False)
     assert spec.isochrones is False and spec._lat is not None
     assert _figure_artists(spec) == (False, 0, 1)
+
+
+# ---------------- destination contract (shared with the video layer, previously untested here)
+
+def _media_files():
+    root = os.environ.get("CARDIAC_MEDIA_ROOT")
+    assert root and os.path.isdir(root), \
+        "conftest's media-root fixture is not active; this check would be vacuous"
+    return frozenset(os.path.join(dp, f)
+                     for dp, _d, fs in os.walk(root) for f in fs)
+
+
+def test_unsaved_draw_writes_nothing_anywhere(wave, tmp_path, monkeypatch):
+    """The video-side version of this test was vacuous until round 1: conftest points
+    CARDIAC_MEDIA_ROOT elsewhere, so asserting only on cwd would miss a media_path regression."""
+    monkeypatch.chdir(tmp_path)
+    before_media, before_tmp = _media_files(), set(os.listdir(tempfile.gettempdir()))
+    info = draw(Image(wave))
+    assert info.path is None and info.saved is False and info.data
+    assert list(tmp_path.iterdir()) == []
+    assert _media_files() == before_media
+    assert not (set(os.listdir(tempfile.gettempdir())) - before_tmp), "leaked a temp file"
+
+
+def test_draw_failure_never_deletes_a_preexisting_file(wave, tmp_path):
+    """CRITICAL regression, image side: the cleanup guard used to delete out_path unconditionally,
+    which for a path= draw is the CALLER'S file.
+
+    The failure must be injected INSIDE the guard. The original version used the bare+SVG
+    rejection, but that was hoisted above `_resolve_destination`, so it stopped reaching
+    discard_partial and passed for the wrong reason.
+    """
+    victim = tmp_path / "thesis_figure.png"
+    victim.write_bytes(b"\x89PNG\r\n\x1a\n" + b"five years of work" * 10)
+    original = victim.read_bytes()
+
+    import sys
+    dm = sys.modules["cardiac_core.image._draw"]
+    real = dm._produce_figure
+    try:
+        dm._produce_figure = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        with pytest.warns(UserWarning, match="untouched"):
+            with pytest.raises(RuntimeError):
+                draw(Image(wave), path=str(victim))
+    finally:
+        dm._produce_figure = real
+
+    assert victim.exists(), "a failed draw DELETED the caller's file"
+    assert victim.read_bytes() == original, "a failed draw MODIFIED the caller's file"
+
+
+def test_bare_svg_is_rejected_before_a_destination_is_acquired(wave, tmp_path):
+    """The hoist that made the test above misleading is itself worth pinning."""
+    victim = tmp_path / "keep.svg"
+    victim.write_text("<svg>original</svg>")
+    with pytest.raises(ValueError, match="cannot produce SVG"):
+        draw(Image(wave, style="bare"), path=str(victim))
+    assert victim.read_text() == "<svg>original</svg>"
+
+
+def test_draw_path_is_a_directory_raises(wave, tmp_path):
+    with pytest.raises(IsADirectoryError):
+        draw(Image(wave), path=str(tmp_path))
+
+
+def test_draw_path_plus_convention_warns(wave, tmp_path):
+    with pytest.warns(UserWarning, match="path= wins"):
+        draw(Image(wave), "x", path=str(tmp_path / "a.png"), bulk=True)
+
+
+def test_imageinfo_save_marks_itself_saved(wave, tmp_path):
+    """Round-1 fixed this on VideoInfo but not here; sim-media points agents at r.image()."""
+    info = draw(Image(wave))
+    assert info.saved is False
+    dest = info.save(tmp_path / "kept.png")
+    assert info.saved is True and info.path == str(dest) and os.fspath(info) == str(dest)
+    assert str(info) == str(dest), "str() must give the path, as VideoInfo does"
+    assert info.data is None
+
+
+def test_imageinfo_repr_does_not_dump_the_payload(wave):
+    info = draw(Image(wave))
+    assert len(repr(info)) < 300 and "data=" not in repr(info)
+
+
+# ---------------- audit round 3: gaps the video layer covered but this one did not
+
+def test_draw_failure_warns_about_the_untouched_file(wave, tmp_path):
+    """Surviving is not enough — a silent no-op would also 'survive'. The caller must be told."""
+    victim = tmp_path / "existing.png"
+    victim.write_bytes(b"\x89PNG\r\n\x1a\n-original")
+    original = victim.read_bytes()
+    import sys
+    dm = sys.modules["cardiac_core.image._draw"]
+    real = dm._produce_figure
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated failure")
+
+    try:
+        dm._produce_figure = boom
+        with pytest.warns(UserWarning, match="already existed"):
+            with pytest.raises(RuntimeError):
+                draw(Image(wave), path=str(victim))
+    finally:
+        dm._produce_figure = real
+    assert victim.read_bytes() == original
+
+
+def test_trace_failure_cleans_up_only_what_it_created(wave, tmp_path):
+    """The _draw_trace guard must remove a genuinely PARTIAL file it created.
+
+    The failure has to be in the WRITE. An earlier version injected it into the post-write
+    measurement instead, which meant the render had succeeded — so the test asserted that a
+    complete, valid figure got deleted, enshrining data loss rather than guarding against it.
+    """
+    dest = tmp_path / "ours.png"
+    import matplotlib.figure as mfig
+    real = mfig.Figure.savefig
+
+    def boom(self, fname, *a, **k):
+        with open(fname, "wb") as fh:          # a genuine half-written output
+            fh.write(b"\x89PNG\r\n\x1a\n-truncated")
+        raise RuntimeError("simulated write failure")
+
+    try:
+        mfig.Figure.savefig = boom
+        with pytest.raises(RuntimeError):
+            draw(Trace(wave, at=(5, 2)), path=str(dest))
+    finally:
+        mfig.Figure.savefig = real
+    assert not dest.exists(), "a partial file we created must be removed"
+
+
+def test_a_probe_failure_never_destroys_a_good_figure(wave, tmp_path):
+    """The measurement runs inside the cleanup guard, so an unreadable-probe error used to send a
+    SUCCESSFULLY written figure to discard_partial and delete it."""
+    dest = tmp_path / "good.png"
+    from PIL import Image as PILImage
+    real = PILImage.open
+
+    def boom(*a, **k):
+        raise OSError("cannot identify image file")
+
+    try:
+        PILImage.open = boom
+        info = draw(Image(wave), path=str(dest))
+    finally:
+        PILImage.open = real
+
+    assert dest.exists() and dest.stat().st_size > 0, "a good figure was deleted by a probe failure"
+    assert info.saved and info.width is None, "dimensions are informational; the bytes are not"
+
+
+def test_panels_with_a_path_writes_exactly_there(wave, tmp_path):
+    """Only the unsaved multi-panel form was covered."""
+    dest = tmp_path / "panels.png"
+    info = draw([Image(wave, label="a"), Image(wave, label="b")], path=str(dest))
+    assert info.path == str(dest) and info.saved and info.n_panels == 2
+    assert os.path.exists(dest) and os.path.getsize(dest) > 0
+
+
+def test_imageinfo_size_cap_reported_without_reading(wave, monkeypatch):
+    """Mirror of the video-side cap test, including that the payload is NOT read first."""
+    from cardiac_core.image import info as info_mod
+    got = draw(Image(wave))
+    monkeypatch.setattr(info_mod, "_MAX_INLINE_BYTES", 8)
+
+    def explode():
+        raise AssertionError("_repr_html_ read the payload before checking the size cap")
+
+    monkeypatch.setattr(got, "read", explode)
+    assert "too large to display inline" in got._repr_html_()
+
+
+def test_imageinfo_str_unsaved_branch(wave):
+    got = draw(Image(wave))
+    assert "not saved" in str(got) and got.path is None
+
+
+def test_imageinfo_repr_html_degrades_when_the_file_is_gone(wave, tmp_path):
+    got = draw(Image(wave), path=str(tmp_path / "gone.png"))
+    os.remove(got.path)
+    assert "unavailable" in got._repr_html_()
+
+
+def test_inline_caps_agree():
+    """One policy, two modules. They are separate constants on purpose (importing the video
+    package into image/info.py would force matplotlib's Agg backend process-wide), so pin them."""
+    from cardiac_core.image import info as info_mod
+    from cardiac_core.video import encoders as enc_mod
+    assert info_mod._MAX_INLINE_BYTES == enc_mod.INLINE_MAX_BYTES
+
+
+def test_importing_imageinfo_does_not_pull_in_matplotlib():
+    """cardiac_core/image/__init__.py resolves lazily so a type-only import stays light."""
+    import subprocess
+    probe = (
+        "import sys; import cardiac_core as cc; cc.ImageInfo;"
+        "print('MPL:' + str('matplotlib.pyplot' in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert "MPL:False" in out.stdout, "touching cc.ImageInfo imported matplotlib.pyplot"
+
+
+def test_panels_failure_cleans_up_only_what_it_created(wave, tmp_path):
+    """_draw_panels' cleanup guard had no test entering its body — the same gap that preceded
+    two data-loss defects on the single-panel paths."""
+    dest = tmp_path / "panels.png"
+    import matplotlib.figure as mfig
+    real = mfig.Figure.savefig
+
+    def boom(self, fname, *a, **k):
+        with open(fname, "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n-truncated")
+        raise RuntimeError("simulated write failure")
+
+    try:
+        mfig.Figure.savefig = boom
+        with pytest.raises(RuntimeError):
+            draw([Image(wave, label="a"), Image(wave, label="b")], path=str(dest))
+    finally:
+        mfig.Figure.savefig = real
+    assert not dest.exists(), "the panel guard left a partial file behind"
+
+
+def test_panels_failure_never_deletes_a_preexisting_file(wave, tmp_path):
+    victim = tmp_path / "keep.png"
+    victim.write_bytes(b"\x89PNG\r\n\x1a\n-original")
+    original = victim.read_bytes()
+    import matplotlib.figure as mfig
+    real = mfig.Figure.savefig
+
+    def boom(self, fname, *a, **k):
+        raise RuntimeError("simulated failure inside savefig")
+
+    try:
+        mfig.Figure.savefig = boom
+        # `opened` is set before savefig deliberately: real matplotlib truncates the file on
+        # open, so once savefig is entered the conservative report is "we opened it". The
+        # guarantee under test is that the guard does not DELETE it.
+        with pytest.warns(UserWarning, match="after opening"):
+            with pytest.raises(RuntimeError):
+                draw([Image(wave, label="a"), Image(wave, label="b")], path=str(victim))
+    finally:
+        mfig.Figure.savefig = real
+    assert victim.exists(), "a failed panel draw DELETED the caller's file"
+    assert victim.read_bytes() == original
+
+
+def test_probe_failure_under_warnings_as_errors_keeps_the_figure(wave, tmp_path):
+    """_measure runs INSIDE the cleanup guard and warns on a probe failure. Under `-W error`
+    that warn raises, reaching discard_partial(owned=True) — which deleted the good figure."""
+    dest = tmp_path / "good.png"
+    from PIL import Image as PILImage
+    real = PILImage.open
+    try:
+        PILImage.open = lambda *a, **k: (_ for _ in ()).throw(OSError("bad probe"))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")          # the condition that made it destructive
+            info = draw(Image(wave), path=str(dest))
+    finally:
+        PILImage.open = real
+    assert dest.exists() and dest.stat().st_size > 0, "a good figure was deleted"
+    assert info.saved and info.width is None
+
+
+def test_imageinfo_saving_onto_itself_does_not_destroy_the_file(wave, tmp_path):
+    """The class r.image()/r.trace() actually return — pinned like the other two."""
+    info = draw(Image(wave), path=str(tmp_path / "fig.png"))
+    original = open(info.path, "rb").read()
+    assert len(original) > 0 and info.data is None
+    info.save(info.path)
+    assert open(info.path, "rb").read() == original, "save-onto-self destroyed the figure"

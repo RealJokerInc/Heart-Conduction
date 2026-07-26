@@ -91,7 +91,8 @@ output lands at a `media_path` convention path. **`Gradient` makes colour a reus
 which matters here because the *range* is a scientific choice: a 7.5 mV wall artifact spans **5.8%** of the
 default −90…40 mV colormap but **90.4%** of `Gradient.zoom()` (a **15.7× visibility gain**, measured). Five
 presets encode the five colour intents found across the ~20-script render corpus. **The zero-argument call**
-(`r.video("slug")`) is the common case: full-frame, unlabelled, **1080p**, viridis −90…40, aspect preserved
+(`r.video()` — since 2026-07-25 it DISPLAYS inline and writes no file unless a destination is named;
+see "Portable media output" below) is the common case: full-frame, unlabelled, **1080p**, viridis −90…40, aspect preserved
 with letterbox padding — and it is also the FASTEST path (the bare producer skips matplotlib entirely,
 0.10 ms/frame vs 7.9). Multi-panel is native (`render([a, b], slug)` → one shared colorbar + one suptitle
 time stamp), because most polished prior art IS a comparison. Overlays: live −40 mV front contour + static LAT

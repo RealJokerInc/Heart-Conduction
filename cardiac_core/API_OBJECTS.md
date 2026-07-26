@@ -292,7 +292,7 @@ r = sim.run(t_end=40.0, save_every=0.5)
 | `r.df_map()` | dominant-frequency map |
 | `r.restitution(ix, iy, **kw)` | `(DI, APD)` restitution curve |
 | `r.restitution_slope(ix, iy, **kw)` | max slope + DI\* (alternans onset) |
-| `r.video(slug, **kw)` | render to a convention `media/` path |
+| `r.video(slug="video", **kw)` | render a video — displays inline; saves only when `path=` or a convention keyword is given |
 
 ---
 
@@ -403,7 +403,7 @@ which needs neither a file server nor a persistent disk (so it works on Colab).
 
 | Call | Does |
 |---|---|
-| `v.preview(t_ms=None, *, frame=None, slug="preview", question="lab", bulk=True, **kw)` | render ONE still |
+| `v.preview(t_ms=None, *, frame=None, slug="preview", path=None, question=None, bulk=None, **kw)` | render ONE still — displays inline; saves only when a destination is named |
 | `v.display_values(t)` | return the `(Nx, Ny)` array actually drawn at frame `t` |
 | `v.masked_iter(idx)` | iterate masked frames |
 | `v.requires_figure()` | report whether it needs a matplotlib figure vs a raw raster |
@@ -462,7 +462,7 @@ What `render` produced. Displays itself in a notebook; str-like when a file was 
 | Call | Does |
 |---|---|
 | `info.read()` | the encoded bytes, from memory or from the saved file |
-| `info.save(path)` | write it out after the fact; returns the path |
+| `info.save(path)` | write it out after the fact and mark this object saved (releases `data`); returns the path |
 | `info._repr_html_()` | the inline `<video>` (called by Jupyter/Colab, not by you) |
 
 `os.fspath(info)` and `str(info)` give the path when one exists; `os.fspath` raises a
@@ -475,7 +475,10 @@ max_frames=300, format=None, ...)` — pass a **list** of `Video`s for side-by-s
 ### `ImagePath`
 
 Returned by `Video.preview(...)`. A `str` subclass — every existing path use keeps working — that
-also carries `.data`/`.saved`, a `.read()`/`.save(path)` pair, and displays the PNG inline.
+also carries `.data`/`.saved`/`.format`, a `.read()`/`.save(path)` pair, and displays inline
+(the format follows `path=`'s extension, so it is not always PNG). `.save()` returns the path
+`str` like the other two objects; a `str` cannot change its own value, so the ORIGINAL stays
+unsaved — use the return value.
 
 ---
 

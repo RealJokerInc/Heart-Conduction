@@ -5,7 +5,7 @@ The ordered sequence in :func:`render` is load-bearing and must not be reordered
     enforce -> select_backend -> stride (+ GIF cap) -> resolve -> path -> writer -> loop
 
 Backend selection precedes stride because the GIF frame cap depends on it; the path follows the
-backend because ext/kind come from it (and ``media_path`` consumes its ``NN`` slot on call).
+backend because ext/kind come from it.
 
 Two producers: ``bare`` colormaps the array directly with no matplotlib figure (~0.1 ms/frame),
 ``figure`` builds the axes once and swaps data per frame (~8 ms/frame). The common case is the
@@ -40,6 +40,23 @@ __all__ = ["render", "render_video", "preview_frame"]
 _PAD_BLACK = (0, 0, 0)    # not the masked grey — padding must not read as inactive tissue
 _LEGAL_FIT = ("contain", "stretch", "cover")
 
+
+class _Unset:
+    """Sentinel: 'the caller passed nothing'.
+
+    A literal default cannot express this. `resolution` defaults to "1080p", so keying the
+    figsize/dpi conflict on `resolution is not None` made every plain
+    ``render(v, figsize=(6, 3))`` raise. Mirrors ``image/_draw.py``'s sentinel.
+    """
+
+    def __repr__(self) -> str:                       # pragma: no cover - cosmetic
+        return "<unset>"
+
+
+_UNSET = _Unset()
+_DEFAULT_RESOLUTION = "1080p"
+_DEFAULT_FIT = "contain"
+
 # Extension -> render format, for deriving `format` from an explicit `path=`.
 _EXT_FORMAT = {".mp4": "mp4", ".webm": "webm", ".gif": "gif"}
 
@@ -60,51 +77,104 @@ def _resolve_format(fmt: Optional[str], path: Optional[str]) -> str:
     return "mp4"
 
 
-def _named_destination(path, question, bulk, date, root) -> bool:
-    """Did the caller say where the output should go?
+def _named_destination(question, bulk, date, root) -> bool:
+    """Did the caller name a ``media/`` convention destination?
 
-    Saving follows matplotlib: rendering displays, ``path=`` (or the ``media/`` convention
-    keywords, which name a destination just as explicitly) writes a file.
+    Saving follows matplotlib: rendering displays, ``path=`` (or these convention keywords, which
+    name a destination just as explicitly) writes a file.
     """
-    return any(x is not None for x in (path, question, bulk, date, root))
+    return any(x is not None for x in (question, bulk, date, root))
 
 
-def _resolve_destination(slug: str, kind: str, ext: str, *, path, question, bulk, date, root,
-                         bulk_default: bool = True) -> Tuple[str, bool]:
-    """Return ``(filesystem_path, is_temporary)``.
+# `bulk` defaults to True when only the OTHER convention keywords are given: the overwhelmingly
+# common case is regenerable output, and the gitignored `_sim_outputs/` subtree is where that
+# belongs. Pass bulk=False for a curated figure meant to be committed.
+_BULK_DEFAULT = True
+
+
+def _resolve_destination(slug: str, kind: str, ext: str, *, path, question, bulk,
+                         date, root) -> Tuple[str, bool, bool]:
+    """Return ``(filesystem_path, is_temporary, owned)``.
 
     Every backend writes through a real filename (ffmpeg is a subprocess, OpenCV a C writer), so
     an unsaved render still needs a file — it just goes to a temp path that is deleted once the
     bytes have been read back.
+
+    ``owned`` is False when ``path=`` names a file that ALREADY EXISTS. The error path must never
+    delete such a file: a render can raise before writing a single byte (a validation error, or a
+    KeyboardInterrupt on a backend that only writes at close), and removing the caller's existing
+    file would destroy data this call never touched.
     """
     if path is not None:
+        if _named_destination(question, bulk, date, root):
+            warnings.warn(
+                "path= and the media/ convention keywords (question=/bulk=/root=/date=) both "
+                "name a destination; path= wins and the others are ignored. Pass only one.",
+                UserWarning, stacklevel=3)
         p = os.path.abspath(os.path.expanduser(str(path)))
+        if os.path.isdir(p):
+            raise IsADirectoryError(
+                f"path={path!r} is a directory — pass a FILE path, e.g. "
+                f"{os.path.join(str(path), 'output.' + ext)!r}")
         stem, given = os.path.splitext(p)
         # The backend can DOWNGRADE (no ffmpeg -> GIF), so the encoder's extension is the only
         # one that describes the bytes. Writing GIF data into a .webm is the silent-format-
         # downgrade defect this subsystem exists to prevent; PIL also refuses the write outright.
         if given and given.lower() != f".{ext}":
             warnings.warn(
-                f"the encoder produced {ext.upper()} but path= asked for '{given}' — writing "
-                f"'{os.path.basename(stem)}.{ext}' instead so the file describes its own "
-                f"contents. This follows a backend downgrade (see the preceding warning) or a "
-                f"format= that disagrees with the path.",
+                f"writing '{os.path.basename(stem)}.{ext}' rather than the requested '{given}', "
+                f"so the file describes its own contents. This follows a backend downgrade (see "
+                f"the preceding warning) or a format= that disagrees with the path.",
                 UserWarning, stacklevel=3)
         if given.lower() != f".{ext}":
             p = f"{stem}.{ext}"
         parent = os.path.dirname(p)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        return p, False
+        return p, False, not os.path.lexists(p)
 
-    if _named_destination(None, question, bulk, date, root):
-        return media_path(question if question is not None else "lab", kind, slug, ext=ext,
-                          bulk=bulk_default if bulk is None else bulk,
-                          date=date, root=root), False
+    if _named_destination(question, bulk, date, root):
+        # media_path returns the next NN that does not exist, so this is normally ours. The
+        # re-check only catches a file that appeared between the two calls; it does NOT close
+        # media_path's documented get-path-then-save race, where two concurrent renders of the
+        # same slug/day are both handed the SAME name. That race is inherent to the convention.
+        mp = media_path(question if question is not None else "lab", kind, slug, ext=ext,
+                        bulk=_BULK_DEFAULT if bulk is None else bulk, date=date, root=root)
+        return mp, False, not os.path.lexists(mp)
 
     fd, p = tempfile.mkstemp(prefix=f"{slugify(slug)}_", suffix=f".{ext}")
     os.close(fd)
-    return p, True
+    return p, True, True
+
+
+def discard_partial(out_path: str, owned: bool, opened: bool = False) -> None:
+    """Remove a half-written output on the error path — but ONLY if this render created it.
+
+    When ``path=`` named a file that already existed, deleting it would destroy data the render
+    may never even have opened. ``opened`` says whether a writer was actually handed the path;
+    without it the warning would tell a scientist their intact file might be corrupt every time
+    a render failed during validation.
+    """
+    try:
+        if not os.path.lexists(out_path):
+            return
+        if owned:
+            os.remove(out_path)
+            return
+        if opened:
+            warnings.warn(
+                f"render failed after opening {out_path!r}, which already existed. It was NOT "
+                f"deleted, but a streaming encoder may have truncated it — check the file.",
+                UserWarning, stacklevel=3)
+        else:
+            warnings.warn(
+                f"render failed before writing anything; {out_path!r} already existed and is "
+                f"untouched.", UserWarning, stacklevel=3)
+    except BaseException:
+        # This runs inside `except BaseException:` before a bare `raise`. Under `-W error` the
+        # warn itself raises, and a failing os.remove raises too; either would REPLACE the real
+        # exception (a KeyboardInterrupt would surface as a UserWarning). Never mask it.
+        pass
 
 
 def _finalize(out_path: str, is_temp: bool) -> Tuple[Optional[str], Optional[bytes]]:
@@ -115,8 +185,11 @@ def _finalize(out_path: str, is_temp: bool) -> Tuple[Optional[str], Optional[byt
         with open(out_path, "rb") as fh:
             data = fh.read()
     finally:
-        if os.path.exists(out_path):
-            os.remove(out_path)
+        try:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+        except OSError:
+            pass        # cleaning up must never replace the error that is propagating
     return None, data
 
 
@@ -156,6 +229,8 @@ def isochrone_lat(clip: Video, idx) -> np.ndarray:
     """Static activation-time map for the isochrone overlay, honouring the mask."""
     from .. import analysis
 
+    idx = list(idx)          # once: the guard below must not consume a generator
+
     if len(clip.frames) < 2:
         warnings.warn("isochrones need >= 2 frames; skipping the overlay",
                       UserWarning, stacklevel=2)
@@ -165,16 +240,27 @@ def isochrone_lat(clip: Video, idx) -> np.ndarray:
     if clip.result is not None and is_vm:
         # torch path is only valid for Vm — result.Vm is NOT the displayed field for
         # field="phi_e" or an explicit array.
+        # It reads the FULL history off the result and is independent of `idx`, so a
+        # single-index draw (a preview, or max_frames=1) still gets a correct overlay. The
+        # `len(idx)` guard below MUST NOT be hoisted above this branch: doing so silently
+        # dropped a computable overlay and warned that it was uncomputable.
         lat = _to_numpy(analysis.activation_time(clip.result.Vm, clip.result.times))
         lat = np.asarray(lat, dtype=np.float64)
         if clip.active_mask is not None:
             lat = np.where(clip.active_mask, lat, np.nan)
         return lat
 
+    if len(idx) < 2:
+        # Only the numpy branch depends on `idx`: it stacks the DRAWN frames, so a single
+        # index yields a constant LAT — an invisible, wrong overlay rather than an absent one.
+        warnings.warn("isochrones need >= 2 drawn frames; skipping the overlay",
+                      UserWarning, stacklevel=2)
+        return np.full(clip.frames.shape[1:], np.nan)
+
     # Built ONLY here and STRIDED — a full unstrided history stack would blow the memory rule.
     masked = np.stack([clip.display_values(t) for t in idx])
     return np.asarray(
-        analysis.activation_time_interp(masked, clip.times[list(idx)], threshold=-40.0),
+        analysis.activation_time_interp(masked, clip.times[idx], threshold=-40.0),
         dtype=np.float64)
 
 
@@ -194,7 +280,8 @@ def _build_figure(clip: Video, cmap, norm, *, colorbar_on: bool, title: Optional
 
     * ``lat`` — a precomputed ``(Nx, Ny)`` activation map. When given it is used directly and
       ``isochrone_lat`` is NOT called, which is what lets a one-frame clip draw isochrones at all
-      (``isochrone_lat`` refuses fewer than 2 frames).
+      (``isochrone_lat`` refuses a clip with fewer than 2 frames, and refuses fewer than 2
+      DRAWN indices on its numpy branch).
     * ``contour_levels`` — replaces the previously hard-coded ``levels=12``.
     * ``filled`` — draw ``contourf`` bands instead of an image. The ``QuadContourSet`` is stored on
       ``_FigState.im`` because it IS the colorbar mappable; ``fig.colorbar(None, ...)`` does not
@@ -212,7 +299,22 @@ def _build_figure(clip: Video, cmap, norm, *, colorbar_on: bool, title: Optional
         h = min(max(6.0 * float(span_y) / float(span_x), 1.8), 7.0)
         figsize = (6.0 + 1.6, h + 1.2)
     fig, ax = plt.subplots(figsize=tuple(figsize), dpi=(dpi or 100))
+    try:
+        return _populate_figure(fig, ax, clip, cmap, norm, colorbar_on=colorbar_on,
+                                title=title, extent=extent, xlab=xlab,
+                                ylab=ylab, Nx=Nx, Ny=Ny, idx=idx, lat=lat,
+                                contour_levels=contour_levels, filled=filled)
+    except BaseException:
+        # Everything below can fail (contourf on <2 levels, colorbar, isochrone_lat, tight_layout).
+        # The caller only closes the figure it receives, so a raise here would leave this one
+        # registered in pyplot's Gcf for the life of the process.
+        plt.close(fig)
+        raise
 
+
+def _populate_figure(fig, ax, clip: Video, cmap, norm, *, colorbar_on, title,
+                     extent, xlab, ylab, Nx, Ny, idx, lat, contour_levels, filled) -> _FigState:
+    """Fill an already-created figure. Split out so :func:`_build_figure` can close it on error."""
     # Contour coordinates MUST come from the SAME extent, or a cm-space contour lands on a
     # node-index axis (every .npz/array clip defaults to "nodes").
     x = np.linspace(extent[0], extent[1], Nx)
@@ -291,7 +393,7 @@ def _produce_figure(st: _FigState, clip: Video, t: int, *, show_time: bool,
 def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
            path: Optional[str] = None,
            question: Optional[str] = None, bulk: Optional[bool] = None,
-           resolution: Any = "1080p", fit: str = "contain",
+           resolution: Any = _UNSET, fit: Any = _UNSET,
            fps: float = 20.0, speed: Optional[float] = None,
            max_frames: Optional[int] = 300, format: Optional[str] = None,
            bitrate: Optional[str] = None,
@@ -310,7 +412,12 @@ def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
 
         render(Video(r))                            # displays; nothing on disk
         render(Video(r), path="out.mp4")            # writes ./out.mp4
-        render(Video(r), "wave", question="lab")    # media/lab/videos/{date}/wave_01.mp4
+        render(Video(r), "wave", question="lab")    # media/lab/_sim_outputs/videos/{date}/wave_01.mp4
+        render(Video(r), "wave", bulk=False)        # media/lab/videos/{date}/wave_01.mp4
+
+    ``bulk`` defaults to **True** whenever any convention keyword is used — regenerable output
+    belongs in the gitignored ``_sim_outputs/`` subtree. Pass ``bulk=False`` for a curated figure
+    meant to be committed. ``path=`` ignores the convention entirely and warns if both are given.
 
     ``format`` follows ``path``'s extension when not given explicitly.
 
@@ -322,10 +429,15 @@ def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
     producer (with a warning) because a shared colorbar needs axes.
     """
     fmt = _resolve_format(format, path)    # `format` shadows the builtin; bind locally
+    # Only an EXPLICIT resolution=/fit= can conflict with figsize=/dpi=; the defaults must not.
+    resolution = _DEFAULT_RESOLUTION if resolution is _UNSET else resolution
+    fit = _DEFAULT_FIT if fit is _UNSET else fit
     if fit not in _LEGAL_FIT:
         raise ValueError(f"fit must be one of {_LEGAL_FIT}, got {fit!r}")
 
     # 1. validate + capability gate ------------------------------------------------
+    # NOTE: the figsize/dpi conflict above is checked BEFORE this dispatch, so the panel path
+    # inherits it — resolution/fit reach _render_panels already resolved to concrete values.
     if isinstance(video, (list, tuple)):
         return _render_panels(
             list(video), slug, path=path, question=question, bulk=bulk,
@@ -366,13 +478,17 @@ def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
                 f"will not match `speed`", UserWarning, stacklevel=2)
     fps = float(max(1.0, fps))
 
-    # 6. path (consumes the NN slot) + canvas + rate --------------------------------
-    out_path, is_temp = _resolve_destination(slug, kind, ext, path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
+    # 6. canvas + rate BEFORE the path — resolve_canvas() raises on a bad resolution=, and
+    #    _resolve_destination has a side effect (it creates a temp file). Anything that can fail
+    #    must fail before we own a file to clean up.
     canvas = resolve_canvas(resolution) if (figsize is None and dpi is None) else None
     if fmt == "webm" and bitrate is None:
         bitrate = "2M"     # VP9 has no `quality` mapping; without a rate ffmpeg silently uses CRF 32
     use_figure = clip.requires_figure()
+
+    out_path, is_temp, owned = _resolve_destination(slug, kind, ext, path=path,
+                                                    question=question, bulk=bulk,
+                                                    date=date, root=root)
 
     # 7. stream — writer AND figure construction go INSIDE the guarded region -------
     n = 0
@@ -401,17 +517,21 @@ def render(video: Union[Video, Sequence[Video]], slug: str = "video", *,
         # INSIDE the guard: the pillow-gif backend writes the ENTIRE file here, so a failure at
         # close would otherwise leave a partial file behind and consume the media_path NN slot.
         writer.close()
+        # Inside the guard (matching the image layer) but non-fatal: a getsize() failure on an
+        # otherwise SUCCESSFUL render must not send a good output to discard_partial.
+        try:
+            size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
+        except OSError:
+            size = 0
     except BaseException:
         if writer is not None:
-            writer.close()      # idempotent — _Writer.close() short-circuits when already closed
-        if os.path.exists(out_path):
-            os.remove(out_path)  # a truncated file would otherwise keep the media_path NN slot
+            writer.abort()      # release WITHOUT flushing — close() would write the file
+        discard_partial(out_path, owned, opened=bool(writer is not None and writer.touched))
         raise
     finally:
         if st is not None:
             plt.close(st.fig)   # else the suite leaks a figure per render()
 
-    size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
     final_path, data = _finalize(writer.path, is_temp)
     return VideoInfo(path=final_path, n_frames=n, fps=fps, backend=writer.backend,
                      codec=writer.codec, width=writer.width, height=writer.height,
@@ -427,16 +547,17 @@ def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional
                   question: Optional[str] = None, bulk: Optional[bool] = None,
                   units: Optional[str] = None, title: Optional[str] = None,
                   figsize=None, dpi=None, date=None, root=None) -> ImagePath:
-    """Render ONE frame to PNG through the clip's OWN producer.
+    """Render ONE frame through the clip's OWN producer (PNG unless ``path=`` says otherwise).
 
     Displays inline; writes a file only when a destination is named (``path=`` or the ``media/``
     convention keywords). The return value is still the path string when one was written.
 
-    Delegates to :func:`cardiac_core.image.draw`. Three arguments are load-bearing for keeping the
-    output pixel-identical: ``resolution=None`` (the image layer's default upscales a bare still),
-    ``dpi`` passed RAW so ``enforce_capabilities`` still sees the caller's ``None`` on a bare clip
-    and ``draw`` applies the historical ``dpi or 100`` afterwards, and ``format="png"`` because
-    this function is documented to produce PNG.
+    Delegates to :func:`cardiac_core.image.draw`. Two arguments are load-bearing for keeping the
+    output pixel-identical: ``resolution=None`` (the image layer's default upscales a bare still)
+    and ``dpi`` passed RAW so ``enforce_capabilities`` still sees the caller's ``None`` on a bare
+    clip and ``draw`` applies the historical ``dpi or 100`` afterwards. The format is PNG unless
+    ``path=`` names another one — forcing ``"png"`` there would make ``preview(path='f.jpg')`` a
+    dead end, since the format/path disagreement raises.
     """
     if t_ms is not None and frame is not None:
         raise ValueError("pass t_ms= or frame=, not both")
@@ -451,10 +572,11 @@ def preview_frame(video: Video, t_ms: Optional[float] = None, *, frame: Optional
         raise IndexError(f"frame {t} out of range for {len(video.frames)} frames")
 
     from ..image._draw import draw          # function-local: image/ imports video/ at module scope
-    info = draw(video, slug, frame=t, show_time=True, resolution=None, format="png",
+    info = draw(video, slug, frame=t, show_time=True, resolution=None,
+                format=("png" if path is None else None),
                 path=path, question=question, bulk=bulk, date=date, root=root,
                 units=units, title=title, figsize=figsize, dpi=dpi)
-    return ImagePath(info.path, info.data)
+    return ImagePath(info.path, info.data, info.format)
 
 
 def _default_layout(n: int):
@@ -594,11 +716,14 @@ def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resol
         raw = float(speed) / max(dt, 1e-12)
         fps = min(max(raw, 1.0), 240.0)
     fps = float(max(1.0, fps))
-    out_path, is_temp = _resolve_destination(slug, kind, ext, path=path, question=question,
-                                             bulk=bulk, date=date, root=root)
+    # Fallible work BEFORE the destination — resolve_canvas() raises on a bad resolution=, and
+    # acquiring the destination creates a temp file we would then orphan. (Same rule as render().)
     canvas = resolve_canvas(resolution) if (figsize is None and dpi is None) else None
     if fmt == "webm" and bitrate is None:
         bitrate = "2M"
+    out_path, is_temp, owned = _resolve_destination(slug, kind, ext, path=path,
+                                                    question=question, bulk=bulk,
+                                                    date=date, root=root)
 
     nrows, ncols = (rows, cols) if (rows and cols) else _default_layout(len(clips))
     if rows and not cols:
@@ -665,17 +790,19 @@ def _render_panels(clips: List[Video], slug: str, *, path, question, bulk, resol
             if progress and k % 50 == 0:
                 print(f"  ... {k}/{len(idx)} frames", flush=True)
         writer.close()          # inside the guard — see the single-panel path
+        try:
+            size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
+        except OSError:
+            size = 0
     except BaseException:
         if writer is not None:
-            writer.close()
-        if os.path.exists(out_path):
-            os.remove(out_path)
+            writer.abort()      # release WITHOUT flushing — close() would write the file
+        discard_partial(out_path, owned, opened=bool(writer is not None and writer.touched))
         raise
     finally:
         if fig is not None:
             plt.close(fig)
 
-    size = os.path.getsize(writer.path) if os.path.exists(writer.path) else 0
     final_path, data = _finalize(writer.path, is_temp)
     return VideoInfo(path=final_path, n_frames=n, fps=fps, backend=writer.backend,
                      codec=writer.codec, width=writer.width, height=writer.height,
