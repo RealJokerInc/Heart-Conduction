@@ -966,3 +966,70 @@ def test_calling_imageinfo_show_does_not_import_matplotlib(tmp_path):
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "False", f"matplotlib was imported by .show(): {out.stdout!r}\n{out.stderr}"
+
+
+# ---------------------- multi-panel contract parity with the single-panel path ----------------------
+
+def _capture_suptitle_text(monkeypatch):
+    """Record every string passed to matplotlib's Text.set_text, so a test can assert what (if
+    anything) the suptitle stamp rendered."""
+    import matplotlib.text as mtext
+    calls = []
+    orig = mtext.Text.set_text
+    monkeypatch.setattr(mtext.Text, "set_text",
+                        lambda self, s: (calls.append("" if s is None else str(s)), orig(self, s))[1])
+    return calls
+
+
+def test_single_panel_show_time_true_on_a_timeless_map_raises(wave):
+    # Regression lock on the behavior extracted into _resolve_show_time: a timeless map
+    # (activation) with show_time=True must raise, not stamp "t = nan ms".
+    with pytest.raises(ValueError, match="show_time=True needs a real time"):
+        draw(Image(wave, what="activation"), show_time=True)
+
+
+def test_multipanel_show_time_true_on_a_timeless_map_raises(wave):
+    with pytest.raises(ValueError, match="show_time=True needs a real time"):
+        draw([Image(wave, what="activation"), Image(wave, what="activation")], show_time=True)
+
+
+def test_multipanel_show_time_default_does_not_stamp_nan(wave, monkeypatch):
+    calls = _capture_suptitle_text(monkeypatch)
+    draw([Image(wave, what="activation"), Image(wave, what="activation")])   # show_time unset
+    assert not any("nan" in c for c in calls), f"stamped a nan time: {calls}"
+
+
+def test_multipanel_show_time_true_on_snapshots_stamps_a_real_time(wave, monkeypatch):
+    import re
+    calls = _capture_suptitle_text(monkeypatch)
+    draw([Image(wave), Image(wave)], show_time=True)     # snapshots have a finite middle-frame time
+    assert any(re.search(r"t = -?\d", c) for c in calls), f"no real-time stamp: {calls}"
+    assert not any("nan" in c for c in calls), f"stamped a nan time: {calls}"
+
+
+def test_multipanel_all_traces_rejects_show_time(wave):
+    # Parity with the single-panel Trace path, which rejects show_time= outright (#1b): no silent no-op.
+    with pytest.raises(ValueError, match="show_time"):
+        draw([cc.Trace(wave), cc.Trace(wave)], show_time=True)
+
+
+def test_multipanel_rejects_frame(wave):
+    with pytest.raises(ValueError, match="frame="):
+        draw([Image(wave), Image(wave)], frame=1)
+
+
+def test_multipanel_rejects_resolution(wave):
+    with pytest.raises(ValueError, match="resolution="):
+        draw([Image(wave), Image(wave)], resolution="auto")
+
+
+def test_multipanel_rejects_fit(wave):
+    with pytest.raises(ValueError, match="fit="):
+        draw([Image(wave), Image(wave)], fit="cover")
+
+
+def test_multipanel_pdf_on_a_media_path_raises(wave):
+    # New coverage for the previously-untested third pdf/webp media-path guard (the one #3's dedup
+    # collapses into _reject_vector_on_media_path); locks the dedup's behavior.
+    with pytest.raises(ValueError, match="media"):
+        draw([Image(wave), Image(wave)], "fig", bulk=True, format="pdf")

@@ -89,6 +89,27 @@ def _resolve_format(fmt: Optional[str], path: Optional[str]) -> str:
     return path_ext if path_ext is not None else "png"
 
 
+def _resolve_show_time(show_time: Optional[bool], t0: float) -> bool:
+    """Whether to stamp the frame time — ONE rule for the single- and multi-panel paths.
+
+    An explicit ``show_time=True`` on a map with no real time (activation/apd/frequency, whose frame
+    time is NaN) RAISES rather than stamping "t = nan ms". ``None`` means auto: stamp iff finite.
+    """
+    if show_time is True and not np.isfinite(t0):
+        raise ValueError(
+            "show_time=True needs a real time; this map has none (use what='snapshot').")
+    return show_time if show_time is not None else bool(np.isfinite(t0))
+
+
+def _reject_vector_on_media_path(fmt: str, path: Optional[str],
+                                 question, bulk, date, root) -> None:
+    """pdf/webp cannot go on a media/ convention path (media_path accepts png/jpg/jpeg/svg/gif)."""
+    if fmt in ("pdf", "webp") and path is None and _named_destination(question, bulk, date, root):
+        raise ValueError(
+            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
+            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+
+
 def _reraise_for_image(exc: ValueError) -> ValueError:
     """Restate a ``Video``-flavoured capability error in ``Image`` vocabulary.
 
@@ -175,6 +196,14 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
     ``format`` follows ``path``'s extension when not given explicitly, and a disagreement raises.
     """
     if isinstance(spec, (list, tuple)):
+        if frame is not None:
+            raise ValueError(
+                "frame= selects one map's frame; a multi-panel figure resolves each panel from its "
+                "own spec. Set the frame on the Image(...), or draw a single map.")
+        if resolution is not _UNSET or fit is not _UNSET:
+            raise ValueError(
+                "resolution=/fit= scale the bare-map producer; a multi-panel figure always uses the "
+                "annotated producer. Drop them, or draw a single bare map.")
         return _draw_panels(list(spec), slug, path=path, question=question, bulk=bulk,
                             date=date, root=root, fmt=_resolve_format(format, path),
                             figsize=figsize, dpi=dpi, tight=tight, title=title,
@@ -223,11 +252,7 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
 
     # --- format, and the media-convention guard --------------------------------------
     fmt = _resolve_format(format, path)
-    if fmt in ("pdf", "webp") and path is None and _named_destination(
-            question, bulk, date, root):
-        raise ValueError(
-            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
-            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+    _reject_vector_on_media_path(fmt, path, question, bulk, date, root)
 
     # --- capability gate: the RAW figsize/dpi, before any default is applied ----------
     try:
@@ -270,16 +295,13 @@ def draw(spec, slug: str = "figure", *, path: Optional[str] = None,
     if fit not in _LEGAL_FIT:
         raise ValueError(f"fit must be one of {_LEGAL_FIT}, got {fit!r}")
 
-    dpi_resolved = dpi if dpi is not None else (150 if is_image else (dpi or 100))
+    dpi_resolved = dpi if dpi is not None else (150 if is_image else 100)
     tight_resolved = True if tight is None else bool(tight)
     colorbar_resolved = colorbar if colorbar is not None else (clip.style == "annotated")
 
     # --- show_time: ONE formula, keyed on the TIME, not the selector -----------------
     t0 = float(clip.times[frame_resolved])
-    if show_time is True and not np.isfinite(t0):
-        raise ValueError(
-            "show_time=True needs a real time; this map has none (use what='snapshot').")
-    show_time_resolved = show_time if show_time is not None else bool(np.isfinite(t0))
+    show_time_resolved = _resolve_show_time(show_time, t0)
 
     # --- colour, over MASKED values, at the frame being drawn ------------------------
     cmap, norm, lo, hi = clip.gradient.resolve(
@@ -404,11 +426,7 @@ def _draw_trace_on(spec: Trace, ax) -> None:
 def _draw_trace(spec: Trace, slug: str, *, path, question, bulk, date, root, fmt,
                 figsize, dpi, tight, title, transparent) -> ImageInfo:
     """Single-panel wrapper: owns the figure, delegates the drawing, shares the delivery path."""
-    if fmt in ("pdf", "webp") and path is None and _named_destination(
-            question, bulk, date, root):
-        raise ValueError(
-            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
-            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+    _reject_vector_on_media_path(fmt, path, question, bulk, date, root)
     # Fallible setup BEFORE the destination — acquiring it creates a temp file and makes a
     # caller's existing file ours to protect. (Same rule as draw()/render().)
     fig, ax = plt.subplots(figsize=tuple(figsize) if figsize else (6.4, 3.6), dpi=dpi)
@@ -473,11 +491,19 @@ def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize,
     panel_labels = [(labels[i] if (labels and i < len(labels)) else getattr(sp, "label", None))
                     for i, sp in enumerate(specs)]
 
-    if fmt in ("pdf", "webp") and path is None and _named_destination(
-            question, bulk, date, root):
+    _reject_vector_on_media_path(fmt, path, question, bulk, date, root)
+
+    # show_time parity, decided up front — before plt.subplots creates the figure (so a raise orphans
+    # nothing) and AFTER the media guard above (so it keeps precedence, matching the single-panel
+    # path). Compute the stamp decision + time ONCE and reuse them at the stamp block below.
+    stamp_on, stamp_t0 = False, None
+    if maps:
+        stamp_t0 = float(maps[0]._clip.times[0])
+        stamp_on = _resolve_show_time(show_time, stamp_t0)      # raises on show_time=True + NaN time
+    elif show_time is not None:
         raise ValueError(
-            f"format={fmt!r} cannot be written to a media/ path — media_path accepts "
-            f"{'/'.join(_MEDIA_ONLY_EXT)}. Pass path='fig.{fmt}' instead.")
+            "show_time= stamps a map's time; this multi-panel figure has only traces. "
+            "Drop show_time=, or include a map panel.")
 
     # Colour: pooled only when every map panel agrees on BOTH the gradient and the quantity.
     # `_clip.field` is 'Vm' for every Image, so it cannot distinguish an APD map from a voltage one.
@@ -574,13 +600,10 @@ def _draw_panels(specs, slug, *, path, question, bulk, date, root, fmt, figsize,
                 st.contour = st.ax.contour(st.Xc, st.Yc, sp._clip.display_values(0),
                                            levels=[sp.front], colors="white", linewidths=1.4)
 
-        # The stamp comes from the FIRST MAP panel; a Trace has no clip and no times.
-        if maps:
-            t0 = float(maps[0]._clip.times[0])
-            stamp_on = show_time if show_time is not None else bool(np.isfinite(t0))
-            if stamp_on:
-                text = f"t = {t0:.1f} ms"
-                sup.set_text(f"{title} — {text}" if title else text)
+        # Stamp decided up front (stamp_on/stamp_t0). A Trace has no clip and no time.
+        if stamp_on:
+            text = f"t = {stamp_t0:.1f} ms"
+            sup.set_text(f"{title} — {text}" if title else text)
 
         opened = True
         fig.savefig(out_path, dpi=dpi_resolved,
