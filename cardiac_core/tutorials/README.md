@@ -54,10 +54,23 @@ pip install jupyterlab nbformat nbconvert
   If you edit the `.ipynb` directly in Jupyter instead, fold the change back into the builder or the
   next regeneration will overwrite it.
 
-## More lessons
+## The arc
 
-Further notebooks are planned, each built around an experiment rather than an API topic: applying a
-drug, pacing to measure restitution, carving a scar until conduction blocks, fibers and anisotropy,
-voltage clamp, and the field maps. Because these notebooks execute the real library, a regression
-gate that runs every one of them headless (`nbconvert --execute`) is planned alongside them, so they
-cannot go stale as the library changes.
+The series runs in five chapters, each built around an experiment rather than an API topic:
+
+1. **Intro** — install, the object landscape, a single cell, and the image/video pipeline.
+2. **Conductances & AP morphology** — which ion channel changes what about the action potential (+ a
+   self-pacing hiPSC cell and its funny current).
+3. **Tissue simulation, in depth** — grid, conductivity, stimulus, scar, and one example per engine
+   (monodomain / bidomain / LBM).
+4. **Pacing** — single-cell restitution, then a reentrant rotor in tissue.
+5. **Tuning by hand** — what each raw knob (σ, D, χ/Cm, anisotropy, scar, conductances, `dx`) does to
+   the wave: the capstone, where the earlier chapters converge into tuning intuition.
+
+Chapters 1–2 are the afternoon quick-start; 3–4 open up the tissue; 5 is the payoff.
+
+Because these notebooks execute the real library, a regression gate that runs every one of them
+headless (`jupyter nbconvert --execute`) is planned, so they cannot go stale as the library changes.
+It is not yet wired up: `nbformat`/`nbconvert` are not installed in the project environment. Until it
+is, each notebook is regression-checked by running the flat `--script` export of its code cells (see
+[`_build/`](./_build/)).
