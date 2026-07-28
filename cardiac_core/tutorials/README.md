@@ -15,6 +15,10 @@ run a notebook cell and edit a number — not that you know numpy, torch, or obj
 | 3.3 | [`03_3_lbm.ipynb`](./03_3_lbm.ipynb) | The **LBM** engine — the same physics by a different numerical route. Same flat wave, a higher CV (**≈ 64 cm/s**, a numerical offset, not an error), and the **compare like-to-like** rule. | ~5 s |
 | 4.1 | [`04_1_pacing_restitution.ipynb`](./04_1_pacing_restitution.ipynb) | Pacing a single cell: **basic cycle length (BCL)**, how **APD shortens as you pace faster**, and the **restitution curve** (APD vs diastolic interval) whose steepness predicts arrhythmia. | ~80 s |
 | 4.2 | [`04_2_reentry.ipynb`](./04_2_reentry.ipynb) | Pacing in tissue: the **voltage clamp** (`Stim(mask, clamp=…)`), then inducing a **reentrant rotor** with an **S1–S2 cross-field** protocol on a small sheet — confirmed with a **phase singularity** (\|charge\|≈1). | ~75 s |
+| 5.1 | [`05_1_coupling.ipynb`](./05_1_coupling.ipynb) | **Tuning by hand — speed.** How the coupling knobs set conduction velocity: conductivity σ (CV ∝ √σ), the effective diffusivity `D_eff = σ/(χ·Cm)`, the χ/Cm denominators, and the (σ,χ) degeneracy. | ~25 s |
+| 5.2 | [`05_2_geometry.ipynb`](./05_2_geometry.ipynb) | **Tuning by hand — shape & launch.** Isotropic circle vs anisotropic **ellipse** (axis ratio √(σ_l/σ_t)); a scar that curves and **blocks** the front (source–sink); stimulus strength/size that decide whether a wave launches at all. | ~55 s |
+| 5.3 | [`05_3_cellular.ipynb`](./05_3_cellular.ipynb) | **Tuning by hand — cellular knobs at tissue scale.** Chapter 2's channels on the wave: `GNa` sets speed and, pushed far, **blocks**; `GKr` lengthens APD → longer **wavelength** (`cc.wavelength`). | ~45 s |
+| 5.4 | [`05_4_numerical.ipynb`](./05_4_numerical.ipynb) | **Tuning by hand — trust your number.** Too-coarse **`dx`** gives a wrong, block-looking CV (refine to convergence); **`dt`** is an accuracy knob; compare engines **like-to-like**. | ~70 s |
 
 Chapter 1 is self-contained and is the right place to begin regardless of what you eventually want to
 do. It introduces the whole cast — geometry, conductivity, ionic model, stimulus, engine, result — and
