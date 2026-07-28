@@ -85,6 +85,7 @@ def single_cell(model: str = "ttp06", *, celltype: str = "ENDO", dt: Optional[fl
                 bcl: float = 1000.0, n_beats: int = 1, pre_pace: int = 0,
                 stim_amplitude: float = -52.0, stim_duration: float = 2.0, t0: float = 10.0,
                 Cm: float = 1.0, save_every: Optional[float] = None,
+                conductances: Optional[dict] = None,
                 device: str = "cpu") -> SingleCellResult:
     """Run a 0-D single-cell action potential and return the trace + final state.
 
@@ -97,9 +98,15 @@ def single_cell(model: str = "ttp06", *, celltype: str = "ENDO", dt: Optional[fl
     pre_pace : beats to run first and DISCARD (drive toward steady state before recording).
     stim_amplitude, stim_duration, t0 : the depolarizing stimulus (current uA/uF; ``<0`` = inward).
     Cm : membrane capacitance scaling of the reaction (``Cm=2`` halves the per-step reaction dV).
+    conductances : optional {name: factor} drug map, multiplicative (``<1`` block, ``>1``
+        upregulation), applied BEFORE pre_pace so pre-pacing settles the DRUGGED cell toward its own
+        steady state. Names are validated (a typo raises); same vocabulary as ``scale_conductance``.
     """
     from .ionic.registry import build_ionic_model
     m = build_ionic_model(model, celltype, device=device) if isinstance(model, str) else model
+    if conductances:
+        from .ionic.scaling import scale_ionic_conductances
+        m = scale_ionic_conductances(m, conductances)   # deep-copies; raises on an unknown name
     name = model if isinstance(model, str) else getattr(m, 'name', 'ttp06')
     dt = dt if dt is not None else _DEFAULT_DT.get(str(name).lower(), 0.02)
     save_every = max(1, int(round((save_every if save_every is not None else 1.0) / dt)))

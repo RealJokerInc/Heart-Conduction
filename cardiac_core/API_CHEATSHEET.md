@@ -384,6 +384,7 @@ fast = cc.monodomain(g, "ttp06", cond, stim, dt=0.05, linear_solver="dct").run(6
 
 # drug block + inexcitable scar (each rebuilds from t=0):
 sim.scale_conductance("GKr", 0.5)
+sc = cc.single_cell("ttp06", bcl=250.0, conductances={"GKr": 0.5})   # 0-D drug: 50% IKr block -> longer APD
 scar = cc.rectangle_mask(30, 8, 0.03, 0.3, 0.0, 0.4, 0.24)
 sim.set_conductivity(scar, D=0.0)
 sim.run(6.0, 2.0)
