@@ -13,6 +13,8 @@ run a notebook cell and edit a number — not that you know numpy, torch, or obj
 | 3.1 | [`03_1_monodomain.ipynb`](./03_1_monodomain.ipynb) | Build a tissue simulation in depth: the **grid** (`cc.Grid`), the **conductivity** (`ConductivityConfig`), the **stimulus** (`cc.Stim` — where you put the electrode), and a **scar** (`set_conductivity(D=0)`); run it on the **monodomain** engine and measure CV (**≈ 58 cm/s**). | ~20 s |
 | 3.2 | [`03_2_bidomain.ipynb`](./03_2_bidomain.ipynb) | The **bidomain** engine: the same wave plus the extracellular potential **`phi_e`** (the seed of the ECG). Same `Vm`, nearly the same CV (**≈ 60 cm/s**) — bidomain earns its cost only when the world outside the cells matters. | ~10 s |
 | 3.3 | [`03_3_lbm.ipynb`](./03_3_lbm.ipynb) | The **LBM** engine — the same physics by a different numerical route. Same flat wave, a higher CV (**≈ 64 cm/s**, a numerical offset, not an error), and the **compare like-to-like** rule. | ~5 s |
+| 4.1 | [`04_1_pacing_restitution.ipynb`](./04_1_pacing_restitution.ipynb) | Pacing a single cell: **basic cycle length (BCL)**, how **APD shortens as you pace faster**, and the **restitution curve** (APD vs diastolic interval) whose steepness predicts arrhythmia. | ~80 s |
+| 4.2 | [`04_2_reentry.ipynb`](./04_2_reentry.ipynb) | Pacing in tissue: the **voltage clamp** (`Stim(mask, clamp=…)`), then inducing a **reentrant rotor** with an **S1–S2 cross-field** protocol on a small sheet — confirmed with a **phase singularity** (\|charge\|≈1). | ~75 s |
 
 Chapter 1 is self-contained and is the right place to begin regardless of what you eventually want to
 do. It introduces the whole cast — geometry, conductivity, ionic model, stimulus, engine, result — and
