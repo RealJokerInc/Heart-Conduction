@@ -12,8 +12,9 @@
 > (flat `--script` exit 0) with its key figures rendered and inspected, real measured numbers in the
 > prose. Notebooks regenerate deterministically from `_build/*.py`. The rotor (4.2) genuinely forms
 > (|charge|=1.00), the anisotropy ellipse (5.2) is 2.06:1, and the dx under-resolution trap (5.4) is
-> intact (coarse dx reads ~21% low). REMAINING: the `nbconvert --execute` anti-rot gate (Phase W),
-> still blocked on the `nbformat`/`nbconvert` install; branch not yet merged/pushed (user's call).**
+> intact (coarse dx reads ~21% low). The `nbconvert --execute` **anti-rot gate is WIRED** (Phase W done):
+> `nbformat`/`nbconvert` installed, `tutorials/run_all_tutorials.py` + opt-in `tests/test_tutorials.py`
+> — **all 12 notebooks pass** (~9.6 min). REMAINING: branch not yet merged/pushed (user's call).**
 
 ---
 
@@ -32,8 +33,10 @@
      unknown name **raises `ValueError`** listing the model's available conductances — *no silent no-op*.
      This safety is itself a Ch2 teaching beat.
    - Verified: `single_cell('ttp06', celltype='EPI', conductances={'GKr': 0.5})` prolongs APD90 217→245 ms.
-3. **⚠️ `nbformat`/`nbconvert` NOT installed** — blocks the execute-all anti-rot gate + output
-   embedding, **not authoring** (the plain-JSON builder needs neither). A Phase-W item.
+3. **✅ `nbformat`/`nbconvert` installed; the execute-all anti-rot gate is WIRED** —
+   `tutorials/run_all_tutorials.py` (nbconvert, in-memory, discards outputs) + opt-in
+   `tests/test_tutorials.py`; all 12 notebooks pass. (Output-embedding into the shipped notebooks stays
+   deliberately OFF — they ship with empty outputs so a reader generates the numbers themselves.)
 
 **The restructure (user, 2026-07-28), superseding the flat arc:**
 - The old "drug on one cell" lesson is **renamed and re-themed** into a systematic *conductance → AP
@@ -301,7 +304,7 @@ Per-chapter notes beyond §2/§3:
 | 3 | `Grid`/`ConductivityConfig`/`Stim`/masks/all engines | **✅ READY** |
 | 4 | `Stim(bcl,num_pulses)`, `restitution_slope`, `phase_singularities` | **✅ READY** |
 | 5 | `ConductivityConfig` (iso/aniso), `set/scale_conductivity`, `scale_conductance`, `r.cv`/`radial_cv`/`wavelength`/`safety_factor` | **✅ READY** — pure `cardiac_core`, no optimizer |
-| W gate | `nbformat` + `nbconvert` | **⚠️ NOT INSTALLED** |
+| W gate | `nbformat` + `nbconvert` | **✅ WIRED** — installed; `run_all_tutorials.py` + `tests/test_tutorials.py`; all 12 pass |
 
 `tutorial_helpers.py` — default to NOT writing one; `sc.trace()`/`r.image()`/`r.video()` are the plotting surface.
 
