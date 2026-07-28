@@ -8,6 +8,9 @@ run a notebook cell and edit a number — not that you know numpy, torch, or obj
 | # | Notebook | You'll learn | Runtime |
 |---|----------|--------------|---------|
 | 1 | [`01_intro.ipynb`](./01_intro.ipynb) | A gentle tour of `cardiac_core`: install & import, the **object landscape** (what a simulation is made of), a single-cell **action potential**, and a monodomain tissue wave rendered as an inline **video** and a **snapshot**. | ~45 s |
+| 3.1 | [`03_1_monodomain.ipynb`](./03_1_monodomain.ipynb) | Build a tissue simulation in depth: the **grid** (`cc.Grid`), the **conductivity** (`ConductivityConfig`), the **stimulus** (`cc.Stim` — where you put the electrode), and a **scar** (`set_conductivity(D=0)`); run it on the **monodomain** engine and measure CV (**≈ 58 cm/s**). | ~20 s |
+| 3.2 | [`03_2_bidomain.ipynb`](./03_2_bidomain.ipynb) | The **bidomain** engine: the same wave plus the extracellular potential **`phi_e`** (the seed of the ECG). Same `Vm`, nearly the same CV (**≈ 60 cm/s**) — bidomain earns its cost only when the world outside the cells matters. | ~10 s |
+| 3.3 | [`03_3_lbm.ipynb`](./03_3_lbm.ipynb) | The **LBM** engine — the same physics by a different numerical route. Same flat wave, a higher CV (**≈ 64 cm/s**, a numerical offset, not an error), and the **compare like-to-like** rule. | ~5 s |
 
 Chapter 1 is self-contained and is the right place to begin regardless of what you eventually want to
 do. It introduces the whole cast — geometry, conductivity, ionic model, stimulus, engine, result — and
