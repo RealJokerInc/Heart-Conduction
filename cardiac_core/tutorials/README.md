@@ -7,10 +7,11 @@ run a notebook cell and edit a number — not that you know numpy, torch, or obj
 
 | # | Notebook | You'll learn | Runtime |
 |---|----------|--------------|---------|
-| 01 | [`01_build_a_simulation.ipynb`](./01_build_a_simulation.ipynb) | The whole loop end to end: build a **grid**, set its **conductivity**, place a **`Stim`**, run a **monodomain / bidomain / LBM** simulation, and measure **conduction velocity**. | ~90 s |
+| 1 | [`01_intro.ipynb`](./01_intro.ipynb) | A gentle tour of `cardiac_core`: install & import, the **object landscape** (what a simulation is made of), a single-cell **action potential**, and a monodomain tissue wave rendered as an inline **video** and a **snapshot**. | ~45 s |
 
-Lesson 01 is self-contained and is the right place to begin regardless of what you eventually want to
-do. Everything later in the series reuses its four ingredients — grid, conductivity, stimulus, engine.
+Chapter 1 is self-contained and is the right place to begin regardless of what you eventually want to
+do. It introduces the whole cast — geometry, conductivity, ionic model, stimulus, engine, result — and
+the later chapters go deep on each one.
 
 ## Running them
 
@@ -37,7 +38,7 @@ pip install jupyterlab nbformat nbconvert
   [`_build/`](./_build/), which is the file to edit for anything more than a typo — a plain `.py` diff
   is far easier to review than an `.ipynb` diff. Re-run it to rewrite the notebook in place:
   ```bash
-  python cardiac_core/tutorials/_build/build_01_build_a_simulation.py
+  python cardiac_core/tutorials/_build/build_01_intro.py
   ```
   If you edit the `.ipynb` directly in Jupyter instead, fold the change back into the builder or the
   next regeneration will overwrite it.
