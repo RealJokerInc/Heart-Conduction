@@ -35,9 +35,11 @@ You do not need to have run 3.1 first — this notebook rebuilds the tissue from
 2. **Running it** — the same four ingredients, a different engine factory
 3. **The extracellular field `phi_e`** — the wavefront seen from outside the cells
 4. **Comparing fairly** — bidomain and monodomain agree on speed here, and why
+5. **Boundary speedup from a bath** — the one edge effect that is real physics, not a grid artefact
 
-**Runtime**: about 10 seconds of computing (one bidomain run — a little slower than monodomain because
-it solves an extra equation every step). On Colab, add about a minute the first time for the install.
+**Runtime**: about 30 seconds of computing (three short bidomain runs plus two inline movies — bidomain
+is a little slower than monodomain because it solves an extra equation every step). On Colab, add about
+a minute the first time for the install.
 """),
 
 (M, """---
@@ -119,8 +121,15 @@ print("done — bidomain run complete")
 (M, """---
 ## 4. The voltage looks the same
 
-First look at the transmembrane voltage `Vm`, exactly as we did for monodomain in 3.1 — a snapshot at
-12 ms:
+Watch the wave first — the same inline movie as 3.1, only now the bidomain engine computed it. A bright
+band enters from the left edge, where the electrode fired, and sweeps to the right:
+"""),
+
+(C, """r.video()   # an inline movie of the excitation wave, computed by bidomain
+"""),
+
+(M, """Now freeze it partway across and look at the transmembrane voltage `Vm` — exactly the snapshot we
+took for monodomain in 3.1, here at 12 ms:
 """),
 
 (C, """r.image(at=12.0)   # transmembrane voltage Vm at t = 12 ms
@@ -180,6 +189,81 @@ moved most of the way across — you are watching the source of the ECG signal s
 """),
 
 (M, """---
+## 7. Boundary speedup from bath loading
+
+Section 6 said bidomain only *earns its cost* when the world outside the cells stops being a simple
+ground. Here is the cleanest example — and it is an effect monodomain simply **cannot** produce.
+
+Bidomain tracks two spaces: the inside of the cells and the conductive fluid *around* them — the
+**bath** (Tyrode's solution in a dish, blood in a heart chamber, any fluid-filled void). To advance, a
+wavefront pushes current forward through the cramped space **inside** the cells and returns it through
+the space **outside**. In the bulk of the tissue that return path is ordinary extracellular resistance.
+But right at a surface bathed in conductive fluid, the bath **short-circuits** that return path — the
+current flows back almost for free. Less resistance means a faster wave, so the front runs **faster at
+the bathed edge than in the middle**. This is the real, experimentally-measured **Kléber boundary
+speedup**, and because it lives entirely in the second (extracellular) domain, only bidomain can show it.
+
+To see it we leave the thin strip for a square sheet — room enough for the middle to fall behind the
+edges — and run the *same* tissue and the *same* flat left-edge wave twice: once with the top and bottom
+walls **bathed** (`boundary="bath"`), once with them **sealed** (`boundary="insulated"`, the control).
+"""),
+
+(C, """gb    = cc.Grid(41, 41, 0.025)                                 # a 1 x 1 cm sheet; top & bottom are the walls
+cond  = cc.ConductivityConfig.bidomain(1.74, 6.25, chi=1400.0)  # same healthy tissue as the strip
+stimb = cc.Stim.boundary(gb, "left", amplitude=-80.0, start_time=1.0, duration=2.0)  # flat wave, left to right
+
+# same tissue, same wave — the ONLY difference is what the top & bottom walls touch:
+r_bath = cc.bidomain(gb, "ttp06", cond, stimb, boundary="bath",      dt=0.05).run(t_end=45.0, save_every=0.5)  # bathed
+r_ins  = cc.bidomain(gb, "ttp06", cond, stimb, boundary="insulated", dt=0.05).run(t_end=45.0, save_every=0.5)  # sealed
+
+r_bath.image(what="activation")   # isochrones bow FORWARD at the top & bottom edges — the edges LEAD
+"""),
+
+(M, """Look at the top and bottom edges. The isochrones — the white lines joining points that activated
+at the same instant — no longer meet the walls straight: they **bow forward**, leaning ahead in the
+direction the wave is travelling. That is a **leading crescent**, the mirror image of 3.1's slowdown —
+the bathed edges reach each vertical line *sooner* than the middle does. By the far side of the sheet the
+edge is more than a millisecond ahead of the centre. Here the wall **leads**; in 3.1 it lagged.
+
+Now the sealed control — the same run with the walls insulated instead of bathed:
+"""),
+
+(C, """r_ins.image(what="activation")   # walls sealed: the front is flat, no edge effect
+"""),
+
+(M, """Flat. With the walls sealed there is no bath to short-circuit the return current, so every row
+travels at the same speed and the isochrones are dead straight — the front you would draw by hand. The
+*only* thing that changed between the two runs is whether the walls touch conductive fluid, and that one
+change is what bent the front.
+
+**How big is the speedup?** Theory says the bathed edge should outrun the interior by a factor of
+
+    sqrt((sigma_i + sigma_e) / sigma_e) = sqrt((1.74 + 6.25) / 6.25) = 1.131
+
+— about **13%**. On this grid (dx = 0.025 cm) the project's bidomain engine measures roughly **1.07–1.08**,
+climbing toward the theoretical 1.131 as the grid is refined. Either way, the headline is the same: **the
+edge runs about 7–13% faster than the middle.**
+
+**Why this matters — and how it differs from 3.1.** Notebook 3.1 also bent a wave at a wall, but that was
+a *slowdown*, and it came from a **discretisation choice** — the stencil and the ghost-cell rule. Change
+the numerics and it vanishes. This *speedup* is the opposite: genuine two-domain physics that **survives
+grid refinement** and has been seen in real tissue. It is not an artefact to tune away; it is a mechanism
+to model. Put simply: **3.1's wall slowdown came from the grid; this wall speedup comes from real
+extracellular short-circuiting.**
+
+Watch the bathed edges pull ahead of the middle as the wave crosses:
+"""),
+
+(C, """r_bath.video()   # the top & bottom edges lead — the front bows forward at the bathed walls
+"""),
+
+(M, """For the full mechanism — Li Chang names it the *Extracellular Induced Short Circuit* — see
+**Li Chang's May 2026 progress report** (the "Evidence of Boundary Speedup" slide). For the experimental
+side, this speedup at a tissue edge bathed in conductive medium was measured in engineered heart tissue
+by **Lee et al., 2017**.
+"""),
+
+(M, """---
 ## Recap
 
 - **Monodomain** tracks one potential (`Vm`) and assumes a perfect ground outside the cells;
@@ -189,6 +273,10 @@ moved most of the way across — you are watching the source of the ECG signal s
 - Bidomain's payoff is **`phi_e`** — the field a real electrode measures, showing the wavefront as a
   travelling step in the extracellular potential (the seed of the ECG). Reach for bidomain when the
   world outside the cells matters (a bath, an edge, a shock); otherwise use the faster monodomain.
+- With a **bath** on the walls (`boundary="bath"`), bidomain shows the **Kléber boundary speedup** — the
+  bathed edge runs **~7–13% faster** than the interior (a forward-bowing crescent). Unlike 3.1's wall
+  *slowdown* (a discretisation artefact), this *speedup* is real two-domain physics that survives grid
+  refinement — and monodomain cannot reproduce it.
 
 **Where next**: Notebook 3.3 runs the same strip on the third engine — **LBM** — which solves the same
 physics by an entirely different numerical route, and comes out at a slightly different speed. That
