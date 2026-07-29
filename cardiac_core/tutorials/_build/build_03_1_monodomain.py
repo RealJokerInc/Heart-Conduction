@@ -291,6 +291,76 @@ the activation map shows the isochrones curving around it and rejoining behind.
 """),
 
 (M, """---
+## 6. Advanced — how the grid handles the wall
+
+*(A peek under the hood. Skip it if you just want to build tissue — the defaults are sensible.)*
+
+Look back at the activation maps: the isochrones ran dead straight, all the way to the top and bottom
+edges. That is not automatic. It depends on two low-level choices about how the grid is wired, and
+changing them can make the wave **bend at the wall**. Both are the subject of an active research
+question in this lab — *boundary conduction speedup* — and here is the shortest possible tour.
+
+**The stencil — who each node listens to.** Every node updates from its neighbours. The default,
+`cardinal4`, listens to the **4** face-neighbours (up, down, left, right): the classic "4-point"
+stencil. But real muscle is also coupled to its **diagonal** neighbours, so `cardiac_core` also offers
+a **9-point** stencil, `moore8`, that adds the four diagonals. You pick with `stencil=`.
+
+**The wall handling — what sits just outside the tissue.** At a no-flux wall the solver invents a
+"ghost" value just past the edge. The **standard** rule (`face_mirror`) mirrors the edge node's own
+value; an alternative, **iso-mirror** (`face_mirror_iso`), fills the diagonal ghost from the neighbour
+one row in. On the **4-point** stencil these are identical — there are no diagonals for them to disagree
+about, which is exactly why the wave above stayed straight. On the **9-point** stencil they part ways.
+
+Run the same wave on a square sheet with the 9-point stencil, once with each wall rule:
+"""),
+
+(C, """gb    = cc.Grid(41, 41, 0.025)                       # a 1 x 1 cm sheet; top & bottom are the walls
+iso   = cc.ConductivityConfig.isotropic(1.4)         # Moore-8 needs isotropic tissue with dx = dy
+stimb = cc.Stim.boundary(gb, "left", amplitude=-80.0, start_time=1.0, duration=2.0)
+
+# same tissue, same wave — only the WALL RULE differs:
+r_std = cc.monodomain(gb, "ttp06", iso, stimb, stencil="moore8_uniform",
+                      boundary_mode="face_mirror").run(t_end=45.0, save_every=0.5)      # standard wall
+r_iso = cc.monodomain(gb, "ttp06", iso, stimb, stencil="moore8_uniform",
+                      boundary_mode="face_mirror_iso").run(t_end=45.0, save_every=0.5)  # iso-mirror wall
+
+r_std.image(what="activation")
+"""),
+
+(M, """With the **standard** wall rule the isochrones no longer meet the top and bottom edges straight —
+they **bow backward** there. The wave reaches the walls *later* than the middle: a shape called a
+**forward crescent**, a genuine **boundary slowdown** (about **0.5 ms** of lag at the wall here). The
+cause is mechanical — `face_mirror` zeroes the diagonal flux right at the wall, so the edge nodes'
+diagonal channels are starved of upstream signal and charge more slowly than the interior.
+
+The same run with the **iso-mirror** rule:
+"""),
+
+(C, """r_iso.image(what="activation")   # same tissue, only the wall rule changed
+"""),
+
+(M, """Straight again. `face_mirror_iso` feeds the missing diagonal from the real neighbour one row in,
+so the wall charges at the interior rate and the crescent vanishes. And the **4-point** default
+(`cardinal4`) shows *no* wall effect at all — with no diagonals to starve, the two wall rules are
+identical. That is this notebook's real control: **no diagonals, no boundary bias.**
+
+⚠️ One footgun: `face_mirror_iso` does nothing on the default `cardinal4` stencil — to see it change
+anything you must *also* pass `stencil="moore8_uniform"`.
+
+Watch the slowed wave curl back at the walls as it crosses:
+"""),
+
+(C, """r_std.video()   # the front bowing backward at the top and bottom walls
+"""),
+
+(M, """That the wavefront's *shape at a boundary* depends on discretisation choices — the stencil, the
+ghost-cell rule — is the heart of the **boundary conduction speedup** research. For the full argument
+(why the diagonals are the prerequisite, and how the very same wall handling can produce a boundary
+**speedup** instead of a slowdown), see **Li Chang's May 2026 progress report**. We pick this thread
+back up — and meet that speedup — in **Notebook 3.3 (LBM)**.
+"""),
+
+(M, """---
 ## Recap
 
 - A tissue simulation is built from a **grid** (`cc.Grid(Nx, Ny, dx)` — size is `dx*(Nx-1)` in cm), a
