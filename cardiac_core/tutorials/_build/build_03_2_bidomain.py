@@ -64,6 +64,12 @@ else:
 """),
 
 (C, """import cardiac_core as cc
+from IPython.display import Image as _Image
+
+# movie(result): show a propagation movie as an animated GIF. GitHub cannot display the default
+# mp4 video output, but it does render GIFs — so movie() plays on GitHub as well as in Colab.
+def movie(result, frames=40):
+    return _Image(result.video(format="gif", max_frames=frames).read())
 
 print("cardiac_core is ready")
 """),
@@ -125,7 +131,7 @@ Watch the wave first — the same inline movie as 3.1, only now the bidomain eng
 band enters from the left edge, where the electrode fired, and sweeps to the right:
 """),
 
-(C, """r.video()   # an inline movie of the excitation wave, computed by bidomain
+(C, """movie(r)   # an inline movie of the excitation wave, computed by bidomain (animated GIF)
 """),
 
 (M, """Now freeze it partway across and look at the transmembrane voltage `Vm` — exactly the snapshot we
@@ -254,7 +260,7 @@ extracellular short-circuiting.**
 Watch the bathed edges pull ahead of the middle as the wave crosses:
 """),
 
-(C, """r_bath.video()   # the top & bottom edges lead — the front bows forward at the bathed walls
+(C, """movie(r_bath)   # the top & bottom edges lead — the front bows forward at the bathed walls (animated GIF)
 """),
 
 (M, """For the full mechanism — Li Chang names it the *Extracellular Induced Short Circuit* — see
