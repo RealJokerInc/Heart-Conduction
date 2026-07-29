@@ -123,7 +123,7 @@ quarter and overlay the result on the free-running baseline.
 
 cc.draw(cc.Trace({"baseline": (paci.times, paci.V),
                   "g_f x0.25": (slow.times, slow.V)},
-                 xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 3500)))
+                 xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 3500))).show()   # .show() renders it even though a print() follows
 
 print(f"diastolic low point:  baseline = {paci.v_rest:.0f} mV,  g_f-blocked = {slow.v_rest:.0f} mV")
 """),

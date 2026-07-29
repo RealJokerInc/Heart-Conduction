@@ -119,14 +119,15 @@ thing you ever change when calling it is the `{NAME: factor}` dictionary.
 """),
 
 (C, """def compare(title, conductances):
-    \"\"\"Run a cell with one channel scaled, overlay it on the baseline, print the numbers.\"\"\"
+    \"\"\"Run a cell with one channel scaled, overlay it on the baseline, show the plot, print the numbers.\"\"\"
     drug = cc.single_cell("ttp06", celltype="EPI", pre_pace=1, bcl=BCL, dt=DT,
                           conductances=conductances)
+    # .show() displays the overlay inline (like plt.show()). Calling cc.draw()
+    # inside a function and NOT showing it would render nothing.
     cc.draw(cc.Trace({"baseline": (base.times, base.V),
                       title: (drug.times, drug.V)},
-                     xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 400)))
+                     xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 400))).show()
     print(f"{title:12s}  APD90 = {drug.apd(0.9):.0f} ms   peak = {drug.v_peak:.0f} mV   rest = {drug.v_rest:.0f} mV")
-    return drug
 """),
 
 (M, """---
