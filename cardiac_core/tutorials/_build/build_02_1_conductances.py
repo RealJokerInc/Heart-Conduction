@@ -33,8 +33,7 @@ height, how long repolarisation takes.
 
 This notebook is a guided tour of the six channels that shape the ventricular action potential. For
 each one we take the same healthy cell, scale that single channel, and overlay the result on the
-baseline so you can *see* what it controls — the same move a pharmacologist makes when a drug blocks a
-channel.
+baseline so you can *see* exactly which part of the beat that channel controls.
 
 **What you'll learn**
 
@@ -102,11 +101,19 @@ base.trace(xlim=(0, 400))
 """),
 
 (M, """That is our control: a beat that rests near **-85 mV**, spikes to about **+76 mV**, and lasts
-**APD90 ≈ 219 ms**. Every overlay below compares a single-channel change against exactly this curve.
+**APD90 ≈ 219 ms**.
+
+**What is APD90?** It stands for *action-potential duration at 90% repolarisation* — the time from the
+upstroke until the cell has fallen **90% of the way** back down to its resting voltage. In plain terms:
+how long the beat lasts. It is the single most-quoted number for an action potential, so it is the one
+to watch in every overlay below. (You will also see **APD50** once — the same idea, measured to the
+50% point, i.e. the duration of the first half of the beat.)
+
+Every overlay below compares a single-channel change against exactly this curve.
 
 **The knob.** To change one channel, pass `conductances={NAME: factor}` to `single_cell`. The factor
-is **multiplicative**: `0.5` halves that channel's maximum conductance (a 50% *block*, what most drugs
-do), `1.5` boosts it by 50%. Two design points worth knowing:
+is **multiplicative**: `0.5` halves that channel's maximum conductance, `1.5` boosts it by 50%. Two
+design points worth knowing:
 
 - The change is applied **before** the warm-up beat, so `pre_pace` settles the *changed* cell to *its
   own* steady state. You are comparing two cells that have each reached equilibrium — an honest
@@ -120,14 +127,14 @@ thing you ever change when calling it is the `{NAME: factor}` dictionary.
 
 (C, """def compare(title, conductances):
     \"\"\"Run a cell with one channel scaled, overlay it on the baseline, show the plot, print the numbers.\"\"\"
-    drug = cc.single_cell("ttp06", celltype="EPI", pre_pace=1, bcl=BCL, dt=DT,
-                          conductances=conductances)
+    scaled = cc.single_cell("ttp06", celltype="EPI", pre_pace=1, bcl=BCL, dt=DT,
+                            conductances=conductances)
     # .show() displays the overlay inline (like plt.show()). Calling cc.draw()
     # inside a function and NOT showing it would render nothing.
     cc.draw(cc.Trace({"baseline": (base.times, base.V),
-                      title: (drug.times, drug.V)},
+                      title: (scaled.times, scaled.V)},
                      xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 400))).show()
-    print(f"{title:12s}  APD90 = {drug.apd(0.9):.0f} ms   peak = {drug.v_peak:.0f} mV   rest = {drug.v_rest:.0f} mV")
+    print(f"{title:12s}  APD90 = {scaled.apd(0.9):.0f} ms   peak = {scaled.v_peak:.0f} mV   rest = {scaled.v_rest:.0f} mV")
 """),
 
 (M, """---
@@ -144,7 +151,7 @@ high. (In tissue this same reduction *slows conduction*, the story of Chapter 5.
 
 (M, """The overshoot drops from about **+76 mV to +54 mV**: with less sodium rushing in, the spike
 simply doesn't reach as high. The rest of the beat is barely touched — `GNa` owns the upstroke and
-little else. Sodium-channel blockers (class I antiarrhythmics, local anaesthetics) act right here.
+little else.
 """),
 
 (M, """---
@@ -177,29 +184,29 @@ which is why it is named `PCa` and not "`GCaL`". Less calcium, lower and shorter
 (C, """compare("PCa x0.5", {"PCa": 0.5})   # 50% L-type calcium block
 """),
 
-(M, """Halving the calcium current collapses the plateau: **APD90 falls from 219 ms to 166 ms** and
-the mid-beat APD50 nearly halves (166 → 109 ms). The upstroke peak is untouched — calcium doesn't fire
-the cell, it *sustains* it. Push the knob the other way (`{"PCa": 1.5}`) and the plateau swells,
-stretching APD90 out to ~246 ms. Calcium-channel blockers live on this knob.
+(M, """Halving the calcium current collapses the plateau: **APD90 falls from 219 ms to 166 ms** and the
+first-half duration **APD50 nearly halves** too (166 → 109 ms). The upstroke peak is untouched —
+calcium doesn't fire the cell, it *sustains* it. Push the knob the other way (`{"PCa": 1.5}`) and the
+plateau swells, stretching APD90 out to ~246 ms.
 """),
 
 (M, """---
-## 5. Phase 3 — `GKr`: repolarisation, and the long-QT story
+## 5. Phase 3 — `GKr`: repolarisation, and the sign flip
 
 Repolarisation (phase 3, the fall back to rest) is driven by **delayed-rectifier potassium currents**
-that switch on during the plateau and eventually win. The **rapid** one, `I_Kr` (conductance `GKr`),
-is carried by the *hERG* channel. Here is the counter-intuitive part that makes it the single most
-important channel in cardiac safety pharmacology: **blocking `GKr` makes the beat LONGER, not
-shorter.** Less repolarising current means it takes longer to bring the voltage down.
+that switch on during the plateau and eventually win. The **rapid** one is `I_Kr` (conductance `GKr`).
+Here the tour flips sign. Every change so far *reduced* a current and got a *smaller* beat; watch what
+happens when we reduce this one: **the beat gets LONGER, not shorter.** With less repolarising current,
+it takes more time to bring the voltage back down.
 """),
 
-(C, """compare("GKr x0.5", {"GKr": 0.5})   # 50% hERG block
+(C, """compare("GKr x0.5", {"GKr": 0.5})   # GKr halved — the rapid repolarising K current
 """),
 
-(M, """Blocking `I_Kr` by half **prolongs APD90 from 219 ms to 240 ms** — the tail of the beat drags
-out. In a whole heart this lengthens the QT interval on the ECG, and many drugs were withdrawn from the
-market precisely because they block hERG as an unintended side effect (drug-induced long-QT syndrome).
-Every new drug is now screened against this one channel.
+(M, """Halving `I_Kr` **prolongs APD90 from 219 ms to 240 ms** — the tail of the beat drags out. Sit
+with the sign for a moment: this is an *outward* current, and cutting it made the beat *longer*, because
+this current's whole job is to *end* the beat. Reduce what ends the beat and the beat runs on. The next
+channel does the same thing for the same reason.
 """),
 
 (M, """---
@@ -210,13 +217,14 @@ repolarise, but it builds up over successive fast beats, so it matters most when
 it is the "**repolarisation reserve**" that keeps the plateau from running away at speed.
 """),
 
-(C, """compare("GKs x0.5", {"GKs": 0.5})   # 50% slow-delayed-rectifier block
+(C, """compare("GKs x0.5", {"GKs": 0.5})   # GKs halved — the slow repolarising K current
 """),
 
 (M, """Halving `I_Ks` also prolongs the beat (**APD90 219 → 242 ms** here at 2 Hz). On its own the
-effect looks a lot like `GKr`, but the two share the load: when `I_Kr` is already blocked, losing `I_Ks`
-as well removes the backup and repolarisation can fail — which is why some long-QT syndromes are `I_Ks`
-mutations that only bite under stress or exercise.
+effect looks a lot like `GKr` — another outward current, another longer beat. But the two share the
+load: with `I_Kr` already reduced, losing `I_Ks` as well removes the backup and repolarisation nearly
+stalls. Because `I_Ks` builds up over successive fast beats, this reserve matters most when the cell is
+paced quickly.
 """),
 
 (M, """---
@@ -243,14 +251,14 @@ less firmly held — and the final return to rest is a touch slower and less sha
 | 0 upstroke | `GNa` | `I_Na` fast sodium | weaker upstroke, lower overshoot (peak 76 → 54 mV at 0.3×) |
 | 1 notch | `Gto` | `I_to` transient outward K | shallower notch (deeper if scaled *up*: to -11 mV at 2×) |
 | 2 plateau | `PCa` | `I_CaL` L-type calcium | lower, shorter plateau (APD90 219 → 166 ms at 0.5×) |
-| 3 repol | `GKr` | `I_Kr` rapid K (hERG) | **longer** beat (APD90 219 → 240 ms at 0.5×) |
+| 3 repol | `GKr` | `I_Kr` rapid K | **longer** beat (APD90 219 → 240 ms at 0.5×) |
 | 3 repol | `GKs` | `I_Ks` slow K | **longer** beat (APD90 219 → 242 ms at 0.5×) |
 | 4 rest | `GK1` | `I_K1` inward-rectifier K | resting V rises (-85.4 → -84.1 mV at 0.5×) |
 
-The pattern to carry away: **inward** currents (`GNa`, `PCa`) *build* the action potential — block them
-and it shrinks; **outward** potassium currents (`GKr`, `GKs`, `GK1`, and `Gto`) *end* it — block the
-repolarising ones and the beat drags on *longer*. That sign flip is why blocking a potassium channel
-(hERG) is dangerous in a way blocking a calcium channel is not.
+The pattern to carry away: **inward** currents (`GNa`, `PCa`) *build* the action potential — reduce them
+and it shrinks; **outward** potassium currents (`GKr`, `GKs`, `GK1`, and `Gto`) *end* it — reduce the
+repolarising ones and the beat drags on *longer*. That sign flip — an outward current making the beat
+**longer** when you cut it — is the single idea to carry out of this notebook.
 """),
 
 (M, """---
@@ -268,23 +276,31 @@ except ValueError as e:
 """),
 
 (M, """That guarantee is the whole reason to use the `conductances=` knob instead of reaching into the
-model by hand: when a "drug" appears to do nothing, you can trust it really did nothing — you didn't
+model by hand: when a change appears to do nothing, you can trust it really did nothing — you didn't
 just fat-finger the name. The error even prints the exact list of channels you *can* scale.
 """),
 
 (M, """---
 ### Try it yourself
 
-1. **Find calcium's dose-response.** In the `PCa` cell (section 4), change `{"PCa": 0.5}` to `0.25`,
+1. **Go the other way — turn a channel UP.** Every example above *reduced* a channel. In the `GNa`
+   cell (section 2), change `{"GNa": 0.3}` to `{"GNa": 3.0}`, then `{"GNa": 8.0}`, and re-run. The
+   upstroke steepens and the overshoot climbs — but watch *how high*: the peak marches from ~+76 mV to
+   about **+95 mV, then +102 mV**, far above the ~+40 mV a real ventricular cell ever reaches, while the
+   beat's *duration* barely moves (APD90 stays near 210 ms — `GNa` owns the upstroke and nothing after
+   it). That runaway overshoot is the interesting part: the model faithfully computes whatever
+   conductance you hand it, physiological or not. A knob that sails off into impossible territory is a
+   property of the simulator, not a warning it will give you — deciding what is realistic is *your* job.
+2. **Find calcium's dose-response.** In the `PCa` cell (section 4), change `{"PCa": 0.5}` to `0.25`,
    then `0.75`, then `1.5`. Watch APD90 (printed under each plot) rise and fall with the calcium
    current — more calcium, longer plateau.
-2. **Combine two blocks.** The knob takes more than one channel at once. In any `compare(...)` cell,
-   try `{"GKr": 0.5, "GKs": 0.5}` — block both delayed rectifiers together. The prolongation is larger
-   than either alone: this is the "loss of repolarisation reserve" that turns a mild `I_Kr` block into a
-   dangerous one.
-3. **Break it on purpose.** In a `compare(...)` cell, mistype a name — `{"gto": 2.0}` or
-   `{"GCaL": 0.5}` — and read the `ValueError`. Note that the tour helper lets the error surface, so a
-   typo never passes silently.
+3. **Combine two changes.** The knob takes more than one channel at once. In any `compare(...)` cell,
+   try `{"GKr": 0.5, "GKs": 0.5}` — reduce both delayed rectifiers together. The prolongation is larger
+   than either alone: cut one repolarising current and the other partly covers for it; cut both and there
+   is no backup left.
+4. **Break it on purpose.** In a `compare(...)` cell, mistype a name — `{"gto": 2.0}` or
+   `{"GCaL": 0.5}` — and read the `ValueError`. The tour helper lets the error surface, so a typo never
+   passes silently.
 """),
 
 (M, """---
@@ -295,9 +311,8 @@ just fat-finger the name. The error even prints the exact list of channels you *
   settled cells.
 - Each channel owns a feature of the AP: **`GNa`** the upstroke, **`Gto`** the phase-1 notch, **`PCa`**
   the plateau, **`GKr`** and **`GKs`** the speed of repolarisation, **`GK1`** the resting potential.
-- **Inward** currents (Na, Ca) build the beat; **outward** K currents end it — so blocking a
-  repolarising potassium channel (hERG/`GKr`) makes the beat *longer*, the mechanism behind
-  drug-induced long-QT.
+- **Inward** currents (Na, Ca) build the beat; **outward** K currents end it — so reducing a
+  repolarising potassium channel (`GKr`/`GKs`) makes the beat *longer*, not shorter: the sign flip.
 - Mistyped channel names **raise** rather than silently doing nothing — so a change that appears to do
   nothing really did nothing.
 

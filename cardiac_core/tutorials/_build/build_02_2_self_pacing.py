@@ -30,17 +30,19 @@ dish and they beat spontaneously.
 
 This short advanced notebook switches from the adult-ventricle `ttp06` model to **`paci`** (Paci et
 al. 2013), a model of a spontaneously-active hiPSC cardiomyocyte. We'll watch it beat on its own with
-no stimulus at all, then meet the current most responsible for that automaticity — the delightfully
-named **"funny" current, `I_f`** — and slow the cell's rhythm by turning it down.
+no stimulus at all, meet the current behind that automaticity — the delightfully named **"funny"
+current, `I_f`** — slow the rhythm by turning it down, and finally *silence* the beating altogether by
+switching to the cell's **matured** form, `mhas13`.
 
 **What you'll learn**
 
 1. **Automaticity** — run a cell that fires repeatedly with `stim_amplitude=0` (no electrode)
 2. **Diastolic depolarisation** — the slow drift toward threshold that *is* the pacemaker
 3. **The funny current `g_f`** — scale it and watch the spontaneous rate change
+4. **Maturation → quiescence** — meet `mhas13`, the matured hiPSC cell that sits silent until stimulated
 
-**Runtime**: about half a minute (two short runs). The Paci model is stiffer than `ttp06`, so we use a
-larger step `dt=0.1` and a few seconds of simulated time to capture several spontaneous beats.
+**Runtime**: a couple of minutes (three hiPSC-model runs). These models are stiffer than `ttp06`, so we
+use a larger step `dt=0.1` and a few seconds of simulated time to capture several spontaneous beats.
 """),
 
 (M, """---
@@ -105,13 +107,29 @@ that diastolic ramp climbs: a steeper climb reaches threshold sooner and beats f
 """),
 
 (M, """---
-## 2. The funny current sets the pace
+## 2. The funny current tunes the pace
 
 What drives the diastolic ramp? Several currents contribute, but the emblematic one is the **"funny"
-current `I_f`** — funny because, unlike most channels, it switches *on* at negative voltages, so it
-turns on right after a beat and carries the cell back upward toward the next one. It is the classic
-"pacemaker current," and the heart-rate-lowering drug **ivabradine** works by blocking exactly this
-current.
+current, `I_f`**. Its story is worth a paragraph, because the name *is* the biology.
+
+**Where the name comes from.** In the late 1970s, Dario DiFrancesco and colleagues, recording from
+cardiac pacemaker tissue, found a current that broke the usual rule. Almost every channel opens when
+the cell **depolarises** (gets *less* negative); this one did the opposite — it opened when the cell
+**hyperpolarised**, i.e. right after a beat, when the voltage had fallen to its most negative. That was
+so contrary to expectation that they simply called it the *funny* current, `I_f`, and the name stuck.
+
+**The channel and its ions.** `I_f` flows through **HCN channels** — *hyperpolarisation-activated
+cyclic-nucleotide-gated* channels — of which pacemaker cells use mainly **HCN4**. Two properties make it
+a pacemaker current:
+
+- It is a **mixed inward current of Na⁺ and K⁺**: when it opens, both ions cross, and the *net* flow is
+  **depolarising** — it nudges the voltage back **up**.
+- It opens on **hyperpolarisation**, so it switches on exactly when a beat ends and then carries the
+  slow climb (the diastolic ramp) toward the next threshold. More `I_f` → steeper ramp → faster rate.
+
+The *cyclic-nucleotide* part of the name is how the body sets its own heart rate: cAMP binds the
+channel, and that is the lever adrenaline uses to speed you up and the vagus nerve to slow you down —
+both act on `I_f`.
 
 In `paci` its conductance is **`g_f`**. (Note the lower-case `g_` — the hiPSC models name their
 channels differently from `ttp06`'s upper-case `G`; more on that below.) Let's turn it down to a
@@ -134,7 +152,52 @@ takes **longer to reach threshold** — every beat is delayed. The first spontan
 **0.61 → 0.55 Hz**, ~37 → ~33 beats per minute). The cell also settles a little deeper between beats
 (the printed diastolic low point drops from about **-77 mV to -79 mV**). Because each beat is a little
 later than the last, the orange trace drifts steadily to the right of the blue one — a slower pacemaker,
-drawn out in front of you. Block the funny current and the heart slows: that is ivabradine in one picture.
+drawn out in front of you. Turn the funny current down and the rhythm slows: the ramp *is* the rate.
+"""),
+
+(M, """---
+## 3. Silencing the pacemaker: maturation and `mhas13`
+
+Turning `g_f` *down* slowed the cell — but it never stops. Even a **complete** block (`{"g_f": 0.0}`)
+leaves this `paci` cell crawling along, only a little slower. `I_f` is not the whole story: a young
+hiPSC cell also has very little **`I_K1`**, the strong inward-rectifier potassium current that in an
+adult cell pins the voltage to a firm resting floor. With almost no `I_K1` holding it down, the cell
+drifts back up to threshold no matter what the funny current does. To truly silence it you must change
+*both* — which is exactly what **maturation** does.
+
+`cardiac_core` ships the matured cell as **`mhas13`**. It is the same `paci` cell with the two-step
+recipe from the maturation literature (Verkerk 2019):
+
+- **suppress the funny current** — `g_f = 0` (automaticity is a developmental trait, switched off), and
+- **inject an adult inward rectifier** — a strong TTP06-style `I_K1` at the critical conductance.
+
+Run it with no electrode — the same `stim_amplitude=0.0` that made `paci` beat — and compare the two:
+"""),
+
+(C, """mature = cc.single_cell(
+    "mhas13",               # the MATURED hiPSC model: g_f = 0 AND an injected adult I_K1
+    stim_amplitude=0.0,     # no electrode — exactly as the paci cell above
+    n_beats=1, bcl=3500, dt=0.1,
+)
+
+cc.draw(cc.Trace({"paci (immature)":  (paci.times, paci.V),
+                  "mhas13 (matured)": (mature.times, mature.V)},
+                 xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 3500))).show()
+
+print(f"mhas13, no electrode:  resting V = {mature.v_rest:.0f} mV   (flat line = no spontaneous beats)")
+"""),
+
+(M, """**Nothing happens.** The matured cell sits flat at about **-85 mV** — no diastolic drift, no
+spikes — while the immature `paci` cell beats twice in the same window. That flat line is
+**quiescence**: a strong `I_K1` clamps the resting potential, and with no `I_f` to lift the cell off
+that floor there is no pacemaker at all. It is not broken — give `mhas13` a real stimulus and it fires a
+clean action potential like any ventricular cell (peak ~+58 mV) — it simply never fires *on its own*.
+
+This is the whole reason `mhas13` exists, and it points straight at Chapter 3. **Tissue simulation needs
+quiescent cells.** A sheet wired from self-firing `paci` cells would ignite everywhere at once, with no
+resting tissue for a wave to travel *into*. So the division of labour is: **`paci` is the cell for
+studying a rhythm; `mhas13` is the cell you build tissue from** — matured, silent, and ready to be
+excited by a passing wave.
 """),
 
 (M, """---
@@ -157,11 +220,8 @@ except ValueError as e:
 
 1. **Speed it up instead.** In the section-2 cell, change `{"g_f": 0.25}` to `{"g_f": 1.5}`. A
    *stronger* funny current makes the diastolic ramp steeper, so the cell reaches threshold sooner and
-   beats *faster* — the opposite of ivabradine.
-2. **Silence the pacemaker.** Try a very deep block, `{"g_f": 0.05}`. The ramp becomes so shallow the
-   cell may barely reach threshold in the window — automaticity can fail when the pacemaker current is
-   gone.
-3. **Watch it longer.** Raise `bcl=3500` to `bcl=6000` in both cells to capture more beats and see the
+   beats *faster* — the mirror image of turning it down.
+2. **Watch it longer.** Raise `bcl=3500` to `bcl=6000` in both cells to capture more beats and see the
    rate difference accumulate. (It costs a little more runtime — the run is proportional to the window.)
 """),
 
@@ -172,8 +232,11 @@ except ValueError as e:
   with `stim_amplitude=0.0` (no electrode) and it beats repeatedly: **automaticity**.
 - The rhythm comes from **diastolic depolarisation**, the slow climb from the diastolic potential up to
   threshold between beats. Steeper climb → faster rate.
-- The **funny current `I_f`** (conductance `g_f`) is the emblematic pacemaker current. Blocking it
-  (`conductances={"g_f": 0.25}`) flattens the ramp and **slows the rate** — the mechanism of ivabradine.
+- The **funny current `I_f`** (conductance `g_f`) — carried by **HCN channels**, a mixed inward Na⁺/K⁺
+  current that opens on hyperpolarisation — is the emblematic pacemaker current. Turn it down
+  (`conductances={"g_f": 0.25}`) and the ramp flattens and the rate **slows**. (In *this* model,
+  removing it entirely only slows the cell — other currents keep it beating; `I_f` tunes the rhythm, it
+  is not the sole engine.)
 - hiPSC models name their channels **lower-case `g_*`**; a wrong-case name is a typo, and it is caught.
 
 **Where next**: you have now met the cell from two sides — what shapes one beat (Chapter 2) and what
