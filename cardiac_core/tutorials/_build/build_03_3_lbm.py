@@ -36,9 +36,11 @@ You do not need to have run 3.1 or 3.2 first — this notebook rebuilds the tiss
 2. **Running it** — the same ingredients, a smaller time step
 3. **The same wave** — the activation map looks just like monodomain's
 4. **A different number** — LBM's CV, and the like-to-like rule that makes engine numbers usable
+5. **Three ways to handle a wall** — how the LBM wall rule bends the front: slowdown, flat, or speedup
+6. **The boundary speedup, deeper** — the α dial and the number β behind the lab's headline effect
 
-**Runtime**: only a few seconds of computing (LBM with a short run). On Colab, add about a minute the
-first time for the install.
+**Runtime**: about a minute or two of computing — a short strip run, plus several small square-sheet
+runs for the wall-rule sections. On Colab, add about a minute the first time for the install.
 """),
 
 (M, """---
@@ -112,7 +114,15 @@ print("done — LBM run complete")
 (M, """---
 ## 4. The same wave
 
-Draw the activation map, exactly as in 3.1 — each node coloured by when the wave reached it:
+Watch it first — the wave sweeping across the strip, exactly like the monodomain movie in 3.1:
+"""),
+
+(C, """r.video()   # an inline movie of the LBM excitation wave sweeping left to right
+"""),
+
+(M, """A bright band enters from the left edge and marches to the right, each patch of tissue exciting
+the next — by eye, indistinguishable from the monodomain wave. Now the activation map, each node coloured
+by when the wave reached it:
 """),
 
 (C, """r.image(what="activation")   # colour each node by the time the wave arrived
@@ -163,6 +173,147 @@ result; the raw 64-vs-58 gap against monodomain is not something to read anythin
 """),
 
 (M, """---
+## 6. Advanced — three ways to handle a wall
+
+*(A peek under the hood, in the spirit of 3.1's section 6. Skip it if you just came to run LBM — but
+this is where this lab's headline research lives.)*
+
+LBM's streaming step opens a door the other two engines don't have. Remember what LBM actually does: at
+every step it **streams** little packets of "stuff" from each node to its neighbours, then lets them
+**collide**. At a wall, a packet that would have streamed *out* of the tissue has nowhere to go — and you
+have to decide what becomes of it. That single decision, the **wall rule**, is a genuine modelling
+choice, and `cardiac_core` gives you three of them on the 9-direction `d2q9` lattice, through
+`boundary=`. Each does something different to a wave running *along* the wall:
+
+| `boundary=` | What the wall does with the packet | The front it makes |
+|---|---|---|
+| `"hbb"` | bounces it **straight back** the way it came | wall **lags** the interior — a **forward crescent** (slowdown) |
+| `"ncs"` | reflects it to the **next cell** along the wall | **flat** — the front stays straight |
+| `"scs"` | reflects it but keeps its **push along the wall**, in the same cell | wall **leads** the interior — an **inverse crescent** (speedup) |
+
+This is the same wavefront-at-a-wall story from 3.1's section 6, now with a third outcome on the table.
+**Notebook 3.1 showed a wall *slowdown* baked into the grid stencil; 3.2 showed a physical *speedup* from
+bath loading; here the LBM wall rule itself can produce *either* — and the same-cell-specular speedup is
+the discrete-tissue boundary effect this lab studies.**
+
+Run the identical wave on a 1 cm × 1 cm sheet three times — same tissue, same electrode, only the wall
+rule changes. (These modes require `lattice="d2q9"`; the simpler `d2q5` lattice supports only plain
+`"neumann"` walls.)
+"""),
+
+(C, """gb    = cc.Grid(41, 41, 0.025)                                 # a 1 x 1 cm sheet; top & bottom are the walls
+iso   = cc.ConductivityConfig.isotropic(1.4)                   # LBM wall modes need isotropic tissue, dx = dy
+stimb = cc.Stim.boundary(gb, "left", amplitude=-80.0, start_time=1.0, duration=2.0)
+
+# same tissue, same wave — only the WALL RULE differs:
+r_hbb = cc.lbm(gb, "ttp06", iso, stimb, lattice="d2q9", boundary="hbb", dt=0.005).run(t_end=45.0, save_every=0.5)  # bounce-back
+r_ncs = cc.lbm(gb, "ttp06", iso, stimb, lattice="d2q9", boundary="ncs", dt=0.005).run(t_end=45.0, save_every=0.5)  # next-cell specular
+r_scs = cc.lbm(gb, "ttp06", iso, stimb, lattice="d2q9", boundary="scs", dt=0.005).run(t_end=45.0, save_every=0.5)  # same-cell specular
+
+r_hbb.image(what="activation")   # bounce-back wall
+"""),
+
+(M, """**Bounce-back (`"hbb"`)** — the baseline. The isochrones bow **backward** at the top and bottom
+walls: the wave reaches the edges a touch *later* than the middle — a **forward crescent**, a small
+**boundary slowdown** (about **+51 µs** of wall-vs-centre lag here). Bouncing the packet straight back is
+the bluntest possible wall: it returns the signal but adds nothing along the edge, so the wall charges a
+little slower than the interior. This is the same forward crescent you met in 3.1, and the yardstick the
+other two rules are measured against.
+"""),
+
+(C, """r_ncs.image(what="activation")   # next-cell specular wall
+"""),
+
+(M, """**Next-cell specular (`"ncs"`)** — dead straight. Reflecting the packet to the *neighbour one cell
+along the wall* is exactly the bookkeeping a flat wall needs: the front stays vertical, wall-vs-centre
+≈ **0 µs** — and, tellingly, it is **exactly 0 at every resolution you try**. That makes `ncs` the clean
+**correctness anchor**: whatever the other rules do, this one proves the engine itself carries no
+built-in edge bias, so the crescents are a real property of the wall rule, not a bug.
+"""),
+
+(C, """r_scs.image(what="activation")   # same-cell specular wall
+"""),
+
+(M, """**Same-cell specular (`"scs"`)** — now the wall **leads**. The isochrones bow strongly *forward* at
+the top and bottom edges: the wave reaches the walls **earlier** than the interior — an **inverse
+crescent**, a genuine **boundary speedup** (about **−808 µs** of lead here, far larger than hbb's lag).
+The rule keeps the packet's push *along* the wall in the same cell, so the edge gets an extra tangential
+shove its interior neighbours never see — and it runs ahead.
+
+Together these are the lab's "**Three Wall Rules, Three Crescents**" (Li Chang's June 2026 progress
+report): a forward-crescent slowdown, a flat neutral, and an inverse-crescent speedup, with crescent
+*rates* κ ≈ **+29 / 0 / −304 µs/cm** — the same three wall personalities first shown in the May 2026
+report (slides 11–12). Watch the same-cell-specular front live — the highlight of this notebook:
+"""),
+
+(C, """r_scs.video()   # the leading front — the wall running AHEAD of the interior
+"""),
+
+(M, """The wave bulges *forward* at the top and bottom walls, the edges pulling ahead of the middle —
+the boundary speedup, in motion.
+"""),
+
+(M, """---
+## 7. The boundary speedup, deeper — the α dial and the number β
+
+Two knobs turn that speedup from a yes/no switch into something you can dial and predict.
+
+### The α-blend — one dial from slowdown to speedup
+
+`boundary="combined"` fuses bounce-back and same-cell specular into a single continuous knob, `alpha=`:
+
+- **α = 1** is pure **HBB** — the slowdown,
+- **α = 0** is pure **same-cell specular** — the speedup,
+- and in between, the wall's crescent slides smoothly from one to the other, passing through a **flat
+  front near α ≈ 0.91**.
+
+So α sets the wall's curvature — its **sign and its degree** — almost **linearly**. It is the tuning
+dial for the whole effect. Try the midpoint:
+"""),
+
+(C, """blend = cc.lbm(gb, "ttp06", iso, stimb, lattice="d2q9",
+               boundary="combined", alpha=0.5, dt=0.005).run(t_end=45.0, save_every=0.5)
+blend.image(what="activation")   # half bounce-back, half same-cell specular
+"""),
+
+(M, """At α = 0.5 the front sits *between* the two extremes — a partial inverse crescent, the wall
+leading, but by less than pure `scs`. Slide α up toward 1 and the crescent flattens and then reverses to
+a slowdown; slide it down to 0 and you recover the full speedup. (`alpha=` only means anything for
+`boundary="combined"` — on the other wall modes it is inert.)
+
+### The number β — how the wave's width compares to the grid
+
+There is a second, deeper control, and it is not a keyword at all. LBM has a natural dimensionless number,
+
+    β  =  D · dt / dx²
+
+— its diffusion/relaxation number, built from the diffusivity `D` (which you set through
+`ConductivityConfig`), the time step `dt`, and the spacing `dx` (which you set through `cc.Grid`). You
+never type `β`; you *set* it implicitly, every time you choose those three.
+
+β controls the **magnitude** of the same-cell-specular crescent — and, decisively, its **sign**. On the
+canonical `d2q9` lattice the crescent **flips sign at β\\* = 1/12**: land on one side of that value and
+the wall speeds up, land on the other and it slows down. In plain terms, what the wall does depends on
+**how the wavefront's own width compares to the grid spacing** — the ratio the June 2026 report calls the
+control parameter **dx/r\\*** (with `r* = D/CV`, the wavefront's electrotonic length).
+
+### Is the speedup "real"?
+
+**Yes.** This is not a numerical glitch to explain away — it is what **discreteness** does at a wall.
+Real cardiac tissue is not a smooth continuum: it is genuinely built from discrete, **diagonally-coupled**
+cells, and the same-cell-specular rule is the lattice honouring exactly that diagonal coupling at an edge.
+The boundary speedup is what that discrete structure *produces* at a wall.
+
+The resolution-dependence — the sign flip at β\\* = 1/12, the front changing character as the grid
+spacing crosses the wavefront's own width — is not a reason to doubt the effect; it is one of the most
+**interesting** things about it. The wall's behaviour is *set by* the wavefront-width-to-grid-spacing
+ratio, and that is precisely why it matters: real tissue lives near `r*/dx ~ O(1)` (the electrotonic
+length `r*` is about the size of a real cardiac cell, ~100–150 µm), the very regime where this crescent
+is switched on. For the full treatment — the control parameter **dx/r\\*** and how the boundary speedup
+flips sign with resolution — see **Li Chang's May and June 2026 progress reports**.
+"""),
+
+(M, """---
 ## Recap
 
 - **LBM** reaches the same propagation physics by a different numerical route — streaming and colliding
@@ -172,6 +323,11 @@ result; the raw 64-vs-58 gap against monodomain is not something to read anythin
   monodomain's ≈ 58) — a systematic numerical offset, **not** an error.
 - The takeaway rule: **compare like-to-like** — an engine against itself across conditions, never one
   engine's absolute number against another's.
+- **At a wall, the LBM rule itself decides the curvature**: `boundary="hbb"` lags (slowdown), `"ncs"`
+  stays flat (the correctness anchor), `"scs"` leads (a real **boundary speedup** from tissue
+  discreteness). `boundary="combined", alpha=` dials smoothly between them, and the dimensionless
+  β = D·dt/dx² sets the effect's size and flips its sign at β\\* = 1/12. The lab's May/June 2026 reports
+  carry the full story.
 
 **Where next**: that completes the tour of building tissue and the three engines. Chapter 4 puts the
 tissue to work with **pacing** — driving it beat after beat to measure how it recovers between beats and
