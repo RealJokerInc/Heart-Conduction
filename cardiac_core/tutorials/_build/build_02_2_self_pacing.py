@@ -39,10 +39,10 @@ switching to the cell's **matured** form, `mhas13`.
 1. **Automaticity** — run a cell that fires repeatedly with `stim_amplitude=0` (no electrode)
 2. **Diastolic depolarisation** — the slow drift toward threshold that *is* the pacemaker
 3. **The funny current `g_f`** — scale it and watch the spontaneous rate change
-4. **Maturation → quiescence** — meet `mhas13`, the matured hiPSC cell that sits silent until stimulated
+4. **Maturation → quiescence** — silence the pacemaker step by step (suppress `I_f`, then boost `I_K1`) — the `mhas13` recipe
 
-**Runtime**: a couple of minutes (three hiPSC-model runs). These models are stiffer than `ttp06`, so we
-use a larger step `dt=0.1` and a few seconds of simulated time to capture several spontaneous beats.
+**Runtime**: a couple of minutes (four short hiPSC-model runs). These models are stiffer than `ttp06`, so
+we use a larger step `dt=0.1` and a few seconds of simulated time to capture several spontaneous beats.
 """),
 
 (M, """---
@@ -156,48 +156,54 @@ drawn out in front of you. Turn the funny current down and the rhythm slows: the
 """),
 
 (M, """---
-## 3. Silencing the pacemaker: maturation and `mhas13`
+## 3. Silencing the pacemaker: two changes, and only both
 
-Turning `g_f` *down* slowed the cell — but it never stops. Even a **complete** block (`{"g_f": 0.0}`)
-leaves this `paci` cell crawling along, only a little slower. `I_f` is not the whole story: a young
-hiPSC cell also has very little **`I_K1`**, the strong inward-rectifier potassium current that in an
-adult cell pins the voltage to a firm resting floor. With almost no `I_K1` holding it down, the cell
-drifts back up to threshold no matter what the funny current does. To truly silence it you must change
-*both* — which is exactly what **maturation** does.
-
-`cardiac_core` ships the matured cell as **`mhas13`**. It is the same `paci` cell with the two-step
-recipe from the maturation literature (Verkerk 2019):
-
-- **suppress the funny current** — `g_f = 0` (automaticity is a developmental trait, switched off), and
-- **inject an adult inward rectifier** — a strong TTP06-style `I_K1` at the critical conductance.
-
-Run it with no electrode — the same `stim_amplitude=0.0` that made `paci` beat — and compare the two:
+Turning `g_f` *down* slowed the cell. Turn it all the way **off** — `{"g_f": 0.0}`, the funny current
+completely gone — and watch what happens:
 """),
 
-(C, """mature = cc.single_cell(
-    "mhas13",               # the MATURED hiPSC model: g_f = 0 AND an injected adult I_K1
-    stim_amplitude=0.0,     # no electrode — exactly as the paci cell above
-    n_beats=1, bcl=3500, dt=0.1,
-)
+(C, """step1 = cc.single_cell("paci", stim_amplitude=0.0, n_beats=1, bcl=3500, dt=0.1,
+                       conductances={"g_f": 0.0})   # STEP 1: funny current fully OFF
 
-cc.draw(cc.Trace({"paci (immature)":  (paci.times, paci.V),
-                  "mhas13 (matured)": (mature.times, mature.V)},
+cc.draw(cc.Trace({"paci baseline":      (paci.times, paci.V),
+                  "g_f = 0  (I_f off)": (step1.times, step1.V)},
                  xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 3500))).show()
-
-print(f"mhas13, no electrode:  resting V = {mature.v_rest:.0f} mV   (flat line = no spontaneous beats)")
 """),
 
-(M, """**Nothing happens.** The matured cell sits flat at about **-85 mV** — no diastolic drift, no
-spikes — while the immature `paci` cell beats twice in the same window. That flat line is
-**quiescence**: a strong `I_K1` clamps the resting potential, and with no `I_f` to lift the cell off
-that floor there is no pacemaker at all. It is not broken — give `mhas13` a real stimulus and it fires a
-clean action potential like any ventricular cell (peak ~+58 mV) — it simply never fires *on its own*.
+(M, """**Still beating.** Removing the funny current entirely only stretches the interval — the cell
+fires later, but it fires. `I_f` *tunes* the rhythm; it is not the engine that stops the beating. A
+young hiPSC cell is restless for a second reason: it has very little **`I_K1`**, the strong
+inward-rectifier potassium current that in an adult cell pins the voltage to a firm resting floor. With
+almost no `I_K1` to hold it down, the cell keeps drifting up to threshold no matter what `I_f` does.
 
-This is the whole reason `mhas13` exists, and it points straight at Chapter 3. **Tissue simulation needs
-quiescent cells.** A sheet wired from self-firing `paci` cells would ignite everywhere at once, with no
-resting tissue for a wave to travel *into*. So the division of labour is: **`paci` is the cell for
-studying a rhythm; `mhas13` is the cell you build tissue from** — matured, silent, and ready to be
-excited by a passing wave.
+So make the second change too — **strengthen `I_K1`**, on top of turning `I_f` off:
+"""),
+
+(C, """step2 = cc.single_cell("paci", stim_amplitude=0.0, n_beats=1, bcl=3500, dt=0.1,
+                       conductances={"g_f": 0.0, "g_K1": 10.0})   # STEP 2: I_f off AND a strong I_K1
+
+cc.draw(cc.Trace({"paci baseline":         (paci.times, paci.V),
+                  "I_f off + strong I_K1": (step2.times, step2.V)},
+                 xlabel="time (ms)", ylabel="Vm (mV)", xlim=(0, 3500))).show()
+print(f"I_f off + strong I_K1:  resting V = {step2.v_rest:.0f} mV   (flat = silent)")
+"""),
+
+(M, """**Now it is quiet.** A strong `I_K1` clamps the resting voltage near **-88 mV**, and with no
+`I_f` to lift the cell off that floor, the diastolic ramp is gone — the flat trace is a cell with no
+pacemaker at all. It takes **both** changes: `I_f` off alone still beats (you just saw it), and a strong
+`I_K1` gives the cell somewhere stable to rest. **Neither change alone makes a quiet cell — the
+combination does.**
+
+That combination is exactly what **maturation** is, and `cardiac_core` ships the properly-tuned matured
+cell as **`mhas13`** — the same recipe done right (Verkerk 2019): the developmental funny current
+suppressed (`g_f = 0`) and a strong adult-type `I_K1` injected at the critical conductance. So instead
+of dialling the two knobs by hand, you can just ask for `cc.single_cell("mhas13", stim_amplitude=0.0)`
+and get the same silent, matured cell.
+
+This points straight at Chapter 3. **Tissue simulation needs quiescent cells.** A sheet wired from
+self-firing `paci` cells would ignite everywhere at once, with no resting tissue for a wave to travel
+*into*. So the division of labour is: **`paci` is the cell for studying a rhythm; `mhas13` is the cell
+you build tissue from** — matured, silent, and fired only when a wave reaches it.
 """),
 
 (M, """---
