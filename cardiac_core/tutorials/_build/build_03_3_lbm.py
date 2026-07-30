@@ -65,12 +65,6 @@ else:
 """),
 
 (C, """import cardiac_core as cc
-from IPython.display import Image as _Image
-
-# movie(result): show a propagation movie as an animated GIF. GitHub cannot display the default
-# mp4 video output, but it does render GIFs — so movie() plays on GitHub as well as in Colab.
-def movie(result, frames=40):
-    return _Image(result.video(format="gif", max_frames=frames).read())
 
 print("cardiac_core is ready")
 """),
@@ -123,7 +117,7 @@ print("done — LBM run complete")
 Watch it first — the wave sweeping across the strip, exactly like the monodomain movie in 3.1:
 """),
 
-(C, """movie(r)   # an inline movie of the LBM excitation wave sweeping left to right (animated GIF)
+(C, """r.video()   # an inline movie of the LBM excitation wave sweeping left to right
 """),
 
 (M, """A bright band enters from the left edge and marches to the right, each patch of tissue exciting
@@ -252,7 +246,7 @@ report): a forward-crescent slowdown, a flat neutral, and an inverse-crescent sp
 report (slides 11–12). Watch the same-cell-specular front live — the highlight of this notebook:
 """),
 
-(C, """movie(r_scs)   # the leading front — the wall running AHEAD of the interior (animated GIF)
+(C, """r_scs.video()   # the leading front — the wall running AHEAD of the interior
 """),
 
 (M, """The wave bulges *forward* at the top and bottom walls, the edges pulling ahead of the middle —
