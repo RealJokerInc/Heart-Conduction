@@ -72,12 +72,6 @@ else:
 """),
 
 (C, """import cardiac_core as cc
-from IPython.display import Image as _Image
-
-# movie(result): show a propagation movie as an animated GIF. GitHub cannot display the default
-# mp4 video output, but it does render GIFs — so movie() plays on GitHub as well as in Colab.
-def movie(result, frames=40):
-    return _Image(result.video(format="gif", max_frames=frames).read())
 
 print("cardiac_core is ready")
 """),
@@ -204,7 +198,7 @@ step (smaller is more accurate but slower; 0.05 is plenty here). The run returns
 holds the voltage everywhere at every saved moment and knows how to draw itself. Watch the wave:
 """),
 
-(C, """movie(r)   # an inline movie of the excitation wave sweeping left to right (animated GIF)
+(C, """r.video()   # an inline movie of the excitation wave sweeping left to right
 """),
 
 (M, """A bright band enters from the left edge — where the electrode fired — and sweeps to the right, each
@@ -356,7 +350,7 @@ anything you must *also* pass `stencil="moore8_uniform"`.
 Watch the slowed wave curl back at the walls as it crosses:
 """),
 
-(C, """movie(r_std)   # the front bowing backward at the top and bottom walls (animated GIF)
+(C, """r_std.video()   # the front bowing backward at the top and bottom walls
 """),
 
 (M, """That the wavefront's *shape at a boundary* depends on discretisation choices — the stencil, the
