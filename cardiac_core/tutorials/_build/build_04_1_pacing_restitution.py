@@ -36,15 +36,16 @@ you will have measured the restitution curve yourself.
 **What you'll learn**
 
 1. **Pacing and BCL** — driving a cell at a fixed cycle length
-2. **APD shortens with rate** — pace faster, and each action potential gets briefer
+2. **APD shortens with rate** — pace faster, each beat briefer; seen in one beat and across a whole train
 3. **The restitution curve** — plotting beat duration against recovery time
-4. **Effective rate and capture** — why a cell can't keep up past a certain speed
+4. **Effective rate and capture** — drive the cell past its refractory floor and watch beats drop
 
 This chapter stays with the **single cell** from Chapter 1 — no tissue yet. Chapter 4.2 takes pacing
 into tissue and does something dramatic with it.
 
-**Runtime**: about 80 seconds — the restitution sweep runs several settled simulations back to back.
-On Google Colab, add about a minute the first time for the install.
+**Runtime**: about 3 minutes — the restitution sweep, three multi-beat pacing trains, and a fast-pacing
+run, all settled simulations back to back. On Google Colab, add about a minute the first time for the
+install.
 """),
 
 (M, """---
@@ -158,6 +159,41 @@ returns to rest noticeably sooner — its plateau is cut short. Same cell, same 
 difference is how hard it was driven.
 """),
 
+(M, """### See the whole train
+
+That overlay is two *single* beats. But pacing is a *train* of beats, and the real feel of "rate" is how
+tightly those beats pack together. Here is the same cell recorded continuously at three rates, with a
+**red dashed tick at every stimulus**:
+"""),
+
+(C, """T0  = 10.0                                   # single_cell fires its first stimulus at t = 10 ms
+WIN = 1200.0                                 # a common time window (ms) to compare the rates in
+train_bcls = [600, 350, 250]                 # slow, medium, fast
+
+fig, axes = plt.subplots(len(train_bcls), 1, figsize=(8, 6), sharex=True)
+for ax, bcl in zip(axes, train_bcls):
+    n  = int(WIN / bcl) + 2                   # enough beats to fill the window
+    sc = cc.single_cell("ttp06", celltype="EPI", bcl=bcl, n_beats=n, pre_pace=1, dt=0.05)
+    ax.plot(sc.times, sc.V, color="C0")
+    for k in range(n):                        # one tick per stimulus
+        ax.axvline(T0 + k * bcl, color="crimson", ls="--", lw=0.8, alpha=0.7)
+    ax.set_xlim(0, WIN)
+    ax.set_ylabel("V (mV)")
+    ax.set_title(f"BCL = {bcl} ms   ({round(60000 / bcl)} bpm)", loc="left", fontsize=10)
+axes[-1].set_xlabel("time (ms)    —    red dashed = stimulus")
+fig.suptitle("The same cell, three pacing rates (each red tick is one stimulus)")
+fig.tight_layout()
+plt.show()
+"""),
+
+(M, """Top to bottom the beats crowd closer, because each stimulus lands sooner after the last. Watch
+the *baseline between beats*: in the top (slow) panel the trace flattens out at rest for a long stretch
+before the next tick; by the bottom (fast) panel that flat resting stretch has all but vanished — the
+cell is yanked back up almost the instant it repolarises. That shrinking gap **is** the diastolic
+interval collapsing, the very number that fell from 374 ms to 67 ms in the table. Push the rate higher
+still and it runs out entirely — which is exactly where §4 goes.
+"""),
+
 (M, """---
 ## 3. The restitution curve
 
@@ -208,6 +244,58 @@ Chapter 4.2, lets a well-timed stimulus land in a patch of still-recovering tiss
 into a self-sustaining rotor.
 """),
 
+(M, """### Watch a beat get dropped
+
+Enough describing it — let's *drive* the cell past its floor and watch. We pace at **BCL = 170 ms**
+(353 bpm), deep into the refractory zone, with a **modest, near-threshold stimulus**. That last detail
+matters: during the refractory tail the cell's excitation threshold is *raised*, so a gentle pulse that
+easily captures a rested cell now **fails outright** when it lands too soon — a cleanly dropped beat. (A
+very strong shock could still force a diminished beat; that is the *relative* refractory period. A
+near-threshold pulse tests excitability honestly.) Each stimulus is marked **green** if it fired a beat,
+**red** if it was dropped:
+"""),
+
+(C, """T0 = 10.0                                      # single_cell fires its first stimulus at t = 10 ms
+fast_bcl = 170                                 # ms — deep into the refractory zone (353 bpm)
+n = 8
+scf = cc.single_cell("ttp06", celltype="EPI", bcl=fast_bcl, n_beats=n,
+                     pre_pace=0, dt=0.05, save_every=0.5,
+                     stim_amplitude=-18.0)     # a modest, near-threshold test pulse
+
+def fired(sc, ts):
+    # Did the stimulus at time ts trigger a real upstroke? (a fast dV/dt spike within 8 ms of it)
+    t, V = sc.times, sc.V
+    dv = (V[1:] - V[:-1]) / (t[1:] - t[:-1])    # mV per ms
+    m = (t[:-1] >= ts) & (t[:-1] <= ts + 8.0)
+    return bool(m.any() and dv[m].max().item() > 20.0)
+
+plt.figure(figsize=(8, 4))
+plt.plot(scf.times, scf.V, color="C0")
+for k in range(n):
+    ts = T0 + k * fast_bcl
+    plt.axvline(ts, color=("seagreen" if fired(scf, ts) else "crimson"), ls="--", lw=1.3)
+plt.plot([], [], color="seagreen", ls="--", label="stimulus captured — a beat fires")
+plt.plot([], [], color="crimson",  ls="--", label="stimulus dropped — cell still refractory")
+plt.xlim(0, T0 + n * fast_bcl)
+plt.xlabel("time (ms)")
+plt.ylabel("membrane voltage (mV)")
+plt.title("Paced at BCL = 170 ms — too fast: the cell captures only every other beat (2:1)")
+plt.legend(loc="upper right", fontsize=8)
+plt.tight_layout()
+plt.show()
+"""),
+
+(M, """Read it as a rhythm: **full beat — dropped — full beat — dropped.** Every red tick is a stimulus
+that arrived while the cell was still repolarising; with its threshold raised, the gentle pulse can't
+re-excite it — it raises at most a small bump on the falling tail of the previous beat, never a new
+upstroke. Only the green ticks fire a real action potential. The cell has locked into **2:1 capture** —
+one beat for every two stimuli — so
+although you *commanded* 170 ms, it actually beats about every **340 ms**, half the rate you asked for.
+Command and response have parted ways, exactly as this section opened. That same refractory gate, in a
+2-D sheet, is what Chapter 4.2 exploits: a stimulus timed to fall in the recovering tail of a passing
+wave doesn't merely drop — it can split the wavefront and seed a rotor.
+"""),
+
 (M, """### Try it yourself
 
 **1. Push past the floor.** Add a very fast rate to the `bcls` list — change the first cell's list to
@@ -231,8 +319,9 @@ move up or down?
 - The **restitution curve** — APD plotted against the preceding diastolic interval — captures that
   rate-dependence in one line; its **steep** low-DI end is where alternans and, in tissue, wave
   breakup begin.
-- There is a **refractory floor**: below some cycle length the cell can no longer capture every
-  stimulus, and its effective rate diverges from the commanded one.
+- There is a **refractory floor**: below some cycle length a stimulus that lands in the refractory tail
+  fails, and the cell drops into **2:1 capture** — driven at 170 ms it beats only every ~340 ms, half
+  the commanded rate. We paced it there and watched the beats drop.
 
 **Where next**: Chapter 4.2 takes pacing into a 2-D sheet of tissue. There, a first wave followed by a
 second, well-timed stimulus — landing exactly in the recovering tail this chapter just described — can
