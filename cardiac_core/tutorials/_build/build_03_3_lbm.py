@@ -25,8 +25,10 @@ CELLS = [
 The last two notebooks ran the same strip of tissue on **monodomain** (≈ 58 cm/s) and **bidomain**
 (≈ 60 cm/s). This one runs it on the third engine, **LBM** — the lattice-Boltzmann method — which
 arrives at the same wave by completely different machinery. It comes out a little *faster* on the
-clock, and understanding why that is fine — not a bug — is the real lesson of this notebook and a rule
-you will lean on constantly in Chapter 5.
+clock — and understanding why that is fine, not a bug, is the first lesson here (a like-to-like rule
+you'll lean on all through Chapter 5). The second is bigger: LBM lets you model the **discrete** physics
+of a tissue *edge* correctly — something the continuum engines, by construction, cannot — and that is
+where this lab's boundary research lives.
 
 You do not need to have run 3.1 or 3.2 first — this notebook rebuilds the tissue in one cell.
 
@@ -36,8 +38,8 @@ You do not need to have run 3.1 or 3.2 first — this notebook rebuilds the tiss
 2. **Running it** — the same ingredients, a smaller time step
 3. **The same wave** — the activation map looks just like monodomain's
 4. **A different number** — LBM's CV, and the like-to-like rule that makes engine numbers usable
-5. **Three ways to handle a wall** — how the LBM wall rule bends the front: slowdown, flat, or speedup
-6. **The boundary speedup, deeper** — the α dial and the number β behind the lab's headline effect
+5. **Why LBM earns its place** — modelling *discrete* edge effects the continuum engines can't reach, through the wall rule: slowdown, flat, or a real speedup
+6. **A tunable family of edge models** — blending the wall rules (the α dial) to span the discrete edge effects real tissue might show, and the number β behind the effect's size and sign
 
 **Runtime**: about a minute or two of computing — a short strip run, plus several small square-sheet
 runs for the wall-rule sections. On Colab, add about a minute the first time for the install.
@@ -173,28 +175,44 @@ result; the raw 64-vs-58 gap against monodomain is not something to read anythin
 """),
 
 (M, """---
-## 6. Advanced — three ways to handle a wall
+## 6. Where LBM earns its keep — modelling discrete edge effects
 
-*(A peek under the hood, in the spirit of 3.1's section 6. Skip it if you just came to run LBM — but
-this is where this lab's headline research lives.)*
+*(This is the point of using LBM at all, not a footnote. If you only came to run the engine you can skip
+to the recap — but this is where LBM does something the other two engines cannot.)*
 
-LBM's streaming step opens a door the other two engines don't have. Remember what LBM actually does: at
-every step it **streams** little packets of "stuff" from each node to its neighbours, then lets them
-**collide**. At a wall, a packet that would have streamed *out* of the tissue has nowhere to go — and you
-have to decide what becomes of it. That single decision, the **wall rule**, is a genuine modelling
-choice, and `cardiac_core` gives you three of them on the 9-direction `d2q9` lattice, through
-`boundary=`. Each does something different to a wave running *along* the wall:
+Here is what the continuum engines can't do. Monodomain and bidomain model tissue as a **smooth medium**,
+so at a wall they impose the continuum *no-flux* condition — and for a wave running along a straight wall
+that has exactly one right answer: a **flat front**. In 3.1 you saw that when a finite-difference grid
+bows the front at the wall, that curvature is a **numerical artifact** — a stencil bug the iso-mirror fix
+removes to recover the flat answer. In the continuum world, edge curvature is a thing to *correct away*.
 
-| `boundary=` | What the wall does with the packet | The front it makes |
+But real cardiac tissue is **not** a smooth continuum. It is discrete cells wired to their neighbours —
+**diagonally** included — and near an edge that discrete structure does something physical the continuum
+equation has no way to express. Rebuilding it inside a finite-difference solver is hard: you'd have to
+re-inject the very discreteness a continuum model exists to smooth over.
+
+LBM is the natural tool for it. Remember what it actually does: every step it **streams** little packets
+of "stuff" from each node to its neighbours — including along the **diagonals** — then lets them
+**collide**. At a wall the packets that would have streamed *out* of the tissue have nowhere to go, and
+**how you reinject them — above all the diagonal ones, which carry the push *along* the wall — is the
+wall rule**: not a nuisance boundary condition but a genuine modelling choice about how discrete tissue
+behaves at its edge. `cardiac_core` gives you three on the 9-direction `d2q9` lattice, through
+`boundary=`:
+
+| `boundary=` | How it reinjects the packet at the wall | The front it makes |
 |---|---|---|
 | `"hbb"` | bounces it **straight back** the way it came | wall **lags** the interior — a **forward crescent** (slowdown) |
-| `"ncs"` | reflects it to the **next cell** along the wall | **flat** — the front stays straight |
-| `"scs"` | reflects it but keeps its **push along the wall**, in the same cell | wall **leads** the interior — an **inverse crescent** (speedup) |
+| `"ncs"` | reflects it to the **next cell** along the wall | **flat** — the continuum answer |
+| `"scs"` | reflects it but keeps its **diagonal push along the wall**, in the same cell | wall **leads** the interior — an **inverse crescent** (a real speedup) |
 
-This is the same wavefront-at-a-wall story from 3.1's section 6, now with a third outcome on the table.
-**Notebook 3.1 showed a wall *slowdown* baked into the grid stencil; 3.2 showed a physical *speedup* from
-bath loading; here the LBM wall rule itself can produce *either* — and the same-cell-specular speedup is
-the discrete-tissue boundary effect this lab studies.**
+The middle rule, `ncs`, simply reproduces the flat continuum front the finite-difference engines work to
+get. The outer two are what a *discrete* edge can do that a continuum cannot — they differ only in **how
+the diagonal currents are reinjected**, and `scs`, by keeping that diagonal push *along* the wall,
+honours the diagonal inter-cellular coupling at the edge and yields a genuine **boundary speedup**. (3.1
+showed an edge *slowdown* that was a stencil artifact; 3.2 a physical *speedup* from bath loading; here
+the wall rule alone produces *either*.) That speedup is this lab's headline discrete-tissue effect — for
+the background on why discrete boundary effects matter, and why continuum solvers miss them, see **Li
+Chang's presentation _Correct handling of discrete boundary effects_ (lab SharePoint)**.
 
 Run the identical wave on a 1 cm × 1 cm sheet three times — same tissue, same electrode, only the wall
 rule changes. (These modes require `lattice="d2q9"`; the simpler `d2q5` lattice supports only plain
@@ -258,17 +276,21 @@ the boundary speedup, in motion.
 
 Two knobs turn that speedup from a yes/no switch into something you can dial and predict.
 
-### The α-blend — one dial from slowdown to speedup
+### The α-blend — a tunable family of edge models
 
-`boundary="combined"` fuses bounce-back and same-cell specular into a single continuous knob, `alpha=`:
+The three wall rules differ only in **how the diagonal currents are reinjected** at the edge. By
+*modulating* that reinjection — continuously blending bounce-back with same-cell specular —
+`boundary="combined"` turns them into a single **family of edge models**: a tunable tool for the range of
+discrete edge effects real tissue might actually show. The dial is `alpha=`:
 
 - **α = 1** is pure **HBB** — the slowdown,
 - **α = 0** is pure **same-cell specular** — the speedup,
 - and in between, the wall's crescent slides smoothly from one to the other, passing through a **flat
   front near α ≈ 0.91**.
 
-So α sets the wall's curvature — its **sign and its degree** — almost **linearly**. It is the tuning
-dial for the whole effect. Try the midpoint:
+So α sets the wall's curvature — its **sign and its degree** — almost **linearly**: one knob spanning
+slowdown, flat, and speedup, the whole tunable family of edge behaviours in a single parameter. Try the
+midpoint:
 """),
 
 (C, """blend = cc.lbm(gb, "ttp06", iso, stimb, lattice="d2q9",
@@ -299,10 +321,12 @@ control parameter **dx/r\\*** (with `r* = D/CV`, the wavefront's electrotonic le
 
 ### Is the speedup "real"?
 
-**Yes.** This is not a numerical glitch to explain away — it is what **discreteness** does at a wall.
-Real cardiac tissue is not a smooth continuum: it is genuinely built from discrete, **diagonally-coupled**
-cells, and the same-cell-specular rule is the lattice honouring exactly that diagonal coupling at an edge.
-The boundary speedup is what that discrete structure *produces* at a wall.
+**Yes.** This is not a numerical glitch to explain away — it is what **discreteness** does at a wall, and
+precisely why you need an engine that *represents* discreteness to see it at all. Real cardiac tissue is
+not a smooth continuum: it is genuinely built from discrete, **diagonally-coupled** cells, and the
+same-cell-specular rule is the lattice honouring exactly that diagonal coupling at an edge — reinjecting
+the diagonal currents so the edge keeps its tangential push. The boundary speedup is what that discrete
+structure *produces* at a wall — invisible, by construction, to a continuum solver.
 
 The resolution-dependence — the sign flip at β\\* = 1/12, the front changing character as the grid
 spacing crosses the wavefront's own width — is not a reason to doubt the effect; it is one of the most
@@ -323,11 +347,13 @@ flips sign with resolution — see **Li Chang's May and June 2026 progress repor
   monodomain's ≈ 58) — a systematic numerical offset, **not** an error.
 - The takeaway rule: **compare like-to-like** — an engine against itself across conditions, never one
   engine's absolute number against another's.
-- **At a wall, the LBM rule itself decides the curvature**: `boundary="hbb"` lags (slowdown), `"ncs"`
-  stays flat (the correctness anchor), `"scs"` leads (a real **boundary speedup** from tissue
-  discreteness). `boundary="combined", alpha=` dials smoothly between them, and the dimensionless
-  β = D·dt/dx² sets the effect's size and flips its sign at β\\* = 1/12. The lab's May/June 2026 reports
-  carry the full story.
+- **LBM's real payoff is discrete edge physics the continuum engines can't reach.** At a wall the rule
+  decides the curvature by *how it reinjects the diagonal currents*: `"hbb"` lags (slowdown), `"ncs"`
+  stays flat (the continuum answer / correctness anchor), `"scs"` leads — a genuine **boundary speedup**
+  from honouring the tissue's diagonal coupling. `boundary="combined", alpha=` blends them into one
+  tunable family of edge models, and the dimensionless β = D·dt/dx² sets the effect's size and flips its
+  sign at β\\* = 1/12. Background in Li Chang's *Correct handling of discrete boundary effects* (lab
+  SharePoint); the full quantitative story in the lab's May/June 2026 reports.
 
 **Where next**: that completes the tour of building tissue and the three engines. Chapter 4 puts the
 tissue to work with **pacing** — driving it beat after beat to measure how it recovers between beats and
