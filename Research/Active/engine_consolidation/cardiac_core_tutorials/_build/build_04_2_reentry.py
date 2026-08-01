@@ -98,12 +98,14 @@ rc = cc.monodomain(g, "ttp06", cond, clamp, dt=0.1).run(t_end=60.0, save_every=1
 print("done — the left strip was held at 0 mV")
 """),
 
-(M, """Compare a node *inside* the clamped strip with one far downstream:
+(M, """Compare a node *inside* the clamped strip with one far downstream; the two dotted verticals
+bracket the 40 ms window during which the clamp is held:
 """),
 
 (C, """rc.trace(at={"clamped strip (x=0.04 cm)": (2, 20),
              "downstream (x=0.90 cm)": (45, 20)},
-         hline=(0.0, "command voltage"))
+         hline=(0.0, "command voltage"),
+         vline=[(1.0, "clamp on"), (41.0, "clamp off")])   # bracket the 40 ms clamp window
 """),
 
 (M, """The clamped node (first trace) is a **flat line pinned exactly at 0 mV** for the whole 40 ms
