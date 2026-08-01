@@ -11,6 +11,21 @@ How do we unify the engines (Bidomain V1, Monodomain V5.5, LBM V1) under one `ca
 
 ## Status: Active
 
+> **⚑ PACKAGE LAYOUT — publish-prep SHIPPED 2026-08-01 (`6c0b16c`, on `main` + `origin/main`).**
+> `cardiac_core/` is now a **clean, sterile, shareable (private / Cornell BME) package**: library code +
+> support docs (`API_CHEATSHEET.md`, `API_OBJECTS.md`) + `README.md` ONLY. Everything else was moved OUT to
+> this research folder — **allocate new cardiac_core support material here, NOT inside the package:**
+> - **Tests** → `Research/Active/engine_consolidation/cardiac_core_tests/`. Run:
+>   `pytest Research/Active/engine_consolidation/cardiac_core_tests/` (the suite imports the
+>   editable-installed `cardiac_core`). Do NOT move tests back inside the package — the integrity gate + 5
+>   other tests re-anchor to `cardiac_core.__file__`, and `engine_consolidation/` must have **no**
+>   `__init__.py` so pytest can import `cardiac_core_tests` as a top-level package.
+> - **Tutorials** (the 12-notebook series) → `Research/Active/engine_consolidation/cardiac_core_tutorials/`.
+> - **Plan / design / audit docs** (e.g. `IONIC_PRESET_PLAN.md`) → this folder + its `plans/` archive.
+> - **Rule going forward:** the package stays **library-only**; new cardiac_core tests / tutorials / plans
+>   live under `engine_consolidation/` (figures under `media/`), never in `cardiac_core/`.
+> See [[project_cardiac_core_publish_prep]] · plan `plans/2026-08-01_cardiac-core-publish-prep.md`.
+>
 > **Video object SHIPPED (2026-07-23, commit `2a4b0e3` on `main`)** — `cardiac_core/video/`: a `Video` spec +
 > reusable `Gradient` + `render()`, `r.video("slug")` as the one-liner (full-frame, unlabelled, 1080p), native
 > multi-panel with a shared colorbar, front/isochrone overlays. `viz.propagation_video` delegates (600x300
@@ -66,7 +81,7 @@ Files to read when resuming work on this question:
 | `GLOSSARY.md` | **Ubiquitous language** (Goal 1 vocab): one canonical name per concept across the 3 engines + `cardiac_core`; decision table (resolved/open), naming principles P1/P2 |
 | `API_DESIGN.md` | **Unified `Simulation` interface** (Goal 1): 4 idioms, `Simulation` Protocol, factories, `ConductivityConfig` (chi/Form-A/B firewall + verified gate), `SimulationResult`, `SimulationSpec`/`create_simulation` (Goal-2 bridge), FEM-ditch (confirmed), Form-B convergence |
 | `API_REFERENCE.md` | **Library-style API reference**: every public class + function (Grid, ConductivityConfig, IonicModel, Stimulus, factories, Simulation, SimulationResult, SimulationSpec) with signatures, params, returns, examples + impl-status legend |
-| `Monodomain/Engine_V5.5/_probe_conductivity_firewall.py` | Firewall build-time gate: raw sigma → `for_monodomain()` → live V5.5 cable; arithmetic to 1.1e-19, CV 54.35/28.09 (matches bidomain ref). Keep-or-toss; permanent test lands in `cardiac_core/tests` at Phase 3 |
+| `Monodomain/Engine_V5.5/_probe_conductivity_firewall.py` | Firewall build-time gate: raw sigma → `for_monodomain()` → live V5.5 cable; arithmetic to 1.1e-19, CV 54.35/28.09 (matches bidomain ref). Keep-or-toss; permanent test lands in `cardiac_core_tests` (the moved suite) at Phase 3 |
 | `cardiac_core/__init__.py` | Package exports: api (monodomain/bidomain/lbm), file_format, run, analysis, geometry, io |
 | `cardiac_core/file_format.py` | CardiacMeshData dataclass, save/load/create functions, .npz format v1 |
 | `cardiac_core/api.py` | Simplified API: monodomain(), bidomain(), lbm() + CardiacSimulation wrapper |
@@ -77,7 +92,7 @@ Files to read when resuming work on this question:
 | `cardiac_core/media.py` | `media_path()` — the `media/{question}/{kind}/{date}/{slug}_NN.ext` convention |
 | `cardiac_core/geometry.py` | Mask/region/distance/fiber helpers |
 | `cardiac_core/io.py` | Result .npz save/load |
-| `cardiac_core/tests/` | 77 tests: file format, per-engine, integration, run/analysis/geometry/io, direct-match verification |
+| `Research/Active/engine_consolidation/cardiac_core_tests/` | The cardiac_core test suite — **moved out of the package 2026-08-01** (publish-prep) so the package ships as pure library code. Runs against the editable-installed `cardiac_core`: `pytest Research/Active/engine_consolidation/cardiac_core_tests/`. File format, per-engine, integration, run/analysis/geometry/io, integrity goldens. |
 | `Bidomain/Engine_V1/REVIEW.md` §6 | Full merger proposal: chi/Cm audit, diffusion tensor encoding, unified API design |
 | `Optimizer/improvement.md` | Engine adapter design for Optimizer V2 |
 | `Bidomain/Engine_V1/cardiac_sim/ionic/base.py` | IonicModel ABC (identical across engines) |
