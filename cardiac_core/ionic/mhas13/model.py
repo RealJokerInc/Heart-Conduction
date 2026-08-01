@@ -302,7 +302,7 @@ class MHAS13Model(IonicModel):
 
         Cai = ionic_states[:, StateIndex.Cai]
 
-        # Na-kinetic V-shift (P1.5): shift the Na (in)activation midpoint by v_half_shift
+        # Na-kinetic V-shift: shift the Na (in)activation midpoint by v_half_shift
         # (identity when 0.0). Only the Na gates (m,h,j) are shifted.
         Vna = V + self.v_half_shift
 
@@ -324,7 +324,7 @@ class MHAS13Model(IonicModel):
             V = V.unsqueeze(0)
             ionic_states = ionic_states.unsqueeze(0)
 
-        # Na-kinetic time-constant scales (P1.5): reshape the Na current in time
+        # Na-kinetic time-constant scales: reshape the Na current in time
         # (identity when 1.0). Only the Na gate taus (m,h,j) are scaled.
         return torch.stack([
             self.tau_m_scale * INa_m_tau(V),

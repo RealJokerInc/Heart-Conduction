@@ -79,7 +79,7 @@ def activation_time(
     """
     if method not in ("nearest", "interp"):
         raise ValueError(f"activation_time: method must be 'nearest' or 'interp', got {method!r}")
-    if V.shape[0] == 0:   # empty run (0 save-points) — return NaN map, don't argmax an empty axis (F1)
+    if V.shape[0] == 0:   # empty run (0 save-points) — return NaN map, don't argmax an empty axis
         return torch.full(V.shape[1:], float('nan'), dtype=times.dtype, device=V.device)
 
     above = V >= threshold                       # (n_saves, Nx, Ny) bool
@@ -252,7 +252,7 @@ def apd_at(
 
     act_idx = above.to(torch.int8).argmax().item()
 
-    # B3: bound the peak/repolarization search to THIS beat — the window ends at
+    # Bound the peak/repolarization search to THIS beat — the window ends at
     # the next upstroke (or the trace end), so a later, taller beat cannot inflate
     # this beat's V_peak (which previously maxed over the entire remaining trace).
     rising = (~above[:-1]) & above[1:]
@@ -275,7 +275,7 @@ def apd_at(
         return float('nan')  # AP didn't complete within this beat
 
     if dome_aware:
-        # B4: the LAST above->below crossing of V_repol is the final repolarization;
+        # The LAST above->below crossing of V_repol is the final repolarization;
         # the first crossing can land on an early spike-and-dome notch for low repol%.
         # For a monotonic (dome-free) repolarization there is one crossing, so this
         # is identical to the first-crossing result.
@@ -316,7 +316,7 @@ def apd_map(
     """
     _, Nx, Ny = V.shape
     result = torch.full((Nx, Ny), float('nan'), device=V.device, dtype=V.dtype)
-    if V.shape[0] == 0:   # empty run — all-NaN map (skip the per-node loop over an empty axis) (F1)
+    if V.shape[0] == 0:   # empty run — all-NaN map (skip the per-node loop over an empty axis)
         return result
     for ix in range(Nx):
         for iy in range(Ny):
@@ -348,7 +348,7 @@ def dominant_frequency(
     float
         Dominant frequency in Hz.
     """
-    if V.shape[0] == 0:   # empty run — no spectrum to take (F1 empty-run hardening)
+    if V.shape[0] == 0:   # empty run — no spectrum to take
         return float('nan')
     trace = V[:, ix, iy]
     n = trace.shape[0]
@@ -433,7 +433,7 @@ def phase_map(
         (Nx, Ny) phase in radians [-pi, pi].
     """
     _, Nx, Ny = V.shape
-    if V.shape[0] == 0:   # empty run — no trace to Hilbert-transform (F1 empty-run hardening)
+    if V.shape[0] == 0:   # empty run — no trace to Hilbert-transform
         return torch.full((Nx, Ny), float('nan'), device=V.device, dtype=V.dtype)
     # Reshape to (Nx*Ny, n_saves) for batch Hilbert
     traces = V.permute(1, 2, 0).reshape(-1, V.shape[0])  # (Nx*Ny, n_saves)
@@ -692,7 +692,7 @@ def fit_eikonal(cv_n, kappa, mask=None) -> dict:
 
 
 # ============================================================================
-# Aggregate / per-beat / axis analysis (P2 usability helpers)
+# Aggregate / per-beat / axis analysis
 # ============================================================================
 
 
@@ -704,7 +704,7 @@ def dominant_frequency_map(
 
     Like :func:`dominant_frequency` but returns an ``(Nx, Ny)`` map in one FFT over the
     flattened field. Warns when the frequency resolution ``1/(n*dt)`` is coarse (record
-    longer / smaller ``save_every`` to resolve DF differences — B10).
+    longer / smaller ``save_every`` to resolve DF differences).
 
     Returns ``(Nx, Ny)`` DF in Hz; NaN map for an empty run.
     """
@@ -895,7 +895,7 @@ def restitution_slope(DI, APD) -> dict:
     DI, APD = DI[order], APD[order]
     dDI = np.diff(DI)
     with np.errstate(divide="ignore", invalid="ignore"):
-        slopes = np.where(np.abs(dDI) > 1e-9, np.diff(APD) / dDI, np.nan)  # B13 guard
+        slopes = np.where(np.abs(dDI) > 1e-9, np.diff(APD) / dDI, np.nan)  # divide-by-zero guard
     mid_DI = 0.5 * (DI[1:] + DI[:-1])
     max_slope = float(np.nanmax(slopes)) if np.isfinite(slopes).any() else float('nan')
     # DI* = the DI where the (normally decreasing) slope descends through 1 — the

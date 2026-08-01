@@ -799,8 +799,7 @@ class CardiacSimulation:
             )
         # Scale a deep copy of the LIVE engine model — preserves cell type across
         # engines (bidomain/LBM default ENDO) and any prior scalings; store it so the
-        # rebuild (and future reset()/with_()) use it. Lazy import mirrors api.py's other
-        # `.ionic` imports (registry) and keeps the 0-D driver free of a heavy `api` import.
+        # rebuild (and future reset()/with_()) use it.
         from .ionic.scaling import scale_ionic_conductances
         model = scale_ionic_conductances(self._live_ionic_model(), {current_name: factor})
         self._build_kwargs['ionic_model'] = model
@@ -1425,7 +1424,7 @@ def _result_from(snaps, record, dx, dy, shape=None, sim=None):
                    if shape is not None else torch.empty(0))
         ctx = build_result_context(sim, empty_v.device)
         return SimulationResult(times=empty_t, Vm=empty_v, phi_e=None, dx=dx, dy=dy, **ctx)
-    # B1: build ``times`` on the same device as the snapshots' Vm — on cuda the
+    # Build ``times`` on the same device as the snapshots' Vm — on cuda the
     # snapshots carry Vm on GPU, so a CPU ``times`` would make every downstream
     # analysis/viz call (which indexes times by a GPU index) raise a device mismatch.
     times = torch.tensor([s.t for s in snaps], dtype=torch.float64,

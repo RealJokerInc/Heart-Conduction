@@ -16,7 +16,7 @@ import os
 import torch
 import pytest
 
-from cardiac_core.tests._integrity.make_goldens import canonical_sim, HERE
+from cardiac_core_tests._integrity.make_goldens import canonical_sim, HERE
 
 
 def _check_golden(engine: str):

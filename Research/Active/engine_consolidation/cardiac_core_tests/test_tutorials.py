@@ -18,7 +18,7 @@ import os
 
 import pytest
 
-_TUTORIALS = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "tutorials"))
+_TUTORIALS = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "cardiac_core_tutorials"))
 _NOTEBOOKS = sorted(glob.glob(os.path.join(_TUTORIALS, "*.ipynb")))
 
 pytestmark = pytest.mark.skipif(

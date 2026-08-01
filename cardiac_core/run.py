@@ -120,7 +120,7 @@ class SimulationResult:
         from . import analysis
         return analysis.restitution_curve(self.Vm, self.times, ix, iy, **kw)
 
-    # --- P2 aggregate / per-beat / axis hooks ---
+    # --- aggregate / per-beat / axis hooks ---
     def df_map(self) -> torch.Tensor:
         """Dominant-frequency map ``(Nx, Ny)`` in Hz (fibrillation analysis)."""
         from . import analysis

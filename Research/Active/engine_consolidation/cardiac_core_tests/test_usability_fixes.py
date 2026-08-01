@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+import cardiac_core
 from cardiac_core import monodomain, bidomain, lbm, Grid, ConductivityConfig, create_cardiac_mesh, Stim
 from cardiac_core import analysis
 from cardiac_core.analysis import apd_at
@@ -397,7 +398,7 @@ def test_cheatsheet_examples_execute():
     """Extract the tagged runnable block from API_CHEATSHEET.md and exec it, so the
     documented calls (construct/run/record/dct/scale_conductance/set_conductivity/
     dominant_frequency/save_result/load_result) can't silently drift from the code."""
-    cheatsheet = Path(__file__).resolve().parents[1] / "API_CHEATSHEET.md"
+    cheatsheet = Path(cardiac_core.__file__).parent / "API_CHEATSHEET.md"
     text = cheatsheet.read_text()
     blocks = re.findall(r"```python\n(.*?)```", text, re.DOTALL)
     runnable = [b for b in blocks if b.lstrip().startswith("# runnable-canary")]

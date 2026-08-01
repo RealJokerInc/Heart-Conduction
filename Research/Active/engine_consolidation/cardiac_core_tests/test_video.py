@@ -871,7 +871,7 @@ def test_cheatsheet_video_section_executes():
     its own test — otherwise a rewritten media section can drift silently."""
     import re
     from pathlib import Path
-    text = Path(__file__).resolve().parents[1].joinpath("API_CHEATSHEET.md").read_text()
+    text = Path(cc.__file__).parent.joinpath("API_CHEATSHEET.md").read_text()
     blocks = re.findall(r"```python\n(.*?)```", text, flags=re.S)
     runnable = [b for b in blocks if b.lstrip().startswith("# runnable-video-section")]
     assert runnable, "no '# runnable-video-section' block found in API_CHEATSHEET.md §10"

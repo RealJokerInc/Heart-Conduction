@@ -15,8 +15,6 @@ circus movement re-entry.
 Reference physiology:
 - AV nodal dual pathway: fast pathway has longer ERP
 - See: PMC3893335 - Dual AV Nodal Pathways Physiology
-
-Author: Generated for Heart Conduction project
 """
 
 from dataclasses import dataclass

@@ -11,7 +11,9 @@ import importlib
 
 import pytest
 
-PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../cardiac_core
+import cardiac_core
+
+PKG_ROOT = os.path.dirname(cardiac_core.__file__)  # the installed cardiac_core package
 
 # A real cross-folder import into an original engine package (`cardiac_sim` or LBM's `src`).
 _BAD_IMPORT = re.compile(r'^\s*(from|import)\s+(cardiac_sim|src)\b')

@@ -201,6 +201,7 @@ cc.wavelength(cv_cms, refractory_ms, kind="erp")   # λ = CV·ERP /1000 (cm); ki
 cc.di(bcl, apd)                                     # diastolic interval BCL−APD
 cc.erp(grid, 'ttp06', cond, bcl=1000, n_s1=4)      # ERP via S1S2 capture bisection (RUNS sims)
 sc = cc.single_cell('ttp06', celltype='EPI', pre_pace=5)   # 0-D AP; sc.V, sc.apd(0.9), sc.final_state
+sc = cc.single_cell('ttp06', conductances={'GKr': 0.5})    # 0-D drug (50% IKr block); scale_conductance at 0-D
 cc.safety_factor(r, q_thr=...)                     # (Nx,Ny) Boyle–Vigmond SF (∫source_sink/Q_thr); <1 = block
 ```
 
@@ -216,6 +217,8 @@ sim.scale_conductivity(border_mask, 0.3)   # slow-conduction zone (× current D)
   **`PCa`(ICaL — a permeability, NOT "GCaL")**; ORd adds `GNaL`(INaL). An unknown name raises and lists the
   model's conductances. `factor<1` = block, `>1` = upregulation; repeated calls compound. Global scalar
   only (no per-node `mask=`/Distribution). Rebuilds from t=0 on the live model, so cell type is preserved.
+  The **0-D equivalent** is `single_cell(conductances={name: factor})` — same names/semantics, applied
+  before pre-pacing.
 - **`set_conductivity(mask, D)`** — absolute RAW `D` on `mask` (like `create_cardiac_mesh`'s `D`;
   effective = `D/(chi*Cm)`). `D=0.0` is a scar. On a bidomain built from `ConductivityConfig` (sigma
   fields), only `D=0` is meaningful — a nonzero absolute `D` raises (use `scale_conductivity` instead).

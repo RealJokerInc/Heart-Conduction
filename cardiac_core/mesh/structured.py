@@ -62,7 +62,7 @@ class StructuredGrid(Mesh):
             self._device = torch.device('cpu')
         if self.boundary_spec is None:
             self.boundary_spec = BoundarySpec.insulated()
-        # B5: guard the single-row/single-column degenerate cases (Nx==1 or Ny==1)
+        # Guard the single-row/single-column degenerate cases (Nx==1 or Ny==1)
         # so a 1-D cable such as Grid(101, 1, dx) builds instead of ZeroDivisionError.
         # A degenerate axis inherits the other axis' spacing (both → 1.0 for a 0-D cell).
         dx = self.Lx / (self.Nx - 1) if self.Nx > 1 else None
@@ -188,7 +188,7 @@ class StructuredGrid(Mesh):
         Reshape flat DOF array to (Nx, Ny) grid.
 
         If domain_mask is set, masked-out (out-of-domain) locations are filled
-        with ``fill_value`` (NaN by default, B8). NaN makes downstream analysis
+        with ``fill_value`` (NaN by default). NaN makes downstream analysis
         auto-correct: ``V >= threshold`` is False at NaN, so masked tissue is
         never counted as "activated at t=0" (the old 0.0-mV fill caused a ~23%
         silent CV error and 100% false activation on scar/fibrosis runs).

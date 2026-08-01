@@ -359,7 +359,12 @@ sc = cc.single_cell("ttp06", celltype="EPI", pre_pace=5)
 | `sc.apd(repol=0.9, threshold=-20.0)` | action potential duration, **ms** |
 
 Full signature: `single_cell(model="ttp06", *, celltype="ENDO", dt=None, bcl=1000.0, n_beats=1,
-pre_pace=0, stim_amplitude=-52.0, stim_duration=2.0, t0=10.0, Cm=1.0, save_every=None, device="cpu")`
+pre_pace=0, stim_amplitude=-52.0, stim_duration=2.0, t0=10.0, Cm=1.0, save_every=None,
+conductances=None, device="cpu")`
+
+`conductances={name: factor}` applies a drug at 0-D — multiplicative (`<1` block, `>1` upregulation),
+name-validated (a typo raises), applied BEFORE `pre_pace` so pre-pacing settles the drugged cell. Same
+names and semantics as tissue `scale_conductance`: `cc.single_cell("ttp06", conductances={"GKr": 0.5})`.
 
 ---
 

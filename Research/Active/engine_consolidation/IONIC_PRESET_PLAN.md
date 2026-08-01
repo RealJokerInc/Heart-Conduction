@@ -79,9 +79,9 @@ Do NOT restrict scaling to conductances (breadth = any named param) — validate
 #### Read First
 - `cardiac_core/ionic/registry.py` (the whole file — `build_ionic_model(name, cell_type, device)`, the `_CELLTYPE_MODELS`
   / `_DEVICE_ONLY_MODELS` maps; a preset builds its base via this).
-- `cardiac_core/api.py:43` (`_scale_ionic_conductances` — the existing deep-copy + `setattr(params, name, val*factor)`
-  firewall; `IonicPreset` generalizes its APPLY to any-named-param, and reuses its `_NON_CONDUCTANCE` set as the WARN
-  denylist — do NOT hard-restrict to G/P).
+- `cardiac_core/ionic/scaling.py` (`scale_ionic_conductances` — the deep-copy + `setattr(params, name, val*factor)`
+  firewall, shared by tissue `scale_conductance` and `single_cell(conductances=)`; `IonicPreset` generalizes its
+  APPLY to any-named-param, and reuses its `_NON_CONDUCTANCE` set as the WARN denylist — do NOT hard-restrict to G/P).
 - `cardiac_core/ionic/ttp06/model.py:74-106` (`TTP06Model.__init__` — `self.cell_type`, `self.params =
   get_celltype_parameters(cell_type)`, and the `param_overrides` loop — confirms params live as attributes on
   `self.params`). `cardiac_core/stimulus/stim.py` (mirror its `to_dict`/`from_dict`/`__repr__` shape + docstring density).
@@ -284,7 +284,7 @@ The cheatsheet is the surface the Goal-2 skills generate against; a savable ioni
 ## Final Cleanup
 - float64/bool consistency; V5.3 untouched; no solver files touched; goldens bit-identical.
 - `API_CHEATSHEET.md` + `API_REFERENCE.md` present `IonicPreset`; `_LAZY`/`__all__` current.
-- Archive this plan: `mkdir -p Research/Active/engine_consolidation/plans && cp cardiac_core/IONIC_PRESET_PLAN.md
+- Archive this plan: `mkdir -p Research/Active/engine_consolidation/plans && cp Research/Active/engine_consolidation/IONIC_PRESET_PLAN.md
   "Research/Active/engine_consolidation/plans/$(date +%Y-%m-%d)_ionic-preset.md"`.
 
 ## Mutation Log
