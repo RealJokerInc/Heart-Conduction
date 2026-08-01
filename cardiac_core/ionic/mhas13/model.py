@@ -9,7 +9,7 @@ The model is quiescent: no spontaneous beating, fires only when paced.
 
 References:
 - Paci M et al. (2013). Ann Biomed Eng 41(11):2334-2348.
-- Verkerk AO et al. (2019). Biophys J 117:2303-2315.
+- Fabbri A et al. (2019). Biophys J 117:2303-2315.
 """
 
 import torch
@@ -41,7 +41,7 @@ from .parameters import MHAS13Parameters
 
 # V_rest determined by running MHAS13 to steady state (no stimulus, 10s).
 # With TTP06 IK1 at GK1_critical=3.170 and g_f=0, the cell settles here.
-# Verkerk 2019 Table 2: RMP = -83.7 mV for TTP06 IK1 on Paci model.
+# Fabbri 2019 Table 2: RMP = -83.7 mV for TTP06 IK1 on Paci model.
 V_REST_MHAS13 = -83.7
 
 

@@ -12,7 +12,7 @@ Ki = 150 mM. We pass the fixed value.
 
 Reference:
 ten Tusscher KHWJ et al. (2004). Am J Physiol Heart Circ Physiol 286:H1573-89.
-Verkerk AO et al. (2019). Biophys J 117:2303-2315.
+Fabbri A et al. (2019). Biophys J 117:2303-2315.
 """
 
 import torch
@@ -36,7 +36,7 @@ def I_K1_ttp06(V: torch.Tensor,
     V : Membrane potential (mV)
     Ki : Intracellular K+ (mM) — fixed at 150 in PHAS13
     GK1 : Maximum conductance (nS/pF). Default 3.170 = GK1_critical
-          from Verkerk 2019 for the Paci model.
+          from Fabbri 2019 for the Paci model.
     Ko : Extracellular K+ (mM)
 
     Returns
