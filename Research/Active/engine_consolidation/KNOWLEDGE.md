@@ -12,6 +12,9 @@
 
 | Capability | Shipped | Detail |
 |---|---|---|
+| **Sterile package layout** — `cardiac_core/` is library-only; tests/tutorials/plans → `engine_consolidation/` | 2026-08-01 | [Sterile package layout](#sterile-package-layout--publish-prep-shipped-2026-08-01) · `main` `a9992ba` |
+| **0-D drug knob** — `single_cell(conductances={...})`: validated, drug-before-pre-pace; shared `ionic.scaling` | 2026-07-28 | § SPEC below · `single-cell-conductances` `37f8d57` (merged to `main`) |
+| **Portable media output** — display-vs-save + `.show()`; packaged/Colab/terminal | 2026-07-26 | [Portable media output](#portable-media-output--display-vs-save--show-shipped-2026-07-2526) · plan `plans/2026-07-26_show-explicit-display.md` · `main` `f54bd7b` |
 | **Image layer** — `Image`/`Trace`/`draw`/`ImageInfo`; still figures + series | 2026-07-25 | [Media layer](#media-layer--video--image-shipped-2026-07-23--2026-07-25) · plan `plans/2026-07-25_IMAGE_OBJECT_PLAN.md` |
 | **Video object** — `Video`/`Gradient`/`render`; multi-panel, overlays | 2026-07-23 | [Media layer](#media-layer--video--image-shipped-2026-07-23--2026-07-25) · plan `plans/2026-07-23_VIDEO_OBJECT_PLAN.md` |
 | **Standalone public library** — `github.com/RealJokerInc/cardiac-core`, pip/Colab | 2026-07-23 | [Standalone library](#standalone-library--public-repo-shipped-2026-07-23) · `EXTRACTION_AUDIT_2026-07-23.md` |
@@ -23,6 +26,48 @@
 | **Foundation cleanup + LBM boundary modes** | 2026-07-01 | [Shipped-work notes](#shipped-work-notes-2026-07-01--2026-07-16) |
 | **MCP server** `cardiac-core` (local stdio, Tiers 1–3) | 2026-06-26/28 | [Goal-2 MCP server](#goal-2-mcp-server--cardiac-core--shipped-local-2026-06-26) |
 | **Goal-1 construction API** · **Goal-2 skill suite** · **self-contained package** | 2026-06-24/25 | sections below |
+
+## Sterile package layout — publish-prep (SHIPPED 2026-08-01)
+
+`cardiac_core/` is now a **clean, sterile, shareable (private / Cornell BME) package** — library code + support
+docs (`API_CHEATSHEET.md`, `API_OBJECTS.md`, `.md`+`.pdf`) + `_build/md_to_pdf.py` + `README.md` ONLY. On `main`
++ `origin/main` (`6c0b16c` = package cleanup + the relocated 12-notebook tutorial series it was based on;
+`a9992ba` = the layout doc). See [[project_cardiac_core_publish_prep]].
+
+**What moved OUT — and where new cardiac_core support material MUST go (the go-forward allocation):**
+- **Tests** → `Research/Active/engine_consolidation/cardiac_core_tests/`. Run:
+  `pytest Research/Active/engine_consolidation/cardiac_core_tests/` (the suite imports the editable-installed
+  `cardiac_core`, so it runs from anywhere).
+- **Tutorials** (the 12-notebook series) → `Research/Active/engine_consolidation/cardiac_core_tutorials/`.
+- **Plan / design / audit docs** (`IONIC_PRESET_PLAN.md`; the `plans/` archive) → this research folder.
+- **Rule:** the package stays **library-only** — new cardiac_core tests / tutorials / plans live under
+  `engine_consolidation/`, figures under `media/`, **never** in `cardiac_core/`.
+
+**Design facts locked in (needed if the move is re-done or extended):**
+- `cardiac_core` is **editable-installed**, so relocated tests import it from any cwd.
+- The move needed **6 test re-anchors** — several tests assumed they lived inside the package
+  (`Path(__file__).parents[1]` / `dirname(dirname(__file__))` resolved to the package root). Re-anchored to
+  **`cardiac_core.__file__`**: `test_integrity.py` import → `from cardiac_core_tests._integrity...`;
+  `test_usability_fixes.py` + `test_video.py` read `API_CHEATSHEET.md` via `cardiac_core.__file__`/`cc.__file__`;
+  `test_self_contained.py` `PKG_ROOT`; `test_tutorials.py` → `../cardiac_core_tutorials`; `make_goldens.py`
+  `REPO` depth 3→5.
+- **`engine_consolidation/` must have NO `__init__.py`** — pytest prepend-mode anchors `sys.path` there so
+  `cardiac_core_tests` imports as a top-level package.
+- The plan-audit (2 rounds) caught **4** of these anchors the blueprint missed — 2 would go RED on the
+  now-absent `API_CHEATSHEET.md`, 2 were SILENT no-ops (`test_self_contained` walking the wrong tree,
+  `test_tutorials` globbing 0 notebooks). See [[feedback-audit-cycle-complexity-ratchet]].
+
+**Narration cleanup (16 in-package tags):** stripped internal dev/audit-ID tags `B1/B3/B4/B5/B8/B10/B13`, `F1`×4,
+`P2`×2, `P1.5`×2, and a "Generated for Heart Conduction project" author line. **⚑ The 8-agent comment-audit
+MISSED 13 of them** on the dense top-level files (`analysis.py`/`api.py`/`run.py`/`mhas13`) — a targeted manual
+`grep -E "[BPF][0-9]"` was the exhaustive check. **Lesson: after a fan-out comment audit, run a targeted tag
+grep.** Tutorials KEPT intact (their internal / unpublished-boundary-speedup references stay — private Cornell
+BME audience).
+
+**Verification:** moved suite 671 passed / 7 CUDA-OOM (allowlist — another user's GPU held 28.8 GB) / 12
+tutorial-gate-skipped / 2 xfailed; integrity goldens bit-identical (atol=0); no solver/engine/numerics code
+touched (comment-only edits + file moves). Plan (audited to convergence) archived at
+`plans/2026-08-01_cardiac-core-publish-prep.md`.
 
 ## ⚑ Corrections and traps — read before trusting an old claim
 
@@ -118,6 +163,59 @@ at all four corners), and BOTH producers must agree or a vertical flip passes th
 `PowerNorm` handles a negative `vmin` natively (no custom `Normalize` needed). `.copy()` before `set_bad` is
 mandatory — but for the *caller-supplied `Colormap`* case, not for registered colormaps (`plt.get_cmap` already
 hands out copies; a second false "verified" claim, caught by audit R3).
+
+### Portable media output — display-vs-save + `.show()` (SHIPPED 2026-07-25/26)
+
+The problem this closes: the media layer was written against the monorepo's `media/` tree, so when
+`cardiac_core` is installed as a package (Colab, a bare notebook, a terminal) `r.video()` had nowhere valid to
+write. Two commits fix it, both on `main` (`d410f0c` display-vs-save, `f54bd7b` `.show()`).
+
+**Findings.**
+* **A file is written ONLY when a destination is named** — `path=`, or a `media/` convention keyword
+  (`question=`/`bulk=`/`root=`/`date=`). With none, the render is held in memory: `info.path is None`,
+  `info.saved is False`. This is why a notebook needs no folder and Colab no persistent disk.
+* **`_repr_html_` embeds the bytes as a base64 data URI**, capped at `INLINE_MAX_BYTES` = 16 MB (the payload
+  is base64'd into the `.ipynb`, +33%, and re-committed on every cell re-run). Over the cap, or an `mp4v`
+  payload (browsers cannot decode MPEG-4 Part 2), or a PDF → a TEXT message, not media. Browser-verified:
+  H.264 plays in Chromium (readyState 4); `mp4v` fails (`MEDIA_ERR_SRC_NOT_SUPPORTED`).
+* **`imageio-ffmpeg` (the `[viz]` extra) is load-bearing for Colab**: without it the encoder chain falls to
+  OpenCV `mp4v`, which writes a real `.mp4` no browser will play inline. `opencv-python` ships no H.264
+  encoder (patent). The dev box here has NO `imageio-ffmpeg` — so webm downgrades to GIF locally.
+
+**Design — `.show()` (the explicit verb, like `plt.show()`).** Creating a media object never displays it;
+`.show()` does. Present on `VideoInfo`, `ImageInfo`, `ImagePath`; each is a **one-line delegation** to a new
+leaf module and **returns `None`**.
+* **`cardiac_core/_display.py` is a stdlib-only leaf** (`in_notebook` / `open_externally` / `show_payload`).
+  It exists to break an import chain: `image/info.py` importing `video.encoders` executes
+  `video/__init__.py` → `render` → `matplotlib.use("Agg")` **process-wide**. The pre-existing import-time test
+  probes IMPORT only, so a function-local import dodged it while still being wrong; the durable guard is
+  `test_calling_imageinfo_show_does_not_import_matplotlib`, which CALLS `.show()` in a subprocess and asserts
+  matplotlib absent. The module provably imports no matplotlib/numpy/torch.
+* **Notebook branch reuses `_repr_html_`** via `IPython.display.display(self)` — so the size cap, MIME-by-codec
+  and mp4v/deleted-file degrades are inherited, not re-implemented.
+* **Returns `None`, never `self`.** With `_repr_html_` kept, returning `self` makes `r.video().show()` the
+  cell's trailing expression → IPython embeds the payload a SECOND time (up to 2× `INLINE_MAX_BYTES`).
+* **Terminal branch** materialises to a per-user cache (`$XDG_CACHE_HOME/cardiac_core/show`), **pruned on
+  entry by age (24 h) AND count (32)**, absolute-path guarded. NOT `atexit`-cleaned: `open_externally` spawns
+  the viewer DETACHED and returns, so deleting at interpreter exit races it. A relative `XDG_CACHE_HOME` or a
+  passwd-less `expanduser("~")=="~"` falls back to the temp dir — else it would write `./~/.cache/…` INTO the
+  project.
+* **Headless/SSH prints the file path and never raises** (`read()` raising `ValueError`/`OSError` is caught).
+* **`ImagePath`'s unsaved string value is a human sentence, not a path** — `.show()` passes `path=` only when
+  `saved`, else materialises from the in-memory bytes, so the sentence never reaches the OS opener.
+
+**Decisions.**
+* **KEEP `_repr_html_`; ADD `.show()` purely additively.** An earlier plan to DELETE `_repr_html_` (make
+  `.show()` the only path) was rejected by audit (5 critical): it breaks `display()`, `Out[n]`, nbconvert /
+  Quarto / VS Code rich views and HTML export on an already-public package. Both coexist.
+* **`.show()` is for a HUMAN at a terminal, not the record.** It returns `None` and writes no durable file, so
+  it does NOT substitute for `bulk=True` in a Lab experiment.
+* **No new dependency.** `mediapy` was rejected (needs system `ffmpeg` on `PATH`, worse than bundled
+  `imageio-ffmpeg`).
+* **Process note:** the `.show()` plan was blueprinted + audited to convergence at **round 4** (0 critical /
+  0 high). Convergence = "the plan correctly does the simple thing," not "the auditor finds nothing" — see
+  [[feedback-audit-cycle-complexity-ratchet]]. The net code footprint SHRANK (`encoders.py`/`info.py` got
+  smaller). Public-mirror (`~/cardiac-core`) sync DEFERRED by the user.
 
 ## Standalone library — public repo (SHIPPED 2026-07-23)
 
@@ -789,7 +887,21 @@ Rather than convert V5.4 in place (risking its 77 tests), forked `Monodomain/Eng
 | Phase 5 | Remove `_prepare_engine()` hack, unify `cardiac_sim` namespace | Not started |
 | Validation | All 149+ tests pass, no duplicated ionic/mesh/stimulus code | Not started |
 
-## SPEC — `single_cell(conductances=...)`: the 0-D drug knob (2026-07-23, PRIORITY, not built)
+## SPEC — `single_cell(conductances=...)`: the 0-D drug knob (SHIPPED 2026-07-28)
+
+> **SHIPPED 2026-07-28** (branch `single-cell-conductances`, commit `37f8d57`; NOT yet merged to `main`).
+> `single_cell(conductances={name: factor})` mirrors tissue `scale_conductance` — multiplicative
+> (`<1` block, `>1` upregulation), name-validated (a mis-cased name RAISES, closing the silent-no-op trap),
+> applied BEFORE `pre_pace` so the DRUGGED cell settles toward its own steady state. The validated scaler
+> moved from `api.py` to a light shared home **`cardiac_core/ionic/scaling.py`** (`import copy` only),
+> imported by BOTH the tissue path and the light 0-D driver (which must not import the heavy `api`/engine
+> stack) — one call site, behavior-preserving. Implementation deviation from the plan: the `api.py` import
+> is function-local (mirrors api.py's existing lazy `.ionic` imports), not top-level. 6 tests (APD↑ on IKr
+> block, dV/dt↓ on INa block, error-text parity with tissue, drugged 0-D↔tissue APD parity `rel=0.05`,
+> drug-before-pre-pace ordering, no-drug bit-identical regression) + a §12 cheatsheet-canary line. Full
+> suite **678 passed / 2 xfailed**; integrity goldens bit-identical (atol=0); no solver/engine code touched.
+> Plan audited to convergence (2 rounds), then implemented. The spec below is the as-designed record. Plan
+> archived: `plans/2026-07-28_single-cell-conductances.md`.
 
 **The gap.** `single_cell()` has no conductance knob. Verified signature:
 `single_cell(model='ttp06', *, celltype='ENDO', dt, bcl, n_beats, pre_pace, stim_amplitude,
@@ -965,7 +1077,7 @@ carries the consumer-migration blocker = the "someday clean foundation" push. De
   Non-breaking coexistence: the bare dict still works but emits a `DeprecationWarning`; current Stims lower via
   `to_dict()` byte-identically; clamp Stims route to `clamp_voltage` (never `data.stimuli`). Full details in
   `cardiac_core/STIM_OBJECT_PLAN.md`. Phase 3 (consumer dict→Stim migration) deferred.
-- **`IonicPreset` — PLAN WRITTEN, GATED** (`cardiac_core/IONIC_PRESET_PLAN.md`, user shelved 2026-07-23). A savable
+- **`IonicPreset` — PLAN WRITTEN, GATED** (`IONIC_PRESET_PLAN.md`, user shelved 2026-07-23). A savable
   ionic config = base model + `{param: factor}` scaling map, accepted anywhere `ionic_model=` is, JSON save/load.
   Locked: scalings-canonical + resolved `.values` (BOTH); any named param (BREADTH); core-object-only (`.npz`
   persistence + tuner bridge deferred). Resolves at the single `ionic/registry.py::build_ionic_model` seam. Closes

@@ -5,19 +5,78 @@
 > Not promoted on completion — archived for historical record.
 
 ## Current Direction
-**IMAGE LAYER — SHIPPED 2026-07-25** (4 commits `fba6ed3`→`7ba147f` on `video-portable-output`).
-`cardiac_core/image/` gives stills the shape the video layer proved: `Image`/`Trace` specs, `draw()`,
-`ImageInfo`, `Gradient` reused. `r.image()` / `r.trace()` are the one-liners; drawing displays, naming a
-destination saves. **580 passed / 7 failed** (pre-existing CUDA OOM), **+87 tests**, integrity goldens
-bit-identical at all four phase gates. Plan audited to convergence over **12 Opus rounds** first:
-[plans/2026-07-25_IMAGE_OBJECT_PLAN.md](./plans/2026-07-25_IMAGE_OBJECT_PLAN.md).
+**CARDIAC_CORE PUBLISH-PREP — SHIPPED 2026-08-01** (branch `cardiac-core-publish-prep`, `6c0b16c`; NOT
+merged). Made `cardiac_core/` a clean, shareable **private (Cornell BME)** package. (1) MOVED `tests/` +
+`tutorials/` OUT to `Research/Active/engine_consolidation/cardiac_core_tests/` + `cardiac_core_tutorials/`
+so the package ships pure library code + support docs + README. The move needed **6** test path/import
+re-anchors to `cardiac_core.__file__` (tests had assumed they lived inside the package) — the round-1 plan
+audit caught the **4** the blueprint missed (2 would go RED on `API_CHEATSHEET.md`; 2 were SILENT no-ops:
+`test_self_contained` walking the wrong tree, `test_tutorials` globbing 0 notebooks). (2) Stripped **16**
+in-package dev/audit narration tags (`B1/B3/B4/B5/B8/B10/B13`, `F1`×4, `P2`×2, `P1.5`×2, a "Generated for
+Heart Conduction project" author line) — **13 of which the agentic comment-audit MISSED**; a targeted manual
+`grep -E "[BPF][0-9]"` was the exhaustive check (lesson: fan-out auditors under-report on dense top-level
+files). (3) Added `cardiac_core/README.md` (quick-start verified 58.8 cm/s). Moved suite **671 passed / 7
+CUDA-OOM (allowlist, GPU held by another user) / 12 tutorial-gate-skipped / 2 xfailed**; integrity goldens
+bit-identical (atol=0); no solver/engine/numerics code touched. Plan blueprinted + audited to convergence
+(2 rounds: 1C/2H/1L → 0C/0H/1L). **Open:** merge `cardiac-core-publish-prep` → `main`. `IONIC_PRESET_PLAN.md`
+also moved out of the package to this research folder. Details: 2026-08-01 Thread entry.
+
+**Prior — 0-D DRUG KNOB — SHIPPED 2026-07-28** (branch `single-cell-conductances`, `37f8d57`, since merged to
+`main`). `single_cell(conductances={name: factor})` gives the 0-D path the name-validated drug knob tissue
+already had via `scale_conductance`, applied BEFORE pre_pace so pre-pacing settles the drugged cell. The
+validated scaler now lives in a light shared `cardiac_core/ionic/scaling.py` imported by both the tissue and
+0-D paths (one call site, behavior-preserving; the 0-D driver must not import the heavy `api`/engine stack).
+Plan audited to convergence (2 rounds), then built; **678 passed / 2 xfailed**, integrity goldens atol=0, no
+solver/engine code touched. See KNOWLEDGE § SPEC + the 2026-07-28 Thread entry. **Open:** merge
+`single-cell-conductances` → `main` (user's call).
+
+**Prior — PORTABLE MEDIA OUTPUT — SHIPPED 2026-07-26, on `main` (`f54bd7b`).** The media layer now works when
+`cardiac_core` is installed as a package (Colab / notebook / terminal), not just inside the monorepo.
+Two pieces: **display-vs-save** (`d410f0c` — a file is written ONLY when a destination is named; otherwise
+the render is held in memory and `_repr_html_` embeds it as a base64 data URI) and **`.show()`** (`f54bd7b`
+— the explicit verb, like `plt.show()`: notebook inline / terminal OS-player / headless prints the path,
+returns `None`, delegates to the stdlib-only `cardiac_core/_display.py` leaf). Full suite **656 passed / 7
+CUDA-OOM (allowlist) / 2 xfailed**, zero regressions. Plan audited to convergence at **round 4**; net code
+footprint SHRANK. See KNOWLEDGE "Portable media output". Public-mirror sync DEFERRED by the user.
+
+**Prior — IMAGE LAYER — SHIPPED 2026-07-25** (4 commits `fba6ed3`→`7ba147f`). `cardiac_core/image/` gives
+stills the shape the video layer proved: `Image`/`Trace` specs, `draw()`, `ImageInfo`, `Gradient` reused.
+`r.image()` / `r.trace()` are the one-liners; drawing displays, naming a destination saves. **+87 tests**,
+goldens bit-identical at all four phase gates; plan audited over **12 Opus rounds**
+([plans/2026-07-25_IMAGE_OBJECT_PLAN.md](./plans/2026-07-25_IMAGE_OBJECT_PLAN.md)).
 
 The layer exists because the corpus census says `plot(` 163 vs `imshow(` 70 — the line plot is what this
 project's figures actually are, and there was no route to one. The 0-D action potential now has one.
 
 ## Next Step
-**★ PRIORITY (2026-07-23, user) — `single_cell(conductances={...})`, the 0-D drug knob.** Full spec in
-KNOWLEDGE.md § "SPEC — `single_cell(conductances=...)`". One-line summary: tissue can apply a drug
+**★ DONE (2026-07-26) — `.show()` SHIPPED, COMMITTED (`f54bd7b`), PUSHED to `main`.** Audit converged
+at round 4 (0 critical / 0 high — only accuracy polish + one simplification; a round 5 would only
+ratchet complexity, see [[feedback-audit-cycle-complexity-ratchet]]). Both phases implemented and
+verified: NEW `cardiac_core/_display.py` (stdlib-only leaf, 9 tests, no heavy deps); `VideoInfo.show`
+/`ImageInfo.show`/`ImagePath.show` delegate to it, return `None`, keep `_repr_html_`; draft
+`_in_notebook`/`_open_externally` + stale `import tempfile` deleted from `encoders.py`; cross-layer
+import gone from `image/info.py`; docs updated (cheatsheet §10, API_OBJECTS, run.py×3, sim-media SKILL).
+Full suite **656 passed / 7 CUDA-OOM (allowlist) / 2 xfailed** — zero regressions. Committed as a focused
+10-file `feat(cardiac_core)` commit; `main` fast-forwarded `c0ce982..f54bd7b` (with the earlier
+`d410f0c` display-vs-save fix) and pushed to `origin`. **Still open:** public-mirror sync of `_display.py`
+to `~/cardiac-core` is DEFERRED by the user (not now). The research-trail docs (`PLAN.md` rev 4,
+`IDEALOG.md`, archived plan) remain uncommitted working changes.
+
+**★ DONE (2026-07-28) — `single_cell(conductances={...})`, the 0-D drug knob — SHIPPED**, committed
+`37f8d57` on branch `single-cell-conductances` (off `main`); plan audited to convergence (2 rounds) then
+built. 678 passed / 2 xfailed, integrity goldens atol=0. **Open:** merge `single-cell-conductances` →
+`main`. See KNOWLEDGE § SPEC + the 2026-07-28 Thread entry.
+
+**Also DONE (2026-07-27):** image-layer multi-panel contract parity — `c3c5a10`; 665 passed / 7 CUDA-OOM /
+2 xfailed, zero regressions. See the 2026-07-27 Thread entry. **⚑ Status corrected 2026-07-28:** this is
+NOW MERGED + PUSHED — verified `main` == `origin/main` == `c3c5a10` via `git ls-remote` (a prior session
+fast-forwarded `main` onto it and pushed; the earlier "unmerged / Open: merge" note was stale).
+
+**Next priority (after the two branches above merge):** `IonicPreset` (savable ionic-config object; PLAN
+written, gated) or consolidation Phases 2–5 (mesh/stimulus/ConductivityConfig unify). Both in the backlog.
+
+**✅ SHIPPED 2026-07-28 (was ★ PRIORITY 2026-07-23, user) — `single_cell(conductances={...})`, the 0-D drug
+knob.** Full spec in KNOWLEDGE.md § "SPEC — `single_cell(conductances=...)`". One-line summary: tissue can apply a drug
 (`scale_conductance`), 0-D cannot — so the CHEAPEST drug question has no public route, and the only
 workaround (mutate a model instance) **bypasses name validation**, making a mis-cased conductance a
 SILENT no-op in a drug experiment. Fix is small: `api.py:43::_scale_ionic_conductances` already takes a
@@ -48,7 +107,7 @@ no solver code, goldens unaffected. NOT built.
   Current convention stands: cardiac_core length is **cm** everywhere (`Grid(Nx, Ny, dx_cm)`, `Lx = dx*(Nx-1)`),
   time ms, Vm mV, D cm²/ms, σ mS/cm, χ cm⁻¹, CV cm/s; the Optimizer alone speaks mm at its edge and divides by 10.
 - **`IonicPreset` — a savable ionic-model config object. PLAN WRITTEN + GATED (2026-07-23, user: "worry about it
-  later").** Spec: `cardiac_core/IONIC_PRESET_PLAN.md` (1 phase / 3 steps, tier large). A first-class object: base
+  later").** Spec: `IONIC_PRESET_PLAN.md` (1 phase / 3 steps, tier large). A first-class object: base
   model + a `{param: factor}` scaling map, accepted anywhere `ionic_model=` is, with `.save()`/`.load()` JSON — closes
   the "a tuned conductance set has no home" gap (`scale_conductance` mutates in-memory; `.npz` stores only the model
   NAME string; `set_parameter` is stubbed). Locked design (user, 2026-07-23): scalings canonical + resolved `.values`
@@ -205,6 +264,143 @@ P1 bidomain M4 etc.). Analysis-fields FUTURE polish (documented in the PLAN, not
 torch migration, a co-area identity explicit test. See the open-threads block below.
 
 ## Thread
+
+### 2026-08-01 — cardiac_core publish-prep: sterile package (tests/tutorials moved OUT) → merged to `main`
+Turned `cardiac_core/` into a clean, shareable **private (Cornell BME)** package = library code + support docs
++ README ONLY. Blueprinted the move + de-narrativization + README, ran the audit→revise loop to convergence
+(**2 rounds**: R1 1C/2H/1L caught **4 package-root path anchors the plan missed** — 2 would go RED on
+`API_CHEATSHEET.md`, 2 were silent no-ops; R2 0C/0H/1L), then implemented: `git mv` tests →
+`engine_consolidation/cardiac_core_tests/` + tutorials → `cardiac_core_tutorials/`; **6** test re-anchors to
+`cardiac_core.__file__`; `IONIC_PRESET_PLAN.md` moved to the research folder; **16** in-package audit/bug-ID
+tags stripped (**13 the agentic comment-audit MISSED** — a manual `[BPF][0-9]` grep found them); README added
+(quick-start verified 58.8 cm/s). Moved suite 671 passed / 7 CUDA-OOM (allowlist) / 12 tutorial-gate-skipped /
+2 xfailed, goldens atol=0, no numerics touched. Committed `6c0b16c`; **fast-forwarded `main` (18 commits — the
+publish-prep + the tutorial series it was branched on) and pushed**; a `docs` commit `a9992ba` records the
+package-layout allocation + go-forward rule in `engine_consolidation/README.md`. Workspace checked out to
+`main` so `cardiac_core/` is sterile in the tree. Tutorials KEPT (private audience). Key lessons saved:
+fan-out comment audits under-report on dense files (follow with a tag grep); the plan-audit's value is exactly
+the silent-no-op anchors it caught. Reference: KNOWLEDGE "Sterile package layout" · [[project_cardiac_core_publish_prep]].
+
+### 2026-07-28 — `single_cell(conductances=)` 0-D drug knob: audit→converge→build→ship
+Executed the ★ priority. Blueprinted (`plans/2026-07-28_single-cell-conductances.md`), ran the
+audit→revise loop to convergence in **2 rounds** (R1 0C/1H/1M/3L → R2 0C/0H/0M/2L; every finding a
+wrong-fact or structural fix, no gold-plating — per [[feedback-audit-cycle-complexity-ratchet]] that IS
+convergence), then implemented under the user's "work until done" authorization.
+
+**What shipped (`37f8d57`, branch `single-cell-conductances` off `main`, unmerged):** moved the validated
+scaler `api._scale_ionic_conductances` → new light **`cardiac_core/ionic/scaling.py`** (`import copy` only),
+imported by both the tissue path and the 0-D driver; added `conductances={name: factor}` to `single_cell()`,
+applied between model-build and pre_pace. 6 tests + a §12 cheatsheet-canary line. Full suite **678 passed /
+2 xfailed** (the 7 usually-CUDA-OOM tests passed — GPU was free this run), integrity goldens bit-identical
+(atol=0), no solver/engine code touched.
+
+**Audit catches worth keeping (both were wrong claims in MY plan, fixed before a line was written):**
+(1) the cheatsheet canary (`test_cheatsheet_examples_execute`) execs ONLY blocks starting with
+`# runnable-canary` — the sole one is §12; an example "next to line 203" would have been inert while the
+plan claimed it was smoke-tested. (2) the existing 0-D↔tissue guard `test_0d_vs_tissue_singlenode` compares
+**APD90 via `pytest.approx(rel=0.05)`**, NOT a V-trace `allclose` — a pointwise-V parity test would be flaky
+(0-D monolithic step vs tissue Strang splitting). Same lesson as before: a plan claim that "reuses an
+existing test's tolerance" must READ that test, not assume its shape.
+
+**Implementation deviation from the plan (deliberate):** the `api.py` import of the moved helper is
+function-local (mirrors api.py's existing lazy `.ionic.registry` import at 1951), not the top-level import
+the plan specified — matches surrounding code, keeps api's import cost unchanged, zero cycle risk. Logged.
+
+**Also this session:** corrected the stale IDEALOG claim that `image-panel-parity` (`c3c5a10`) was unmerged —
+`git ls-remote` shows `main` == `origin/main` == `c3c5a10`, i.e. it was already merged + pushed by a prior
+session.
+
+### 2026-07-27 — image-layer review vs the `.show()` philosophy → multi-panel PARITY fix (settled direction)
+Reviewed the image layer (`_draw.py`/`panel.py`, ~1300 LOC, "12 audit rounds") with the recalibrated
+lens ([[feedback-audit-cycle-complexity-ratchet]]). Verdict: **NOT the runaway over-engineering the
+round count suggests** — most size is inherent (the `what=` selector registry) + a deliberate
+novice-guiding "no silent no-op" contract + error-path data-loss safety, all earned. At the role level
+it IS on-philosophy: `r.image()`:`.show()` mirrors `plt.imshow()`:`plt.show()`, and the object model
+(display / save / `.show()`) is uniformly consistent.
+
+**The real defect is INCONSISTENT enforcement, not over-enforcement.** The single-panel path obsessively
+rejects inapplicable params; the multi-panel path is held to NONE of it. Two confirmed by repro:
+- **#1 (bug):** `draw([...], show_time=True)` on a timeless map (activation/apd/frequency) stamps
+  **"t = nan ms"**; single-panel RAISES on exactly this (`_draw.py:279-281`).
+- **#2 (silent no-op):** multi-panel silently DROPS `frame=`/`resolution=`/`fit=`; single-panel raises a
+  guiding error for all three (list branch `_draw.py:177-182` never forwards/validates them).
+Plus two mechanical: **#3** the pdf/webp-on-`media/` guard is copy-pasted verbatim 3× (`_draw.py:226-230,
+407-411, 476-480`); **#4** `_draw.py:273` `(dpi or 100)` is dead (`dpi` is `None` in that branch) → `100`.
+
+**Settled direction (user: "blueprint prior direction"):** bring the multi-panel path to parity with the
+single-panel contract via SHARED validation ("one rule enforced once", pulling toward `.show()`
+minimalism), NOT more per-path guards. Fix #1 with a shared `_resolve_show_time(show_time, t0)` helper used
+by both paths; fix #2 by rejecting `frame`/`resolution`/`fit` at the multi-panel ENTRY (a single guard
+consistent with the contract — a signature split was considered and rejected as disproportionate: `draw()`
+is one public verb dispatching on list-vs-single). Fold in #3 (one `_reject_vector_on_media_path` helper)
+and #4. Scope-excluded (kept minimal): `show_time=True` on an all-Trace multi-panel (no map to stamp) stays
+a pre-existing no-op. Small plan: 1 phase, 2 steps. NOT the ratchet — the fix REMOVES asymmetry, doesn't add
+ceremony.
+
+**SHIPPED (committed `c3c5a10` on branch `image-panel-parity`, off `main`).** Audit converged in
+2 rounds (R1 0C/0H/2M/3L → R2 0C/0H/0M/1L); every finding was accuracy/consistency/simplification,
+none new machinery — R1 even REMOVED a redundant `_resolve_show_time` call and COMPLETED the parity
+thesis (#1b, the all-Trace raise), R2 aligned error precedence. Implemented: shared
+`_resolve_show_time` (both paths), list-branch rejects for `frame`/`resolution`/`fit`, early
+stamp decision in `_draw_panels` (placed after the media guard, before `plt.subplots`, so a raise
+orphans nothing AND keeps single-panel error precedence), `_reject_vector_on_media_path` dedup (3→1),
+dead `(dpi or 100)`→`100`. +9 tests. Full suite **665 passed / 7 CUDA-OOM (allowlist) / 2 xfailed** —
+zero regressions (comm vs allowlist empty; no image test failed). NOT merged/pushed — feature branch,
+awaiting the user's call on merge to `main`.
+
+### 2026-07-26 (cont.) — `.show()` audit CONVERGED (round 4) → BUILT → verified, zero regressions
+Round 4 returned **0 critical / 0 high** (2 med, 7 low — all factual/accuracy corrections or one
+simplification, no new machinery). User flagged mid-cycle that the prior audit loop was *over*complicating
+and injecting errors → recalibrated: convergence = "plan correctly does the simple thing," not "auditor
+finds nothing"; triage findings (fix wrong-facts + real bugs, REJECT gold-plating); bias toward cutting.
+Saved as [[feedback-audit-cycle-complexity-ratchet]]. Applied the 7 corrections (1 rejected as
+gold-plating: a redundant ImagePath display-once test), plan → rev 4, then implemented under the user's
+standing "once converged, implement, don't stop" authorization.
+
+**Shipped (uncommitted, `video-portable-output`):** NEW `cardiac_core/_display.py` — stdlib-only leaf
+(`in_notebook`/`open_externally`/`show_payload`; per-user cache pruned by age+count, absolute-path
+guarded; 9 tests, provably no matplotlib/numpy/torch import). Three `.show()` methods delegate to it,
+return `None`, and REUSE `_repr_html_` for the notebook branch (`display(self)`). Deleted the draft
+`_in_notebook`/`_open_externally` (last consumer was `image/info.py`, now gone) + the stale
+`import tempfile`. Docs: cheatsheet §10 (commented, so the exec'd canary stays clean), API_OBJECTS
+rows/prose, run.py ×3 docstrings, sim-media SKILL (".show() is for a human, NOT a substitute for
+`bulk=True` in the record"). Suite: 656 passed / 7 CUDA-OOM (another user's 29.5 GB hold, named
+allowlist) / 2 xfailed. One env deviation: `_isolate_show_cache` is function-scoped autouse (plan said
+module-scoped, but `monkeypatch.setenv` is function-scoped). One plan-grep defect found+fixed in
+execution (unanchored cross-layer-import grep matched a comment). **Outcome:** committed as `f54bd7b`
+(focused 10-file `feat(cardiac_core)`); `main` fast-forwarded `c0ce982..f54bd7b` (also carrying the
+earlier `d410f0c` display-vs-save fix, no `cardiac-core-extraction` dragged in) and pushed to `origin`.
+Public-mirror sync (`~/cardiac-core`) DEFERRED by the user.
+
+### 2026-07-26 — `video-portable-output`: display-vs-save SHIPPED (squashed), scope creep reverted, `.show()` BLUEPRINTED (audit round 3, not yet built)
+**Verified working, browser-tested**: `r.video()` returns a `VideoInfo` whose `_repr_html_` embeds the H.264
+bytes as a `data:` URI → **plays inline in Chromium** (readyState 4, 1920×1080, currentTime advances), the engine
+Jupyter/Colab render in. `r.video(path="wave.mp4")` writes a file. **Colab needs `[viz]`**: without `imageio-ffmpeg`
+the OpenCV fallback emits `mp4v` (MPEG-4 Part 2), which Chromium REFUSES (`MEDIA_ERR_SRC_NOT_SUPPORTED`,
+`DEMUXER_ERROR_NO_SUPPORTED_STREAMS`) — an H.264 control through the same harness plays, so `[viz]` is load-bearing.
+`opencv-python`'s wheel ships no H.264 encoder (patent). `_repr_html_` already refuses to embed `mp4v` (prints an
+install hint), so a fallback user sees a message, not a dead player. NOT confirmed: that a real Colab runtime lacks
+`imageio-ffmpeg` (simulated by blocking the import) — one cell `import imageio_ffmpeg` settles it.
+**Branch surgery**: 7 `audit round N` commits (the display-vs-save error-path hardening) **squashed → one commit
+`d410f0c`**; recovery tag `pre-undo-2026-07-25`. The **API strictness the audit loop invented was REVERTED** —
+raising on `labels=`/`rows=`/`cols=` on a single clip, `rows*cols<panels`, `colorbar=False` on a bare clip,
+`resolution=`+`figsize=`. None fixed a bug; the last broke working `render(..., figsize=...)` calls. KEPT: three
+reproduced data-loss fixes (failed render deletes the caller's file; recovery `close()` overwrites it; `save()`
+truncates its own path).
+**`.show()` design (user: "r.video creates the object, .show shows it")** — explicit display, notebook + terminal.
+Settled after the scrapped `SHOW_PLAN.md` (deleting `_repr_html_`) drew **5 CRITICAL** in audit → REJECTED (breaks
+`display()`/`Out[n]`/nbconvert/HTML export; breaking removal from a public package). Design = **KEEP `_repr_html_`,
+ADD `.show()` additively**: notebook→`IPython.display.display(self)`; terminal→materialise to a per-user cache dir
++ OS opener; headless→print the path, never raise. New leaf module `cardiac_core/_display.py` (stdlib-only, so
+`image/` doesn't import `video/`→matplotlib). `mediapy` rejected (needs system ffmpeg). PLAN.md written (2 phases,
+4 steps, 9-section cold-start format), **audit rounds 1→2→3 = 1C/4H → 1C/5H → 1C/3H** (narrowing, not converged);
+each round's fix seeded the next round's defect (`atexit` races the viewer → cache dir; `.show()` returning `self`
+double-embeds → return `None`; targeted edits left stale contradictions → regenerated whole; Phase 1 committed a
+broken `r.image().show()` → deletion of the shared helpers deferred to Phase 2). Round-3 fixes applied via
+`/blueprint-revise`. **NO `.show()` code written yet** — the ~90-line draft in the tree is pre-plan and uncommitted.
+**⚑ Process feedback (saved to memory [[feedback-blueprint-before-implementing]])**: user stopped me TWICE for
+jumping idea→edits without `/blueprint`. Both skips cost real rework (a shipped crash; an 8-round audit-fix cycle).
+Blueprint + discuss + wait for go, THEN implement.
 
 ### 2026-07-23 — EXTRACTION AUDIT: cardiac_core as a standalone public repo → **DONE, PUSHED** (see Session Log)
 **⚑ RESOLVED 2026-07-23**: the audit below said "NOT READY TO PUSH"; the blockers were then fixed and the repo
@@ -1284,7 +1480,7 @@ cloud agents (video pipeline, tutorial notebooks) sharing the working tree.
   `git branch -f` (NO checkout — the shared tree had two agents' uncommitted work; 197 dirty entries preserved
   byte-for-byte) and pushed. `docs` commit `b7fc061` added the `Stim` class to `API_REFERENCE.md` + an IDEALOG snapshot.
   Phase 3 (consumer dict→Stim migration) still DEFERRED.
-- **`IonicPreset` plan — WRITTEN + GATED.** `cardiac_core/IONIC_PRESET_PLAN.md` (1 phase / 3 steps). Savable
+- **`IonicPreset` plan — WRITTEN + GATED.** `IONIC_PRESET_PLAN.md` (1 phase / 3 steps). Savable
   ionic-model config = base model + `{param: factor}` scaling map, accepted anywhere `ionic_model=` is, JSON save/load.
   Locked design (user): scalings-canonical + resolved `.values` (BOTH); any named param — conductance/concentration/
   kinetic (BREADTH); CORE OBJECT ONLY — `.npz` scalings-persistence + the tuner bridge DEFERRED. Resolves at the single
