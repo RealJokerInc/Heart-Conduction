@@ -20,7 +20,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tissue simulation, in depth — 3: the LBM engine, a different numerical route
+(M, """# Chapter 3.3 — LBM & Special B.C.
 
 The last two notebooks ran the same strip of tissue on **monodomain** (≈ 58 cm/s) and **bidomain**
 (≈ 60 cm/s). This one runs it on the third engine, **LBM** — the lattice-Boltzmann method — which
@@ -153,7 +153,7 @@ tissue with the *identical* conductivity. Here that is roughly a 10% gap.
 differently, and each discretisation carries its own small, systematic offset in the effective
 diffusivity — so each reports the wave's speed on its own slightly-shifted ruler. LBM's ruler runs a
 little fast relative to the finite-difference engines. (For the same reason, the O'Hara–Rudy model
-`"ord"` is available only through LBM in `cardiac_core` — the engines are genuinely different machines,
+`"ord"` (**O'Hara et al., 2011**) is available only through LBM in `cardiac_core` — the engines are genuinely different machines,
 not skins over one solver.)
 
 The consequence is a rule worth taping to your monitor:
@@ -358,6 +358,12 @@ flips sign with resolution — see **Li Chang's May and June 2026 progress repor
 **Where next**: that completes the tour of building tissue and the three engines. Chapter 4 puts the
 tissue to work with **pacing** — driving it beat after beat to measure how it recovers between beats and
 how fast you can push it before it starts to fail.
+"""),
+
+(M, """---
+## References
+
+- **ORd** (`ord`) — O'Hara T, Virág L, Varró A, Rudy Y (2011). "Simulation of the undiseased human cardiac ventricular action potential: model formulation and experimental validation." *PLoS Comput Biol* 7(5):e1002061.
 """)
 ]
 

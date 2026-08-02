@@ -20,7 +20,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Self-pacing & the funny current
+(M, """# Chapter 2.2 — Self-Pacing & the Funny Current
 
 Every action potential so far has needed an **electrode**: we injected a stimulus to fire the cell.
 But the heart doesn't wait to be poked — its pacemaker cells fire *by themselves*, over and over,
@@ -195,7 +195,7 @@ pacemaker at all. It takes **both** changes: `I_f` off alone still beats (you ju
 combination does.**
 
 That combination is exactly what **maturation** is, and `cardiac_core` ships the properly-tuned matured
-cell as **`mhas13`** — the same recipe done right (Verkerk 2019): the developmental funny current
+cell as **`mhas13`** — the same recipe done right (Fabbri et al. 2019): the developmental funny current
 suppressed (`g_f = 0`) and a strong adult-type `I_K1` injected at the critical conductance. So instead
 of dialling the two knobs by hand, you can just ask for `cc.single_cell("mhas13", stim_amplitude=0.0)`
 and get the same silent, matured cell.
@@ -248,6 +248,13 @@ except ValueError as e:
 **Where next**: you have now met the cell from two sides — what shapes one beat (Chapter 2) and what
 sets the rhythm of many (here). Chapter 3 leaves the single cell behind and builds **tissue**, where
 these cells are wired together and a beat becomes a travelling *wave*.
+"""),
+
+(M, """---
+## References
+
+- **PHAS13 / `paci`** — Paci M, Hyttinen J, Aalto-Setälä K, Severi S (2013). "Computational models of ventricular- and atrial-like human induced pluripotent stem cell derived cardiomyocytes." *Ann Biomed Eng* 41(11):2334–2348.
+- **`mhas13` maturation** — Fabbri et al. (2019). *Biophys J* 117:2303–2315 (PMID 31623886). The critical `I_K1` conductance that renders a matured hiPSC-CM quiescent.
 """)
 ]
 

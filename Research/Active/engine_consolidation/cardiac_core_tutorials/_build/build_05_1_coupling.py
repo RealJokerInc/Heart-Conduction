@@ -20,7 +20,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tuning by hand 1: coupling and speed
+(M, """# Chapter 5.1 — Coupling & Conduction Speed
 
 This is the first of four short notebooks that make up the **capstone** of the series. Chapter 2
 turned one knob at a time on a single *cell* and watched the action-potential *shape* change. These

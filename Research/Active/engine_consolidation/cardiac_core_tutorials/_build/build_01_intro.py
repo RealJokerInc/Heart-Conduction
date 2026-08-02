@@ -23,7 +23,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Cardiac Core Intro
+(M, """# Chapter 1 — Cardiac Core Intro
 
 Welcome. `cardiac_core` is a Python library for simulating the electrical activity of heart tissue —
 the wave of excitation that spreads across the heart with every beat. This first notebook is a gentle
@@ -113,8 +113,9 @@ does something dramatic and characteristic — it shoots up, holds high for a co
 milliseconds, then falls back to rest. That voltage-versus-time shape is the **action potential**, the
 fundamental signal of the heart.
 
-`cc.single_cell` runs exactly one cell of a chosen ionic model. Here we use `"ttp06"` (the ten
-Tusscher 2006 human-ventricular model) as an `EPI` (epicardial) cell. `pre_pace=2` runs two warm-up
+`cc.single_cell` runs exactly one cell of a chosen ionic model. Here we use `"ttp06"` — the
+**ten Tusscher–Panfilov (2006)** human-ventricular model (full citation in the References at the end) —
+as an `EPI` (epicardial) cell. `pre_pace=2` runs two warm-up
 beats first and throws them away, so the cell we record has settled into a steady rhythm rather than
 being caught cold on its first-ever beat.
 """),
@@ -246,6 +247,12 @@ the pattern turn.)
 **Where next**: Chapter 2 stays with the single cell and asks what each ion channel *does* to the
 action-potential shape — turn one knob and watch the plateau stretch or the upstroke slow. Then
 Chapter 3 opens up the tissue strip you just ran and explains every line of it.
+"""),
+
+(M, """---
+## References
+
+- **TTP06** (`ttp06`) — ten Tusscher KHWJ, Panfilov AV (2006). "Alternans and spiral breakup in a human ventricular tissue model." *Am J Physiol Heart Circ Physiol* 291(3):H1088–H1100.
 """)
 ]
 

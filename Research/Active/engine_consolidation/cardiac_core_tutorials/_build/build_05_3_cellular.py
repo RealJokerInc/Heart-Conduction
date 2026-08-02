@@ -16,7 +16,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tuning by hand 3: cellular knobs at tissue scale
+(M, """# Chapter 5.3 — Cellular Knobs at Tissue Scale
 
 Chapter 2 turned the ion-channel knobs — `GNa`, `GKr`, and the rest — on a single cell and watched the
 action-potential *shape* change. This notebook takes those *same* knobs into *tissue* and watches what

@@ -23,7 +23,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Chapter 4.2 — Pacing in Tissue: Voltage Clamp and Reentry
+(M, """# Chapter 4.2 — Voltage Clamp & Reentry
 
 Chapter 4.1 paced a single cell. Now we pace a whole **sheet** of tissue, and use pacing to do
 something dramatic: **start an arrhythmia from scratch.**

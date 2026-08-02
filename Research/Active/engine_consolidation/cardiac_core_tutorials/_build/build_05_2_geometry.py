@@ -16,7 +16,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tuning by hand 2: direction, geometry and launch
+(M, """# Chapter 5.2 — Direction, Geometry & Launch
 
 Notebook 5.1 was about **how fast** the wave goes. This one is about **what shape** it takes and
 **whether it launches at all**. Same method — turn one knob, run, look at the wave — but now the thing

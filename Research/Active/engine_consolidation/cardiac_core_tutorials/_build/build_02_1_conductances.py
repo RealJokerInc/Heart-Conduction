@@ -23,7 +23,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Conductances & AP morphology
+(M, """# Chapter 2.1 — Conductances & AP Morphology
 
 In Chapter 1 you ran a single heart cell and saw its **action potential** — the rest, upstroke,
 plateau, and repolarisation that make up one beat. That shape is not arbitrary. It is sculpted by a
@@ -83,7 +83,8 @@ print("cardiac_core is ready")
 ## 1. The baseline cell, and the knob that changes it
 
 First, the reference beat. This is the same `cc.single_cell` call from Chapter 1: one `ttp06`
-epicardial cell, paced once to settle it (`pre_pace=1`), recorded for one beat. We pace at 2 Hz
+epicardial cell — the **ten Tusscher–Panfilov (2006)** human-ventricular model — paced once to settle
+it (`pre_pace=1`), recorded for one beat. We pace at 2 Hz
 (`bcl=500`, a beat every 500 ms) and use `dt=0.05` ms — small enough to be accurate, large enough to
 be quick. Keep the two settings `BCL` and `DT` in one place so every run below matches.
 """),
@@ -320,6 +321,12 @@ just fat-finger the name. The error even prints the exact list of channels you *
 own**, with no electrode — and meets the "funny" current that sets its rhythm. Then Chapter 3 opens up
 tissue, where these same channels change not just the shape of a beat but the speed and safety of the
 *wave* that carries it.
+"""),
+
+(M, """---
+## References
+
+- **TTP06** (`ttp06`) — ten Tusscher KHWJ, Panfilov AV (2006). "Alternans and spiral breakup in a human ventricular tissue model." *Am J Physiol Heart Circ Physiol* 291(3):H1088–H1100.
 """)
 ]
 

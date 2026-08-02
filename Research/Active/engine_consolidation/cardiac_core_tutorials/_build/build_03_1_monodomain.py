@@ -23,7 +23,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tissue simulation, in depth — 1: building tissue & the monodomain engine
+(M, """# Chapter 3.1 — Monodomain & Building Tissue
 
 Chapter 1 ran a tissue simulation but kept the setup in a black box: "make a strip, give it
 conductivity, put an electrode on the edge, run it." This chapter opens that box. By the end of these

@@ -20,7 +20,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tissue simulation, in depth — 2: the bidomain engine & the extracellular field
+(M, """# Chapter 3.2 — Bidomain & the Extracellular Field
 
 Notebook 3.1 built a strip of tissue and ran it on the **monodomain** engine, measuring a conduction
 velocity of about 58 cm/s. This notebook keeps that exact strip and swaps in the second engine,

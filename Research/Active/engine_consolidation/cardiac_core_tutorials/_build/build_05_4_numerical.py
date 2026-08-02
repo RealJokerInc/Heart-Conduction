@@ -16,7 +16,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Tuning by hand 4: trust your number
+(M, """# Chapter 5.4 — Numerical Convergence & Trust
 
 This is the last notebook of the series, and it is the one that keeps the other three honest. So far you
 have tuned conductivity, geometry, and ion channels and read a conduction velocity off each run as if it

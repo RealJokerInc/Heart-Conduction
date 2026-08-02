@@ -23,7 +23,7 @@ M, C = "markdown", "code"
 
 CELLS = [
 
-(M, """# Chapter 4.1 — Pacing a Cell: Rate and Restitution
+(M, """# Chapter 4.1 — Pacing & Restitution
 
 Your heart doesn't beat once — it beats *again and again*, and it speeds up and slows down. This
 chapter is about **rate**: what happens to a single heart cell when you pace it faster and faster.
